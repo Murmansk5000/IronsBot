@@ -6,17 +6,18 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
-from ironsbot.services.player_reference_selection import select_player_reference
+from ironsbot.services.player_extension_commands import query_player_extension
+from ironsbot.services.player_reference_selection import (
+    select_player_reference,
+    select_player_target,
+)
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
 )
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import (
     available_player_detail_requests,
     extract_player_binding_arg,
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
     )
@@ -75,24 +76,30 @@ class _PortablePlayerOperations:
         if reference is None:
             msg = f"catalog accepted input that its player parser rejected: {text!r}"
             raise ValueError(msg)
-        resolution = self.resolver.resolve(context, reference or None)
-        if resolution.error is not None:
-            return _text_reply(resolution.error)
-        if resolution.player_id is None:
-            return _text_reply(unbound_player_shortcut_message())
-        result = await self.service.query(
-            resolution.player_id,
-            actor=context.message.actor,
-            explicit=resolution.offer_binding,
-            conversation=context.message.conversation,
-        )
-        return _prepare_player_query_reply(
-            self.service,
-            self.sessions,
+
+        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+            result = await self.service.query(
+                player_id,
+                actor=context.message.actor,
+                explicit=bool(reference.strip()),
+                conversation=context.message.conversation,
+            )
+            return _prepare_player_query_reply(
+                self.service,
+                self.sessions,
+                context,
+                result,
+                self.features,
+                self.extensions,
+            )
+
+        return await select_player_target(
+            reference,
             context,
-            result,
-            self.features,
-            self.extensions,
+            self.resolver,
+            self.sessions,
+            query,
+            title="请选择要查询的玩家：",
         )
 
     async def bind(
@@ -115,7 +122,10 @@ class _PortablePlayerOperations:
             if len(context.member_mentions) != 1:
                 return _text_reply("请一次只 @ 一名成员绑定米米号。")
             target = context.member_mentions[0]
-        async def execute(player_id: int) -> PortableReply:
+
+        async def execute(
+            player_id: int, context: MessageInputContext
+        ) -> PortableReply:
             return await self._bind_player(player_id, context, target)
 
         reply = await select_player_reference(
@@ -142,7 +152,9 @@ class _PortablePlayerOperations:
             pending = result.pending
             previous = result.binding_replacement
 
-            async def confirm(choice: Literal["confirm", "keep"]) -> PortableReply:
+            async def confirm(
+                choice: Literal["confirm", "keep"], context: MessageInputContext,
+            ) -> PortableReply:
                 self.service.save_binding_choice(
                     context.message.actor, pending,
                     accepted=choice == "confirm", replacing_existing=True,
@@ -187,23 +199,35 @@ class _PortablePlayerOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         parsed = parse_player_shortcut_command(text)
         if parsed is None:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
             raise ValueError(msg)
-        resolution = self.resolver.resolve(context, parsed.player_reference)
-        if resolution.error is not None:
-            return OutboundMessage.from_text(resolution.error)
-        if resolution.player_id is None:
-            return OutboundMessage.from_text(unbound_player_shortcut_message())
+        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+            return await _player_shortcut_reply(
+                self.service, PlayerShortcutCommand(parsed.kind, player_id), context,
+            )
+
+        return await select_player_target(
+            parsed.player_reference, context, self.resolver, self.sessions, query,
+            title="请选择要查询的玩家：",
+        )
+
+
+async def _player_shortcut_reply(
+    service: PlayerService,
+    command: PlayerShortcutCommand,
+    context: MessageInputContext,
+) -> PortableReply:
+    async def execute(send_status: ProgressReporter) -> OutboundMessage:
         reply = await execute_player_shortcut(
-            self.service,
-            PlayerShortcutCommand(parsed.kind, resolution.player_id),
-            context.message.actor,
-            conversation=context.message.conversation,
+            service, command, context.message.actor,
+            conversation=context.message.conversation, send_status=send_status,
         )
         return reply.to_outbound()
+
+    return await progress_operation_reply(execute)
 
 
 def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
@@ -251,7 +275,8 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             | PlayerDetailExtensionAction
             | Literal["bind", "decline"]
         ),
-    ) -> OutboundMessage:
+        context: MessageInputContext,
+    ) -> OutboundMessage | PortableReply:
         if isinstance(command, str):
             service.save_binding_choice(
                 context.message.actor,
@@ -268,28 +293,12 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 extensions,
             ).message
         if isinstance(command, PlayerDetailExtensionAction):
-            reply = await command.query(
-                PlayerDetailActionRequest(
-                    player_id=pending.player_id,
-                    actor=context.message.actor,
-                    conversation=context.message.conversation,
-                    can_manage=(
-                        context.message.group_role in GROUP_MANAGER_ROLES
-                        or (
-                            features is not None
-                            and features.is_actor_superuser(context.message.actor)
-                        )
-                    ),
-                )
+            if features is None:
+                raise ValueError("player extension requires a feature policy")  # noqa: TRY003
+            return await query_player_extension(
+                command, pending.player_id, context, features,
             )
-        else:
-            reply = await execute_player_shortcut(
-                service,
-                command,
-                context.message.actor,
-                conversation=context.message.conversation,
-            )
-        return reply.to_outbound()
+        return await _player_shortcut_reply(service, command, context)
 
     choices: tuple[
         PlayerShortcutCommand
