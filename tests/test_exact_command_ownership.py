@@ -156,7 +156,7 @@ def _normalized_contracts() -> tuple[CommandContract, ...]:
                 {
                     "id": "example",
                     "commands": ["Hello World"],
-                    "message": "reply",
+                    "messages": ["reply"],
                     "feature": "text",
                 }
             ]
@@ -204,7 +204,7 @@ def test_explicit_normalization_keeps_existing_domain_language(
                     {
                         "id": "example",
                         "commands": [name],
-                        "message": "reply",
+                        "messages": ["reply"],
                         "feature": "text",
                     }
                 ]

@@ -12,9 +12,9 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class ScheduledMessageDelivery:
-    """One configured text push, addressed through typed platform references."""
+    """One ordered configured text push, addressed through typed references."""
 
-    message: str
+    messages: tuple[str, ...]
     private_conversations: tuple[ConversationRef, ...]
     group_conversations: tuple[ConversationRef, ...]
     group_mentions: tuple[ActorRef, ...]

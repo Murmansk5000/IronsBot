@@ -109,10 +109,12 @@ def test_build_schedule_trigger_kwargs_preserves_seconds() -> None:
 
 def test_scheduled_action_normalizes_minute_input_with_seconds() -> None:
     assert (
-        MessageScheduledAction(id="daily", message="text", time="08:30").time
+        MessageScheduledAction(id="daily", messages=["text"], time="08:30").time
         == "08:30:00"
     )
     assert (
-        MessageScheduledAction(id="precise", message="text", time="08:30:45").time
+        MessageScheduledAction(
+            id="precise", messages=["text"], time="08:30:45"
+        ).time
         == "08:30:45"
     )

@@ -43,7 +43,6 @@ def build_portable_team_resource_operations(
     ) -> OutboundMessage:
         del text
         target = _target(context)
-        actor = _team_query_actor(context, service)
         first_team_id = await _bound_team_id(
             context,
             player_id_resolver,
@@ -53,9 +52,14 @@ def build_portable_team_resource_operations(
         if not items:
             return OutboundMessage.from_text(service.subscriptions_message(target))
 
-        async def select(item: TeamOverviewItem) -> OutboundMessage:
+        async def select(
+            item: TeamOverviewItem,
+            context: MessageInputContext,
+        ) -> OutboundMessage:
             return OutboundMessage.from_text(
-                await team_query.query((item.team_id,), actor)
+                await team_query.query(
+                    (item.team_id,), _team_query_actor(context, service)
+                )
             )
 
         return sessions.offer_menu(
