@@ -87,10 +87,9 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import PeakQueryResult
-from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
-from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -105,13 +104,13 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
-    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import (
         RankListCommand,
         RankPageCacheStatusCommand,
     )
     from ironsbot.services.seer.resources import SeerQueryResources
+    from ironsbot.services.seer.team import TeamQueryActor
     from ironsbot.services.team.resource import TeamResourceService
 
 
@@ -225,21 +224,13 @@ class _FakeDockerUpdateService:
         self.executed.append(action)
 
 
-class _FakePlayerIdResolver:
-    def has_known_reference(self, _value: str, *_context: object) -> bool:
-        return False
-
-    def resolve(
-        self,
-        _context: MessageInputContext,
-        reference: str | None,
-        *,
-        allow_default_binding: bool = True,
-    ) -> PlayerIdResolution:
-        del allow_default_binding
-        return PlayerIdResolution(
-            int(reference) if reference and reference.isdecimal() else None,
-            offer_binding=bool(reference),
+class _FakePlayerIdResolver(PlayerIdResolver):
+    def __init__(self) -> None:
+        super().__init__(
+            lambda reference, _conversation: (
+                int(reference) if reference.isdecimal() else None
+            ),
+            lambda _actor: None,
         )
 
 
@@ -317,24 +308,6 @@ class _FakeTeamQuery:
         assert actor.conversation.id == "group-a"
         assert not actor.can_manage
         return "战队:" + ",".join(str(value) for value in team_ids)
-
-    async def query_input(
-        self,
-        text: str,
-        context: MessageInputContext,
-        _resolver: object,
-        *,
-        can_manage: bool,
-    ) -> str:
-        return await self.query(
-            self.parse_team_ids(text.removeprefix("战队")),
-            TeamQueryActor(
-                context.message.actor,
-                context.message.conversation,
-                can_manage,
-            ),
-        )
-
 
 class _FakeRankQueries:
     def default_limit(self, _conversation: ConversationRef | None) -> int:

@@ -99,6 +99,7 @@ def build_portable_seer_operations(
             seer.team_query,
             player_id_resolver,
             features,
+            sessions,
         ),
         "rank.help": rank_help_message,
         "seer.peak.query": _build_peak_query_operation(seer.peak_query),

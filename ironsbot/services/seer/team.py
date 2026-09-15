@@ -29,11 +29,9 @@ from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamQueryConfig
-    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
-    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.team.resource import TeamResourceService
 
 from ironsbot.core.semantic_requests import ActionDefinition
@@ -80,44 +78,6 @@ class SeerTeamQueryService:
     @staticmethod
     def parse_team_ids(text: str) -> tuple[int, ...]:
         return tuple(dict.fromkeys(int(item) for item in re.findall(r"\d+", text)))
-
-    async def query_input(
-        self,
-        text: str,
-        context: MessageInputContext,
-        resolver: PlayerIdResolver,
-        *,
-        can_manage: bool,
-    ) -> str:
-        from ironsbot.services.seer.query_commands import team_query_argument
-
-        parsed = team_query_argument(text)
-        if parsed is None:
-            msg = f"invalid team query input: {text!r}"
-            raise ValueError(msg)
-        reference = parsed.argument.strip()
-        actor = TeamQueryActor(
-            context.message.actor,
-            context.message.conversation,
-            can_manage,
-        )
-        if not context.has_member_mentions and re.fullmatch(
-            r"\d+(?:\s+\d+)*",
-            reference,
-        ):
-            return await self.query(self.parse_team_ids(reference), actor)
-        if reference.startswith("米米号"):
-            reference = reference.removeprefix("米米号").strip()
-        resolution = resolver.resolve(
-            context,
-            reference,
-            allow_default_binding=False,
-        )
-        if resolution.error is not None:
-            return resolution.error
-        if resolution.player_id is None:
-            return "请填写战队号、米米号、玩家别名，或直接 @ 一名已绑定成员。"
-        return await self.query_player_team(resolution.player_id, actor)
 
     async def query_player_team(self, player_id: int, actor: TeamQueryActor) -> str:
         lookup = await self.lookup_player_team(player_id)
