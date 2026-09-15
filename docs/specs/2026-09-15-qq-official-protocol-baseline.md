@@ -67,7 +67,7 @@ in every event. IronsBot therefore must not infer a QQ number from that field.
 
 | Concern | SDK responsibility | IronsBot responsibility | Current evidence |
 | --- | --- | --- | --- |
-| Authentication | Token acquisition and refresh | Secret injection and per-AppID lifecycle | Implemented locally; real credentials remain external |
+| Authentication | Token acquisition and refresh | Secret injection and per-AppID lifecycle | One real account passed token acquisition and READY; refresh remains covered by SDK ownership rather than a controlled expiry test |
 | Gateway | Heartbeat, reconnect, Resume, session persistence | Startup timeout, account health, required/optional policy, shutdown ordering | Runtime starts a connection but Phase 7 health acceptance is open |
 | Inbound deduplication | Bounded in-process message-ID cache | Persistent pre-dispatch message claims beyond the SDK cache | Completed with AppID/event/message isolation and 24-hour retention |
 | Passive replies | HTTP calls and DTO encoding | Event-derived deadline, per-scene reply budget, sequential concurrent `msg_seq` | Group 5-minute/5-reply and C2C 60-minute/4-reply policies are enforced; live sequence keys are conversation-scoped and never evicted |
@@ -144,7 +144,7 @@ identity or ownership of the game account.
 | Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, current mention markup, structured failures | Tencent send APIs | completed; command keyboards are capability-gated and reuse ordinary inbound selection |
 | Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | completed; real disconnect/reconnect remains in the external acceptance matrix |
 | Media and identity | SDK uploader, safe `file_info` lifetime, explicit identity linking | Platform permissions and identity repository | completed; Lucky Skin Window consumes only exact links |
-| Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | planned |
+| Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | partial; one-account READY, C2C command and ordered shutdown passed |
 
 ## Migration And Rollback
 
@@ -160,7 +160,9 @@ identity or ownership of the game account.
   supported transport.
 - [x] SDK and IronsBot responsibilities are separated by evidence.
 - [x] Official reply, event, upload, and mention contracts are dated and linked.
-- [ ] Runtime slices and real-platform gates are completed in later commits.
+- [x] Runtime slices are implemented and locally verified.
+- [ ] Remaining real-platform gates are tracked in the matrix below and are not
+  reported as passed without platform evidence.
 
 ## Evidence
 
@@ -179,11 +181,15 @@ identity or ownership of the game account.
 | 2026-09-15 | Portable command coverage gate | QQ-enabled full bootstrap plus router failure test; 53 portable, QQ Official and bootstrap tests; Ruff; BasedPyright; compileall; static repository checks | The full catalog currently contains 78 QQ Official direct commands: the original 75-command portability target plus three official identity commands. Construction fails when any direct contract lacks an operation or explicit built-in handler |
 | 2026-09-15 | Automated closure run | Full suite `3449 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks; clean worktree | All local gates pass. The manual Tencent account matrix below remains external and must not be reported as passed without captured platform evidence |
 | 2026-09-15 | Runtime log redaction | 60 runtime, lifecycle, portable and QQ-enabled bootstrap tests; Ruff; BasedPyright; compileall | Connection logs use the configured account alias. Message and conversation identifiers use irreversible short digests; original AppIDs and OpenIDs remain available only to routing and persistence code |
+| 2026-09-15 | Real token and READY acceptance | Dedicated local test account with AppID in ignored TOML and AppSecret in an ignored environment file | SDK obtained an access token and the redacted account alias reached `ready`; no credential or raw platform identifier was retained in this document |
+| 2026-09-15 | Real C2C command acceptance | Operator sent `帮助` three times after READY; runtime recorded one recognized inbound route and one successful initial delivery for each message | Each operator message produced exactly one private reply; command recognition, C2C passive delivery and persistent inbound deduplication passed without duplicate execution |
+| 2026-09-15 | Application-owned data startup | 51 focused lifecycle/registry/bootstrap tests plus a local portable `新增内容` dispatch against a contract-validated release cache | Seer data now loads as an application resource rather than a OneBot plugin side effect; the shared router returned a five-choice menu after startup |
+| 2026-09-15 | Real ordered shutdown | Operator stopped the READY process repeatedly with the normal interrupt path | Uvicorn completed application shutdown and the process exited without a surviving QQ Official runtime task |
 
 ## Progress
 
 ```text
-Program  [█████████▌] 95%  fixed weights; only external acceptance remains
+Program  [█████████▊] 98%  fixed weights; remaining work is external acceptance
 Phase    [██████████] 100%  protocol baseline documented
 Current  [██████████] 100%  media and identity completed
 ```
@@ -198,15 +204,15 @@ arguments, logs, screenshots, or this evidence table.
 
 | Check | Operator action | Required evidence | Status |
 | --- | --- | --- | --- |
-| Access token and READY | Start one required test account | Redacted startup log reaches `ready` after SDK `READY` | pending operator window |
+| Access token and READY | Start one required test account | Redacted startup log reaches `ready` after SDK `READY` | passed 2026-09-15 |
 | Group addressed command | In an authorized test group, address the bot and send `帮助` | One reply; no mention-guard interception or duplicate execution | pending operator message |
-| C2C command | Send `帮助` in the bot's private conversation | One private reply using the C2C reply budget | pending operator message |
+| C2C command | Send `帮助` in the bot's private conversation | One private reply using the C2C reply budget | passed 2026-09-15; repeated three times without duplicate execution |
 | Sequential replies | Run a command that opens a numeric menu and choose one item | Initial and selected replies use increasing sequence values | pending operator message |
 | Image upload | Run a query whose result contains an image | SDK media upload succeeds in the same group/C2C scope | pending operator message |
 | Resume and deduplication | Interrupt connectivity after READY, restore it, then retry one message | `reconnecting` to `ready`; replayed message ID causes no duplicate side effect | pending controlled interruption |
 | Proactive permission failure | With proactive sends disabled or ungranted, exercise one scheduled target in a test scope | Structured permission/error code is logged; no passive-reply fallback | pending authorized test |
 | Multi-account isolation | Enable two authorized test AppIDs and address each independently | Separate READY state, OpenID namespace, token and send route | external gate: second AppID required |
-| Ordered shutdown | Stop the local process after the checks | Accounts stop cleanly before shared resources; no surviving SDK task | pending operator window |
+| Ordered shutdown | Stop the local process after the checks | Accounts stop cleanly before shared resources; no surviving SDK task | passed 2026-09-15 |
 
 Completion requires recording only redacted timestamps, result categories and trace
 IDs. App secrets, access tokens, full OpenIDs and numeric account identifiers are not
