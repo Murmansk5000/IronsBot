@@ -150,7 +150,9 @@ class _PortableNewContentOperations:
     ) -> OutboundMessage:
         menu = build_new_content_menu(snapshot, layout)
 
-        async def select(action: NewContentAction) -> OutboundMessage:
+        async def select(
+            action: NewContentAction, context: MessageInputContext,
+        ) -> OutboundMessage:
             if action.kind == "category":
                 return self._offer(
                     context,

@@ -63,6 +63,7 @@ from ironsbot.services.identity_link_commands import IdentityLinkCommands
 from ironsbot.services.identity_linking import IdentityLinkingService, OfficialAccount
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
@@ -257,8 +258,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             ignored_plugins=ignored_plugins,
         )
 
+    query_sessions = PortableQuerySessions()
     resources = ApplicationResources(
         about=AboutService.from_version_file(Path("__version__")),
+        query_sessions=query_sessions,
         features=features,
         promotions=promotions,
         admin_notices=admin_notices,

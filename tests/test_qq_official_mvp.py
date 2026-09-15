@@ -35,7 +35,12 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginContributionCatalog,
+)
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
@@ -76,13 +81,19 @@ from ironsbot.services.portable_commands import (
     PortableCommandRouterError,
     build_portable_command_router,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import PeakQueryResult
-from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
+    PlayerDetailExtensionAction,
+    PlayerDetailExtensionRegistry,
+)
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 
@@ -99,7 +110,6 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
-    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import (
         RankListCommand,
@@ -220,21 +230,13 @@ class _FakeDockerUpdateService:
         self.executed.append(action)
 
 
-class _FakePlayerIdResolver:
-    def has_known_reference(self, _value: str, *_context: object) -> bool:
-        return False
-
-    def resolve(
-        self,
-        _context: MessageInputContext,
-        reference: str | None,
-        *,
-        allow_default_binding: bool = True,
-    ) -> PlayerIdResolution:
-        del allow_default_binding
-        return PlayerIdResolution(
-            int(reference) if reference and reference.isdecimal() else None,
-            offer_binding=bool(reference),
+class _FakePlayerIdResolver(PlayerIdResolver):
+    def __init__(self) -> None:
+        super().__init__(
+            lambda reference, _conversation: (
+                int(reference) if reference.isdecimal() else None
+            ),
+            lambda _actor: None,
         )
 
 
@@ -272,6 +274,12 @@ class _FakePetQuery:
     async def select_image(self, _pet_id: int) -> QueryResult[object]:
         return QueryResult()
 
+    async def search_avatar(self, _argument: str) -> QueryResult[int]:
+        return QueryResult()
+
+    async def select_avatar(self, _pet_id: int) -> QueryResult[object]:
+        return QueryResult()
+
 
 class _FakePeakQuery(_UnusedQueryService):
     async def pool(
@@ -306,7 +314,6 @@ class _FakeTeamQuery:
         assert actor.conversation.id == "group-a"
         assert not actor.can_manage
         return "战队:" + ",".join(str(value) for value in team_ids)
-
 
 class _FakeRankQueries:
     def default_limit(self, _conversation: ConversationRef | None) -> int:
@@ -470,13 +477,14 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
     assert "example-secret" not in caplog.text
 
 
-def _fake_seer(
+def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
     *,
     pet_query: object | None = None,
     peak_query: object | None = None,
     team_query: object | None = None,
     rank_queries: object | None = None,
     rank_admin: object | None = None,
+    player_details: PlayerDetailExtensionRegistry | None = None,
 ) -> SeerQueryResources:
     unused = _UnusedQueryService()
     return cast(
@@ -491,6 +499,7 @@ def _fake_seer(
             battle_effect=unused,
             peak_query=peak_query or unused,
             player=unused,
+            player_detail_extensions=player_details or PlayerDetailExtensionRegistry(),
             rank_queries=rank_queries or unused,
             rank_admin=rank_admin or unused,
         ),
@@ -529,6 +538,7 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     pet_config: bool = False,
     rank_display: bool = False,
     rank_status: bool = False,
+    extra_commands: tuple[CommandContract, ...] = (),
 ) -> CommandCatalog:
     command_ids = {
         "seer.data.query",
@@ -580,7 +590,9 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     contributions = [
         PluginContribution(id="help", commands=help_command_contracts()),
         PluginContribution(id="about", commands=about_command_contracts()),
-        PluginContribution(id="seer_query", commands=seer_contracts),
+        PluginContribution(
+            id="seer_query", commands=(*seer_contracts, *extra_commands),
+        ),
         PluginContribution(id="rank_help", commands=rank_contracts),
     ]
     if ai_chat:
@@ -656,6 +668,25 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
             "meeting",
             "pet_config",
         ),
+    )
+    return catalog
+
+
+def _portable_help_catalog() -> PluginContributionCatalog:
+    catalog = PluginContributionCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="help",
+                help=HelpEntry("帮助", "查看当前可用功能", "core", 10),
+                commands=help_command_contracts(),
+            ),
+            PluginContribution(
+                id="about",
+                help=HelpEntry("关于", "查看项目与版本信息", "core", 20),
+                commands=about_command_contracts(),
+            ),
+        )
     )
     return catalog
 
@@ -1267,8 +1298,11 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
             superusers=[],
         ),
     )
+    query_sessions = PortableQuerySessions()
     router = build_portable_command_router(
         catalog=_portable_catalog(),
+        contribution_catalog=_portable_help_catalog(),
+        query_sessions=query_sessions,
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
@@ -1295,6 +1329,13 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert isinstance(help_message.message.parts[0], TextPart)
     assert "关于" in help_message.message.parts[0].text
     assert "数据版本" not in help_message.message.parts[0].text
+
+    detail = await router.dispatch(_portable_input("2", actor, conversation))
+    assert detail is not None
+    assert isinstance(detail.message.parts[0], TextPart)
+    assert "关于" in detail.message.parts[0].text
+    assert router.recognizes(_portable_input("1", actor, conversation))
+
     assert (
         await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None
@@ -1887,6 +1928,16 @@ async def test_portable_router_runs_pool_aliases_through_the_same_image_query(
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_team_query_with_opaque_context() -> None:
+    async def detail_query(_request: PlayerDetailActionRequest) -> QueryReply:
+        msg = "team detail must not replace the direct team-ID query"
+        raise AssertionError(msg)
+
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(PlayerDetailExtensionAction(
+        id="player_team", feature="seer_team", label="战队", aliases=("战队",),
+        command_help_id="seer.team.query", query=detail_query,
+        action=ActionDefinition("player_team", "玩家所属战队"),
+    ))
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
@@ -1895,7 +1946,7 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
     router = build_portable_command_router(
         catalog=_portable_catalog(),
         about=AboutService("test"),
-        seer=_fake_seer(team_query=_FakeTeamQuery()),
+        seer=_fake_seer(team_query=_FakeTeamQuery(), player_details=extensions),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         identity_links=_identity_links(),
         features=features,
@@ -1923,6 +1974,46 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
 
     assert result is not None
     assert cast("TextPart", result.message.parts[0]).text == "战队:123456,654321"
+
+
+@pytest.mark.asyncio
+async def test_router_builds_extension_without_platform_handler() -> None:
+    requests: list[PlayerDetailActionRequest] = []
+
+    async def query(request: PlayerDetailActionRequest) -> QueryReply:
+        requests.append(request)
+        return QueryReply(text="extension result")
+
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(PlayerDetailExtensionAction(
+        id="sample_detail", feature="seer_player", label="档案", aliases=("档案",),
+        command_help_id="sample.detail", query=query,
+        action=ActionDefinition("sample_detail", "档案"),
+    ))
+    contract = CommandContract(
+        id="sample.detail", plugin_id="seer_query", section="玩家",
+        examples=("档案700001",), description="查询玩家档案",
+        features_all=("seer_player",),
+    )
+    features = build_onebot_feature_service(
+        FeatureConfig(), (), qq_official=_qq_config(features=["seer_player"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(extra_commands=(contract,)),
+        about=AboutService("test"), seer=_fake_seer(player_details=extensions),
+        player_id_resolver=_FakePlayerIdResolver(), identity_links=_identity_links(),
+        features=features, ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "member-a", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", actor.id, account_id="example-app",
+    )
+    result = await router.dispatch(_portable_input("档案700001", actor, conversation))
+    assert result is not None
+    assert result.message == QueryReply(text="extension result").to_outbound()
+    assert requests == [PlayerDetailActionRequest(700001, actor, conversation)]
 
 
 @pytest.mark.asyncio

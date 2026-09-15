@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.core.command_catalog import CommandContext
+from ironsbot.core.command_catalog import CommandContext, command_context_from_input
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -13,6 +13,7 @@ from ironsbot.services.ai.source_context import format_ai_source_context
 from ironsbot.services.identity_link_commands import (
     build_portable_identity_link_operations,
 )
+from ironsbot.services.player_extension_commands import build_player_extension_operation
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -69,6 +70,7 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.actions import AiIntentActionExecutor
@@ -129,7 +131,7 @@ class PortableCommandRouter:
                 sorted(unknown)
             )
             raise ValueError(msg)
-        built_in_ids = {"help", "ai_chat.group", "ai_chat.private"}
+        built_in_ids = {"ai_chat.group", "ai_chat.private"}
         missing = set(catalog.qq_official_direct_command_ids) - (
             set(operations) | built_in_ids
         )
@@ -156,7 +158,7 @@ class PortableCommandRouter:
             return False
         raw_command = context.text.strip()
         command = _command_text(context.text)
-        command_context = _command_context(context)
+        command_context = command_context_from_input(context)
         return self._query_sessions.recognizes_response(command, context) or (
             self._matching_input_contract(
                 raw_command,
@@ -178,7 +180,7 @@ class PortableCommandRouter:
             return None
         raw_command = context.text.strip()
         command = _command_text(context.text)
-        command_context = _command_context(context)
+        command_context = command_context_from_input(context)
         try:
             selected = await self._query_sessions.select(
                 command,
@@ -202,8 +204,6 @@ class PortableCommandRouter:
         )
         if contract is None:
             return await self._fallback_reply(context, command_context, command)
-        if contract.id == "help":
-            return PortableReply(self._help(command_context))
         try:
             result = await self._operations[contract.id](command, context)
         except DataUnavailableError:
@@ -249,7 +249,6 @@ class PortableCommandRouter:
         self, context: CommandContext
     ) -> tuple[CommandContract, ...]:
         executable_ids = self._operations.keys() | {
-            "help",
             "ai_chat.group",
             "ai_chat.private",
         }
@@ -261,16 +260,6 @@ class PortableCommandRouter:
             )
             if contract.id in executable_ids
         )
-
-    def _help(self, context: CommandContext) -> OutboundMessage:
-        contracts = self._available_contracts(context)
-        lines = ["【机器人调试功能】", "帮助 - 查看当前可用功能"]
-        lines.extend(
-            f"{contract.examples[0]} - {contract.description}"
-            for contract in contracts
-            if contract.id != "help"
-        )
-        return OutboundMessage.from_text("\n".join(lines))
 
     async def _fallback_reply(
         self,
@@ -356,6 +345,9 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     meeting_number: str = "",
     meeting_template: str = "{meeting_number}",
     pet_config: PetConfigQueryService | None = None,
+    contribution_catalog: PluginContributionCatalog | None = None,
+    query_sessions: PortableQuerySessions | None = None,
+    ignored_help_plugins: tuple[str, ...] = (),
     image_command_texts: frozenset[str] = frozenset(),
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
     new_content_preview_max_items: int = 5,
@@ -367,17 +359,20 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         del text, context
         return about.message()
 
-    sessions = PortableQuerySessions()
+    sessions = query_sessions or PortableQuerySessions()
     seer_operations = build_portable_seer_operations(
         catalog,
         seer,
         sessions,
         features,
+        player_id_resolver,
     )
     player_operations = build_portable_player_operations(
         seer.player,
         player_id_resolver,
         sessions,
+        features,
+        seer.player_detail_extensions,
     )
     identity_link_operations = _catalog_operations(
         catalog,
@@ -393,6 +388,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
                 seer.pet_query,
                 identity_linking or identity_links.service,
                 sessions,
+                player_id_resolver,
             )
         ),
     )
@@ -438,7 +434,12 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
     team_resource_operations = _catalog_operations(
         catalog,
-        build_portable_team_resource_operations(team_resource),
+        build_portable_team_resource_operations(
+            team_resource,
+            player_id_resolver,
+            seer.team_query,
+            sessions,
+        ),
     )
     activity_operations = _catalog_operations(
         catalog,
@@ -535,6 +536,25 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **rank_operations,
         **rank_admin_operations,
     }
+    extension_operation = build_player_extension_operation(
+        seer.player_detail_extensions, player_id_resolver, features,
+    )
+    for action in seer.player_detail_extensions.actions():
+        # A detail action may link to an existing, broader direct command (team).
+        if action.command_help_id not in operations:
+            operations[action.command_help_id] = extension_operation
+    from ironsbot.services.help_menu import build_portable_help_operation
+
+    operations["help"] = build_portable_help_operation(
+        contribution_catalog.contributions if contribution_catalog is not None else (),
+        catalog,
+        features,
+        sessions,
+        ignored_plugins=ignored_help_plugins,
+        command_ids=frozenset(
+            {*operations, "help", "ai_chat.group", "ai_chat.private"}
+        ),
+    )
     return PortableCommandRouter(
         catalog,
         operations,
@@ -568,16 +588,6 @@ def _catalog_operation_family(
     if catalog.command_ids.isdisjoint(command_ids):
         return {}
     return _catalog_operations(catalog, factory())
-
-
-def _command_context(context: MessageInputContext) -> CommandContext:
-    message = context.message
-    return CommandContext(
-        actor=message.actor,
-        conversation=message.conversation,
-        group_role=message.group_role,
-        member_mentions=message.direct_mentions,
-    )
 
 
 def _command_text(text: str) -> str:

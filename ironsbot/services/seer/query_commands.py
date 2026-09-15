@@ -3,17 +3,26 @@
 
 from __future__ import annotations
 
+import re
 from functools import partial
+from typing import TYPE_CHECKING
 
 from ironsbot.core.affix_commands import AffixArgument, AffixCommand
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.services.seer.autocard import (
     AUTOCARD_QUERY_PREFIXES,
     AUTOCARD_QUERY_SUFFIXES,
 )
 from ironsbot.services.seer.autocard_sanctuary import SANCTUARY_QUERY_PREFIXES
 from ironsbot.services.seer.query_guards import is_rank_query_text
-from ironsbot.services.seer.team import SeerTeamQueryService
+
+if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandContext
+    from ironsbot.core.player_reference_commands import (
+        PlayerReferenceInputMatcher,
+        PlayerReferenceRecognizer,
+    )
 
 
 def is_reserved_query(text: str, *, image_commands: frozenset[str]) -> bool:
@@ -33,6 +42,14 @@ def pet_image_input(image_commands: frozenset[str] = frozenset()) -> AffixComman
     return AffixCommand(
         affixes,
         affixes,
+        reject=partial(is_reserved_query, image_commands=image_commands),
+    )
+
+
+def pet_avatar_input(image_commands: frozenset[str] = frozenset()) -> AffixCommand:
+    return AffixCommand(
+        ("头像",),
+        ("头像",),
         reject=partial(is_reserved_query, image_commands=image_commands),
     )
 
@@ -57,10 +74,28 @@ SANCTUARY_QUERY = AffixCommand(SANCTUARY_QUERY_PREFIXES, ())
 _TEAM_QUERY = AffixCommand(("战队", "查询战队信息"), ())
 
 
-def team_query_input(text: str) -> AffixArgument | None:
-    parsed = _TEAM_QUERY(text)
-    return (
-        parsed
-        if parsed is not None and SeerTeamQueryService.parse_team_ids(parsed.argument)
-        else None
-    )
+def team_query_argument(text: str) -> AffixArgument | None:
+    return _TEAM_QUERY(text)
+
+
+def team_query_input_matcher(
+    reference_is_known: PlayerReferenceRecognizer,
+) -> PlayerReferenceInputMatcher:
+    def matches(text: str, context: CommandContext) -> bool:
+        parsed = team_query_argument(text)
+        if parsed is None:
+            return False
+        reference = parsed.argument.strip()
+        if context.has_member_mentions:
+            return not reference
+        if re.fullmatch(r"\d+(?:\s+\d+)*", reference):
+            return True
+        if reference.startswith("米米号"):
+            reference = reference.removeprefix("米米号").strip()
+        return bool(reference) and is_player_reference_input(
+            reference,
+            context,
+            reference_is_known,
+        )
+
+    return matches

@@ -3,11 +3,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.core.selection import format_selection_menu
+from ironsbot.services.player_extension_commands import query_player_extension
+from ironsbot.services.player_reference_selection import select_player_reference
+from ironsbot.services.portable_query_sessions import PortableMenuSpec
+from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionAction,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import (
     available_player_detail_requests,
@@ -19,12 +26,16 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     execute_player_shortcut,
     parse_player_shortcut_command,
 )
-from ironsbot.services.seer.query_result import QueryChoice, QueryResult
 
 if TYPE_CHECKING:
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
+    from ironsbot.services.seer.player_detail_extensions import (
+        PlayerDetailExtensionRegistry,
+    )
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_service_models import PlayerQueryResult
@@ -34,8 +45,10 @@ def build_portable_player_operations(
     service: PlayerService,
     resolver: PlayerIdResolver,
     sessions: PortableQuerySessions,
+    features: FeatureService | None = None,
+    extensions: PlayerDetailExtensionRegistry | None = None,
 ) -> dict[str, PortableOperation]:
-    owner = _PortablePlayerOperations(service, resolver, sessions)
+    owner = _PortablePlayerOperations(service, resolver, sessions, features, extensions)
     return {
         "seer.player.query": owner.query,
         "seer.player.default": owner.shortcut,
@@ -49,6 +62,8 @@ class _PortablePlayerOperations:
     service: PlayerService
     resolver: PlayerIdResolver
     sessions: PortableQuerySessions
+    features: FeatureService | None
+    extensions: PlayerDetailExtensionRegistry | None
 
     async def query(
         self,
@@ -75,6 +90,8 @@ class _PortablePlayerOperations:
             self.sessions,
             context,
             result,
+            self.features,
+            self.extensions,
         )
 
     async def bind(
@@ -86,33 +103,79 @@ class _PortablePlayerOperations:
         if reference is None:
             msg = f"catalog accepted input that its binding parser rejected: {text!r}"
             raise ValueError(msg)
-        resolution = self.resolver.resolve(
-            context,
-            reference or None,
-            allow_default_binding=False,
+        target = None
+        if context.has_member_mentions:
+            if context.message.conversation.kind != "group":
+                return _text_reply("仅群聊可为成员绑定米米号。")
+            if self.features is None or not self.features.is_actor_superuser(
+                context.message.actor
+            ):
+                return _text_reply("仅超级管理员可为其他成员绑定米米号。")
+            if len(context.member_mentions) != 1:
+                return _text_reply("请一次只 @ 一名成员绑定米米号。")
+            target = context.member_mentions[0]
+
+        async def execute(
+            player_id: int, context: MessageInputContext
+        ) -> PortableReply:
+            return await self._bind_player(player_id, context, target)
+
+        reply = await select_player_reference(
+            reference, context, self.resolver, self.sessions, execute,
+            title="请选择要绑定的玩家：",
         )
-        if resolution.error is not None:
-            return _text_reply(resolution.error)
-        if resolution.player_id is None:
-            return _text_reply(unbound_player_shortcut_message())
+        return reply if isinstance(reply, PortableReply) else PortableReply(reply)
+
+    async def _bind_player(
+        self, player_id: int, context: MessageInputContext, target: ActorRef | None,
+    ) -> PortableReply:
+        if target is not None and (
+            self.features is None
+            or not self.features.is_actor_superuser(context.message.actor)
+        ):
+            return _text_reply("仅超级管理员可为其他成员绑定米米号。")
         result = await self.service.bind_player(
-            resolution.player_id,
+            player_id,
             actor=context.message.actor,
             conversation=context.message.conversation,
+            target=target,
         )
         if result.pending is not None and result.binding_replacement is not None:
-            self.service.save_binding_choice(
-                context.message.actor,
-                result.pending,
-                accepted=True,
-                replacing_existing=True,
+            pending = result.pending
+            previous = result.binding_replacement
+
+            async def confirm(
+                choice: Literal["confirm", "keep"], context: MessageInputContext,
+            ) -> PortableReply:
+                self.service.save_binding_choice(
+                    context.message.actor, pending,
+                    accepted=choice == "confirm", replacing_existing=True,
+                )
+                return _prepare_player_query_reply(
+                    self.service, self.sessions, context,
+                    replace(result, offer_binding=False, binding_replacement=None),
+                    self.features, self.extensions,
+                )
+
+            prompt = OutboundMessage.from_text(
+                f"当前默认米米号：{previous.player_id}\n"
+                f"新的默认米米号：{pending.player_id}\n"
+                "1. 确认换绑\n2. 保留原绑定\n0. 退出"
             )
-        return _prepare_player_query_reply(
-            self.service,
-            self.sessions,
-            context,
-            result,
-        )
+            reply = PortableReply(self.sessions.offer_menu(
+                context,
+                PortableMenuSpec(
+                    choices=("confirm", "keep"), select=confirm, prompt=prompt,
+                    labels=("确认换绑", "保留原绑定"),
+                    exit_message="已保留原绑定。",
+                ),
+            ))
+        else:
+            reply = _prepare_player_query_reply(
+                self.service, self.sessions, context, result,
+                self.features, self.extensions,
+            )
+        return reply
 
     async def unbind(
         self,
@@ -128,30 +191,45 @@ class _PortablePlayerOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         parsed = parse_player_shortcut_command(text)
         if parsed is None:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
             raise ValueError(msg)
         resolution = self.resolver.resolve(context, parsed.player_reference)
         if resolution.error is not None:
-            return OutboundMessage.from_text(resolution.error)
+            return _text_reply(resolution.error)
         if resolution.player_id is None:
-            return OutboundMessage.from_text(unbound_player_shortcut_message())
-        reply = await execute_player_shortcut(
+            return _text_reply(unbound_player_shortcut_message())
+        return await _player_shortcut_reply(
             self.service,
             PlayerShortcutCommand(parsed.kind, resolution.player_id),
-            context.message.actor,
-            conversation=context.message.conversation,
+            context,
+        )
+
+
+async def _player_shortcut_reply(
+    service: PlayerService,
+    command: PlayerShortcutCommand,
+    context: MessageInputContext,
+) -> PortableReply:
+    async def execute(send_status: ProgressReporter) -> OutboundMessage:
+        reply = await execute_player_shortcut(
+            service, command, context.message.actor,
+            conversation=context.message.conversation, send_status=send_status,
         )
         return reply.to_outbound()
 
+    return await progress_operation_reply(execute)
 
-def _prepare_player_query_reply(
+
+def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
     service: PlayerService,
     sessions: PortableQuerySessions,
     context: MessageInputContext,
     result: PlayerQueryResult,
+    features: FeatureService | None,
+    extensions: PlayerDetailExtensionRegistry | None,
 ) -> PortableReply:
     if result.message:
         return _text_reply(result.message)
@@ -170,35 +248,100 @@ def _prepare_player_query_reply(
         has_peak=pending.section_plan.needs_peak_section,
         has_autocard=pending.section_plan.has_autocard_rank,
     )
-
-    async def select(command: PlayerShortcutCommand) -> QueryResult[object]:
-        reply = await execute_player_shortcut(
-            service,
-            command,
-            context.message.actor,
-            conversation=context.message.conversation,
-        )
-        return QueryResult(reply=reply)
-
-    menu = sessions.offer(
-        context,
-        QueryResult(
-            choices=tuple(
-                QueryChoice(
-                    name=f"【{request.menu_label}】",
-                    description="",
-                    value=PlayerShortcutCommand(
-                        request.kind,
-                        pending.player_id,
-                        pending.base_snapshot,
-                    ),
-                )
-                for request in requests
+    extension_actions = (
+        ()
+        if features is None or extensions is None
+        else tuple(
+            action
+            for action in extensions.actions()
+            if features.is_feature_allowed(
+                context.message.actor,
+                context.message.conversation,
+                action.feature,
             )
+        )
+    )
+
+    async def select(
+        command: (
+            PlayerShortcutCommand
+            | PlayerDetailExtensionAction
+            | Literal["bind", "decline"]
         ),
-        select=select,
-        prompt_title=f"{player_message}\n回复数字查看详情：",
-        not_found_message=player_message,
+        context: MessageInputContext,
+    ) -> OutboundMessage | PortableReply:
+        if isinstance(command, str):
+            service.save_binding_choice(
+                context.message.actor,
+                pending,
+                accepted=command == "bind",
+                replacing_existing=result.binding_replacement is not None,
+            )
+            return _prepare_player_query_reply(
+                service,
+                sessions,
+                context,
+                replace(result, offer_binding=False, binding_replacement=None),
+                features,
+                extensions,
+            ).message
+        if isinstance(command, PlayerDetailExtensionAction):
+            if features is None:
+                raise ValueError("player extension requires a feature policy")  # noqa: TRY003
+            return await query_player_extension(
+                command, pending.player_id, context, features,
+            )
+        return await _player_shortcut_reply(service, command, context)
+
+    choices: tuple[
+        PlayerShortcutCommand
+        | PlayerDetailExtensionAction
+        | Literal["bind", "decline"],
+        ...,
+    ] = (
+        *(
+            PlayerShortcutCommand(
+                request.kind, pending.player_id, pending.base_snapshot
+            )
+            for request in requests
+        ),
+        *extension_actions,
+        *(("bind", "decline") if result.offer_binding else ()),
+    )
+    labels = (
+        *(f"【{request.menu_label}】" for request in requests),
+        *(f"【{action.label}】" for action in extension_actions),
+        *(("【设为默认米米号】", "【暂不绑定】") if result.offer_binding else ()),
+    )
+    menu = sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=choices,
+            select=select,
+            labels=labels,
+            text_inputs=(
+                *(frozenset({request.menu_label}) for request in requests),
+                *(frozenset(action.aliases) for action in extension_actions),
+                *(
+                    (
+                        frozenset({"y", "yes", "是", "设为默认米米号"}),
+                        frozenset({"n", "no", "否", "暂不绑定"}),
+                    )
+                    if result.offer_binding
+                    else ()
+                ),
+            ),
+            keep_open=True,
+            exit_message="已退出米米号详情查询。",
+            prompt=OutboundMessage.from_text(
+                format_selection_menu(
+                    title=f"{player_message}\n回复数字或栏目名称查看详情：",
+                    items=labels,
+                )
+                if choices
+                else player_message
+            ),
+        ),
     )
 
     def delivered() -> None:

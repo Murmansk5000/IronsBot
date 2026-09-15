@@ -7,13 +7,24 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.config.models.seer import TeamQueryConfig
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
     TeamBossActivityStatus,
     TeamQueryActor,
     format_team_info,
 )
+from ironsbot.services.seer.team_commands import build_team_query_operation
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,6 +41,24 @@ def _actor(user_id: int = 1) -> ActorRef:
 
 def _group(group_id: int = 456) -> ConversationRef:
     return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _context(
+    text: str,
+    *,
+    mentions: tuple[ActorRef, ...] = (),
+) -> MessageInputContext:
+    return MessageInputContext(
+        IncomingMessageRef(
+            Platform.ONEBOT,
+            _actor(),
+            _group(),
+            "message-id",
+            text,
+            direct_mentions=mentions,
+        ),
+        mentions_bot=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -75,6 +104,11 @@ class FakeGame:
         if isinstance(self._result, Exception):
             raise self._result
         return self._result
+
+    async def get_user_info(self, _player_id: int) -> object:
+        if isinstance(self._result, Exception):
+            raise self._result
+        return type("PlayerInfo", (), {"team_id": TEAM_ID})()
 
 
 class FakeHeadless:
@@ -146,6 +180,52 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
     assert "【设施等级】" not in message
     assert headless.available
     assert not resource.offered
+
+
+@pytest.mark.asyncio
+async def test_player_team_query_reuses_team_detail_service() -> None:
+    service, headless, _resource = _service()
+
+    message = await service.query_player_team(
+        148758762,
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+    )
+
+    assert "【战队信息：测试战队】" in message
+    assert "战队ID：123456" in message
+    assert headless.available
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "mentions"),
+    [
+        ("战队玩家一", ()),
+        ("战队米米号148758762", ()),
+        ("战队", (_actor(2),)),
+    ],
+)
+async def test_team_command_resolves_player_references_and_structured_mentions(
+    text: str,
+    mentions: tuple[ActorRef, ...],
+) -> None:
+    service, _headless, _resource = _service()
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            148758762 if reference in {"玩家一", "148758762"} else None
+        ),
+        lambda actor: 148758762 if actor == _actor(2) else None,
+    )
+
+    operation = build_team_query_operation(
+        service, resolver, FeatureService({}, {}, frozenset()), PortableQuerySessions(),
+    )
+    reply = await operation(text, _context(text, mentions=mentions))
+    assert isinstance(reply, OutboundMessage)
+    message = cast("TextPart", reply.parts[0]).text
+
+    assert "【战队信息：测试战队】" in message
+    assert "战队ID：123456" in message
 
 
 @pytest.mark.parametrize(
@@ -239,6 +319,16 @@ async def test_team_service_formats_timeout() -> None:
         )
         == "❌ 战队 123456 查询超时，请稍后再试。"
     )
+
+
+@pytest.mark.asyncio
+async def test_player_team_service_formats_timeout_as_player_query() -> None:
+    service, _headless, _resource = _service(TimeoutError())
+
+    assert await service.query_player_team(
+        148758762,
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+    ) == "米米号 148758762 的所属战队查询超时，请稍后再试。"
 
 
 @pytest.mark.asyncio

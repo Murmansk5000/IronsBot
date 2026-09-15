@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -33,6 +33,46 @@ def test_portable_menu_rejects_mismatched_labels() -> None:
             prompt=OutboundMessage.from_text("choose"),
             labels=("one",),
         )
+
+
+def test_portable_menu_rejects_mismatched_text_inputs() -> None:
+    with pytest.raises(ValueError, match="text inputs"):
+        PortableMenuSpec(
+            choices=("one", "two"),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+            text_inputs=(frozenset({"one"}),),
+        )
+
+
+@pytest.mark.asyncio
+async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("owner")
+    select = AsyncMock(return_value=OutboundMessage.from_text("selected"))
+    menu = sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("one",), select=select, prompt=OutboundMessage.from_text("choose"),
+            labels=("display label",), text_inputs=(frozenset({"accept", "是"}),),
+            keep_open=True,
+        ),
+    )
+    assert not sessions.recognizes_response("display label", context)
+    await sessions.select(" ACCEPT ", context)
+    await sessions.select("是", context)
+    assert menu.prompt is not None
+    await sessions.select(menu.prompt.action_data(menu.prompt.choices[0]), context)
+    assert select.await_count == len(("accept", "是", "button"))
+    for call in select.await_args_list:
+        assert call.args == ("one", context)
+    empty = sessions.offer_menu(
+        context, PortableMenuSpec(
+            choices=(), select=select, prompt=OutboundMessage.from_text("no choices"),
+        ),
+    )
+    assert empty.prompt is None
+    assert sessions.active_prompt(context) is None
 
 
 @dataclass(slots=True)
@@ -122,7 +162,7 @@ async def test_button_and_text_inputs_share_one_bound_prompt_session() -> None:
     other_member = _context("other-openid")
     selected: list[str] = []
 
-    async def select(value: str) -> OutboundMessage:
+    async def select(value: str, _context: MessageInputContext) -> OutboundMessage:
         selected.append(value)
         return OutboundMessage.from_text(value)
 
@@ -189,7 +229,7 @@ async def test_expired_selection_does_not_claim_an_unrelated_command() -> None:
     sessions = PortableQuerySessions(ttl_seconds=10, now=clock)
     context = _context("member")
 
-    async def select(_value: str) -> OutboundMessage:
+    async def select(_value: str, _context: MessageInputContext) -> OutboundMessage:
         raise AssertionError
 
     sessions.offer_menu(
@@ -237,7 +277,7 @@ async def test_text_input_session_claims_next_response_and_supports_exit() -> No
     sessions = PortableQuerySessions()
     context = _context("member")
 
-    async def submit(text: str) -> OutboundMessage:
+    async def submit(text: str, _context: MessageInputContext) -> OutboundMessage:
         return OutboundMessage.from_text(f"value:{text}")
 
     sessions.offer_text_input(
@@ -266,7 +306,7 @@ async def test_deferred_menu_result_requires_explicit_caller_support() -> None:
     sessions = PortableQuerySessions()
     context = _context("member")
 
-    async def select(_value: str) -> PortableReply:
+    async def select(_value: str, _context: MessageInputContext) -> PortableReply:
         return PortableReply(OutboundMessage.from_text("deferred"))
 
     sessions.offer_menu(
@@ -280,3 +320,114 @@ async def test_deferred_menu_result_requires_explicit_caller_support() -> None:
 
     with pytest.raises(PortableQuerySessionError, match="was not enabled"):
         await sessions.select("1", context)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result",
+    [
+        QueryResult[str](message="unavailable"),
+        QueryResult[str](reply=QueryReply(text="result")),
+        QueryResult[str](),
+        QueryResult(choices=(QueryChoice("choice", "", "selected"),)),
+    ],
+)
+async def test_query_result_replaces_text_input_instead_of_leaving_two_sessions(
+    result: QueryResult[str],
+) -> None:
+    sessions = PortableQuerySessions()
+    context = _context("owner")
+    submit = AsyncMock(return_value=OutboundMessage.from_text("old input"))
+    sessions.offer_text_input(
+        context,
+        PortableTextInputSpec(
+            submit=submit,
+            prompt=OutboundMessage.from_text("input"),
+        ),
+    )
+    assert sessions.has_active_session(context)
+    assert sessions.active_prompt(context) is None
+    choose = AsyncMock(return_value=QueryResult(reply=QueryReply(text="selected")))
+    sessions.offer(
+        context,
+        result,
+        select=choose,
+        prompt_title="choose",
+        not_found_message="missing",
+    )
+    assert not sessions.recognizes_response("old text", context)
+    assert await sessions.select("old text", context) is None
+    assert sessions.has_active_session(context) == bool(result.choices)
+    if result.choices:
+        assert _text(await sessions.select("1", context)) == "selected"
+        choose.assert_awaited_once_with("selected")
+    submit.assert_not_awaited()
+    assert not sessions.has_active_session(context)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text_input", [False, True])
+async def test_all_interaction_templates_share_expiry_and_owner_isolation(
+    *,
+    text_input: bool,
+) -> None:
+    clock = _Clock()
+    sessions = PortableQuerySessions(ttl_seconds=10, now=clock)
+    context = _context("owner")
+    callback = AsyncMock(return_value=OutboundMessage.from_text("result"))
+    message = OutboundMessage.from_text("prompt")
+    if text_input:
+        sessions.offer_text_input(
+            context,
+            PortableTextInputSpec(submit=callback, prompt=message),
+        )
+    else:
+        sessions.offer_menu(
+            context,
+            PortableMenuSpec(choices=("one",), select=callback, prompt=message),
+        )
+    assert sessions.has_active_session(context)
+    assert not sessions.has_active_session(_context("stranger"))
+    assert not sessions.has_active_session(_context("owner", group_id="elsewhere"))
+    assert await sessions.select_action("old-button", context) is None
+    assert sessions.has_active_session(context)
+    clock.value = 10
+    assert not sessions.has_active_session(context)
+    assert await sessions.select("1", context) is None
+    callback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("response", ["1", "accept", "button", "free text"])
+async def test_templates_pass_current_response_context(response: str) -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("owner")
+    current = replace(
+        owner,
+        message=replace(owner.message, message_id="next-message", group_role="admin"),
+    )
+    callback = AsyncMock(return_value=OutboundMessage.from_text("result"))
+    prompt = OutboundMessage.from_text("prompt")
+    if response == "free text":
+        sessions.offer_text_input(
+            owner, PortableTextInputSpec(submit=callback, prompt=prompt)
+        )
+        value = response
+    else:
+        menu = sessions.offer_menu(
+            owner,
+            PortableMenuSpec(
+                choices=("selected",),
+                select=callback,
+                prompt=prompt,
+                text_inputs=(frozenset({"accept"}),),
+            ),
+        )
+        if response == "button":
+            assert menu.prompt is not None
+            response = menu.prompt.action_data(menu.prompt.choices[0])
+        value = "selected"
+    assert await sessions.select(response, _context("stranger")) is None
+    callback.assert_not_awaited()
+    assert _text(await sessions.select(response, current)) == "result"
+    callback.assert_awaited_once_with(value, current)

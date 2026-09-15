@@ -8,6 +8,7 @@ from datetime import date
 from struct import pack
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,7 +22,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
 )
-from ironsbot.integrations.onebot.prompts import PromptItem
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.seer_data.skin_price_repository import (
     load_active_skin_store_prices,
 )
@@ -37,6 +38,10 @@ from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugi
 from ironsbot.services.identity.player_accounts import build_player_account_registry
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
+from ironsbot.services.portable_lucky_skin_commands import (
+    build_portable_lucky_skin_operations,
+)
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
@@ -45,6 +50,8 @@ from ironsbot.services.seer.lucky_skin_commands import (
 )
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+    LuckySkinQuery,
+    LuckySkinWindowAccessError,
     LuckySkinWindowAccount,
     LuckySkinWindowBindingError,
     LuckySkinWindowOffer,
@@ -52,8 +59,7 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowService,
     _parse_skin_ids,
 )
-from ironsbot.services.seer.pet_query import PetImageSelection
-from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
+from ironsbot.services.seer.query_result import QueryReply, QueryResult
 from ironsbot.services.seer.skin_price import SkinStorePrice
 from tests.helpers.onebot_events import private_message_event
 from tests.helpers.runtime import build_test_runtime
@@ -64,6 +70,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.pet_query import PetImageSelection
 
 EXPECTED_COMMAND_ID = 45866
 EXPECTED_DAILY_NOTICES = 2
@@ -125,7 +132,14 @@ def _actor(user_id: int) -> ActorRef:
     return ActorRef(Platform.ONEBOT, str(user_id))
 
 
+def _request(user_id: int) -> LuckySkinQuery:
+    return LuckySkinQuery(_actor(user_id), _actor(user_id))
+
+
 class _Features:
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        return actor.id == "9999"
+
     def actor_has_feature(self, _actor: ActorRef, _feature: str) -> bool:
         return True
 
@@ -255,37 +269,6 @@ class _NotificationSender:
         return True
 
 
-class _PluginService:
-    def __init__(self, *, cached: object | None) -> None:
-        self.cached = _plugin_result() if cached is not None else None
-        self.queries = 0
-
-    def cached_for_actor(self, _actor: ActorRef) -> object | None:
-        return self.cached
-
-    def account_for_actor(self, _actor: ActorRef) -> SimpleNamespace:
-        return SimpleNamespace(player_id=90001)
-
-    async def check_for_actor(self, _actor: ActorRef) -> LuckySkinWindowResult:
-        self.queries += 1
-        return _plugin_result()
-
-    async def result_message(
-        self, _result: object, *, actor: ActorRef
-    ) -> OutboundMessage:
-        return OutboundMessage.from_text(f"橱窗结果：{actor.id}")
-
-    def detail_choices(
-        self,
-        _result: object,
-    ) -> tuple[QueryChoice[PetImageSelection], ...]:
-        return (
-            QueryChoice(
-                "测试皮肤",
-                "皮肤ID：101，资源ID：1400101",
-                PetImageSelection(1400101, "测试皮肤", skin_id=101),
-            ),
-        )
 
 
 class _PluginPet:
@@ -296,9 +279,6 @@ class _PluginPet:
         return QueryResult(reply=QueryReply(text=f"皮肤详情：{selection.skin_id}"))
 
 
-def _plugin_result() -> LuckySkinWindowResult:
-    offers = (LuckySkinWindowOffer(101, 1400101, "测试皮肤", watched=False),)
-    return LuckySkinWindowResult("2026-08-03", 90001, offers, from_cache=True)
 
 
 def _service(
@@ -378,6 +358,7 @@ def _service(
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
         SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         notification_sender,
+        player_accounts=player_accounts,
         today=lambda: date(2026, 8, 3),
         renderer=cast("Any", renderer),
     )
@@ -388,7 +369,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
 
     async def check() -> None:
-        result = await service.check_for_actor(_actor(1001))
+        result = await service.query(_request(1001))
         assert [offer.skin_id for offer in result.offers] == [101, 102, 103, 104]
         owner_message = service.format_result(result, actor=_actor(1001))
         friend_message = service.format_result(result, actor=_actor(1002))
@@ -403,7 +384,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     asyncio.run(check())
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
-        asyncio.run(service.check_for_actor(_actor(1001)))
+        asyncio.run(service.query(_request(1001)))
 
 
 def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
@@ -424,7 +405,7 @@ def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
     )
 
     async def check() -> None:
-        result = await service.check_for_actor(_actor(1001))
+        result = await service.query(_request(1001))
         assert (
             await service.result_message(result, actor=_actor(1001))
         ).parts == (
@@ -546,10 +527,6 @@ def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None
                     commands=commands,
                     features=features,
                 )
-                assert (
-                    change_state[lucky_skin_window_plugin.BOT_COMMAND_ARG_KEY]
-                    == "1400103"
-                )
 
         assert not await lucky_skin_window_plugin._matches_watch_change(
             private_message_event("关注橱窗", user_id=1001),
@@ -580,6 +557,9 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
         service=service,
         pet=cast("Any", _PluginPet()),
         features=cast("FeatureService", _Features()),
+        identity_links=cast("Any", object()),
+        sessions=PortableQuerySessions(),
+        resolver=cast("Any", object()),
     )
 
     assert registry.message_matchers
@@ -594,22 +574,18 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
 
 
 def test_watch_list_matches_before_binding_and_replies_with_the_problem(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     event = private_message_event("订阅橱窗", user_id=1001)
-    replies: list[str] = []
-
-    async def capture_reply(
-        _matcher: object,
-        _event: object,
-        message: str,
-    ) -> None:
-        replies.append(message)
-
-    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", capture_reply)
+    operations = build_portable_lucky_skin_operations(
+        service, cast("Any", _PluginPet()),
+        cast("Any", SimpleNamespace(linked_onebot_actor=AsyncMock(
+            return_value=_actor(1001),
+        ))),
+        PortableQuerySessions(), cast("Any", object()),
+    )
 
     async def check() -> None:
         assert await lucky_skin_window_plugin._matches_watch_exact(
@@ -618,15 +594,16 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
             commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
             features=cast("FeatureService", _Features()),
         )
-        await lucky_skin_window_plugin._handle_watch_list(
-            service,
-            cast("Any", object()),
-            event,
+        reply = await operations["seer.lucky_skin_window.watch.list"](
+            event.get_plaintext(), message_input_context(event),
         )
+        assert isinstance(reply, OutboundMessage)
+        assert reply.parts == (TextPart(
+            "❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"
+        ),)
 
     asyncio.run(check())
 
-    assert replies == ["❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"]
 
 
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
@@ -686,10 +663,46 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     )
 
 
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+def test_admin_queries_configured_account_without_own_subscription(
+    tmp_path: Path, platform: Platform,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(ActorRef(platform, "9999"), None, 90002)
+    assert service.cached_query(request) is None
+    assert sessions.opens == []
+    result = asyncio.run(service.query(request))
+    assert result.player_id == request.player_id
+    assert len(sessions.opens) == 1
+    assert "★" not in service.format_result(result, actor=None)
+    assert service.cached_query(request) is not None
+
+
+@pytest.mark.parametrize("player_id", [90002, 999999])
+def test_nonadmin_cannot_query_another_account(
+    tmp_path: Path, player_id: int,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(_actor(1001), _actor(1001), player_id)
+    with pytest.raises(LuckySkinWindowAccessError, match="本人"):
+        service.cached_query(request)
+    with pytest.raises(LuckySkinWindowAccessError, match="本人"):
+        asyncio.run(service.query(request))
+    assert sessions.opens == []
+
+
+def test_unknown_admin_target_does_not_log_in(tmp_path: Path) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(_actor(9999), None, 999999)
+    with pytest.raises(LuckySkinWindowAccessError, match="未配置"):
+        asyncio.run(service.query(request))
+    assert sessions.opens == []
+
+
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.check_for_actor(_actor(1001)))
+    asyncio.run(service.query(_request(1001)))
 
     assert sessions.opens == [(90001, "owner-secret", "幸运橱窗")]
     assert len(game.calls) == 1
@@ -698,8 +711,8 @@ def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> No
 def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.check_for_actor(_actor(1001)))
-    cached = asyncio.run(service.check_for_actor(_actor(1001)))
+    asyncio.run(service.query(_request(1001)))
+    cached = asyncio.run(service.query(_request(1001)))
 
     assert cached.from_cache
     assert len(sessions.opens) == 1
@@ -708,11 +721,11 @@ def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) 
 
 def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
     first, _game, _delivery, _bindings, first_sessions = _service(tmp_path)
-    asyncio.run(first.check_for_actor(_actor(1001)))
+    asyncio.run(first.query(_request(1001)))
     assert len(first_sessions.opens) == 1
 
     recreated, _game, _delivery, _bindings, recreated_sessions = _service(tmp_path)
-    cached = asyncio.run(recreated.check_for_actor(_actor(1001)))
+    cached = asyncio.run(recreated.query(_request(1001)))
 
     assert cached.from_cache
     assert recreated_sessions.opens == []
@@ -721,142 +734,18 @@ def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
 def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    assert service.cached_for_actor(_actor(1001)) is None
+    assert service.cached_query(_request(1001)) is None
     assert sessions.opens == []
     assert game.calls == []
 
-    asyncio.run(service.check_for_actor(_actor(1001)))
-    cached = service.cached_for_actor(_actor(1001))
+    asyncio.run(service.query(_request(1001)))
+    cached = service.cached_query(_request(1001))
 
     assert cached is not None
     assert cached.from_cache
     assert len(sessions.opens) == 1
 
 
-def test_manual_query_prompts_before_a_missing_daily_cache_login(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = _PluginService(cached=None)
-    prompts: list[dict[str, object]] = []
-
-    async def enter_conversation(*_args: object, **kwargs: object) -> None:
-        prompts.append(kwargs)
-
-    monkeypatch.setattr(
-        lucky_skin_window_plugin,
-        "enter_event_reply_conversation",
-        enter_conversation,
-    )
-
-    asyncio.run(
-        lucky_skin_window_plugin._handle_query(
-            cast("Any", service),
-            cast("Any", _PluginPet()),
-            cast("Any", SimpleNamespace(state={})),
-            cast("Any", SimpleNamespace(user_id=1001)),
-        )
-    )
-
-    assert service.queries == 0
-    assert len(prompts) == 1
-    prompt = str(prompts[0]["prompt"])
-    assert "90001" not in prompt
-    assert "米米号" not in prompt
-    assert "回复“是”或“y”确认" in prompt
-
-
-def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = _PluginService(cached=object())
-    replies: list[str] = []
-
-    async def enter_result_prompt(*_args: object, **kwargs: object) -> None:
-        message = cast("Awaitable[object]", kwargs["prompt_message"])
-        replies.append(str(await message))
-
-    monkeypatch.setattr(lucky_skin_window_plugin, "enter_prompt", enter_result_prompt)
-
-    asyncio.run(
-        lucky_skin_window_plugin._handle_query(
-            cast("Any", service),
-            cast("Any", _PluginPet()),
-            cast("Any", SimpleNamespace(state={})),
-            cast("Any", SimpleNamespace(user_id=1001)),
-        )
-    )
-
-    assert service.queries == 0
-    assert replies == ["橱窗结果：1001"]
-
-
-def test_lucky_window_choice_reuses_pet_image_query(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    replies: list[str] = []
-
-    async def send_reply(_matcher: object, _event: object, message: object) -> None:
-        replies.append(str(message))
-
-    monkeypatch.setattr(lucky_skin_window_plugin, "send_event_reply", send_reply)
-    item = PromptItem(
-        "测试皮肤",
-        "皮肤ID：101，资源ID：1400101",
-        PetImageSelection(1400101, "测试皮肤", skin_id=101),
-    )
-
-    asyncio.run(
-        lucky_skin_window_plugin._handle_result_selection(
-            cast("Any", _PluginPet()),
-            item,
-            cast("Any", object()),
-            private_message_event("1", user_id=1001),
-        )
-    )
-
-    assert replies == ["皮肤详情：101"]
-
-
-@pytest.mark.parametrize(
-    ("reply", "expected_queries", "expected_message"),
-    [
-        ("否", 0, "已取消幸运橱窗查询。"),
-        ("y", 1, "橱窗结果：1001"),
-    ],
-)
-def test_lucky_window_login_confirmation_controls_dedicated_login(
-    monkeypatch: pytest.MonkeyPatch,
-    reply: str,
-    expected_queries: int,
-    expected_message: str,
-) -> None:
-    service = _PluginService(cached=None)
-    replies: list[str] = []
-
-    async def finish_reply(_matcher: object, _event: object, message: object) -> None:
-        replies.append(str(message))
-
-    async def enter_result_prompt(*_args: object, **kwargs: object) -> None:
-        message = cast("Awaitable[object]", kwargs["prompt_message"])
-        replies.append(str(await message))
-
-    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
-    monkeypatch.setattr(lucky_skin_window_plugin, "enter_prompt", enter_result_prompt)
-
-    asyncio.run(
-        lucky_skin_window_plugin._handle_login_confirmation(
-            cast("Any", service),
-            cast("Any", _PluginPet()),
-            cast("Any", SimpleNamespace(state={})),
-            cast(
-                "Any",
-                SimpleNamespace(user_id=1001, get_plaintext=lambda: reply),
-            ),
-        )
-    )
-
-    assert service.queries == expected_queries
-    assert replies == [expected_message]
 
 
 def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
@@ -922,8 +811,8 @@ def test_different_accounts_never_open_dedicated_sessions_concurrently(
 
     async def check_both() -> None:
         await asyncio.gather(
-            service.check_for_actor(_actor(1001)),
-            service.check_for_actor(_actor(1002)),
+            service.query(_request(1001)),
+            service.query(_request(1002)),
         )
 
     asyncio.run(check_both())

@@ -32,7 +32,10 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.identity.player_accounts import PlayerAccount
+    from ironsbot.services.identity.player_accounts import (
+        PlayerAccount,
+        PlayerAccountRegistry,
+    )
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
@@ -186,6 +189,17 @@ class LuckySkinWindowAccount:
     watched_skin_ids: tuple[int, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class LuckySkinQuery:
+    requester: ActorRef
+    owner: ActorRef | None
+    player_id: int | None = None
+
+
+class LuckySkinWindowAccessError(ValueError):
+    """The requested account cannot be queried by this actor."""
+
+
 class LuckySkinWindowService:
     def __init__(  # noqa: PLR0913 - explicit composition dependencies
         self,
@@ -199,10 +213,12 @@ class LuckySkinWindowService:
         cache: LuckySkinWindowCache,
         notification_sender: LuckySkinWindowNotificationSender,
         *,
+        player_accounts: PlayerAccountRegistry,
         today: Callable[[], date] | None = None,
         renderer: LuckySkinWindowRenderer | None = None,
     ) -> None:
         self._config = config
+        self._player_accounts = player_accounts
         self._features = features
         self._headless_sessions = headless_sessions
         self._data = data
@@ -323,16 +339,33 @@ class LuckySkinWindowService:
         self._watch_preferences.set(actor, defaults)
         return "已恢复 TOML 初始关注列表。\n" + self.watch_list_message(actor)
 
-    async def check_for_actor(self, actor: ActorRef) -> LuckySkinWindowResult:
-        account = self._validated_account_for_actor(actor)
+    async def query(self, request: LuckySkinQuery) -> LuckySkinWindowResult:
+        account = self._account_for_query(request)
         if cached := self._cached_result(account.player_id):
             return cached
         return await self._check(account, background=False)
 
-    def cached_for_actor(self, actor: ActorRef) -> LuckySkinWindowResult | None:
+    def cached_query(self, request: LuckySkinQuery) -> LuckySkinWindowResult | None:
         """Return today's result without opening the dedicated game session."""
-        account = self._validated_account_for_actor(actor)
+        account = self._account_for_query(request)
         return self._cached_result(account.player_id)
+
+    def _account_for_query(self, request: LuckySkinQuery) -> PlayerAccount:
+        if request.player_id is None:
+            if request.owner is None:
+                raise LuckySkinWindowNotConfiguredError
+            return self._validated_account_for_actor(request.owner)
+        if not self._features.is_actor_superuser(request.requester):
+            if request.owner is None:
+                raise LuckySkinWindowAccessError("只能查询你本人已配置的幸运橱窗账号。")
+            own = self._validated_account_for_actor(request.owner)
+            if own.player_id != request.player_id:
+                raise LuckySkinWindowAccessError("只能查询你本人已配置的幸运橱窗账号。")
+            return own
+        account = self._player_accounts.account_for_player_id(request.player_id)
+        if not self.enabled or account is None or account.password is None:
+            raise LuckySkinWindowAccessError("该米米号未配置可用的幸运橱窗登录账号。")
+        return account
 
     async def send_daily_notifications(self) -> None:
         if not self.enabled:
@@ -486,7 +519,9 @@ class LuckySkinWindowService:
         )
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
-    def format_result(self, result: LuckySkinWindowResult, *, actor: ActorRef) -> str:
+    def format_result(
+        self, result: LuckySkinWindowResult, *, actor: ActorRef | None,
+    ) -> str:
         offers = self._offers_for_actor(result, actor)
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
         for index, offer in enumerate(offers, start=1):
@@ -521,7 +556,7 @@ class LuckySkinWindowService:
         self,
         result: LuckySkinWindowResult,
         *,
-        actor: ActorRef,
+        actor: ActorRef | None,
     ) -> bytes | None:
         if self._renderer is None:
             return None
@@ -539,7 +574,7 @@ class LuckySkinWindowService:
         self,
         result: LuckySkinWindowResult,
         *,
-        actor: ActorRef,
+        actor: ActorRef | None,
     ) -> OutboundMessage:
         rendered = await self.render_result(result, actor=actor)
         if rendered is not None:
@@ -549,9 +584,13 @@ class LuckySkinWindowService:
     def _offers_for_actor(
         self,
         result: LuckySkinWindowResult,
-        actor: ActorRef,
+        actor: ActorRef | None,
     ) -> tuple[LuckySkinWindowOffer, ...]:
-        watched_ids = frozenset(self._watched_skin_ids(actor))
+        watched_ids = frozenset(
+            self._watched_skin_ids(actor)
+            if actor is not None and self.is_eligible_actor(actor)
+            else ()
+        )
         return tuple(
             replace(offer, watched=offer.skin_id in watched_ids)
             for offer in result.offers

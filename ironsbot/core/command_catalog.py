@@ -10,6 +10,7 @@ from ironsbot.core.commands import command_text_matches
 from ironsbot.core.platform import Platform, is_supported_message_actor
 
 if TYPE_CHECKING:
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
 
 CommandScope = Literal["group", "private", "both"]
@@ -150,6 +151,16 @@ class CommandContext:
     @property
     def has_member_mentions(self) -> bool:
         return bool(self.member_mentions)
+
+
+def command_context_from_input(context: MessageInputContext) -> CommandContext:
+    message = context.message
+    return CommandContext(
+        actor=message.actor,
+        conversation=message.conversation,
+        group_role=message.group_role,
+        member_mentions=message.direct_mentions,
+    )
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]

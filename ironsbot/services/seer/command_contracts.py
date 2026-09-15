@@ -47,9 +47,10 @@ from ironsbot.services.seer.query_commands import (
     SUIT_QUERY,
     TITLE_QUERY,
     TYPE_QUERY,
+    pet_avatar_input,
     pet_image_input,
     pet_query_input,
-    team_query_input,
+    team_query_input_matcher,
 )
 
 if TYPE_CHECKING:
@@ -71,7 +72,7 @@ def seer_command_contracts(
     )
     player_binding_input = player_reference_input_matcher(
         ("绑定米米号",),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     return (
         *commands_from_rows(
@@ -97,7 +98,7 @@ def seer_command_contracts(
                 (
                     "seer.player.bind",
                     ("绑定米米号123456",),
-                    "查询并绑定默认米米号，之后可使用快捷查询",
+                    "查询并绑定默认米米号；超级管理员可在群聊附带 @成员为其绑定",
                     {"routing_matcher": player_binding_input},
                 ),
                 (
@@ -151,12 +152,17 @@ def seer_command_contracts(
             (
                 (
                     "seer.team.query",
-                    ("战队123456", "战队123456 654321"),
-                    "查询指定战队信息；一次最多查询 3 个战队",
+                    (
+                        "战队123456",
+                        "战队玩家别名",
+                        "战队米米号123456",
+                        "战队@成员",
+                    ),
+                    "按战队号、玩家或已绑定成员查询战队信息",
                     {
                         "show_in_poke": True,
-                        "routing_matcher": parsed_command_input_matcher(
-                            team_query_input
+                        "routing_matcher": team_query_input_matcher(
+                            player_id_resolver.has_reference_choices
                         ),
                     },
                 ),
@@ -176,6 +182,16 @@ def seer_command_contracts(
                         "routing_matcher": parsed_command_input_matcher(
                             pet_query_input(image_commands)
                         ),
+                    },
+                ),
+                (
+                    "seer.pet.avatar",
+                    ("头像雷伊", "谱尼头像", "头像70"),
+                    "查询精灵头像",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            pet_avatar_input(image_commands)
+                        )
                     },
                 ),
                 (

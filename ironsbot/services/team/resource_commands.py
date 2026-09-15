@@ -7,9 +7,9 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
-    normalized_command_input_matcher,
     parsed_command_input_matcher,
 )
+from ironsbot.core.commands import command_text_matches
 from ironsbot.services.team.resource_subscriptions import (
     parse_team_resource_manage_command,
 )
@@ -36,8 +36,9 @@ def team_resource_command_contracts(
                     "查看当前会话订阅战队的信息和资源",
                     {
                         "show_in_poke": True,
-                        "routing_matcher": normalized_command_input_matcher(
-                            query_commands
+                        "routing_matcher": lambda text, context: (
+                            not context.has_member_mentions
+                            and command_text_matches(text, query_commands)
                         ),
                     },
                 ),

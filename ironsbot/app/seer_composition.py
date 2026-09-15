@@ -107,7 +107,10 @@ from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_queries import RankQueryPolicy, RankQueryService
 from ironsbot.services.seer.resources import SeerQueryResources
-from ironsbot.services.seer.team import SeerTeamQueryService
+from ironsbot.services.seer.team import (
+    SeerTeamQueryService,
+    player_team_detail_action,
+)
 from ironsbot.services.seer.type_query import TypeQueryService, TypeRenderSession
 from ironsbot.services.team.resource import TeamResourceService
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
@@ -350,6 +353,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
+        player_accounts=player_accounts,
         renderer=render_window,
     )
     player_query_quotas = PlayerQueryQuotaService(
@@ -422,8 +426,21 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player.default_player_id,
         privileged_reference_lookup=resolve_privileged_player_reference,
         is_privileged_actor=features.is_actor_superuser,
+        reference_search=lambda reference, actor, conversation: (
+            player_accounts.find_references(
+                reference, conversation=conversation,
+                include_private=features.is_actor_superuser(actor),
+            )
+        ),
     )
     player_detail_extensions = PlayerDetailExtensionRegistry()
+    team_query = SeerTeamQueryService(
+        settings.seer.team,
+        headless,
+        seer_database.error_message,
+        team_resource,
+    )
+    player_detail_extensions.register(player_team_detail_action(team_query))
     rank_queries = RankQueryService(
         rank,
         local_rank,
@@ -476,12 +493,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             autocard,
             autocard_media,
             autocard_sanctuary,
-            SeerTeamQueryService(
-                settings.seer.team,
-                headless,
-                seer_database.error_message,
-                team_resource,
-            ),
+            team_query,
             equipment,
             TypeQueryService(
                 type_render_session,

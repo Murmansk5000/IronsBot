@@ -1,0 +1,45 @@
+# 原版固定图片口令的可选配置片段，不是完整运行配置。
+# 合入已有 [messaging.sendpic]，不要重复声明该表。
+# 将原版五张 PNG 放入 local_root；容器内路径示例为 /app/data/sendpic。
+[messaging.sendpic]
+local_root = "data/sendpic"
+
+[[messaging.sendpic.configs]]
+id = "training-table"
+backend = "local"
+command = "学习力"
+aliases = ["学习力表","学习力表格"]
+mode = "single"
+image_file = "学习力表格.png"
+
+[[messaging.sendpic.configs]]
+id = "peak-guide"
+backend = "local"
+command = "巅峰姬"
+aliases = []
+mode = "single"
+image_file = "巅峰姬.png"
+
+[[messaging.sendpic.configs]]
+id = "priority-guide"
+backend = "local"
+command = "必先"
+aliases = []
+mode = "single"
+image_file = "必先.png"
+
+[[messaging.sendpic.configs]]
+id = "skill-stone"
+backend = "local"
+command = "技能石"
+aliases = []
+mode = "single"
+image_file = "技能石.png"
+
+[[messaging.sendpic.configs]]
+id = "anniversary-random-table"
+backend = "local"
+command = "周年庆伪随机表"
+aliases = ["伪随机表"]
+mode = "single"
+image_file = "周年庆伪随机表.png"
