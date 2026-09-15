@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import TZ_CN
 from ironsbot.services.seer.player_binding import (
     player_binding_offer_message,
@@ -155,7 +156,7 @@ class PlayerAccountPolicyMixin:
             logger.warning(
                 "player query quota changed before successful record: "
                 "user=%s player=%s action=%s",
-                actor.id,
+                reference_digest(actor.id),
                 player_id,
                 action_key,
             )
