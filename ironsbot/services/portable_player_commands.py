@@ -78,20 +78,32 @@ class _PortablePlayerOperations:
             raise ValueError(msg)
 
         async def query(player_id: int, context: MessageInputContext) -> PortableReply:
-            result = await self.service.query(
-                player_id,
-                actor=context.message.actor,
-                explicit=bool(reference.strip()),
-                conversation=context.message.conversation,
-            )
-            return _prepare_player_query_reply(
-                self.service,
-                self.sessions,
+            reservation = self.sessions.reserve_responses(
                 context,
-                result,
-                self.features,
-                self.extensions,
+                lambda value: value.strip().isdigit(),
             )
+            try:
+                result = await self.service.query(
+                    player_id,
+                    actor=context.message.actor,
+                    explicit=bool(reference.strip()),
+                    conversation=context.message.conversation,
+                )
+                reply = _prepare_player_query_reply(
+                    self.service,
+                    self.sessions,
+                    context,
+                    result,
+                    self.features,
+                    self.extensions,
+                )
+            except BaseException:
+                reservation.cancel()
+                raise
+            if not self.sessions.has_active_session(context):
+                reservation.cancel()
+                return reply
+            return reservation.guard(reply)
 
         return await select_player_target(
             reference,

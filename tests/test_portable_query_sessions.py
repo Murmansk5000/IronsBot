@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from unittest.mock import AsyncMock
 
@@ -73,6 +74,76 @@ async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> No
     )
     assert empty.prompt is None
     assert sessions.active_prompt(context) is None
+
+
+@pytest.mark.asyncio
+async def test_reserved_response_waits_for_prompt_delivery() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("member-openid")
+    reservation = sessions.reserve_responses(
+        context,
+        lambda text: text.strip().isdigit(),
+    )
+
+    assert sessions.recognizes_response("1", context)
+    waiting = asyncio.create_task(sessions.select("1", context))
+    await asyncio.sleep(0)
+    assert not waiting.done()
+
+    async def select(
+        value: str,
+        _context: MessageInputContext,
+    ) -> OutboundMessage:
+        return OutboundMessage.from_text(f"selected:{value}")
+
+    sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("first",),
+            select=select,
+            prompt=OutboundMessage.from_text("choose"),
+        ),
+    )
+    await asyncio.sleep(0)
+    assert not waiting.done()
+
+    reservation.release()
+
+    assert _text(await waiting) == "selected:first"
+    assert not sessions.has_active_session(context)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_response_reservation_discards_unseen_prompt() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("member-openid")
+    reservation = sessions.reserve_responses(context, str.isdigit)
+    waiting = asyncio.create_task(sessions.select("1", context))
+    await asyncio.sleep(0)
+
+    sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("first",),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+        ),
+    )
+    reservation.cancel()
+
+    assert await waiting is None
+    assert not sessions.has_active_session(context)
+    assert not sessions.recognizes_response("1", context)
+
+
+@pytest.mark.asyncio
+async def test_reserved_response_expires_instead_of_waiting_forever() -> None:
+    sessions = PortableQuerySessions(ttl_seconds=0.01)
+    context = _context("member-openid")
+    sessions.reserve_responses(context, str.isdigit)
+
+    assert await sessions.select("1", context) is None
+    assert not sessions.recognizes_response("1", context)
 
 
 @dataclass(slots=True)

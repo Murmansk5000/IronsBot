@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from secrets import token_urlsafe
@@ -34,6 +35,7 @@ MenuSelect = Callable[
     [_T, "MessageInputContext"], Awaitable[OutboundMessage | PortableReply]
 ]
 TextSubmit = Callable[[str, "MessageInputContext"], Awaitable[OutboundMessage]]
+PendingResponseCheck = Callable[[str], bool]
 _SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
 
 
@@ -109,6 +111,50 @@ class _PendingTextInput:
     exit_message: str
 
 
+@dataclass(slots=True)
+class _PendingResponseReservation:
+    token: object
+    accepts: PendingResponseCheck
+    ready: asyncio.Event
+    expires_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class PortableResponseReservation:
+    """Hold early replies until the operation's first prompt is delivered."""
+
+    _owner: PortableQuerySessions
+    _key: _SessionKey
+    _token: object
+
+    def release(self) -> None:
+        self._owner._finish_reservation(self._key, self._token, delivered=True)
+
+    def cancel(self) -> None:
+        self._owner._finish_reservation(self._key, self._token, delivered=False)
+
+    def guard(self, reply: PortableReply) -> PortableReply:
+        """Release waiting input only after the guarded reply is delivered."""
+
+        def delivered() -> None:
+            if reply.on_delivered is not None:
+                reply.on_delivered()
+            self.release()
+
+        def failed() -> None:
+            try:
+                if reply.on_delivery_failed is not None:
+                    reply.on_delivery_failed()
+            finally:
+                self.cancel()
+
+        return replace(
+            reply,
+            on_delivered=delivered,
+            on_delivery_failed=failed,
+        )
+
+
 class PortableQuerySessions:
     """Own one active interaction template per actor and conversation."""
 
@@ -123,9 +169,32 @@ class PortableQuerySessions:
         self._ttl_seconds = ttl_seconds
         self._now = now
         self._pending: dict[_SessionKey, _PendingSelection | _PendingTextInput] = {}
+        self._reservations: dict[_SessionKey, _PendingResponseReservation] = {}
+
+    def reserve_responses(
+        self,
+        context: MessageInputContext,
+        accepts: PendingResponseCheck,
+    ) -> PortableResponseReservation:
+        """Reserve one actor/conversation while its first prompt is loading."""
+
+        key = self._key(context)
+        self._cancel_reservation(key)
+        self._pending.pop(key, None)
+        token = object()
+        self._reservations[key] = _PendingResponseReservation(
+            token=token,
+            accepts=accepts,
+            ready=asyncio.Event(),
+            expires_at=self._now() + self._ttl_seconds,
+        )
+        return PortableResponseReservation(self, key, token)
 
     def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
         key = self._key(context)
+        reservation = self._active_reservation(key)
+        if reservation is not None and reservation.accepts(text):
+            return True
         pending = self._pending.get(key)
         if pending is not None and pending.expires_at <= self._now():
             if isinstance(
@@ -277,6 +346,9 @@ class PortableQuerySessions:
         allow_deferred: bool = False,
     ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
+        reservation = self._active_reservation(key)
+        if reservation is not None and reservation.accepts(text):
+            await self._wait_for_reservation(key, reservation)
         expired = self._pending.get(key)
         if expired is not None and expired.expires_at <= self._now():
             self._pending.pop(key, None)
@@ -446,6 +518,47 @@ class PortableQuerySessions:
         pending = self._pending.get(key)
         if pending is not None and pending.expires_at <= self._now():
             self._pending.pop(key, None)
+
+    def _active_reservation(
+        self,
+        key: _SessionKey,
+    ) -> _PendingResponseReservation | None:
+        reservation = self._reservations.get(key)
+        if reservation is not None and reservation.expires_at <= self._now():
+            self._finish_reservation(key, reservation.token, delivered=False)
+            return None
+        return reservation
+
+    async def _wait_for_reservation(
+        self,
+        key: _SessionKey,
+        reservation: _PendingResponseReservation,
+    ) -> None:
+        timeout = max(0.0, reservation.expires_at - self._now())
+        try:
+            await asyncio.wait_for(reservation.ready.wait(), timeout=timeout)
+        except TimeoutError:
+            self._finish_reservation(key, reservation.token, delivered=False)
+
+    def _cancel_reservation(self, key: _SessionKey) -> None:
+        reservation = self._reservations.get(key)
+        if reservation is not None:
+            self._finish_reservation(key, reservation.token, delivered=False)
+
+    def _finish_reservation(
+        self,
+        key: _SessionKey,
+        token: object,
+        *,
+        delivered: bool,
+    ) -> None:
+        reservation = self._reservations.get(key)
+        if reservation is None or reservation.token is not token:
+            return
+        self._reservations.pop(key, None)
+        if not delivered:
+            self._pending.pop(key, None)
+        reservation.ready.set()
 
     @staticmethod
     def _matches_selection_response(
