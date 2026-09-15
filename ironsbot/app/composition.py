@@ -13,8 +13,8 @@ from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.ai_health import check_configured_ai_api
 from ironsbot.app.application import Application
 from ironsbot.app.bilibili_composition import (
-    build_onebot_bilibili_components,
-    build_onebot_bilibili_monitor,
+    build_bilibili_components,
+    build_bilibili_monitor,
 )
 from ironsbot.app.clock_check import check_configured_clock
 from ironsbot.app.common_composition import build_common_components
@@ -147,7 +147,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
     )
     lucky_skin_window = seer_components.lucky_skin_window
-    bilibili_components = build_onebot_bilibili_components(
+    bilibili_components = build_bilibili_components(
         settings,
         http_clients,
         features,
@@ -195,12 +195,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
     )
     ai_intent_actions = AiIntentActionExecutor(ai, promotions, team_resource)
-    bilibili_monitor = build_onebot_bilibili_monitor(
+    bilibili_monitor = build_bilibili_monitor(
         service=bilibili,
         login=bilibili_login,
         subscriptions=subscriptions,
         admin_notices=admin_notices,
-        bot_router=bot_router,
         proactive_delivery=proactive_delivery,
         ai_service=ai,
         config=settings.bilibili,
