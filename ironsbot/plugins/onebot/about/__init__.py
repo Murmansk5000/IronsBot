@@ -16,6 +16,9 @@ from ironsbot.integrations.onebot.message_rendering import (
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.about import AboutService, about_command_contracts
+from ironsbot.services.official_identity_info import (
+    official_identity_info_command_contracts,
+)
 
 __plugin_meta__ = PluginMetadata(
     name="关于",
@@ -49,14 +52,17 @@ def plugin_contribution(service: AboutService) -> PluginContribution:
 
     return PluginContribution(
         id="about",
-        features=frozenset({Feature.ABOUT}),
+        features=frozenset({Feature.ABOUT, Feature.QQ_OFFICIAL_IDENTITY_INFO}),
         help=HelpEntry(
             name="关于",
             description="IronsBot 项目信息与当前版本",
             group="core",
             order=20,
         ),
-        commands=about_command_contracts(),
+        commands=(
+            *about_command_contracts(),
+            *official_identity_info_command_contracts(),
+        ),
         install=lambda registry: install(registry, service),
     )
 
