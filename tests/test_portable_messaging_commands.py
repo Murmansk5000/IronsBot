@@ -101,9 +101,10 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("demote", [False, True])
+@pytest.mark.parametrize("button", [False, True])
 async def test_portable_subscription_menu_persists_qq_official_openid(
     tmp_path: Path,
-    *, demote: bool,
+    *, demote: bool, button: bool,
 ) -> None:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 
@@ -145,18 +146,25 @@ async def test_portable_subscription_menu_persists_qq_official_openid(
     selection_context = replace(
         context, message=replace(context.message, group_role="member")
     )
-    result = await sessions.select("1", selection_context)
+    assert menu.prompt is not None
+    assert menu.prompt is sessions.active_prompt(context)
+    selection = menu.prompt.action_data(menu.prompt.choices[0]) if button else "1"
+    result = await sessions.select(selection, selection_context)
     assert result is not None
     expected = "普通群成员只能查看" if demote else "已退订：活动结束提醒"
     assert expected in cast("TextPart", result.parts[0]).text
     assert store.is_unsubscribed(conversation, "seer_activity_push") is not demote
+    assert result.prompt is sessions.active_prompt(selection_context)
+    assert result.prompt is not None
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("demote_at", ["never", "menu", "input"])
+@pytest.mark.parametrize("button", [False, True])
 async def test_portable_push_time_updates_qq_official_conversation(
     tmp_path: Path,
     demote_at: str,
+    *, button: bool,
 ) -> None:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 
@@ -212,9 +220,12 @@ async def test_portable_push_time_updates_qq_official_conversation(
         await operations["messaging.push_time"]("推送时间", context),
     )
     assert "每日消息" in cast("TextPart", menu.parts[0]).text
+    assert menu.prompt is not None
+    assert menu.prompt is sessions.active_prompt(context)
+    selection = menu.prompt.action_data(menu.prompt.choices[0]) if button else "1"
     member = replace(context, message=replace(context.message, group_role="member"))
     value_prompt = await sessions.select(
-        "1", member if demote_at == "menu" else context
+        selection, member if demote_at == "menu" else context
     )
     assert value_prompt is not None
     if demote_at == "menu":
@@ -239,6 +250,8 @@ async def test_portable_push_time_updates_qq_official_conversation(
     current = messaging.push_time_options(context.message.conversation)[0].current_value
     assert current == "21:30:00"
     assert len(refreshed) == 1
+    assert result.prompt is not None
+    assert result.prompt is sessions.active_prompt(context)
 
 
 @pytest.mark.asyncio

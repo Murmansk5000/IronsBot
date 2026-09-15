@@ -189,15 +189,14 @@ class _PortableSubscriptionMenus:
         prompt: str,
         notice: str | None,
     ) -> OutboundMessage:
-        self.sessions.offer_menu(
+        return self.sessions.offer_menu(
             self.context,
             PortableMenuSpec(
                 choices=tuple(options),
                 select=select,
-                prompt=OutboundMessage.from_text(prompt),
+                prompt=OutboundMessage.from_text(_menu_with_notice(prompt, notice)),
             ),
         )
-        return OutboundMessage.from_text(_menu_with_notice(prompt, notice))
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,15 +223,14 @@ class _PortablePushTimeMenus:
         ) -> OutboundMessage:
             return replace(self, context=context)._request_value(option)
 
-        self.sessions.offer_menu(
+        return self.sessions.offer_menu(
             self.context,
             PortableMenuSpec(
                 choices=tuple(options),
                 select=select,
-                prompt=OutboundMessage.from_text(prompt),
+                prompt=OutboundMessage.from_text(_menu_with_notice(prompt, notice)),
             ),
         )
-        return OutboundMessage.from_text(_menu_with_notice(prompt, notice))
 
     def _request_value(
         self,
@@ -259,14 +257,13 @@ class _PortablePushTimeMenus:
             await self.refresh_jobs(option)
             return menu.root(result)
 
-        self.sessions.offer_text_input(
+        return self.sessions.offer_text_input(
             self.context,
             PortableTextInputSpec(
                 submit=submit,
-                prompt=OutboundMessage.from_text(prompt),
+                prompt=OutboundMessage.from_text(_menu_with_notice(prompt, error)),
             ),
         )
-        return OutboundMessage.from_text(_menu_with_notice(prompt, error))
 
 
 def _push_read_only(messaging: MessagingService, context: MessageInputContext) -> bool:
