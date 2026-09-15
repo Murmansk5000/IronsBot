@@ -98,6 +98,7 @@ from ironsbot.services.messaging.addressed_input import AddressedInputHintServic
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -340,6 +341,7 @@ def build_test_plugin_registry(
             scheduled_restart=scheduled_restart,
             commands=commands,
             contribution_catalog=PluginContributionCatalog(),
+            query_sessions=PortableQuerySessions(),
             help_hint=object(),
             addressed_input_hints=AddressedInputHintService(),
             identity_links=object(),
@@ -400,6 +402,7 @@ def build_test_plugin_registry(
             contribution_catalog=resources.contribution_catalog,
             features=runtime.features,
             commands=resources.commands,
+            query_sessions=resources.query_sessions,
             ignored_plugins=tuple(config.features.help.ignored_plugins),
         ),
         sendpic_plugin_contribution(

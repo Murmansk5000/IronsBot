@@ -6,13 +6,7 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    Message,
-    MessageEvent,
-    PrivateMessageEvent,
-)
+from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -33,10 +27,7 @@ from ironsbot.core.semantic_requests import (
 )
 from ironsbot.core.time import scheduled_clock_time
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
-from ironsbot.integrations.onebot.feature_policy import (
-    event_is_feature_allowed,
-    event_is_feature_visible_in_help,
-)
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
@@ -49,6 +40,7 @@ from ironsbot.integrations.onebot.message_rendering import (
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
+from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -78,6 +70,9 @@ from ironsbot.services.seer.lucky_skin_window import (
 )
 
 if TYPE_CHECKING:
+    from nonebot.adapters import Event
+
+    from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.scheduler import Scheduler
@@ -130,16 +125,18 @@ def plugin_contribution(
 
 
 def _help_visible(
-    event: Event,
+    context: CommandContext,
     *,
     service: LuckySkinWindowService,
     features: FeatureService,
 ) -> bool:
-    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
+    if not service.is_eligible_actor(context.actor):
         return False
-    if not service.is_eligible_actor(_actor_from_event(event)):
-        return False
-    return event_is_feature_visible_in_help(features, event, "lucky_skin_window")
+    return feature_help_visible(
+        context,
+        features=features,
+        feature="lucky_skin_window",
+    )
 
 
 async def _matches_query(

@@ -29,12 +29,12 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.permissions import is_group_owner_or_admin_event
-from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import (
     finish_event_reply,
     finish_message_sequence,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
+from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
 from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 

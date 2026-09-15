@@ -35,7 +35,11 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginContributionCatalog,
+)
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
@@ -76,6 +80,7 @@ from ironsbot.services.portable_commands import (
     PortableCommandRouterError,
     build_portable_command_router,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
@@ -656,6 +661,25 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
             "meeting",
             "pet_config",
         ),
+    )
+    return catalog
+
+
+def _portable_help_catalog() -> PluginContributionCatalog:
+    catalog = PluginContributionCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="help",
+                help=HelpEntry("帮助", "查看当前可用功能", "core", 10),
+                commands=help_command_contracts(),
+            ),
+            PluginContribution(
+                id="about",
+                help=HelpEntry("关于", "查看项目与版本信息", "core", 20),
+                commands=about_command_contracts(),
+            ),
+        )
     )
     return catalog
 
@@ -1267,8 +1291,11 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
             superusers=[],
         ),
     )
+    query_sessions = PortableQuerySessions()
     router = build_portable_command_router(
         catalog=_portable_catalog(),
+        contribution_catalog=_portable_help_catalog(),
+        query_sessions=query_sessions,
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
@@ -1295,6 +1322,13 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert isinstance(help_message.message.parts[0], TextPart)
     assert "关于" in help_message.message.parts[0].text
     assert "数据版本" not in help_message.message.parts[0].text
+
+    detail = await router.dispatch(_portable_input("2", actor, conversation))
+    assert detail is not None
+    assert isinstance(detail.message.parts[0], TextPart)
+    assert "关于" in detail.message.parts[0].text
+    assert router.recognizes(_portable_input("1", actor, conversation))
+
     assert (
         await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None
