@@ -8,6 +8,7 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
@@ -105,7 +106,11 @@ class SqliteAiMemoryStore:
                     rows,
                 )
         except sqlite3.Error:
-            _LOGGER.warning("failed to write AI memory for %s", turn.actor)
+            _LOGGER.warning(
+                "failed to write AI memory platform=%s actor=%s",
+                turn.actor.platform.value,
+                reference_digest(turn.actor.id),
+            )
 
     async def load(
         self,
@@ -146,7 +151,11 @@ class SqliteAiMemoryStore:
             with self._database.connect() as conn:
                 rows = conn.execute(sql, params).fetchall()
         except sqlite3.Error:
-            _LOGGER.warning("failed to read AI memory for %s", actor)
+            _LOGGER.warning(
+                "failed to read AI memory platform=%s actor=%s",
+                actor.platform.value,
+                reference_digest(actor.id),
+            )
             return []
         return [
             {"role": str(role), "content": str(content)}

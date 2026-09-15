@@ -381,8 +381,8 @@ session。未加载数据仍显式返回 `unknown`，因此不会写入无发布
 `RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
 
 **发布数据库装载契约（2026-08-15）：** `DatabaseManager` 现支持每个数据源的 staged
-load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`ironsbot_metadata`，且
-`ironsbot_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
+load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`seerapi_metadata`，且
+`seerapi_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
 `/更新数据` 会返回具体契约原因。该校验不接受旧 schema 的双读或静默降级。
 
 **请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
@@ -414,7 +414,7 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
 
-**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `ironsbot_metadata` 的
+**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `seerapi_metadata` 的
 构造与 SQLite upsert 迁入 `scripts/release_metadata.py`。该投影只接收已经完成的构建事实，
 不读取环境、网络或 SQLite 以外的输入；全量 SeerAPI pytest 为 **269 passed**，Ruff、编译和
 diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩最终发布编排与真实 release consumer smoke。

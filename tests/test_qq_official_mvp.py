@@ -786,7 +786,6 @@ startup_timeout_seconds = 20.0
 [bot.qq_official.accounts.example_bot]
 enabled = true
 required = true
-app_id = "example-app"
 custom_keyboards = true
 features = ["help", "about", "seer_data"]
 superusers = ["opaque-admin"]
@@ -797,6 +796,7 @@ superusers = ["opaque-admin"]
     settings = load_settings(
         path,
         env={
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         },
     )
@@ -804,6 +804,7 @@ superusers = ["opaque-admin"]
     assert settings.bot.qq_official.enabled
     assert settings.bot.qq_official.startup_timeout_seconds == startup_timeout_seconds
     account = settings.bot.qq_official.accounts["example_bot"]
+    assert account.app_id == "example-app"
     assert account.secret == "example-secret"
     assert account.required
     assert account.custom_keyboards
@@ -821,12 +822,10 @@ enabled = true
 
 [bot.qq_official.accounts.example_a]
 enabled = true
-app_id = "app-a"
 features = ["help"]
 
 [bot.qq_official.accounts.example_b]
 enabled = true
-app_id = "app-b"
 features = ["about"]
 """.strip(),
         encoding="utf-8",
@@ -835,6 +834,8 @@ features = ["about"]
     settings = load_settings(
         path,
         env={
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_A": "app-a",
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_B": "app-b",
             "QQ_OFFICIAL_SECRET_EXAMPLE_A": "secret-a",
             "QQ_OFFICIAL_SECRET_EXAMPLE_B": "secret-b",
         },
@@ -849,6 +850,74 @@ features = ["about"]
         ("example_a", "app-a", "secret-a"),
         ("example_b", "app-b", "secret-b"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "environment_name"),
+    [
+        ("app_id", "example-app", "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT"),
+        ("secret", "example-secret", "QQ_OFFICIAL_SECRET_EXAMPLE_BOT"),
+    ],
+)
+def test_qq_official_config_rejects_credentials_in_toml(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    environment_name: str,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        f"""
+[bot.qq_official]
+enabled = true
+
+[bot.qq_official.accounts.example_bot]
+enabled = true
+{field} = "{value}"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=environment_name):
+        load_settings(
+            path,
+            env={
+                "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+                "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "missing_environment_name",
+    [
+        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT",
+        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT",
+    ],
+)
+def test_enabled_qq_official_account_requires_both_environment_credentials(
+    tmp_path: Path,
+    missing_environment_name: str,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.qq_official]
+enabled = true
+
+[bot.qq_official.accounts.example_bot]
+enabled = true
+""".strip(),
+        encoding="utf-8",
+    )
+    environment = {
+        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+    }
+    environment.pop(missing_environment_name)
+
+    with pytest.raises(ValueError, match=missing_environment_name):
+        load_settings(path, env=environment)
 
 
 def test_qq_official_account_features_are_isolated_by_app_id() -> None:
@@ -1244,7 +1313,7 @@ def test_only_group_at_event_is_classified_as_bot_mention() -> None:
     assert qq_official_event_mentions_bot(at_message)
 
 
-def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
+def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> None:
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
     rendered = render_qq_official_outbound_message(
         OutboundMessage(
@@ -1260,6 +1329,26 @@ def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
     assert rendered[1] == QQOfficialImagePayload(
         content=b"image",
         filename="preview.png",
+    )
+
+
+def test_qq_official_renderer_compacts_text_around_image() -> None:
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                TextPart("title\n"),
+                BinaryImagePart(b"image", "image/png", "preview.png"),
+                TextPart("details"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialImagePayload(content=b"image", filename="preview.png"),
+        QQOfficialTextPayload("title\ndetails"),
     )
 
 
@@ -2424,6 +2513,48 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
     assert ai.calls == []
 
 
+@pytest.mark.asyncio
+async def test_portable_router_ignores_blacklisted_official_group() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "blocked-group",
+        account_id="example-app",
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "ordinary-member",
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    features = FeatureService(
+        group_features={conversation: frozenset({"blacklist"})},
+        actor_features={},
+        superusers=frozenset(),
+        platform_default_features={
+            Platform.QQ_OFFICIAL: frozenset({"about", "ai_chat"})
+        },
+    )
+    ai = _FakeAi()
+    router = build_portable_command_router(
+        catalog=_portable_catalog(ai_chat=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    incoming = _portable_input("关于", actor, conversation)
+
+    assert not router.recognizes(incoming)
+    assert await router.dispatch(incoming) is None
+    assert ai.calls == []
+
+
 def test_c2c_identity_uses_user_openid() -> None:
     event = _sdk_event()
 
@@ -2458,7 +2589,6 @@ enabled = true
 
 [bot.qq_official.accounts.example_bot]
 enabled = true
-app_id = "example-app"
 custom_keyboards = true
 
 [operations.data_sync]
@@ -2480,6 +2610,7 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         }
     )

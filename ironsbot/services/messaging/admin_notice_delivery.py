@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import private_conversation_for_actor
+from ironsbot.core.platform import private_conversation_for_actor, reference_digest
 from ironsbot.services.messaging.admin_notice import (
     AdminNoticeRecipient,
     AdminNoticeSendSummary,
@@ -40,7 +40,10 @@ class OutboundAdminNoticeSender:
         scoped = tuple(actor for actor in private_actors if actor.kind == "member")
         for actor in scoped:
             _LOGGER.warning(
-                "%s cannot privately address scoped actor: %s", action_name, actor
+                "%s cannot privately address scoped actor platform=%s actor=%s",
+                action_name,
+                actor.platform.value,
+                reference_digest(actor.id),
             )
         recipients = _notice_recipients(
             tuple(actor for actor in private_actors if actor.kind == "user"),

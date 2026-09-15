@@ -29,7 +29,9 @@ TRANSPORT_REFERENCE_NAMES = frozenset(
     }
 )
 BUSINESS_REFERENCE_NAMES = frozenset({"actor", "conversation", "worker_id"})
-HEADLESS_REFERENCE_NAMES = frozenset({"user_id", "worker_id"})
+HEADLESS_REFERENCE_NAMES = frozenset(
+    {"head", "headinfo", "user_id", "worker_id"}
+)
 
 
 def _logger_calls(path: Path) -> list[ast.Call]:
@@ -40,7 +42,7 @@ def _logger_calls(path: Path) -> list[ast.Call]:
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "logger"
+        and node.func.value.id.lower().endswith("logger")
         and node.func.attr in LOGGER_METHODS
     ]
 

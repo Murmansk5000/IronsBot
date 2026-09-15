@@ -147,6 +147,7 @@ async def test_sdk_client_sends_opt_in_command_keyboard() -> None:
     rendered = render_qq_official_outbound_message(
         OutboundMessage(OutboundMessage.from_text("choose").parts, prompt=prompt),
         conversation=prompt.conversation,
+        supports_interactive_prompts=True,
     )
 
     await TencentQQClient(
