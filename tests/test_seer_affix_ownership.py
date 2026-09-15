@@ -88,6 +88,8 @@ def _catalog(image_commands: frozenset[str] = frozenset()) -> CommandCatalog:
         ("魂印盖亚", "seer_pet", "seer.pet.query"),
         ("盖亚立绘", "seer_pet", "seer.pet.image"),
         ("皮肤盖亚", "seer_pet", "seer.pet.image"),
+        ("头像盖亚", "seer_pet", "seer.pet.avatar"),
+        ("盖亚头像", "seer_pet", "seer.pet.avatar"),
         ("刻印V9", "seer_mintmark", "seer.mintmark.query"),
         ("胜利宝石", "seer_mintmark", "seer.mintmark.query"),
         ("查询套装信息测试", "seer_equipment", "seer.equipment.query"),
@@ -127,8 +129,9 @@ def test_affix_catalog_and_private_ai_ownership(
 @pytest.mark.parametrize(
     "install,index,text,argument,command_id",
     [
-        (pet_queries.install, 1, "精灵盖亚技能", "盖亚", "seer.pet.query"),
-        (pet_queries.install, 0, "盖亚立绘", "盖亚", "seer.pet.image"),
+        (pet_queries.install, 2, "精灵盖亚技能", "盖亚", "seer.pet.query"),
+        (pet_queries.install, 1, "盖亚立绘", "盖亚", "seer.pet.image"),
+        (pet_queries.install, 0, "盖亚头像", "盖亚", "seer.pet.avatar"),
         (mintmark_queries.install, 0, "刻印v9", "v9", "seer.mintmark.query"),
         (mintmark_queries.install, 1, "胜利宝石", "胜利", "seer.mintmark.query"),
         (equipment_queries.install, 0, "测试套装", "测试", "seer.equipment.query"),
@@ -175,7 +178,12 @@ def test_configured_exact_images_override_even_help_examples(text: str) -> None:
     features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
     catalog = _catalog(frozenset({text}))
     context = CommandContext(_ACTOR, _PRIVATE)
-    query_ids = {"seer.pet.query", "seer.pet.image", "pet_config.query"}
+    query_ids = {
+        "seer.pet.query",
+        "seer.pet.image",
+        "seer.pet.avatar",
+        "pet_config.query",
+    }
     assert not any(
         c.matches_direct_input(context, text)
         for c in catalog.available_for_context(context, features)
@@ -207,6 +215,7 @@ def test_rank_commands_do_not_belong_to_fuzzy_queries(text: str) -> None:
     fuzzy_ids = {
         "seer.pet.query",
         "seer.pet.image",
+        "seer.pet.avatar",
         "seer.autocard.query",
         "seer.mintmark.query",
     }
