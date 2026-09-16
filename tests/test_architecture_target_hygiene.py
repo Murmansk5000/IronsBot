@@ -81,6 +81,12 @@ TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
 FORBIDDEN_TRANSPORT_IMPORT_PREFIXES = (
     "nonebot",
     "onebot",
+    "qqbot_agent_sdk",
+)
+QQ_OFFICIAL_INTEGRATION = PACKAGE / "integrations" / "qq_official"
+RETIRED_QQ_ADAPTER_IMPORT_PREFIXES = (
+    "nonebot.adapters.qq",
+    "nonebot_adapter_qq",
 )
 FORBIDDEN_RENDERER_PERSISTENCE_PREFIXES = (
     "sqlalchemy",
@@ -283,6 +289,30 @@ def test_core_and_services_do_not_import_adapter_transport_types() -> None:
         for path in _python_files(directory)
         for module in _imports(path)
         if module.startswith(FORBIDDEN_TRANSPORT_IMPORT_PREFIXES)
+    ]
+
+    assert offenders == []
+
+
+def test_qq_official_sdk_is_owned_only_by_its_integration() -> None:
+    allowed = set(_python_files(QQ_OFFICIAL_INTEGRATION))
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in _python_files(PACKAGE)
+        if path not in allowed
+        for module in _imports(path)
+        if module == "qqbot_agent_sdk" or module.startswith("qqbot_agent_sdk.")
+    ]
+
+    assert offenders == []
+
+
+def test_retired_nonebot_qq_adapter_is_not_imported() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in _python_files(PACKAGE)
+        for module in _imports(path)
+        if module.startswith(RETIRED_QQ_ADAPTER_IMPORT_PREFIXES)
     ]
 
     assert offenders == []
