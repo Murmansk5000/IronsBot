@@ -38,6 +38,18 @@ class OneBotReferenceError(ValueError):
         return cls(f"{location}.{alias} must map to a positive integer ID")
 
     @classmethod
+    def duplicate_alias_target(
+        cls,
+        location: str,
+        first_alias: str,
+        second_alias: str,
+    ) -> OneBotReferenceError:
+        return cls(
+            f"{location} aliases {first_alias} and {second_alias} "
+            "must not map to the same target"
+        )
+
+    @classmethod
     def empty_reference(
         cls,
         location: str,
@@ -107,6 +119,7 @@ def normalize_alias_mapping(
     """Normalize a user/group alias map without allowing numeric aliases."""
 
     normalized: dict[str, int] = {}
+    target_aliases: dict[int, str] = {}
     for raw_alias, raw_target_id in value.items():
         alias = str(raw_alias).strip()
         if not alias:
@@ -122,7 +135,15 @@ def normalize_alias_mapping(
             ) from exc
         if target_id <= 0:
             raise OneBotReferenceError.invalid_alias_target(location, alias)
+        existing_alias = target_aliases.get(target_id)
+        if existing_alias is not None and existing_alias != alias:
+            raise OneBotReferenceError.duplicate_alias_target(
+                location,
+                existing_alias,
+                alias,
+            )
         normalized[alias] = target_id
+        target_aliases[target_id] = alias
     return normalized
 
 

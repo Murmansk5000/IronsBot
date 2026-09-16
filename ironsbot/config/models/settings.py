@@ -119,6 +119,30 @@ class QQOfficialConfigError(ValueError):
     def empty_target_alias(cls) -> QQOfficialConfigError:
         return cls("QQ Official target alias must not be empty or numeric")
 
+    @classmethod
+    def duplicate_alias_target(
+        cls,
+        kind: str,
+        first_alias: str,
+        second_alias: str,
+    ) -> QQOfficialConfigError:
+        return cls(
+            f"QQ Official {kind} aliases {first_alias} and {second_alias} "
+            "must not map to the same scoped target"
+        )
+
+    @classmethod
+    def duplicate_group_member_alias_target(
+        cls,
+        first_alias: str,
+        second_alias: str,
+    ) -> QQOfficialConfigError:
+        return cls.duplicate_alias_target(
+            "group member",
+            first_alias,
+            second_alias,
+        )
+
 
 def _command_starts(value: object) -> list[str]:
     if value is None:
@@ -247,6 +271,7 @@ class QQOfficialAccountConfig(BaseModel):
     group_superusers: dict[str, list[str]] = Field(default_factory=dict)
     group_aliases: dict[str, str] = Field(default_factory=dict)
     user_aliases: dict[str, str] = Field(default_factory=dict)
+    group_member_aliases: dict[str, dict[str, str]] = Field(default_factory=dict)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -281,6 +306,50 @@ class QQOfficialAccountConfig(BaseModel):
 
     def resolve_user_openid(self, reference: str) -> str:
         return self.user_aliases.get(reference, reference)
+
+    def resolve_group_member_openid(
+        self,
+        group_reference: str,
+        member_reference: str,
+    ) -> str:
+        return self.group_member_aliases.get(group_reference, {}).get(
+            member_reference,
+            member_reference,
+        )
+
+    @field_validator("group_member_aliases", mode="before")
+    @classmethod
+    def normalize_group_member_aliases(
+        cls,
+        value: object,
+    ) -> dict[str, dict[str, str]]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_alias_mapping()
+        groups: dict[str, dict[str, str]] = {}
+        for raw_group, raw_aliases in value.items():
+            group = str(raw_group).strip()
+            if not group:
+                raise QQOfficialConfigError.empty_target_openid()
+            groups[group] = cls.normalize_target_aliases(raw_aliases)
+        return groups
+
+    @model_validator(mode="after")
+    def validate_unique_alias_targets(self) -> QQOfficialAccountConfig:
+        _validate_unique_openid_aliases(self.group_aliases, kind="group")
+        _validate_unique_openid_aliases(self.user_aliases, kind="user")
+        member_targets: dict[tuple[str, str], str] = {}
+        for group_reference, aliases in self.group_member_aliases.items():
+            group_openid = self.resolve_group_openid(group_reference)
+            for alias, member_openid in aliases.items():
+                target = (group_openid, member_openid)
+                existing_alias = member_targets.get(target)
+                if existing_alias is not None:
+                    raise QQOfficialConfigError.duplicate_group_member_alias_target(
+                        existing_alias,
+                        alias,
+                    )
+                member_targets[target] = alias
+        return self
 
     @field_validator("group_policy", "user_policy", mode="before")
     @classmethod
@@ -324,6 +393,23 @@ class QQOfficialAccountConfig(BaseModel):
                 for feature in features
             ),
         }
+
+
+def _validate_unique_openid_aliases(
+    aliases: Mapping[str, str],
+    *,
+    kind: str,
+) -> None:
+    target_aliases: dict[str, str] = {}
+    for alias, openid in aliases.items():
+        existing_alias = target_aliases.get(openid)
+        if existing_alias is not None:
+            raise QQOfficialConfigError.duplicate_alias_target(
+                kind,
+                existing_alias,
+                alias,
+            )
+        target_aliases[openid] = alias
 
 
 class QQOfficialConfig(BaseModel):
@@ -568,12 +654,12 @@ class Settings(BaseModel):
         references.resolve_users(self.bot.superusers, location="bot.superusers")
         self._validate_policy_refs(
             self.features.group_policy,
-            resolve=references.resolve_group,
+            resolve=platform_references.group_conversation_refs,
             location="features.group_policy",
         )
         self._validate_policy_refs(
             self.features.user_policy,
-            resolve=references.resolve_user,
+            resolve=platform_references.actor_refs,
             location="features.user_policy",
         )
         self._validate_mapping_refs(
@@ -588,12 +674,12 @@ class Settings(BaseModel):
         )
         self._validate_mapping_refs(
             self.bilibili.push.groups,
-            resolve=platform_references.group_conversation_ref,
+            resolve=platform_references.group_conversation_refs,
             location="bilibili.push.groups",
         )
         self._validate_mapping_refs(
             self.bilibili.push.users,
-            resolve=platform_references.private_conversation_ref,
+            resolve=platform_references.private_conversation_refs,
             location="bilibili.push.users",
         )
         lucky_users: set[int] = set()

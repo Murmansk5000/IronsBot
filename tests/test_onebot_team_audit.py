@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.team_audit import (
@@ -64,7 +64,7 @@ class FakeGroupProbe:
 
 def _policy() -> OneBotTeamAuditPolicy:
     return OneBotTeamAuditPolicy(
-        build_onebot_feature_service(
+        build_feature_service(
             FeatureConfig(group_policy={str(GROUP_ID): ["team_audit"]}),
             frozenset(),
         )
