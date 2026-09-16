@@ -74,6 +74,7 @@ in every event. IronsBot therefore must not infer a QQ number from that field.
 | API failures | Logs status and trace ID, raises `RuntimeError` | Structured failure kind, code, trace ID, retry policy, redaction | HTTP boundary preserves status, business code and trace ID; delivery classification uses typed fields and transport exceptions |
 | Rich media | `MediaUploader` URL and chunked upload flows | Materialize binary payloads, preserve scene, and expose delivery outcome | Completed; URL and chunked paths use the SDK, and `file_info` is one-use because SDK 1.2.2 drops TTL |
 | Mentions | Text payload transport | Render current official mention markup | Renderer emits escaped `<qqbot-at-user id="" />` markup |
+| Quoted input | Parses `MSG_TYPE_QUOTE` and quoted elements | Route the user's new text while retaining the reference as metadata | Quoted commands now enter the same command/session router; live client selection remains pending |
 | Identity | Preserves opaque event fields | AppID-scoped identity and explicit, revocable linking | No implicit mapping allowed |
 
 ## Interactive Confirmation Target
@@ -160,7 +161,7 @@ silently advertised without an implementation.
 | --- | --- | --- | --- |
 | Help, about, configured text and meeting replies | supported | supported | Real C2C help passed |
 | Seer data, player, team, pet, mintmark, equipment, type, peak and autocard queries | supported | supported | Shared services and portable operations; a real C2C pet-art query delivered PNG media and text |
-| Weekly content menus and details | supported | supported | A real C2C `新增内容` command delivered the five-choice menu with passive sequence 1 |
+| Weekly content menus and details | supported | supported | 历史 C2C 菜单通过；后续图片菜单暴露纯图片 Prompt 发送失败，`f05afd75` 已按键盘 capability 处理，最新版客户端待复验 |
 | Global and sampled ranks, display limits and cache administration | supported | supported | Same rank services; administrative commands retain catalog audience checks |
 | Activity and Bilibili history queries | supported | supported | Query paths are portable; scheduled delivery is governed separately |
 | AI chat and intent actions | supported when configured | supported when configured | Command-first routing is shared; provider availability and feature policy still apply |
@@ -204,8 +205,10 @@ second implementation.
 | 2026-09-15 | Shared prompt identity | 52 portable-command tests and 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | Numeric input and opaque button action data resolve through one actor/conversation-bound session; Tencent keyboard delivery remains open |
 | 2026-09-15 | Capability-gated command keyboards | 129 portable/QQ Official tests, 39 core capability tests and 37 admin-notice tests; Ruff; BasedPyright; static repository checks | Opt-in SDK sends current 5x5 keyboard schema; dynamic actions traverse the ordinary router; text fallback and strict admin targets remain intact; real AppID permission is external |
 | 2026-09-15 | Account lifecycle policy | 205 portable, QQ Official, lifecycle and config tests; Ruff; BasedPyright; compileall; static repository checks | Per-AppID READY/RESUMED startup gate, explicit states, required/optional failure policy and ordered WebSocket stop are application-owned; heartbeat and Resume remain SDK-owned |
+| 2026-09-15 | Inbound parser rejection diagnostics | 60 QQ Official runtime and MVP tests; Ruff; BasedPyright; compileall; diff check | Known message callbacks that cannot produce an SDK event are reported with only the account alias and event type, so missing gateway delivery and rejected payloads are distinguishable without logging message or identity data |
 | 2026-09-15 | Persistent inbound claims | 145 portable, QQ Official and lifecycle tests; Ruff; BasedPyright; compileall; static repository checks | Concurrent and cross-instance duplicate messages are rejected before portable business dispatch; claims are isolated by AppID and event type |
 | 2026-09-15 | SDK media upload | 143 portable and QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | URL uploads and binary chunked uploads preserve C2C/group scope; temporary files are deleted; known platform limits produce text fallback |
+| 2026-09-16 | Compact mixed-media and image prompts | 112 focused tests followed by full suite `3747 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks | Tencent text and rich-media message types remain separate; image details now use at most one media and one consolidated text payload, while image-only menus ignore unavailable keyboards instead of failing before transport |
 | 2026-09-15 | Linked-account Lucky Skin Window | 94 identity, portable, QQ Official, lifecycle and existing Lucky Skin Window tests; Ruff; BasedPyright; compileall; static repository checks | All six commands reuse the OneBot-keyed account service through an exact AppID/kind/OpenID/scope link; uncached login and ambiguous skins use shared labeled prompts |
 | 2026-09-15 | Portable command coverage gate | QQ-enabled full bootstrap plus router failure test; 53 portable, QQ Official and bootstrap tests; Ruff; BasedPyright; compileall; static repository checks | The full catalog currently contains 75 QQ Official direct command contracts: 72 shared business operations plus three official identity operations. Multiple texts owned by one operation, including the peak-pool change aliases, do not inflate this count. Construction fails when any direct contract lacks an operation or explicit built-in handler |
 | 2026-09-15 | Automated closure run | Full suite `3460 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks; clean tracked worktree | All local gates pass. The remaining manual Tencent account matrix below must not be reported as passed without captured platform evidence |
@@ -221,6 +224,7 @@ second implementation.
 | 2026-09-15 | Real C2C image and sequential-reply acceptance | Operator sent a pet-art query and selected a menu item; redacted runtime logs recorded a successful binary image payload at passive sequence 1 followed by its text payload at sequence 2 | Tencent accepted the same-scope chunked PNG upload and both replies, and the operator confirmed that the QQ client displayed the image |
 | 2026-09-15 | Real reconnect and Resume acceptance | A dedicated no-dispatch acceptance process closed only its SDK WebSocket after READY; runtime health observed `ready` to `reconnecting` to `ready`, and a READY-only callback distinguished the second gateway dispatch | The gateway returned `RESUMED` rather than a fresh READY, pending operations were failed explicitly, and the process then stopped cleanly without exposing session or account identifiers |
 | 2026-09-15 | Real group-at command and image acceptance | Operator addressed the bot in an authorized group; redacted runtime logs recorded recognized `GROUP_AT_MESSAGE_CREATE` routes, successful passive text replies, and a successful group-scoped image payload | Group addressed-input routing produced one reply per recognized command, and the operator confirmed that the QQ client displayed the image |
+| 2026-09-15 | Quoted inbound routing | SDK 1.2.2 example behavior, identity conversion, runtime dispatch and portable router tests | `MSG_TYPE_QUOTE` is treated as user input instead of being discarded; quoted reference metadata is preserved, while a real client quote-selection check remains pending |
 
 ## Progress
 
@@ -233,9 +237,9 @@ business acceptance. The broader protocol and multi-account gates below remain.
 
 ## Real Tencent Acceptance Matrix
 
-Run this matrix only with a dedicated test application whose secret is supplied
-through the process environment. Never paste the secret into TOML, command-line
-arguments, logs, screenshots, or this evidence table.
+Run this matrix only with a dedicated test application whose AppID and AppSecret
+are supplied through the process environment. Never paste either credential into
+TOML, command-line arguments, logs, screenshots, or this evidence table.
 
 | Check | Operator action | Required evidence | Status |
 | --- | --- | --- | --- |
