@@ -13,7 +13,7 @@ except ValueError:
 
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
@@ -78,7 +78,7 @@ def _visible(
     role: str = "member",
 ) -> bool:
     settings = settings or _settings()
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         settings.features,
         settings.superuser_ids,
     )
@@ -108,7 +108,7 @@ def _private_visible(
     settings: Settings,
     user_id: int = 2,
 ) -> bool:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         settings.features,
         settings.superuser_ids,
     )

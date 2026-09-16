@@ -9,7 +9,7 @@ from uuid import uuid4
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
@@ -73,7 +73,7 @@ def build_test_runtime(  # noqa: PLR0913
 ) -> TestRuntime:
     resolved_feature_config = feature_config or FeatureConfig()
     isolated_state_path = state_path or _isolated_state_path()
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         resolved_feature_config,
         frozenset(superuser_ids),
         command_features=command_features,

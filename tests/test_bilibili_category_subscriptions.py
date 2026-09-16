@@ -6,7 +6,7 @@ import tomllib
 from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
+from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import BiliConfig
@@ -53,7 +53,7 @@ def _service(
     if not categories:
         config.category_subscriptions.enabled = False
     conversation = ConversationRef(Platform.ONEBOT, "group", "123456")
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(
             group_aliases={"example_group": 123456},
             group_policy={"example_group": ["bili_push"]},
