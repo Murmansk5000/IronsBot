@@ -104,6 +104,7 @@ DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "竞技段位",
     "狂野段位",
     "专家段位",
+    "大师段位",
 )
 MAX_RANK_DISPLAY_LIMIT = 100
 RANK_EXCLUSION_USER_ID_ERROR = "seer.rank.exclusions user IDs must be positive"
