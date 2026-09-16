@@ -543,6 +543,24 @@ class RankService(RankCacheQueryMixin):
             wild_score=wild_score,
             expert_score=expert_score,
             current_peak_sub_key=self.current_peak_sub_key(),
+            find_rank=self.find_rank,
+            progress=progress,
+            anchor_only=anchor_only,
+            run_lookup_jobs=self.run_player_lookup_jobs,
+        )
+
+    async def fetch_master_peak_summary(
+        self,
+        game: HeadlessGame,
+        user_id: int,
+        *,
+        progress: RankSummaryProgress | None = None,
+        anchor_only: bool = False,
+    ) -> PeakSeasonRankSummary:
+        return await rank_summary.fetch_peak_season_rank_summary(
+            game,
+            user_id,
+            current_peak_sub_key=None,
             current_master_sub_key=self.current_master_sub_key(),
             find_rank=self.find_rank,
             progress=progress,

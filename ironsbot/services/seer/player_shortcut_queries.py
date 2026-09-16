@@ -267,20 +267,43 @@ async def _fetch_peak_message(  # noqa: PLR0913
 ) -> QueryReply:
     extra_errors: list[str] = []
     observation = ObservationTime()
-    (nick, nick_error), peak_result = await asyncio.gather(
-        _resolve_shortcut_nick(
-            game,
-            player_id=player_id,
-            base_snapshot=base_snapshot,
-            timeout_seconds=deadline.remaining(timeout_seconds),
-            observation=observation,
+    master_progress = RankSummaryProgress()
+    master_summary_task = asyncio.create_task(
+        fetch_partial_rank_summary(
+            rank.fetch_master_peak_summary(
+                game,
+                player_id,
+                progress=master_progress,
+                anchor_only=anchor_only,
+            ),
+            progress=master_progress,
+            build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
+                results,
+                failure=failure,
+            ),
+            timeout_seconds=deadline.remaining(rank_timeout_seconds),
         ),
-        fetch_unity_peak_partial(
-            game,
-            player_id,
-            timeout_seconds=deadline.remaining(timeout_seconds),
-        ),
+        name=f"player-master-rank:{player_id}",
     )
+    try:
+        (nick, nick_error), peak_result = await asyncio.gather(
+            _resolve_shortcut_nick(
+                game,
+                player_id=player_id,
+                base_snapshot=base_snapshot,
+                timeout_seconds=deadline.remaining(timeout_seconds),
+                observation=observation,
+            ),
+            fetch_unity_peak_partial(
+                game,
+                player_id,
+                timeout_seconds=deadline.remaining(timeout_seconds),
+            ),
+        )
+    except BaseException:
+        master_summary_task.cancel()
+        await asyncio.gather(master_summary_task, return_exceptions=True)
+        raise
     unity_peak = peak_result.info
     if peak_result.available_modes:
         observation.include(peak_result.fetched_at)
@@ -306,14 +329,24 @@ async def _fetch_peak_message(  # noqa: PLR0913
             anchor_only=anchor_only,
         )
 
-    rank_summary = await fetch_partial_rank_summary(
-        fetch_season_ranks(),
-        progress=peak_progress,
-        build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
-            results,
-            failure=failure,
-        ),
-        timeout_seconds=deadline.remaining(rank_timeout_seconds),
+    try:
+        peak_rank_summary = await fetch_partial_rank_summary(
+            fetch_season_ranks(),
+            progress=peak_progress,
+            build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
+                results,
+                failure=failure,
+            ),
+            timeout_seconds=deadline.remaining(rank_timeout_seconds),
+        )
+        master_rank_summary = await master_summary_task
+    except BaseException:
+        master_summary_task.cancel()
+        await asyncio.gather(master_summary_task, return_exceptions=True)
+        raise
+    rank_summary = replace(
+        peak_rank_summary,
+        master=master_rank_summary.master,
     )
     validated_peak = validate_player_peak_season(
         unity_peak,
