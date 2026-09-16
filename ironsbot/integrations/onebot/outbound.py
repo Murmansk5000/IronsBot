@@ -15,7 +15,7 @@ from nonebot.exception import MockApiException
 from nonebot.log import logger
 from nonebot.matcher import current_event
 
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import bind_async
 
@@ -391,8 +391,8 @@ class GroupOutboundRateLimitService:
                     await asyncio.wait_for(queue.changed.wait(), timeout=delay)
         except Exception:  # noqa: BLE001 - background workers must release waiters
             logger.exception(
-                "outbound push queue worker failed: group={}",
-                group_id,
+                "outbound push queue worker failed: conversation_ref={}",
+                reference_digest(str(group_id)),
             )
             self.discard_pending_pushes(group_id)
         finally:
@@ -402,7 +402,10 @@ class GroupOutboundRateLimitService:
             else:
                 queue.worker = self._spawn(
                     self._run_push_queue(group_id, queue),
-                    name=f"ironsbot-push-rate-limit-{group_id}",
+                    name=(
+                        "ironsbot-push-rate-limit-"
+                        f"{reference_digest(str(group_id))}"
+                    ),
                 )
 
     def _is_limited_group(self, group_id: int) -> bool:
@@ -505,8 +508,9 @@ async def _check_group_send_api(
 
     if not decision.allowed:
         logger.info(
-            "group message suppressed by outbound rate limit: group={}, api={}",
-            group_id,
+            "group message suppressed by outbound rate limit: "
+            "conversation_ref={}, api={}",
+            reference_digest(str(group_id)),
             api,
         )
         raise MockApiException(
