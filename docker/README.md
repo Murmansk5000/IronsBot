@@ -101,10 +101,10 @@ services:
     environment:
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
-      # Optional QQ Official Bot account secret. The suffix is the uppercase
+      # Optional QQ Official Bot credentials. The suffix is the uppercase
       # account alias under [bot.qq_official.accounts.<alias>].
-      # QQ_OFFICIAL_APP_ID_EXAMPLE_BOT: "<APP_ID>"
-      # QQ_OFFICIAL_SECRET_EXAMPLE_BOT: "<APP_SECRET>"
+      # QQ_OFFICIAL_APP_ID_EXAMPLE_BOT: "change-me"
+      # QQ_OFFICIAL_SECRET_EXAMPLE_BOT: "change-me"
     restart: always
 
   napcat:
@@ -267,6 +267,8 @@ and `logs/` paths live under the current working directory.
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY=
 # Add the plain password for each [[seer.player_accounts]] player ID that logs in.
 # IronsBot converts it to MD5 in memory.
@@ -274,18 +276,22 @@ SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
+DOCKER_REGISTRY_USERNAME=
+DOCKER_REGISTRY_TOKEN=
 ```
 
 | Variable | Description |
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for the same enabled account; uppercase alias suffix. Both credential keys must be absent from TOML, even when disabled. |
+| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. |
 | `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
 | `AI_KEY` | AI chat API key. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
+| `DOCKER_REGISTRY_USERNAME` | Optional registry username used to pull a configured private extension package or private update image. |
+| `DOCKER_REGISTRY_TOKEN` | Optional pull-only registry token paired with `DOCKER_REGISTRY_USERNAME`; never store it in TOML. |
 
 QQ Official custom command keyboards are a TOML capability, not an environment
 variable. Keep `bot.qq_official.accounts.<alias>.custom_keyboards = false` unless
@@ -295,11 +301,11 @@ must become `READY`/`RESUMED` for the container to be considered started, and
 adjust `bot.qq_official.startup_timeout_seconds` when the default 15 seconds is
 not suitable. Neither setting contains a secret or belongs in Unraid variables.
 
-The repository's default Docker build includes the QQ Official runtime.
-A custom OneBot-only image may set `--build-arg IRONSBOT_RUNTIME_EXTRA=`
-to omit the optional SDK dependency. A source checkout still uses
-`uv sync --extra qq-official` followed by
-`uv run --no-sync python -m ironsbot`.
+Published Docker images include the QQ Official runtime together with the
+OneBot/NapCat runtime, so the same image supports either transport or both at
+once. A source checkout uses `uv sync --extra qq-official` followed by
+`uv run --no-sync python -m ironsbot`. A custom OneBot-only image may explicitly
+set `--build-arg IRONSBOT_RUNTIME_EXTRA=` to omit the optional SDK dependency.
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
@@ -490,12 +496,3 @@ If a token or meeting link has ever been pushed to a public repository, treat it
 ## License
 
 This image follows the licensing terms of the repository. See `LICENSING.md` in the source repository for details.
-
-### 本版本 Unraid 官方账号变量
-
-此版本自带模板仅列出 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT`，并未提供配对的
-AppID 控件。启用官方账号前，在容器设置中手动添加
-`QQ_OFFICIAL_APP_ID_<ALIAS>`，与同别名的 `QQ_OFFICIAL_SECRET_<ALIAS>` 配对。
-`<ALIAS>` 替换为 TOML 账号别名的大写形式；不要把真实凭据写入模板或 TOML。
-未使用官方账号时可保持该功能停用并不提供凭据。
-
