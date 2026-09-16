@@ -63,9 +63,12 @@ class OneBotOutboundMessenger:
         self,
         router: BotRouter,
         outbound: GroupOutboundRateLimitService,
+        *,
+        enabled: bool = True,
     ) -> None:
         self._router = router
         self._outbound = outbound
+        self._enabled = enabled
 
     def capabilities_for(
         self,
@@ -73,7 +76,7 @@ class OneBotOutboundMessenger:
     ) -> DeliveryCapabilities:
         return (
             _ONEBOT_CAPABILITIES
-            if _supports_conversation(conversation)
+            if self._enabled and _supports_conversation(conversation)
             else _UNSUPPORTED_CAPABILITIES
         )
 
@@ -104,6 +107,13 @@ class OneBotOutboundMessenger:
         reply_to_id: str | None = None,
         proactive: bool,
     ) -> SendResult:
+        if not self._enabled:
+            return SendResult(
+                delivered=False,
+                error_code="outbound_disabled",
+                error_message="OneBot outbound messaging is disabled",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
         if not _supports_conversation(conversation):
             return SendResult(
                 delivered=False,

@@ -368,6 +368,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             for feature in Feature
             if feature.value in features.configured_feature_keys
         ),
+        onebot_message_handling_enabled=(
+            settings.outbound_platform_selection.onebot_message_handling_enabled
+        ),
         resource_startup_hooks=tuple(resource_startup_hooks),
         resource_shutdown_hooks=tuple(resource_shutdown_hooks),
     )

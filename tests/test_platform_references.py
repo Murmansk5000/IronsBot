@@ -35,7 +35,6 @@ def _account(
     group_member_aliases: dict[str, dict[str, str]] | None = None,
 ) -> QQOfficialAccountConfig:
     return QQOfficialAccountConfig(
-        enabled=True,
         app_id=app_id,
         secret="secret",
         group_aliases=group_aliases or {},

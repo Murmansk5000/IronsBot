@@ -84,8 +84,13 @@ def build_common_components(
         settings.onebot_references,
     )
     promotions = PromotionCatalog(settings.promotions)
+    platform_selection = settings.outbound_platform_selection
     platform_messengers: dict[Platform, OutboundMessenger] = {
-        Platform.ONEBOT: OneBotOutboundMessenger(bot_router, outbound),
+        Platform.ONEBOT: OneBotOutboundMessenger(
+            bot_router,
+            outbound,
+            enabled=platform_selection.onebot_outbound_enabled,
+        ),
     }
     qq_official = None
     if settings.bot.qq_official.enabled_accounts:

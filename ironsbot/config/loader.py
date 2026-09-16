@@ -50,12 +50,29 @@ def _inject_qq_official_credentials(
     accounts = qq_official.get("accounts")
     if not isinstance(accounts, dict):
         return
-    qq_official_enabled = qq_official.get("enabled") is True
+    declared_names = {str(name).upper(): str(name) for name in accounts}
+    credential_names = {
+        key[len(prefix) :].upper()
+        for key in env
+        for prefix in (
+            QQ_OFFICIAL_APP_ID_ENV_PREFIX,
+            QQ_OFFICIAL_SECRET_ENV_PREFIX,
+        )
+        if key.startswith(prefix)
+    }
+    unknown_names = sorted(credential_names - declared_names.keys())
+    if unknown_names:
+        names = ", ".join(unknown_names)
+        msg = (
+            "QQ Official environment credentials reference undeclared accounts: "
+            f"{names}"
+        )
+        raise ValueError(msg)
     for raw_name, raw_account in accounts.items():
         if not isinstance(raw_account, dict):
             continue
         name = str(raw_name)
-        account_enabled = qq_official_enabled and raw_account.get("enabled") is True
+        credentials: dict[str, str | None] = {}
         for field, prefix in (
             ("app_id", QQ_OFFICIAL_APP_ID_ENV_PREFIX),
             ("secret", QQ_OFFICIAL_SECRET_ENV_PREFIX),
@@ -68,14 +85,22 @@ def _inject_qq_official_credentials(
                 )
                 raise ValueError(msg)
             value = env.get(env_name)
-            if account_enabled:
-                value = _environment_secret(
-                    env_name,
-                    path=f"bot.qq_official.accounts.{name}.{field}",
-                    env=env,
-                )
-            if value is not None:
-                raw_account[field] = value
+            credentials[field] = None if value is None else str(value).strip()
+        present = {field for field, value in credentials.items() if value}
+        if present and len(present) != len(credentials):
+            missing = "secret" if "secret" not in present else "app_id"
+            env_name = (
+                QQ_OFFICIAL_SECRET_ENV_PREFIX
+                if missing == "secret"
+                else QQ_OFFICIAL_APP_ID_ENV_PREFIX
+            ) + name.upper()
+            msg = (
+                f"bot.qq_official.accounts.{name} has incomplete credentials; "
+                f"missing environment variable {env_name}"
+            )
+            raise ValueError(msg)
+        if present:
+            raw_account.update(credentials)
 
 
 class ConfigFileNotFoundError(FileNotFoundError):
