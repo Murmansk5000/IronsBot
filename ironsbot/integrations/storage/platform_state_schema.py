@@ -555,6 +555,12 @@ def _copy_conversation_preferences(
         ),
         "push_daily_hints": ("hint_key", "delivered_on", "updated_at"),
         "bili_push_preferences": ("uid", "mode", "updated_at"),
+        "bili_push_category_preferences": (
+            "uid",
+            "category",
+            "muted",
+            "updated_at",
+        ),
     }
     for table, columns in table_columns.items():
         placeholders = ", ".join("?" for _ in range(4 + len(columns)))
