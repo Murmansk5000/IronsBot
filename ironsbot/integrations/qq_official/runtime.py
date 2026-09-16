@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class QQOfficialRuntimeAccount:
     app_id: str
-    secret: str
+    secret: str = field(repr=False)
     required: bool = False
     custom_keyboards: bool = False
     label: str = ""

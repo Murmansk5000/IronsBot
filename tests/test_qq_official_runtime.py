@@ -206,6 +206,19 @@ def test_runtime_account_rejects_empty_credentials(
         QQOfficialRuntimeAccount(app_id, secret)
 
 
+def test_runtime_account_repr_never_contains_secret() -> None:
+    account = QQOfficialRuntimeAccount(
+        "example-app",
+        "private-example-secret",
+        label="example",
+    )
+
+    rendered = repr(account)
+
+    assert "private-example-secret" not in rendered
+    assert "secret=" not in rendered
+
+
 def test_runtime_claims_message_before_business_dispatch(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
