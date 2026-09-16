@@ -156,7 +156,6 @@ startup_timeout_seconds = 15.0
 [bot.qq_official.accounts.example_bot]
 enabled = true
 required = false
-app_id = "你的 QQ 机器人 AppID"
 proactive_messages = false
 custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
@@ -193,7 +192,13 @@ SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不
 
 凭据只放环境变量：
 
+AppID 和 AppSecret 都是部署凭据，分别使用账号别名大写后缀的
+`QQ_OFFICIAL_APP_ID_<ALIAS>` 和 `QQ_OFFICIAL_SECRET_<ALIAS>`。
+TOML 账号表不得包含 `app_id` 或 `secret`，即使值为空、账号或全局已 disabled
+也一样；停用时省略这两个键，不用空字符串占位。
+
 ```text
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=你的 AppID
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
 ```
 
@@ -234,9 +239,9 @@ uv sync --extra qq-official
 uv run --no-sync python -m ironsbot
 ```
 
-默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
-`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
-明确报错。
+默认 Docker 镜像构建和发布工作流已包含 OneBot/NapCat 与 QQ 官方运行组件。
+源码的默认依赖集不包含腾讯 SDK，仍需 `qq-official` extra；自行构建纯 OneBot 镜像时可传入
+`--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略 SDK。启用官方账号但未安装 SDK 时会在启动时明确报错。
 
 当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
 `GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于

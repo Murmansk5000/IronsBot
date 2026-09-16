@@ -378,7 +378,7 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "pip install --no-deps --no-cache-dir --no-compile" in dockerfile
     assert "pip wheel --no-deps" in dockerfile
     assert "uv export --frozen --no-dev" in dockerfile
-    assert 'ARG IRONSBOT_RUNTIME_EXTRA=""' in dockerfile
+    assert 'ARG IRONSBOT_RUNTIME_EXTRA="qq-official"' in dockerfile
     assert 'extra_args="--extra $IRONSBOT_RUNTIME_EXTRA"' in dockerfile
     assert dockerfile.startswith("# syntax=docker/dockerfile:1\n")
     assert "COPY --from=requirements_stage /wheel" not in dockerfile
