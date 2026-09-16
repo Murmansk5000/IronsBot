@@ -55,6 +55,19 @@ class QQOfficialRuntimeAccount:
     custom_keyboards: bool = False
     label: str = ""
 
+    def __post_init__(self) -> None:
+        app_id = self.app_id.strip()
+        secret = self.secret.strip()
+        if not app_id:
+            msg = "QQ Official runtime AppID must not be empty"
+            raise ValueError(msg)
+        if not secret:
+            msg = "QQ Official runtime secret must not be empty"
+            raise ValueError(msg)
+        object.__setattr__(self, "app_id", app_id)
+        object.__setattr__(self, "secret", secret)
+        object.__setattr__(self, "label", self.label.strip())
+
 
 class QQOfficialConnectionState(str, Enum):
     STARTING = "starting"

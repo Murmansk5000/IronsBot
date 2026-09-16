@@ -12,7 +12,11 @@ import tomllib
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_README = ROOT / "README.md"
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+UNRAID_TEMPLATE = ROOT / "templates" / "ironsbot.xml"
+ENV_EXAMPLE = ROOT / ".env.example"
+DOCKER_README = ROOT / "docker" / "README.md"
 DOCKERHUB_DESCRIPTION_WORKFLOW = (
     ROOT / ".github" / "workflows" / "dockerhub-description.yml"
 )
@@ -26,6 +30,47 @@ CURRENT_ACTION_MAJORS = {
     "docker/metadata-action": 6,
     "docker/setup-buildx-action": 4,
 }
+PIP_AUDIT_TIMEOUT_MINUTES = 10
+
+
+def test_seer_password_deployment_docs_require_plaintext_input() -> None:
+    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+    unraid_template = UNRAID_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "One plain-text password per player ID" in env_example
+    assert "设置明文密码" in env_example
+    assert "enter the plain-text password" in unraid_template
+    assert "填写明文密码" in unraid_template
+    assert "密码 MD5 环境变量" not in unraid_template
+
+
+def test_docker_env_example_lists_all_deployment_credentials() -> None:
+    docker_readme = DOCKER_README.read_text(encoding="utf-8")
+    env_block = docker_readme.split("```env", 1)[1].split("```", 1)[0]
+
+    for variable in (
+        "APP_CONFIG_PATH",
+        "ONEBOT_ACCESS_TOKEN",
+        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT",
+        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT",
+        "AI_KEY",
+        "SEER_PASSWORD_123456789",
+        "SENDPIC_CNB_TOKEN",
+        "GITHUB_WORKFLOW_TOKEN",
+        "DOCKER_REGISTRY_USERNAME",
+        "DOCKER_REGISTRY_TOKEN",
+    ):
+        assert f"{variable}=" in env_block
+
+
+def test_root_and_docker_readmes_describe_the_same_unified_image() -> None:
+    root_readme = ROOT_README.read_text(encoding="utf-8")
+    docker_readme = DOCKER_README.read_text(encoding="utf-8")
+
+    assert "正式发布的 Docker 镜像已经同时包含" in root_readme
+    assert "Published Docker images include the QQ Official runtime" in docker_readme
+    assert "标准 OneBot 镜像不携带该 SDK" not in root_readme
+    assert "Build an official-bot image" not in docker_readme
 
 
 def _bash() -> str:
@@ -341,6 +386,8 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
     assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
+    assert "import nonebot, qqbot_agent_sdk, seerapi_models" in smoke["run"]
+    assert "QQOfficialRuntime" in smoke["run"]
 
 
 def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> None:
@@ -392,7 +439,7 @@ def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
 
     assert steps.index(dockerhub_login) < steps.index(growth) < steps.index(upload)
     assert steps.index(upload) < steps.index(publish)
-    assert growth["env"]["MAX_IMAGE_GROWTH_KIB"] == "8192"
+    assert growth["env"]["MAX_IMAGE_GROWTH_KIB"] == "20480"
     assert growth["env"]["BASELINE_IMAGE"] == (
         "ghcr.io/${{ github.repository }}:latest"
     )
@@ -422,8 +469,8 @@ def test_ghcr_image_repository_is_fork_aware() -> None:
     [
         (-1024, True),
         (0, True),
-        (8192, True),
-        (8193, False),
+        (20480, True),
+        (20481, False),
     ],
 )
 def test_candidate_image_growth_shell(
@@ -542,6 +589,8 @@ def test_runtime_python_baseline_is_consistent() -> None:
     )
     assert setup["with"]["python-version"] == "${{ env.PYTHON_VERSION }}"
     assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
+    assert audit["timeout-minutes"] == PIP_AUDIT_TIMEOUT_MINUTES
+    assert "--progress-spinner off --timeout 30" in audit["run"]
     version_argument = "PYTHON_VERSION=${{ env.PYTHON_VERSION }}"
     extra_argument = "IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}"
     assert version_argument in candidate["with"]["build-args"]
@@ -549,6 +598,7 @@ def test_runtime_python_baseline_is_consistent() -> None:
     assert extra_argument in candidate["with"]["build-args"]
     assert extra_argument in publish["with"]["build-args"]
     assert 'extra_args=(--extra "$IRONSBOT_RUNTIME_EXTRA")' in audit["run"]
+    assert workflow["env"]["IRONSBOT_RUNTIME_EXTRA"] == "qq-official"
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
@@ -560,6 +610,8 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
     assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
+    assert audit["timeout-minutes"] == PIP_AUDIT_TIMEOUT_MINUTES
+    assert "--progress-spinner off --timeout 30" in audit["run"]
     assert "--fix" not in audit["run"]
     assert "--ignore-vuln" not in audit["run"]
     assert not audit.get("continue-on-error", False)
