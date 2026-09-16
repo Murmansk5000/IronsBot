@@ -23,6 +23,7 @@ from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
+from ironsbot.config.models.transport import OneBotConfig
 from ironsbot.config.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
@@ -34,6 +35,7 @@ from ironsbot.config.platform_references import (
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
 from ironsbot.core.features import FEATURE_KEYS
+from ironsbot.core.platform_selection import OutboundPlatformSelection
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
@@ -82,10 +84,6 @@ class SettingsReferenceError(ValueError):
 
 
 class QQOfficialConfigError(ValueError):
-    @classmethod
-    def no_enabled_accounts(cls) -> QQOfficialConfigError:
-        return cls("bot.qq_official requires at least one enabled account")
-
     @classmethod
     def invalid_account_name(cls) -> QQOfficialConfigError:
         return cls(
@@ -246,7 +244,6 @@ class QQOfficialAccountConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
     required: bool = False
     app_id: str = ""
     secret: str = Field(default="", exclude=True, repr=False)
@@ -417,16 +414,12 @@ class QQOfficialConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
     sandbox: bool = False
     startup_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_accounts(self) -> QQOfficialConfig:
-        enabled_accounts = self.enabled_accounts
-        if self.enabled and not enabled_accounts:
-            raise QQOfficialConfigError.no_enabled_accounts()
         app_ids: set[str] = set()
         environment_names: set[str] = set()
         for name, account in self.accounts.items():
@@ -436,7 +429,7 @@ class QQOfficialConfig(BaseModel):
             if environment_name in environment_names:
                 raise QQOfficialConfigError.duplicate_secret_environment(name)
             environment_names.add(environment_name)
-            if not self.enabled or not account.enabled:
+            if not account.app_id and not account.secret:
                 continue
             missing = [
                 field
@@ -467,12 +460,10 @@ class QQOfficialConfig(BaseModel):
 
     @property
     def enabled_accounts(self) -> dict[str, QQOfficialAccountConfig]:
-        if not self.enabled:
-            return {}
         return {
             name: account
             for name, account in self.accounts.items()
-            if account.enabled
+            if account.app_id and account.secret
         }
 
 
@@ -488,6 +479,7 @@ class BotConfig(BaseModel):
     plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
+    onebot: OneBotConfig = Field(default_factory=OneBotConfig)
     qq_official: QQOfficialConfig = Field(default_factory=QQOfficialConfig)
     matcher_priority: MatcherPriorityConfig = Field(
         default_factory=MatcherPriorityConfig
@@ -545,6 +537,7 @@ class Settings(BaseModel):
     @model_validator(mode="after")
     def validate_registered_features(self) -> Settings:
         try:
+            self._validate_platform_selection()
             validate_feature_config(
                 self.features,
                 command_features=self.messaging.command_feature_keys,
@@ -569,6 +562,43 @@ class Settings(BaseModel):
                 ],
             ) from exc
         return self
+
+    def _validate_platform_selection(self) -> None:
+        onebot = self.bot.onebot
+        active_accounts = self.bot.qq_official.enabled_accounts
+        if onebot.identity_verification:
+            if not onebot.enabled:
+                msg = "bot.onebot.identity_verification requires bot.onebot.enabled"
+                raise ValueError(msg)
+            if not active_accounts:
+                msg = (
+                    "bot.onebot.identity_verification requires complete "
+                    "QQ Official environment credentials"
+                )
+                raise ValueError(msg)
+            trusted = set(onebot.trusted_official_bots)
+            expected = set(active_accounts)
+            if trusted != expected:
+                missing = sorted(expected - trusted)
+                unknown = sorted(trusted - expected)
+                details = []
+                if missing:
+                    details.append("missing " + ", ".join(missing))
+                if unknown:
+                    details.append("unknown " + ", ".join(unknown))
+                msg = (
+                    "bot.onebot.trusted_official_bots must exactly match active "
+                    "official accounts: " + "; ".join(details)
+                )
+                raise ValueError(msg)
+
+    @property
+    def outbound_platform_selection(self) -> OutboundPlatformSelection:
+        return OutboundPlatformSelection.resolve(
+            official_account_aliases=tuple(self.bot.qq_official.enabled_accounts),
+            onebot_enabled=self.bot.onebot.enabled,
+            onebot_send_messages=self.bot.onebot.send_messages,
+        )
 
     def _validate_promotions(self) -> None:
         catalog = PromotionCatalog(self.promotions)

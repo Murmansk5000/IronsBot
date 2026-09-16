@@ -749,10 +749,8 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
     proactive_messages: bool = False,
 ) -> QQOfficialConfig:
     return QQOfficialConfig(
-        enabled=True,
         accounts={
             "example_bot": QQOfficialAccountConfig(
-                enabled=True,
                 app_id="example-app",
                 secret="example-secret",
                 features=[] if features is None else features,
@@ -781,11 +779,9 @@ def test_qq_official_config_loads_credentials_from_environment(
     path.write_text(
         """
 [bot.qq_official]
-enabled = true
 startup_timeout_seconds = 20.0
 
 [bot.qq_official.accounts.example_bot]
-enabled = true
 required = true
 custom_keyboards = true
 features = ["help", "about", "seer_data"]
@@ -802,7 +798,6 @@ superusers = ["opaque-admin"]
         },
     )
 
-    assert settings.bot.qq_official.enabled
     assert settings.bot.qq_official.startup_timeout_seconds == startup_timeout_seconds
     account = settings.bot.qq_official.accounts["example_bot"]
     assert account.app_id == "example-app"
@@ -819,14 +814,11 @@ def test_qq_official_config_loads_independent_accounts(
     path.write_text(
         """
 [bot.qq_official]
-enabled = true
 
 [bot.qq_official.accounts.example_a]
-enabled = true
 features = ["help"]
 
 [bot.qq_official.accounts.example_b]
-enabled = true
 features = ["about"]
 """.strip(),
         encoding="utf-8",
@@ -853,6 +845,55 @@ features = ["about"]
     ]
 
 
+def test_onebot_deployment_environment_overrides_toml(tmp_path: Path) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.onebot]
+enabled = true
+send_messages = true
+identity_verification = false
+
+[bot.qq_official.accounts.example_bot]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        path,
+        env={
+            "ONEBOT_ENABLED": "true",
+            "ONEBOT_SEND_MESSAGES": "false",
+            "ONEBOT_IDENTITY_VERIFICATION": "true",
+            "ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT": "123456789",
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+        },
+    )
+
+    assert settings.bot.onebot.enabled
+    assert not settings.bot.onebot.send_messages
+    assert settings.bot.onebot.identity_verification
+    assert settings.bot.onebot.trusted_official_bots == {
+        "example_bot": 123456789
+    }
+
+
+def test_onebot_trusted_bot_environment_rejects_undeclared_account(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text("[bot.onebot]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="UNDECLARED"):
+        load_settings(
+            path,
+            env={
+                "ONEBOT_TRUSTED_OFFICIAL_BOT_UNDECLARED": "123456789",
+            },
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "value", "environment_name"),
     [
@@ -870,10 +911,8 @@ def test_qq_official_config_rejects_credentials_in_toml(
     path.write_text(
         f"""
 [bot.qq_official]
-enabled = true
 
 [bot.qq_official.accounts.example_bot]
-enabled = true
 {field} = "{value}"
 """.strip(),
         encoding="utf-8",
@@ -904,10 +943,8 @@ def test_enabled_qq_official_account_requires_both_environment_credentials(
     path.write_text(
         """
 [bot.qq_official]
-enabled = true
 
 [bot.qq_official.accounts.example_bot]
-enabled = true
 """.strip(),
         encoding="utf-8",
     )
@@ -923,16 +960,13 @@ enabled = true
 
 def test_qq_official_account_features_are_isolated_by_app_id() -> None:
     config = QQOfficialConfig(
-        enabled=True,
         accounts={
             "example_a": QQOfficialAccountConfig(
-                enabled=True,
                 app_id="app-a",
                 secret="secret-a",
                 features=["help"],
             ),
             "example_b": QQOfficialAccountConfig(
-                enabled=True,
                 app_id="app-b",
                 secret="secret-b",
                 features=["about"],
@@ -955,21 +989,16 @@ def test_qq_official_account_features_are_isolated_by_app_id() -> None:
 
 def test_qq_official_config_exposes_every_enabled_account() -> None:
     config = QQOfficialConfig(
-        enabled=True,
         accounts={
             "example_a": QQOfficialAccountConfig(
-                enabled=True,
                 app_id="app-a",
                 secret="secret-a",
             ),
             "example_b": QQOfficialAccountConfig(
-                enabled=True,
                 app_id="app-b",
                 secret="secret-b",
             ),
             "disabled": QQOfficialAccountConfig(
-                enabled=False,
-                app_id="app-disabled",
             ),
         },
     )
@@ -988,15 +1017,12 @@ def test_qq_official_config_exposes_every_enabled_account() -> None:
 def test_qq_official_config_rejects_duplicate_app_ids() -> None:
     with pytest.raises(ValueError, match="duplicate QQ Official AppID"):
         QQOfficialConfig(
-            enabled=True,
             accounts={
                 "example_a": QQOfficialAccountConfig(
-                    enabled=True,
                     app_id="same-app",
                     secret="secret-a",
                 ),
                 "example_b": QQOfficialAccountConfig(
-                    enabled=True,
                     app_id="same-app",
                     secret="secret-b",
                 ),
@@ -1017,7 +1043,6 @@ def test_qq_official_config_rejects_secret_environment_alias_collision() -> None
 def test_qq_official_config_rejects_old_single_account_fields() -> None:
     with pytest.raises(ValueError, match="app_id"):
         QQOfficialConfig(
-            enabled=True,
             app_id="old-app",  # type: ignore[call-arg]
             secret="old-secret",  # type: ignore[call-arg]
         )
@@ -1026,7 +1051,6 @@ def test_qq_official_config_rejects_old_single_account_fields() -> None:
 def test_qq_official_config_rejects_retired_static_token() -> None:
     with pytest.raises(ValueError, match="token"):
         QQOfficialAccountConfig(
-            enabled=True,
             app_id="example-app",
             secret="example-secret",
             token="retired-token",  # type: ignore[call-arg]
@@ -2594,10 +2618,8 @@ environment = "test"
 plugin_manifest = "core"
 
 [bot.qq_official]
-enabled = true
 
 [bot.qq_official.accounts.example_bot]
-enabled = true
 custom_keyboards = true
 
 [operations.data_sync]

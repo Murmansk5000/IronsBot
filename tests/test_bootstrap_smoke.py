@@ -38,17 +38,6 @@ def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
 def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     config = (ROOT / "config.example.toml").read_text(encoding="utf-8")
     config = config.replace('environment = "prod"', 'environment = "test"', 1)
-    qq_start = config.index("[bot.qq_official]")
-    account_start = config.index("[bot.qq_official.accounts.example_bot]")
-    qq_section = config[qq_start:account_start].replace(
-        "enabled = false", "enabled = true", 1
-    )
-    config = config[:qq_start] + qq_section + config[account_start:]
-    account_start = config.index("[bot.qq_official.accounts.example_bot]")
-    account_end = config.index("[", account_start + 1)
-    account = config[account_start:account_end]
-    account = account.replace("enabled = false", "enabled = true", 1)
-    config = config[:account_start] + account + config[account_end:]
     config_path = tmp_path / "bootstrap.toml"
     config_path.write_text(config, encoding="utf-8")
     script = """
@@ -115,8 +104,10 @@ assert {"seer.team.query", "seer.pet.avatar"}.issubset(
     state.resources.commands.qq_official_direct_command_ids
 )
 assert len(state.contributions) > 0
-assert len(state.matcher_factory.message_matchers) > 0
-assert len(state.matcher_factory.notice_matchers) > 0
+assert not state.onebot_message_handling_enabled
+assert len(state.matcher_factory.message_matchers) == 0
+assert len(state.matcher_factory.notice_matchers) == 0
+assert state.resources.onebot_ingress is not None
 assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
 
 for matcher in (

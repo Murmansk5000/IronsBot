@@ -62,6 +62,14 @@ class IdentityLinkStore(Protocol):
         now: float,
     ) -> CrossPlatformIdentityLink: ...
 
+    async def link_verified(
+        self,
+        *,
+        onebot_qq_id: str,
+        official: OfficialIdentity,
+        now: float,
+    ) -> CrossPlatformIdentityLink: ...
+
     async def for_onebot(
         self,
         onebot_qq_id: str,
