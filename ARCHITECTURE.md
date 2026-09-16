@@ -274,7 +274,7 @@ feature, persistence schema, or policy decision.
 | --- | --- | --- | --- |
 | Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
-| Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_onebot_feature_service()` is the only OneBot TOML compiler and must finish alias and bundle expansion before constructing the service. |
+| Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_feature_service()` is the only policy compiler and must finish logical alias, platform endpoint and bundle expansion before constructing the service. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `integrations.onebot.identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
@@ -290,7 +290,7 @@ feature, persistence schema, or policy decision.
 | Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. Derived session keys use structural encoding of all identity fields, never delimiter concatenation of opaque IDs. |
-| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
+| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Configured targets are compiled to account-scoped platform references before entering the service. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery boundary is defined in the next row. |
 | Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. Raw-package omissions that change display use a SeerAPI `pet_soulmark_display_addition` fact with provenance; no presenter may branch on a pet ID. |
@@ -323,10 +323,17 @@ The following rules are mandatory:
   parsing, persistence, HTTP calls, scheduling, retries, or business policy.
 - Public feature-policy calls in plugins and services receive `ActorRef` and
   `ConversationRef`. `FeatureService` contains no numeric group/user helpers;
-  `config.models.features.build_onebot_feature_service()` owns the one-time
+  `config.models.features.build_feature_service()` owns the one-time
   TOML alias and feature-bundle compilation. All callers use
   `is_feature_allowed`, `conversation_has_feature`, or a typed domain
   predicate such as `is_message_blocked`.
+- Logical group and user aliases may own one endpoint per transport/account
+  scope, while each native endpoint belongs to exactly one logical alias.
+  Group-member endpoints retain their AppID and group scope and must never be
+  enumerated as private-message targets.
+- Transport diagnostics log only stable one-way reference digests for native
+  user, group and bot identifiers. Raw OneBot IDs and QQ Official OpenIDs stay
+  at the integration boundary and must not appear in operational logs.
 - Services own cohesive use cases and depend on explicit ports, never on
   NoneBot, OneBot event classes, matchers, or global application state.
 - Renderers receive view models and assets. They do not execute raw SQL,
@@ -1190,11 +1197,13 @@ identity and recipient values before a service is constructed. Notifications
 already cross the platform-neutral outbound port rather than leaking platform
 objects back into plugins or individual Seer services.
 
-`app.bilibili_composition.BilibiliComponents` compiles configured OneBot
+`app.bilibili_composition.BilibiliComponents` compiles configured platform
 targets and creates Bilibili query, history, and login services before the
 messaging builder consumes its subscription options. This keeps the composition
 root as an ordering coordinator instead of a second place that knows Bilibili
-storage and HTTP construction details.
+storage and HTTP construction details. Login QR notices are portable outbound
+messages delivered through `AdminNoticeService`; their availability is not
+inferred from a connected OneBot instance.
 
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
