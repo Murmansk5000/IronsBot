@@ -128,6 +128,8 @@ def bootstrap() -> Application:
                 ),
             ),
             application.resources.outbound_messenger,
+            identity_observer=application.resources.identity_observer,
         )
+    application.resources.onebot_ingress.install()
     application.install()
     return application

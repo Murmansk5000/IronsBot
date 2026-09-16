@@ -245,6 +245,73 @@ class SqliteIdentityLinkStore:
     ) -> tuple[CrossPlatformIdentityLink, ...]:
         return await asyncio.to_thread(self._for_onebot_sync, onebot_qq_id)
 
+    async def link_verified(
+        self,
+        *,
+        onebot_qq_id: str,
+        official: OfficialIdentity,
+        now: float,
+    ) -> CrossPlatformIdentityLink:
+        async with self._write_lock:
+            return await asyncio.to_thread(
+                self._link_verified_sync,
+                onebot_qq_id,
+                official,
+                now,
+            )
+
+    def _link_verified_sync(
+        self,
+        onebot_qq_id: str,
+        official: OfficialIdentity,
+        now: float,
+    ) -> CrossPlatformIdentityLink:
+        with self._database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT onebot_qq_id FROM cross_platform_identity_links
+                WHERE official_app_id = ? AND official_kind = ?
+                  AND official_openid = ? AND official_scope_id = ?
+                """,
+                (
+                    official.app_id,
+                    official.kind,
+                    official.openid,
+                    official.scope_id,
+                ),
+            ).fetchone()
+            if existing is not None and str(existing[0]) != onebot_qq_id:
+                raise IdentityLinkConflictError(str(existing[0]))
+            connection.execute(
+                """
+                INSERT INTO cross_platform_identity_links (
+                    official_app_id, official_kind, official_openid,
+                    official_scope_id, onebot_qq_id, linked_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (
+                    official_app_id, official_kind,
+                    official_openid, official_scope_id
+                ) DO UPDATE SET linked_at = excluded.linked_at
+                """,
+                (
+                    official.app_id,
+                    official.kind,
+                    official.openid,
+                    official.scope_id,
+                    onebot_qq_id,
+                    now,
+                ),
+            )
+            _audit(
+                connection,
+                action="observed_link",
+                onebot_qq_id=onebot_qq_id,
+                official=official,
+                occurred_at=now,
+            )
+        return CrossPlatformIdentityLink(onebot_qq_id, official, now)
+
     def _for_onebot_sync(
         self,
         onebot_qq_id: str,

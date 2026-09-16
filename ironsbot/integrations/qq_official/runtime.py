@@ -41,6 +41,9 @@ if TYPE_CHECKING:
 
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.services.identity_observation import (
+        SilentIdentityObservationService,
+    )
     from ironsbot.services.portable_commands import PortableCommandRouter
     from ironsbot.services.portable_reply import DeliveryStage
 
@@ -252,6 +255,7 @@ class QQOfficialRuntime:
         )
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
+        self._identity_observer: SilentIdentityObservationService | None = None
         self._connections: dict[str, _Connection] = {}
         for index, account in enumerate(accounts, start=1):
             if account.app_id in self._connections:
@@ -316,12 +320,15 @@ class QQOfficialRuntime:
         self,
         router: PortableCommandRouter,
         messenger: OutboundMessenger,
+        *,
+        identity_observer: SilentIdentityObservationService | None = None,
     ) -> None:
         if self._router is not None or self._messenger is not None:
             msg = "QQ Official runtime is already bound"
             raise RuntimeError(msg)
         self._router = router
         self._messenger = messenger
+        self._identity_observer = identity_observer
 
     async def start(self) -> None:
         if self._router is None or self._messenger is None:
@@ -432,6 +439,7 @@ class QQOfficialRuntime:
                 incoming,
                 reply,
                 account_label=self._connections[app_id].lifecycle.account,
+                identity_observer=self._identity_observer,
             )
 
     def _callbacks(
@@ -536,6 +544,7 @@ async def deliver_qq_official_reply(
     reply: PortableReply,
     *,
     account_label: str = "official-account",
+    identity_observer: SilentIdentityObservationService | None = None,
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
@@ -562,9 +571,20 @@ async def deliver_qq_official_reply(
             f"❌ 操作执行失败：{type(error).__name__}"
         )
 
+    async def send(message: OutboundMessage) -> SendResult:
+        observation = (
+            identity_observer.record_official_reply(incoming, message)
+            if identity_observer is not None
+            else None
+        )
+        result = await messenger.reply(context, message)
+        if not result.delivered and identity_observer is not None:
+            identity_observer.discard_official_reply(observation)
+        return result
+
     await deliver_portable_reply(
         reply,
-        lambda message: messenger.reply(context, message),
+        send,
         on_sent=on_sent,
         on_follow_up_error=on_follow_up_error,
     )
