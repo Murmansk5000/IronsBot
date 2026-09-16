@@ -2,7 +2,7 @@
 ARG PYTHON_VERSION=3.11
 FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage
 
-ARG IRONSBOT_RUNTIME_EXTRA=""
+ARG IRONSBOT_RUNTIME_EXTRA="qq-official"
 
 WORKDIR /wheel
 

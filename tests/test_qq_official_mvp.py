@@ -417,7 +417,8 @@ class _FakeOfficialBot:
 
 
 class _TransportError(RuntimeError):
-    pass
+    def __init__(self) -> None:
+        super().__init__("sensitive transport detail")
 
 
 class _FailingPortableRouter:
@@ -1405,6 +1406,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
     assert ("reply delivered" in caplog.text) is not fail
+    assert "sensitive transport detail" not in caplog.text
     assert "example-app" not in caplog.text
     assert "message-id" not in caplog.text
 
@@ -2265,7 +2267,14 @@ async def test_router_builds_extension_without_platform_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_portable_router_runs_rank_query() -> None:
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("成就榜", "榜单:成就点数:1:10"),
+        ("大师段位榜", "榜单:大师段位:1:10"),
+    ),
+)
+async def test_portable_router_runs_rank_query(command: str, expected: str) -> None:
     features = build_feature_service(
         FeatureConfig(),
         (),
@@ -2290,10 +2299,10 @@ async def test_portable_router_runs_rank_query() -> None:
         account_id="example-app",
     )
 
-    result = await router.dispatch(_portable_input("成就榜", actor, conversation))
+    result = await router.dispatch(_portable_input(command, actor, conversation))
 
     assert result is not None
-    assert cast("TextPart", result.message.parts[0]).text == "榜单:成就点数:1:10"
+    assert cast("TextPart", result.message.parts[0]).text == expected
 
 
 @pytest.mark.asyncio

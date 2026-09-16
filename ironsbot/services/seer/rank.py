@@ -170,6 +170,7 @@ class RankService(RankCacheQueryMixin):
     config: RankQueryConfig
     cache: RankPageCache
     peak_season_start: Callable[[], datetime | None]
+    master_season_start: Callable[[], datetime | None]
     fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
     exclusions: RankExclusionPolicy | None = field(default=None)
 
@@ -198,10 +199,18 @@ class RankService(RankCacheQueryMixin):
         start = self.peak_season_start()
         return None if start is None else datetime_to_sub_key(start)
 
+    def current_master_sub_key(self) -> int | None:
+        start = self.master_season_start()
+        return None if start is None else datetime_to_sub_key(start)
+
     def resolve_spec(self, spec: GlobalRankSpec) -> GlobalRankSpec:
-        if not spec.peak_season_sub_key:
+        if spec.sub_key_source == "fixed":
             return spec
-        sub_key = self.current_peak_sub_key()
+        sub_key = (
+            self.current_peak_sub_key()
+            if spec.sub_key_source == "peak_season"
+            else self.current_master_sub_key()
+        )
         return spec if sub_key is None else replace(spec, sub_key=sub_key)
 
     def get_spec(self, rank_key: str) -> GlobalRankSpec:
@@ -209,7 +218,7 @@ class RankService(RankCacheQueryMixin):
 
     @staticmethod
     def spec_needs_sub_key(spec: GlobalRankSpec) -> bool:
-        return spec.peak_season_sub_key and spec.sub_key <= 0
+        return spec.season_limited and spec.sub_key <= 0
 
     async def fetch_page_result(  # noqa: PLR0913
         self,
@@ -534,6 +543,25 @@ class RankService(RankCacheQueryMixin):
             wild_score=wild_score,
             expert_score=expert_score,
             current_peak_sub_key=self.current_peak_sub_key(),
+            find_rank=self.find_rank,
+            progress=progress,
+            anchor_only=anchor_only,
+            run_lookup_jobs=self.run_player_lookup_jobs,
+        )
+
+    async def fetch_master_peak_summary(
+        self,
+        game: HeadlessGame,
+        user_id: int,
+        *,
+        progress: RankSummaryProgress | None = None,
+        anchor_only: bool = False,
+    ) -> PeakSeasonRankSummary:
+        return await rank_summary.fetch_peak_season_rank_summary(
+            game,
+            user_id,
+            current_peak_sub_key=None,
+            current_master_sub_key=self.current_master_sub_key(),
             find_rank=self.find_rank,
             progress=progress,
             anchor_only=anchor_only,

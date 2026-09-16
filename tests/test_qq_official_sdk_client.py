@@ -13,6 +13,10 @@ from qqbot_agent_sdk.media_loader import (
 from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.qq_official.api_errors import (
+    QQOfficialApiError,
+    QQOfficialPartialDeliveryError,
+)
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
     QQOfficialTextPayload,
@@ -225,6 +229,46 @@ async def test_sdk_client_sends_multiple_payloads_with_consecutive_sequences() -
         "incoming-id",
     ]
     assert media.uploads[0][2].url == "https://example.invalid/image.png"
+
+
+@pytest.mark.asyncio
+async def test_sdk_client_marks_failure_after_first_payload_as_partial() -> None:
+    class FailingApi(_FakeApi):
+        async def post_group_message(
+            self,
+            target: str,
+            message: MessageToCreate,
+            *,
+            keyboard: InlineKeyboard | None = None,
+        ) -> dict[str, object]:
+            if self.messages:
+                raise QQOfficialApiError(
+                    http_status=400,
+                    api_code="11255",
+                    message="target unavailable",
+                    trace_id="trace-partial",
+                )
+            return await super().post_group_message(
+                target,
+                message,
+                keyboard=keyboard,
+            )
+
+    api = FailingApi()
+
+    with pytest.raises(QQOfficialPartialDeliveryError) as raised:
+        await _client(api).send_to_group(
+            "group-openid",
+            (
+                QQOfficialTextPayload("first"),
+                QQOfficialTextPayload("second"),
+            ),
+            msg_id="incoming-id",
+            msg_seq=1,
+        )
+
+    assert raised.value.message_id == "message-1"
+    assert isinstance(raised.value.__cause__, QQOfficialApiError)
 
 
 @pytest.mark.asyncio

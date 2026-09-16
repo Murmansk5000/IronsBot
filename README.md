@@ -254,9 +254,10 @@ uv run --no-sync python -m ironsbot
 `ENVIRONMENT=dev`，由应用自动读取被 Git 忽略的 `.env.dev`，无需逐项导入 Secret。
 行为配置仍由 `APP_CONFIG_PATH` 指向 TOML，所有密钥仍只放环境变量。
 
-默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
-`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
-明确报错。
+源码的默认依赖集不包含该 SDK，因此从源码运行时必须使用上述 `qq-official` extra。
+正式发布的 Docker 镜像已经同时包含 OneBot/NapCat 与 QQ 官方运行组件，不需要另外寻找
+官方机器人专用镜像或传入 build arg。只有自行构建纯 OneBot 镜像时，才显式传入空的
+`--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略腾讯 SDK。
 
 当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
 `GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
@@ -299,8 +300,10 @@ uv run --no-sync python -m ironsbot
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
-  `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
+  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、`AI_KEY`、
+  按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
+  `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
 
 示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
 [配置布局与新增功能指南](docs/configuration-layout.md)，确认它应归入消息推送、赛尔实时无头查询、
@@ -311,12 +314,16 @@ uv run --no-sync python -m ironsbot
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
+DOCKER_REGISTRY_USERNAME=
+DOCKER_REGISTRY_TOKEN=
 ```
 
 每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和 `public`。

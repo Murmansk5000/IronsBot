@@ -267,6 +267,8 @@ and `logs/` paths live under the current working directory.
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY=
 # Add the plain password for each [[seer.player_accounts]] player ID that logs in.
 # IronsBot converts it to MD5 in memory.
@@ -274,6 +276,8 @@ SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
+DOCKER_REGISTRY_USERNAME=
+DOCKER_REGISTRY_TOKEN=
 ```
 
 | Variable | Description |
@@ -286,6 +290,8 @@ GITHUB_WORKFLOW_TOKEN=
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
+| `DOCKER_REGISTRY_USERNAME` | Optional registry username used to pull a configured private extension package or private update image. |
+| `DOCKER_REGISTRY_TOKEN` | Optional pull-only registry token paired with `DOCKER_REGISTRY_USERNAME`; never store it in TOML. |
 
 QQ Official custom command keyboards are a TOML capability, not an environment
 variable. Keep `bot.qq_official.accounts.<alias>.custom_keyboards = false` unless
@@ -295,11 +301,11 @@ must become `READY`/`RESUMED` for the container to be considered started, and
 adjust `bot.qq_official.startup_timeout_seconds` when the default 15 seconds is
 not suitable. Neither setting contains a secret or belongs in Unraid variables.
 
-The QQ Official adapter is an optional runtime component so the standard
-OneBot image does not carry its cryptography dependency. Build an official-bot
-image with `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`. A source checkout
-uses `uv sync --extra qq-official` followed by
-`uv run --no-sync python -m ironsbot`.
+Published Docker images include the QQ Official runtime together with the
+OneBot/NapCat runtime, so the same image supports either transport or both at
+once. A source checkout uses `uv sync --extra qq-official` followed by
+`uv run --no-sync python -m ironsbot`. A custom OneBot-only image may explicitly
+set `--build-arg IRONSBOT_RUNTIME_EXTRA=` to omit the optional SDK dependency.
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
