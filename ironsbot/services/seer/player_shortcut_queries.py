@@ -358,7 +358,12 @@ async def _fetch_peak_message(  # noqa: PLR0913
             local_summary,
             fetched_at=_detail_observation_time(
                 observation,
-                (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+                (
+                    rank_summary.standard,
+                    rank_summary.wild,
+                    rank_summary.expert,
+                    rank_summary.master,
+                ),
             ),
             player_id=player_id,
             nick=nick,
@@ -370,7 +375,12 @@ async def _fetch_peak_message(  # noqa: PLR0913
     )
     return _detail_reply(
         message,
-        (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+        (
+            rank_summary.standard,
+            rank_summary.wild,
+            rank_summary.expert,
+            rank_summary.master,
+        ),
         base_complete=not extra_errors
         and nick_error is None
         and not peak_result.mode_errors,

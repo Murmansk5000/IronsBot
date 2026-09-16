@@ -64,7 +64,7 @@ def test_rank_alias_and_window_are_owned_by_exactly_the_right_section(
 ) -> None:
     kind, key = rank
     peak = (
-        GLOBAL_RANKS[key].peak_season_sub_key
+        GLOBAL_RANKS[key].season_limited
         if kind == "global"
         else LOCAL_RANKS[key].season_limited
     )

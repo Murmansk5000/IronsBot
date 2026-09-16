@@ -7,6 +7,7 @@ from ironsbot.config.models.seer import PlayerRankLookupConfig
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     EXPERT_PEAK_USER_RANK_KEY,
+    MASTER_PEAK_USER_RANK_KEY,
     SKIN_RANK_KEY,
     STANDARD_PEAK_USER_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
@@ -39,6 +40,7 @@ CURRENT_PEAK_SCORE = 300033
 CURRENT_PEAK_RANK = 33
 CURRENT_PEAK_LINEAR_RANK = 12
 PEAK_MODE_COUNT = 3
+MASTER_SUB_KEY = 20260904
 
 
 def _int_kwarg(kwargs: dict[str, object], name: str, default: int = 0) -> int:
@@ -129,6 +131,30 @@ async def test_peak_rank_summary_keeps_other_modes_when_one_rank_times_out() -> 
 
 
 @pytest.mark.asyncio
+async def test_peak_rank_summary_queries_master_with_its_own_season() -> None:
+    calls: list[dict[str, object]] = []
+
+    async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
+        calls.append(kwargs)
+        return await _rank_success(_game, **kwargs)
+
+    summary = await fetch_peak_season_rank_summary(
+        object(),
+        USER_ID,
+        current_peak_sub_key=None,
+        current_master_sub_key=MASTER_SUB_KEY,
+        find_rank=find_rank,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["key"] == MASTER_PEAK_USER_RANK_KEY
+    assert calls[0]["sub_key"] == MASTER_SUB_KEY
+    assert "target_score" not in calls[0]
+    assert summary.master.queried
+    assert not summary.standard.queried
+
+
+@pytest.mark.asyncio
 async def test_peak_rank_summary_keeps_expert_score_when_expert_times_out() -> None:
     async def find_rank(game: object, **kwargs: object) -> RankLookupResult:
         if kwargs["key"] == EXPERT_PEAK_USER_RANK_KEY:
@@ -180,6 +206,7 @@ def test_peak_rank_summary_marks_all_modes_when_the_whole_section_fails() -> Non
     assert summary.standard.failure == "查询超时"
     assert summary.wild.failure == "查询超时"
     assert summary.expert.failure == "查询超时"
+    assert summary.master.failure == "查询超时"
 
 
 @pytest.mark.asyncio

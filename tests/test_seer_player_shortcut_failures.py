@@ -209,6 +209,7 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
                 player_id,
                 find_rank=find_rank,
                 current_peak_sub_key=7,
+                current_master_sub_key=7,
                 run_lookup_jobs=runner,
                 **kwargs,
             )
@@ -520,7 +521,7 @@ async def test_detail_completeness_uses_all_requested_stages(
             )
         ),
         fetch_peak_summary=AsyncMock(
-            return_value=PeakSeasonRankSummary(result, result, result)
+            return_value=PeakSeasonRankSummary(result, result, result, result)
         ),
         fetch_autocard_summary=AsyncMock(return_value=result),
         current_peak_sub_key=lambda: 7,

@@ -5,6 +5,7 @@ import json
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from threading import RLock
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from weakref import WeakKeyDictionary
@@ -50,7 +51,6 @@ from .release_contract import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
-    from datetime import datetime
 
     from seerapi_models import PetORM, PetSkinORM
     from sqlalchemy.engine import Engine
@@ -267,6 +267,28 @@ class SeerDatabase:
         except SQLAlchemyError as error:
             logger.warning("failed to read peak season", exc_info=True)
             raise DataUnavailableError("巅峰赛季数据读取失败") from error
+
+    def master_season_start(self) -> datetime | None:
+        try:
+            with self._databases.session(SEERAPI_DB) as session:
+                if session is None:
+                    raise DataUnavailableError("大师赛季数据未加载")
+                value = session.execute(
+                    text(
+                        "SELECT start_time FROM peak_cost_pool "
+                        "ORDER BY start_time DESC LIMIT 1"
+                    )
+                ).scalar_one_or_none()
+                if value is None:
+                    return None
+                return (
+                    value
+                    if isinstance(value, datetime)
+                    else datetime.fromisoformat(str(value))
+                )
+        except SQLAlchemyError as error:
+            logger.warning("failed to read master season", exc_info=True)
+            raise DataUnavailableError("大师赛季数据读取失败") from error
 
     def version(self) -> str:
         """Return the release version cached when the in-memory DB was loaded."""
