@@ -254,9 +254,10 @@ uv run --no-sync python -m ironsbot
 `ENVIRONMENT=dev`，由应用自动读取被 Git 忽略的 `.env.dev`，无需逐项导入 Secret。
 行为配置仍由 `APP_CONFIG_PATH` 指向 TOML，所有密钥仍只放环境变量。
 
-默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
-`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
-明确报错。
+源码的默认依赖集不包含该 SDK，因此从源码运行时必须使用上述 `qq-official` extra。
+正式发布的 Docker 镜像已经同时包含 OneBot/NapCat 与 QQ 官方运行组件，不需要另外寻找
+官方机器人专用镜像或传入 build arg。只有自行构建纯 OneBot 镜像时，才显式传入空的
+`--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略腾讯 SDK。
 
 当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
 `GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
