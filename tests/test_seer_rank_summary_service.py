@@ -150,6 +150,7 @@ async def test_peak_rank_summary_queries_master_with_its_own_season() -> None:
     assert calls[0]["key"] == MASTER_PEAK_USER_RANK_KEY
     assert calls[0]["sub_key"] == MASTER_SUB_KEY
     assert "target_score" not in calls[0]
+    assert calls[0]["search_limit"] is None
     assert summary.master.queried
     assert not summary.standard.queried
 

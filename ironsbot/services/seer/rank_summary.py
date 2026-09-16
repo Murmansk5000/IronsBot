@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any, TypeVar
 
@@ -45,6 +45,17 @@ RunLookupJobs = Callable[
 ]
 _LOGGER = logging.getLogger("ironsbot.seer.rank_summary")
 SummaryT = TypeVar("SummaryT")
+
+
+@dataclass(frozen=True, slots=True)
+class _PeakRankLookupSpec:
+    id: str
+    title: str
+    score_name: str
+    key: int
+    sub_key: int
+    candidate_score: int | None
+    search_without_score: bool = False
 
 
 async def fetch_partial_rank_summary(
@@ -166,6 +177,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
     key: int,
     sub_key: int,
     candidate_score: int | None,
+    search_without_score: bool,
     progress: RankSummaryProgress | None,
     anchor_only: bool,
 ) -> RankLookupResult:
@@ -198,7 +210,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
         score_name=score_name,
         key=key,
         sub_key=sub_key,
-        search_limit=0,
+        search_limit=None if search_without_score else 0,
         progress=progress,
         anchor_only=anchor_only,
     )
@@ -327,71 +339,73 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     if current_peak_sub_key is None and current_master_sub_key is None:
         return PeakSeasonRankSummary.empty()
 
-    specs: list[tuple[str, str, str, int, int, int | None]] = []
+    specs: list[_PeakRankLookupSpec] = []
     if current_peak_sub_key is not None:
         specs.extend(
             (
-                (
-                    "standard_peak",
-                    "竞技赛季榜",
-                    "段位分",
-                    STANDARD_PEAK_USER_RANK_KEY,
-                    current_peak_sub_key,
-                    standard_score,
+                _PeakRankLookupSpec(
+                    id="standard_peak",
+                    title="竞技赛季榜",
+                    score_name="段位分",
+                    key=STANDARD_PEAK_USER_RANK_KEY,
+                    sub_key=current_peak_sub_key,
+                    candidate_score=standard_score,
                 ),
-                (
-                    "wild_peak",
-                    "狂野赛季榜",
-                    "段位分",
-                    WILD_PEAK_USER_RANK_KEY,
-                    current_peak_sub_key,
-                    wild_score,
+                _PeakRankLookupSpec(
+                    id="wild_peak",
+                    title="狂野赛季榜",
+                    score_name="段位分",
+                    key=WILD_PEAK_USER_RANK_KEY,
+                    sub_key=current_peak_sub_key,
+                    candidate_score=wild_score,
                 ),
-                (
-                    "expert_peak",
-                    "专家赛季榜",
-                    "专家积分",
-                    EXPERT_PEAK_USER_RANK_KEY,
-                    current_peak_sub_key,
-                    expert_score,
+                _PeakRankLookupSpec(
+                    id="expert_peak",
+                    title="专家赛季榜",
+                    score_name="专家积分",
+                    key=EXPERT_PEAK_USER_RANK_KEY,
+                    sub_key=current_peak_sub_key,
+                    candidate_score=expert_score,
                 ),
             )
         )
     if current_master_sub_key is not None:
         specs.append(
-            (
-                "master_peak",
-                "大师赛季榜",
-                "段位分",
-                MASTER_PEAK_USER_RANK_KEY,
-                current_master_sub_key,
-                None,
+            _PeakRankLookupSpec(
+                id="master_peak",
+                title="大师赛季榜",
+                score_name="段位分",
+                key=MASTER_PEAK_USER_RANK_KEY,
+                sub_key=current_master_sub_key,
+                candidate_score=None,
+                search_without_score=True,
             )
         )
     jobs = tuple(
         PlayerRankLookupJob(
-            id=job_id,
-            title=title,
-            key=key,
-            sub_key=sub_key,
+            id=spec.id,
+            title=spec.title,
+            key=spec.key,
+            sub_key=spec.sub_key,
             user_id=user_id,
-            target_score=candidate_score,
+            target_score=spec.candidate_score,
             operation=partial(
                 _find_current_peak_rank,
-                job_id,
+                spec.id,
                 find_rank,
                 game,
                 user_id=user_id,
-                title=title,
-                score_name=score_name,
-                key=key,
-                sub_key=sub_key,
-                candidate_score=candidate_score,
+                title=spec.title,
+                score_name=spec.score_name,
+                key=spec.key,
+                sub_key=spec.sub_key,
+                candidate_score=spec.candidate_score,
+                search_without_score=spec.search_without_score,
                 progress=progress,
                 anchor_only=anchor_only,
             ),
         )
-        for job_id, title, score_name, key, sub_key, candidate_score in specs
+        for spec in specs
     )
     results = await _run_lookup_jobs(jobs, run_lookup_jobs, progress)
     return PeakSeasonRankSummary.from_results(results)
