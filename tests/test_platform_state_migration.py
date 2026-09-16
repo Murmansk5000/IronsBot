@@ -123,6 +123,18 @@ def _seed_legacy_platform_state(root: Path) -> None:
             )
             """,
             """
+            CREATE TABLE bili_push_category_preferences (
+                target_type TEXT, target_id INTEGER, uid INTEGER,
+                category TEXT, muted INTEGER, updated_at TEXT
+            )
+            """,
+            """
+            INSERT INTO bili_push_category_preferences VALUES (
+                'group', 2001, 123, 'lottery', 1,
+                '2026-08-04T00:00:00Z'
+            )
+            """,
+            """
             CREATE TABLE group_rank_display_limits (
                 group_id INTEGER PRIMARY KEY, display_limit INTEGER,
                 updated_at TEXT, updated_by INTEGER
@@ -412,6 +424,15 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
             FROM push_time_preferences
             """
         ).fetchall() == [("group", "2001")]
+        assert connection.execute(
+            """
+            SELECT conversation_platform, conversation_account_id,
+                   conversation_kind, conversation_id, uid, category, muted
+            FROM bili_push_category_preferences
+            """
+        ).fetchall() == [
+            ("onebot", "", "group", "2001", 123, "lottery", 1)
+        ]
         assert connection.execute(
             """
             SELECT actor_id, position
