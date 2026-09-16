@@ -417,7 +417,8 @@ class _FakeOfficialBot:
 
 
 class _TransportError(RuntimeError):
-    pass
+    def __init__(self) -> None:
+        super().__init__("sensitive transport detail")
 
 
 class _FailingPortableRouter:
@@ -1405,6 +1406,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
     assert ("reply delivered" in caplog.text) is not fail
+    assert "sensitive transport detail" not in caplog.text
     assert "example-app" not in caplog.text
     assert "message-id" not in caplog.text
 

@@ -24,7 +24,7 @@ def format_socket_recv_error(
     error: SocketRecvError,
     error_message: ErrorMessageLookup | None = None,
 ) -> str:
-    result_code = error.head.result
+    result_code = error.result_code
     message = error_message(result_code) if error_message is not None else None
     if message:
         return f"请求失败：{message}"
@@ -37,7 +37,7 @@ def format_player_query_error(
     error_message: ErrorMessageLookup | None = None,
 ) -> str:
     if isinstance(error, SocketRecvError):
-        result_code = error.head.result
+        result_code = error.result_code
         if result_code in PLAYER_NOT_FOUND_RESULT_CODES:
             return f"❌ 米米号 {player_id} 不存在或用户信息不可查询。"
         return (

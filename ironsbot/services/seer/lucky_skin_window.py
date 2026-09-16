@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.seer_data.skin_price_repository import (
     load_active_skin_store_prices,
 )
@@ -615,8 +616,8 @@ class LuckySkinWindowService:
         if missing:
             logger.warning(
                 "lucky skin watch defaults could not be resolved: "
-                "actor=%s references=%s",
-                actor,
+                "actor_ref=%s references=%s",
+                reference_digest(actor.id),
                 missing,
             )
         return tuple(
