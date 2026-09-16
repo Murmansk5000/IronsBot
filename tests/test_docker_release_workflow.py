@@ -354,6 +354,8 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
     assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
+    assert "import nonebot, qqbot_agent_sdk, seerapi_models" in smoke["run"]
+    assert "QQOfficialRuntime" in smoke["run"]
 
 
 def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> None:
@@ -405,7 +407,7 @@ def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
 
     assert steps.index(dockerhub_login) < steps.index(growth) < steps.index(upload)
     assert steps.index(upload) < steps.index(publish)
-    assert growth["env"]["MAX_IMAGE_GROWTH_KIB"] == "8192"
+    assert growth["env"]["MAX_IMAGE_GROWTH_KIB"] == "20480"
     assert growth["env"]["BASELINE_IMAGE"] == (
         "ghcr.io/${{ github.repository }}:latest"
     )
@@ -435,8 +437,8 @@ def test_ghcr_image_repository_is_fork_aware() -> None:
     [
         (-1024, True),
         (0, True),
-        (8192, True),
-        (8193, False),
+        (20480, True),
+        (20481, False),
     ],
 )
 def test_candidate_image_growth_shell(

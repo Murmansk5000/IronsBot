@@ -148,7 +148,7 @@ jobs:
                       test "$regular" != "$bold"
                       actual_python="$(python -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")"
                       test "$actual_python" = "$EXPECTED_PYTHON_VERSION"
-                      python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
+                      python -c "from ironsbot.config.loader import load_settings; from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime; import nonebot, qqbot_agent_sdk, seerapi_models; load_settings()"
                       python -c "import asyncio, importlib.util, nonebot; assert importlib.util.find_spec(\"pygments\") is None; assert importlib.util.find_spec(\"pymdownx\") is None; nonebot.init(driver=\"~fastapi+~httpx\"); from nonebot_plugin_htmlkit import TEMPLATES_PATH, template_to_pic; image = asyncio.run(template_to_pic(TEMPLATES_PATH, \"text.html\", {\"text\": \"IronsBot 中文渲染\", \"css\": \"body { font-weight: 700; }\"}, max_width=320)); assert image.startswith(bytes.fromhex(\"89504e470d0a1a0a\"))"
                     '
 
@@ -198,7 +198,7 @@ jobs:
               env:
                   BASELINE_IMAGE: ghcr.io/${{ github.repository }}:latest
                   FALLBACK_BASELINE_IMAGE: ghcr.io/${{ github.repository_owner }}/ironsbot:latest
-                  MAX_IMAGE_GROWTH_KIB: "8192"
+                  MAX_IMAGE_GROWTH_KIB: "20480"
               run: |
                   : "${BASELINE_IMAGE:?missing baseline image}"
                   : "${MAX_IMAGE_GROWTH_KIB:?missing image growth budget}"
