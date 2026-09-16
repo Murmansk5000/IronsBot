@@ -381,8 +381,8 @@ session。未加载数据仍显式返回 `unknown`，因此不会写入无发布
 `RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
 
 **发布数据库装载契约（2026-08-15）：** `DatabaseManager` 现支持每个数据源的 staged
-load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`ironsbot_metadata`，且
-`ironsbot_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
+load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`seerapi_metadata`，且
+`seerapi_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
 `/更新数据` 会返回具体契约原因。该校验不接受旧 schema 的双读或静默降级。
 
 **请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
@@ -414,7 +414,7 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
 
-**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `ironsbot_metadata` 的
+**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `seerapi_metadata` 的
 构造与 SQLite upsert 迁入 `scripts/release_metadata.py`。该投影只接收已经完成的构建事实，
 不读取环境、网络或 SQLite 以外的输入；全量 SeerAPI pytest 为 **269 passed**，Ruff、编译和
 diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩最终发布编排与真实 release consumer smoke。
@@ -2369,13 +2369,19 @@ QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID polic
 跨平台配置目标随后按同一账户边界收口（`dc3d72d8`）。OneBot 别名继续位于
 `features.group_aliases` / `features.user_aliases`；QQ 官方群和用户 OpenID 别名改为
 位于各自 `bot.qq_official.accounts.<alias>` 下。统一解析器只产出带 platform、AppID
-和目标 ID 的类型化引用，跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
+和目标 ID 的类型化引用。当时跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
 不得进入无法表达所属 AppID 的全局推送目标。B站配置目标因此删除 OneBot 专用编译器，
 同一份 `bilibili.push` 可安全包含 OneBot 与官方 QQ 目标；`动态`、`B站账号` 和群/私聊
 `B站推送模式` 也共用便携执行注册表。该提交未增加依赖、SQLite、图片或镜像内容；
 Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 skipped`。腾讯官方
 多账号实现明确要求每个账号独立连接和 Token 缓存，Bot A 收到的 OpenID 不能由 Bot B
 发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
+
+后续目标模型进一步收口：群和用户别名现在表示部署者显式声明的逻辑目标，可同时
+拥有 OneBot ID、各官方 AppID 下的 OpenID，以及按群作用域保存的 member_openid。
+同一条全局 Feature policy 会展开到这些类型化端点；member_openid 不会变成 C2C
+目标。旧的“跨平台别名必须全局唯一”限制因此删除，未声明同名别名时仍不会进行任何
+昵称、头像、时间或 ID 猜测。跨平台推送配置会为逻辑目标编译各个可发送端点。
 
 QQ 官方管理员身份随后按事件场景拆分（`a6425b9c`）。C2C `superusers` 只接受可作为
 私聊目标的 `user_openid`；新增账号级 `group_superusers` 以群别名/群 OpenID 显式绑定
@@ -2483,3 +2489,12 @@ env、Docker 和 Unraid 配置无需迁移，真实 AppID 的联机验收仍留�
 传给同一个 `SeerTeamQueryService`，由它先读取玩家所属战队，再复用完整战队详情查询。
 没有复制旧 OneBot matcher、按昵称猜测身份或平台专用格式化；未加入战队、超时及
 无头连接异常都有明确结果。本项不增加配置、数据库、素材或依赖。
+
+B站登录二维码通知随后移出 OneBot 集成目录。登录服务不再通过
+`BotRouter.default_bot()` 猜测通知是否可送达；二维码和文字统一构造成
+`OutboundMessage`，交给 `AdminNoticeService` 与共享主动投递路径处理。组合函数同步
+去掉误导性的 `onebot` 命名，旧 `integrations.onebot.bilibili_auth` 文件直接删除，
+不保留兼容导入。这样只连接 QQ 官方 SDK 的进程不会再被错误判定为“没有机器人”，
+而没有管理员目标或主动发送权限时仍由统一投递层返回明确失败。官方单账号开发进程
+随后重新进入 `READY`；登录失效检查只报告“没有管理通知目标”，未再查找 OneBot
+实例，也没有向普通会话发送二维码。

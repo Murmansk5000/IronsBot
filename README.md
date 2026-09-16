@@ -156,7 +156,6 @@ startup_timeout_seconds = 15.0
 [bot.qq_official.accounts.example_bot]
 enabled = true
 required = false
-app_id = "你的 QQ 机器人 AppID"
 proactive_messages = false
 custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
@@ -178,14 +177,24 @@ superusers = []
 Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
-目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
+目标可填写当前官方账号下声明的别名或事件中的 OpenID，不能把 QQ 号当作 OpenID。开启
 `proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
 
+跨平台使用同一个真实群或用户时，可以在 `features.group_aliases` / `user_aliases`
+声明 OneBot 端点，再在官方账号的 `group_aliases` / `user_aliases` 复用同一个别名。
+一条全局 `features.group_policy` / `user_policy` 会展开到该逻辑目标的所有显式端点，
+不需要再起 `official_admin` 之类的平台专用名字。群事件里的 `member_openid` 必须在
+`group_member_aliases.<群别名>` 下声明，它只在对应群内有效，不能用于私聊发送。
+每个原生端点只能归属一个逻辑别名；同一群号、QQ 号或同一账号作用域内的 OpenID
+若被多个别名重复声明，严格配置加载会直接失败，而不是任意选择其中一个。
+
 `custom_keyboards` 默认关闭。只有腾讯后台已为该应用开通内邀的“自定义按钮”能力时
 才能设为 `true`。启用后，有限选项会附加最多 5 行、每行 5 个的指令按钮；按钮发送的
 动态会话 action 与手输序号共用同一个用户和会话绑定，不支持按钮的客户端仍可输入数字。
+用户也可以引用机器人的菜单消息后输入序号或命令；引用内容仅作为回复元数据保存，
+本次新输入仍经过相同的去重、权限、Feature 和会话路由，不会被静默忽略。
 
 远程图片通过 SDK URL 上传，本地渲染结果通过 SDK 分片上传，不再整体 Base64 编码。
 SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不猜测并缓存有效期；平台
@@ -194,17 +203,22 @@ SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不
 凭据只放环境变量：
 
 ```text
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=你的 AppID
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
 ```
 
 腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
 AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
-大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。
+大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_APP_ID_EXAMPLE_BOT_2` 和
+`QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。TOML 中的旧 `app_id` 和 `secret` 字段会被
+严格拒绝。
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
 运行日志只记录 TOML 账号别名；消息 ID、群 OpenID 和用户 OpenID 仅记录不可逆短摘要，
 便于关联同一次故障而不把平台原始标识写入日志。
+OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可逆摘要，不输出原始 QQ 号
+或群号。
 
 首次配置官方身份时，可临时在目标账号的 `features` 中加入
 `qq_official_identity_info`，然后私聊发送“官方身份”，或在目标群 @机器人发送
@@ -234,9 +248,16 @@ uv sync --extra qq-official
 uv run --no-sync python -m ironsbot
 ```
 
-默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
-`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
-明确报错。
+源码启动会先读取项目根目录的 `.env`，再读取
+`.env.<ENVIRONMENT>`（未设置时为 `.env.prod`）。系统、终端或容器中已经存在的环境变量
+优先级最高；环境专用文件覆盖基础 `.env`。例如本机开发可在终端设置
+`ENVIRONMENT=dev`，由应用自动读取被 Git 忽略的 `.env.dev`，无需逐项导入 Secret。
+行为配置仍由 `APP_CONFIG_PATH` 指向 TOML，所有密钥仍只放环境变量。
+
+源码的默认依赖集不包含该 SDK，因此从源码运行时必须使用上述 `qq-official` extra。
+正式发布的 Docker 镜像已经同时包含 OneBot/NapCat 与 QQ 官方运行组件，不需要另外寻找
+官方机器人专用镜像或传入 build arg。只有自行构建纯 OneBot 镜像时，才显式传入空的
+`--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略腾讯 SDK。
 
 当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
 `GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
@@ -279,8 +300,10 @@ uv run --no-sync python -m ironsbot
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
-  `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
+  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、`AI_KEY`、
+  按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
+  `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
 
 示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
 [配置布局与新增功能指南](docs/configuration-layout.md)，确认它应归入消息推送、赛尔实时无头查询、
@@ -291,12 +314,16 @@ uv run --no-sync python -m ironsbot
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
+DOCKER_REGISTRY_USERNAME=
+DOCKER_REGISTRY_TOKEN=
 ```
 
 每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和 `public`。
@@ -725,7 +752,7 @@ AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提�
 私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送；发送 `推送时间` 可修改可编辑推送的提醒时间。
 
-`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
+`.env`、`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
 ## 鸣谢
 

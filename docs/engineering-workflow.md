@@ -301,7 +301,7 @@ V5 的语义 owner、不会恢复的旧路径，以及 V5 上的验证证据。�
 18. 插件和 service 的公开 feature-policy 调用只能传递 `ActorRef` 与
     `ConversationRef`。`FeatureService` 不得拥有数值化群/用户 helper；OneBot
     TOML 别名和 feature bundle 仅由
-    `config.models.features.build_onebot_feature_service()` 编译。调用方必须使用
+    `config.models.features.build_feature_service()` 编译。调用方必须使用
     `is_feature_allowed`、`conversation_has_feature` 或 `is_message_blocked` 等
     类型化谓词。
     此规则不适用于赛尔米米号：`player_id`、排行榜事实的 `user_id` 和无头游戏
