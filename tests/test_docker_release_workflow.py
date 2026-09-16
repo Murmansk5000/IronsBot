@@ -30,6 +30,7 @@ CURRENT_ACTION_MAJORS = {
     "docker/metadata-action": 6,
     "docker/setup-buildx-action": 4,
 }
+PIP_AUDIT_TIMEOUT_MINUTES = 10
 
 
 def test_seer_password_deployment_docs_require_plaintext_input() -> None:
@@ -588,6 +589,8 @@ def test_runtime_python_baseline_is_consistent() -> None:
     )
     assert setup["with"]["python-version"] == "${{ env.PYTHON_VERSION }}"
     assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
+    assert audit["timeout-minutes"] == PIP_AUDIT_TIMEOUT_MINUTES
+    assert "--progress-spinner off --timeout 30" in audit["run"]
     version_argument = "PYTHON_VERSION=${{ env.PYTHON_VERSION }}"
     extra_argument = "IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}"
     assert version_argument in candidate["with"]["build-args"]
@@ -607,6 +610,8 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
     assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
+    assert audit["timeout-minutes"] == PIP_AUDIT_TIMEOUT_MINUTES
+    assert "--progress-spinner off --timeout 30" in audit["run"]
     assert "--fix" not in audit["run"]
     assert "--ignore-vuln" not in audit["run"]
     assert not audit.get("continue-on-error", False)
