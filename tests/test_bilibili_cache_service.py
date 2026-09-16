@@ -122,7 +122,29 @@ def test_dynamic_history_upgrades_version_two_database(tmp_path: Path) -> None:
     assert record.summary == ""
     assert not record.summary_generated_by_ai
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
+
+
+def test_dynamic_history_accepts_existing_version_four_database(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "history.sqlite"
+    history = SqliteBiliDynamicHistoryStore(path, 10)
+    history.save_snapshot(
+        DynamicHistorySnapshot(
+            item={"id_str": "dynamic-1"},
+            pub_ts=PUB_TS,
+            author_mid=AUTHOR_UID,
+            author_name="Seer",
+            brief="test dynamic",
+        )
+    )
+
+    reopened = SqliteBiliDynamicHistoryStore(path, 10)
+
+    assert reopened.get("dynamic-1") is not None
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
 
 
 def test_save_target_dynamic_history_builds_and_saves_snapshots(
