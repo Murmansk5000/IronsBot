@@ -13,6 +13,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+UNRAID_TEMPLATE = ROOT / "templates" / "ironsbot.xml"
+ENV_EXAMPLE = ROOT / ".env.example"
 DOCKERHUB_DESCRIPTION_WORKFLOW = (
     ROOT / ".github" / "workflows" / "dockerhub-description.yml"
 )
@@ -26,6 +28,17 @@ CURRENT_ACTION_MAJORS = {
     "docker/metadata-action": 6,
     "docker/setup-buildx-action": 4,
 }
+
+
+def test_seer_password_deployment_docs_require_plaintext_input() -> None:
+    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+    unraid_template = UNRAID_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "One plain-text password per player ID" in env_example
+    assert "设置明文密码" in env_example
+    assert "enter the plain-text password" in unraid_template
+    assert "填写明文密码" in unraid_template
+    assert "密码 MD5 环境变量" not in unraid_template
 
 
 def _bash() -> str:
