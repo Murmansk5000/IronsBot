@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import ObservationTime, remaining_observation_ttl
 from ironsbot.extensions.contracts import (
     CommandContext,
@@ -374,8 +375,8 @@ class PlayerLineupQueryServices:
             if not decision.allowed:
                 logger.warning(
                     "player lineup quota changed before successful record: "
-                    "actor=%s player=%s",
-                    actor,
+                    "actor_ref=%s player=%s",
+                    reference_digest(actor.id),
                     player_id,
                 )
         return result

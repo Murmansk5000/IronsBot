@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class QQOfficialRuntimeAccount:
     app_id: str
-    secret: str
+    secret: str = field(repr=False)
     required: bool = False
     custom_keyboards: bool = False
     label: str = ""
@@ -594,13 +594,13 @@ def _log_delivery_failure(
 ) -> None:
     logger.warning(
         "QQ Official reply failed: stage=%s account=%s kind=%s ref=%s "
-        "code=%s message=%s trace_id=%s",
+        "code=%s failure_kind=%s trace_id=%s",
         stage,
         account_label,
         incoming.conversation.kind,
         reference_digest(incoming.conversation.id),
         result.error_code,
-        result.error_message,
+        result.failure_kind.value if result.failure_kind is not None else None,
         result.trace_id,
     )
 

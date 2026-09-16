@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.config.models.messaging import BotRoutingConfig
 from ironsbot.config.onebot_references import OneBotReferenceResolver
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot import router as bot_router
 from ironsbot.integrations.onebot.router import BotRouter
 
@@ -128,3 +128,27 @@ def test_bot_router_disabled_without_default_bot_rejects_delivery(
 
     assert router.default_bot() is None
     assert router.for_conversation(_group(987654321)) is None
+
+
+def test_bot_router_unavailable_logs_use_identity_digests(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    messages: list[str] = []
+    monkeypatch.setattr(
+        bot_router.logger,
+        "warning",
+        lambda message, *args: messages.append(message.format(*args)),
+    )
+    router = _patch_router(
+        monkeypatch,
+        config=_routing_config(groups={}),
+        connected=[],
+    )
+
+    assert router.for_conversation(_group(987654321)) is None
+
+    rendered = "\n".join(messages)
+    assert "987654321" not in rendered
+    assert "111111111" not in rendered
+    assert reference_digest("987654321") in rendered
+    assert reference_digest("111111111") in rendered

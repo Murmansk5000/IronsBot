@@ -5,6 +5,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 
 from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
@@ -24,7 +25,10 @@ async def handle_update_dynamic_action(
         )
 
     try:
-        logger.info(f"superuser {event.user_id} manually refreshed Bilibili")
+        logger.info(
+            "superuser actor_ref={} manually refreshed Bilibili",
+            reference_digest(str(event.user_id)),
+        )
         await send_event_reply(
             matcher,
             event,
