@@ -233,6 +233,7 @@ class PeakSeasonRankSummary:
     standard: RankLookupResult
     wild: RankLookupResult
     expert: RankLookupResult
+    master: RankLookupResult
 
     @classmethod
     def empty(cls) -> "PeakSeasonRankSummary":
@@ -256,4 +257,5 @@ class PeakSeasonRankSummary:
             standard=item("standard_peak", "竞技赛季榜", "段位分"),
             wild=item("wild_peak", "狂野赛季榜", "段位分"),
             expert=item("expert_peak", "专家赛季榜", "专家积分"),
+            master=item("master_peak", "大师赛季榜", "段位分"),
         )
