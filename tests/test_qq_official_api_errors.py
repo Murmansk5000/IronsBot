@@ -68,3 +68,21 @@ def test_exception_classification_uses_typed_fields(
 
     assert not result.delivered
     assert result.failure_kind is kind
+
+
+def test_wrapped_api_error_preserves_structured_failure_fields() -> None:
+    api_error = QQOfficialApiError(
+        http_status=400,
+        api_code="11255",
+        message="target unavailable",
+        trace_id="trace-wrapped",
+    )
+    sdk_error = RuntimeError()
+    sdk_error.__cause__ = api_error
+    result = qq_official_exception_result(sdk_error)
+
+    assert not result.delivered
+    assert result.error_code == "11255"
+    assert result.error_message == "target unavailable"
+    assert result.trace_id == "trace-wrapped"
+    assert result.failure_kind is DeliveryFailureKind.PERMANENT
