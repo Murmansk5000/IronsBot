@@ -169,6 +169,43 @@ def test_runtime_rejects_duplicate_app_ids(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
+def test_runtime_rejects_app_ids_that_collide_after_normalization(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            with pytest.raises(
+                ValueError,
+                match="duplicate official application identifier",
+            ):
+                QQOfficialRuntime(
+                    (
+                        QQOfficialRuntimeAccount("same-app", "secret-a"),
+                        QQOfficialRuntimeAccount(" same-app ", " secret-b "),
+                    ),
+                    http_client=client,
+                    session_root=tmp_path,
+                )
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("app_id", "secret", "message"),
+    [
+        ("   ", "secret", "AppID must not be empty"),
+        ("app", "   ", "secret must not be empty"),
+    ],
+)
+def test_runtime_account_rejects_empty_credentials(
+    app_id: str,
+    secret: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        QQOfficialRuntimeAccount(app_id, secret)
+
+
 def test_runtime_claims_message_before_business_dispatch(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
