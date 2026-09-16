@@ -105,6 +105,27 @@ def format_peak_line(  # noqa: PLR0913
     )
 
 
+def format_master_peak_line(result: RankLookupResult) -> str:
+    score = result.score
+    score_text = _format_peak_rating_score(score) if score is not None else ""
+    cached_fallback = format_rank_cache_fallback(result)
+    if cached_fallback:
+        rank_text = f"{format_peak_rank_text(result.rank)}（{cached_fallback}）"
+    elif result.failure:
+        rank_text = f"赛季榜{result.failure}"
+    elif result.rank is not None:
+        rank_text = format_peak_rank_text(result.rank)
+    elif result.queried:
+        rank_text = (
+            f"赛季榜前{result.searched_limit}名未确认"
+            if result.searched_limit > 0
+            else "赛季榜未确认"
+        )
+    else:
+        rank_text = "赛季榜未查询"
+    return f"大师：{join_metric_parts(score_text, rank_text)}"
+
+
 def format_compact_peak_section(  # noqa: PLR0913
     peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
@@ -238,6 +259,7 @@ def format_compact_peak_section(  # noqa: PLR0913
                 win_rate_key="peak_expert_win_rate",
                 match_key="peak_expert_matches",
             ),
+            format_master_peak_line(peak_rank_summary.master),
         ]
     )
     return "\n".join(lines)
