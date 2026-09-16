@@ -845,6 +845,55 @@ features = ["about"]
     ]
 
 
+def test_onebot_deployment_environment_overrides_toml(tmp_path: Path) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.onebot]
+enabled = true
+send_messages = true
+identity_verification = false
+
+[bot.qq_official.accounts.example_bot]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        path,
+        env={
+            "ONEBOT_ENABLED": "true",
+            "ONEBOT_SEND_MESSAGES": "false",
+            "ONEBOT_IDENTITY_VERIFICATION": "true",
+            "ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT": "123456789",
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+        },
+    )
+
+    assert settings.bot.onebot.enabled
+    assert not settings.bot.onebot.send_messages
+    assert settings.bot.onebot.identity_verification
+    assert settings.bot.onebot.trusted_official_bots == {
+        "example_bot": 123456789
+    }
+
+
+def test_onebot_trusted_bot_environment_rejects_undeclared_account(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text("[bot.onebot]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="UNDECLARED"):
+        load_settings(
+            path,
+            env={
+                "ONEBOT_TRUSTED_OFFICIAL_BOT_UNDECLARED": "123456789",
+            },
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "value", "environment_name"),
     [

@@ -22,6 +22,15 @@ DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
 QQ_OFFICIAL_APP_ID_ENV_PREFIX = "QQ_OFFICIAL_APP_ID_"
 QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
+ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX = "ONEBOT_TRUSTED_OFFICIAL_BOT_"
+_ONEBOT_ENV_PATHS = (
+    ("ONEBOT_ENABLED", ("bot", "onebot", "enabled")),
+    ("ONEBOT_SEND_MESSAGES", ("bot", "onebot", "send_messages")),
+    (
+        "ONEBOT_IDENTITY_VERIFICATION",
+        ("bot", "onebot", "identity_verification"),
+    ),
+)
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
     ("AI_KEY", ("ai", "api_key")),
@@ -101,6 +110,78 @@ def _inject_qq_official_credentials(
             raise ValueError(msg)
         if present:
             raw_account.update(credentials)
+
+
+def _inject_onebot_deployment_settings(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    for env_name, path in _ONEBOT_ENV_PATHS:
+        if (value := env.get(env_name)) is not None:
+            _set_environment_override(data, path=path, value=value)
+
+    bot = data.setdefault("bot", {})
+    if not isinstance(bot, dict):
+        msg = "configuration table bot must be a TOML table"
+        raise TypeError(msg)
+    onebot = bot.setdefault("onebot", {})
+    if not isinstance(onebot, dict):
+        msg = "configuration table bot.onebot must be a TOML table"
+        raise TypeError(msg)
+    trusted = onebot.setdefault("trusted_official_bots", {})
+    if not isinstance(trusted, dict):
+        msg = (
+            "configuration table bot.onebot.trusted_official_bots "
+            "must be a TOML table"
+        )
+        raise TypeError(msg)
+
+    accounts = (
+        bot.get("qq_official", {}).get("accounts", {})
+        if isinstance(bot.get("qq_official"), dict)
+        else {}
+    )
+    declared_names = (
+        {str(name).upper(): str(name) for name in accounts}
+        if isinstance(accounts, dict)
+        else {}
+    )
+    environment_names = {
+        key[len(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX) :].upper()
+        for key, value in env.items()
+        if key.startswith(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX)
+        and str(value).strip()
+    }
+    unknown_names = sorted(environment_names - declared_names.keys())
+    if unknown_names:
+        raise ValueError(
+            "trusted OneBot official bot IDs reference undeclared accounts: "
+            + ", ".join(unknown_names)
+        )
+    for environment_name in environment_names:
+        alias = declared_names[environment_name]
+        trusted[alias] = env[
+            ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX + environment_name
+        ]
+
+
+def _set_environment_override(
+    data: dict[str, Any],
+    *,
+    path: Sequence[str],
+    value: str,
+) -> None:
+    table = data
+    for part in path[:-1]:
+        child = table.setdefault(part, {})
+        if not isinstance(child, dict):
+            msg = (
+                f"configuration table {'.'.join(path[:-1])} must be a TOML table"
+            )
+            raise TypeError(msg)
+        table = child
+    table[path[-1]] = value
 
 
 class ConfigFileNotFoundError(FileNotFoundError):
@@ -283,6 +364,7 @@ def load_settings(
             path=field_path,
             env=values,
         )
+    _inject_onebot_deployment_settings(data, env=values)
     _inject_qq_official_credentials(data, env=values)
     _inject_player_account_passwords(data, env=values)
     return Settings.model_validate(data)

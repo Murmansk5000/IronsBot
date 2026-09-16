@@ -101,6 +101,11 @@ services:
     environment:
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
+      # Optional Unraid/deployment overrides for [bot.onebot].
+      ONEBOT_ENABLED: "true"
+      ONEBOT_SEND_MESSAGES: "true"
+      ONEBOT_IDENTITY_VERIFICATION: "false"
+      # ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT: "123456789"
       # Optional QQ Official Bot credentials. The suffix is the uppercase
       # account alias under [bot.qq_official.accounts.<alias>].
       # QQ_OFFICIAL_APP_ID_EXAMPLE_BOT: "change-me"
@@ -267,6 +272,10 @@ and `logs/` paths live under the current working directory.
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+ONEBOT_ENABLED=true
+ONEBOT_SEND_MESSAGES=true
+ONEBOT_IDENTITY_VERIFICATION=false
+ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY=
@@ -284,8 +293,12 @@ DOCKER_REGISTRY_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. |
-| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
+| `ONEBOT_ENABLED` | Optional deployment override for `bot.onebot.enabled`. |
+| `ONEBOT_SEND_MESSAGES` | Optional deployment override for OneBot outbound. It is ignored when official credentials are active because NapCat is then forced silent. |
+| `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation. |
+| `ONEBOT_TRUSTED_OFFICIAL_BOT_<ACCOUNT_ALIAS>` | Numeric QQ of the declared official account as seen by NapCat. Required for each active account when identity observation is enabled. |
+| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one declared `[bot.qq_official.accounts.<alias>]`; a complete AppID/Secret pair activates the account and makes QQ Official the only outbound platform. |
+| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret paired with the AppID. Each account obtains and refreshes its own AccessToken. |
 | `AI_KEY` | AI chat API key. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
@@ -302,8 +315,10 @@ adjust `bot.qq_official.startup_timeout_seconds` when the default 15 seconds is
 not suitable. Neither setting contains a secret or belongs in Unraid variables.
 
 Published Docker images include the QQ Official runtime together with the
-OneBot/NapCat runtime, so the same image supports either transport or both at
-once. A source checkout uses `uv sync --extra qq-official` followed by
+OneBot/NapCat runtime. Complete official credentials select QQ Official as the
+only outbound transport and force NapCat silent; failures never fall back to
+NapCat. Without official credentials, `bot.onebot.send_messages` controls
+OneBot outbound. A source checkout uses `uv sync --extra qq-official` followed by
 `uv run --no-sync python -m ironsbot`. A custom OneBot-only image may explicitly
 set `--build-arg IRONSBOT_RUNTIME_EXTRA=` to omit the optional SDK dependency.
 

@@ -69,10 +69,30 @@ plugin_manifest = "full"
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
+[bot.onebot]
+# Default: true
+# EN: Process connected NapCat / OneBot v11 events.
+# ZH: 是否处理已连接的 NapCat / OneBot v11 事件。
+enabled = true
+# Default: true
+# EN: Allow OneBot replies and proactive messages only when no complete QQ
+#     Official credential pair is present. Official credentials always win.
+# ZH: 仅在没有完整 QQ 官方机器人凭据时允许 OneBot 回复和主动消息；
+#     只要存在完整官方凭据，NapCat 就会被强制静默。
+send_messages = true
+# Default: false
+# EN: Silently correlate official group member OpenIDs with QQ numbers observed
+#     by NapCat. Requires active official credentials and trusted bot IDs below.
+# ZH: 由 NapCat 静默观察官方群回复，关联群 member_openid 与 QQ 号；
+#     需要完整官方凭据以及下方可信官方机器人 QQ 号。
+identity_verification = false
+
+[bot.onebot.trusted_official_bots]
+# EN: Official account alias -> numeric QQ ID seen by NapCat.
+# ZH: 官方账号别名 -> NapCat 事件中看到的官方机器人数字 QQ 号。
+# example_bot = 123456789
+
 [bot.qq_official]
-# EN: Enable one or more QQ Official Bot accounts in this process.
-# ZH: 在同一进程启用一个或多个 QQ 官方机器人账号。
-enabled = false
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
 sandbox = false
@@ -82,22 +102,20 @@ startup_timeout_seconds = 15.0
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
-#     The same alias selects the target in `关联官方账号 <alias>`. Set its
-#     AppID and AppSecret through QQ_OFFICIAL_APP_ID_EXAMPLE_BOT and
-#     QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
+#     A complete AppID and AppSecret environment pair activates the account and
+#     makes QQ Official the only outbound platform. No TOML enabled flag exists.
 # ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
-#     OpenID 命名空间、权限和发送路由；`关联官方账号 <账号别名>` 也使用此别名；
-#     此示例的 AppID 和 AppSecret 分别使用 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT
-#     和 QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
+#     OpenID 命名空间、权限和发送路由。完整的 AppID 与 AppSecret 环境变量
+#     会激活该账号，并使 QQ 官方成为唯一出站平台；TOML 不再使用 enabled。
 [bot.qq_official.accounts.example_bot]
-enabled = false
 # EN: A required account prevents application startup when it cannot become ready.
 #     Optional accounts remain observable as degraded and may recover later.
 # ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
 required = false
-# EN: Allow SDK-level proactive sends. Keep disabled until the application has
-#     the required platform permission. Team-resource subscriptions require it.
-# ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
+# EN: Allow official proactive sends such as schedules and Bilibili pushes.
+#     Users may disable proactive messages in QQ; platform rate limits apply.
+# ZH: 允许官方机器人发送定时提醒、B站动态等主动消息；用户可在 QQ
+#     客户端关闭主动消息，并且发送仍受平台频率限制。
 proactive_messages = false
 # EN: Enable custom command keyboards only after Tencent grants the account's
 #     invite-only custom-button capability. Text choices always remain available.
