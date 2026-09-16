@@ -8,6 +8,7 @@ from typing import NamedTuple, overload
 
 import httpx
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.tasks import TaskSpawner
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.core.connect import (
@@ -165,7 +166,7 @@ class SeerGame:
 
     async def _send_heartbeat(self) -> None:
         """心跳回调，由连接层周期性调用。"""
-        logger.debug(f"{self.user_id}：发送心跳包")
+        logger.debug("headless heartbeat: worker_ref=%s", self._worker_ref)
         with self.operations.track("心跳", source="无头心跳", background=True):
             await self.get_user_info(self.user_id)
 
@@ -240,8 +241,12 @@ class SeerGame:
                 )
                 if len(res) == 0:
                     raise RuntimeError("登录失败，响应为空")
-            except BaseException as e:
-                logger.error(f"{self.user_id}：登录失败，原因 {e}")
+            except BaseException as error:
+                logger.error(
+                    "headless login failed: worker_ref=%s error_type=%s",
+                    self._worker_ref,
+                    type(error).__name__,
+                )
                 impl.disconnect()
                 raise
 
@@ -278,14 +283,14 @@ class SeerGame:
         if semantic:
             reason = f"{reason}\n对应语义请求：{semantic}"
         logger.warning(
-            "%s：连接已断开%s",
-            self.user_id,
+            "headless disconnected: worker_ref=%s%s",
+            self._worker_ref,
             f" ({operation})" if operation else "",
         )
         if request_history_log:
             logger.warning(
-                "%s：断线前实际封包历史：%s",
-                self.user_id,
+                "headless request history before disconnect: worker_ref=%s history=%s",
+                self._worker_ref,
                 request_history_log.replace("\n", "；"),
             )
         await self._notify_state(connected=False, reason=reason, source="无头连接")
@@ -320,11 +325,14 @@ class SeerGame:
         if self._shutdown_requested or self._reconnect_retries == 0:
             return
         if self._reconnect_task is not None and not self._reconnect_task.done():
-            logger.debug(f"{self.user_id}：重连任务已在运行，跳过")
+            logger.debug(
+                "headless reconnect already active: worker_ref=%s",
+                self._worker_ref,
+            )
             return
         self._reconnect_task = self._spawn(
             self._auto_reconnect(),
-            name=f"headless-reconnect-{self.user_id}",
+            name=f"headless-reconnect-{self._worker_ref}",
         )
 
     async def _auto_reconnect(self) -> None:
@@ -341,8 +349,12 @@ class SeerGame:
             attempt += 1
             retries_label = "∞" if infinite else str(self._reconnect_retries)
             logger.info(
-                f"{self.user_id}：将在 {delay:.1f}s 后尝试重连 "
-                f"({attempt}/{retries_label})"
+                "headless reconnect scheduled: worker_ref=%s delay=%.1fs "
+                "attempt=%s/%s",
+                self._worker_ref,
+                delay,
+                attempt,
+                retries_label,
             )
 
             try:
@@ -356,11 +368,17 @@ class SeerGame:
                 return
             except Exception:
                 logger.warning(
-                    f"{self.user_id}：重连失败 ({attempt}/{retries_label})",
+                    "headless reconnect failed: worker_ref=%s attempt=%s/%s",
+                    self._worker_ref,
+                    attempt,
+                    retries_label,
                     exc_info=True,
                 )
             else:
-                logger.info(f"{self.user_id}：重连成功")
+                logger.info(
+                    "headless reconnect succeeded: worker_ref=%s",
+                    self._worker_ref,
+                )
                 await self._notify_state(
                     connected=True,
                     reason="",
@@ -371,8 +389,14 @@ class SeerGame:
             delay = min(delay * 2, self._reconnect_delay_max)
 
         logger.error(
-            f"{self.user_id}：已达最大重试次数 ({self._reconnect_retries})，放弃重连"
+            "headless reconnect exhausted: worker_ref=%s retries=%s",
+            self._worker_ref,
+            self._reconnect_retries,
         )
+
+    @property
+    def _worker_ref(self) -> str:
+        return reference_digest(str(self.user_id))
 
     def _stop_reconnect(self) -> None:
         if self._reconnect_task is not None and not self._reconnect_task.done():
