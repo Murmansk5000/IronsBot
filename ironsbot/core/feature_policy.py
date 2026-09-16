@@ -78,12 +78,12 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(
-            conversation,
-            self._default_features(
+        return feature in self.group_features.get(conversation, frozenset()) or (
+            feature
+            in self._default_features(
                 conversation.platform,
                 conversation.account_id,
-            ),
+            )
         )
 
     def _default_features(
@@ -108,8 +108,10 @@ class FeatureService:
         if not is_supported_message_actor(actor, conversation):
             return False
         if conversation.kind == "group":
-            return self.conversation_has_feature(conversation, feature) or (
-                self.superuser_bypass and self.is_actor_superuser(actor)
+            return (
+                self.conversation_has_feature(conversation, feature)
+                or self.actor_has_feature(actor, feature)
+                or (self.superuser_bypass and self.is_actor_superuser(actor))
             )
         if conversation.kind == "private":
             return self.is_actor_feature_allowed(actor, feature)
@@ -143,6 +145,13 @@ class FeatureService:
             if feature in features
         ]
 
+    def private_actors_for_feature(self, feature: str) -> list[ActorRef]:
+        """Return feature actors that are valid direct-message destinations."""
+
+        return [
+            actor for actor in self.actors_for_feature(feature) if actor.kind == "user"
+        ]
+
     def superuser_actors(self) -> list[ActorRef]:
         return sorted(
             self.superusers,
@@ -159,10 +168,10 @@ class FeatureService:
 
         return [actor for actor in self.superuser_actors() if actor.kind == "user"]
 
-    def actors_with_superusers(self, feature: str) -> list[ActorRef]:
+    def private_actors_with_superusers(self, feature: str) -> list[ActorRef]:
         """Return private feature actors and private superusers once each."""
 
-        actors = self.actors_for_feature(feature)
+        actors = self.private_actors_for_feature(feature)
         actors.extend(
             actor for actor in self.private_superuser_actors() if actor not in actors
         )
