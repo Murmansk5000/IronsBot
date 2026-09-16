@@ -17,6 +17,7 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import (
     BinaryImagePart,
+    DeliveryFailureKind,
     MentionPart,
     OutboundMessage,
     RemoteImagePart,
@@ -455,7 +456,10 @@ async def test_push_failure_preserves_diagnostics(
         NOW,
         capabilities=replace(RESTRICTED_CAPABILITIES, can_send_proactively=True),
         failure=SendResult(
-            delivered=False, error_code="fake_rejected", error_message="test error"
+            delivered=False,
+            error_code="fake_rejected",
+            error_message="sensitive transport detail",
+            failure_kind=DeliveryFailureKind.PERMANENT,
         ),
     )
     result = await _delivery(
@@ -463,6 +467,7 @@ async def test_push_failure_preserves_diagnostics(
     ).send(OutboundMessage((IMAGE,)), (GROUP,), action_name="test", interval_seconds=0)
     assert result.failed == (GROUP,)
     assert "fake_rejected" in caplog.text
-    assert "test error" in caplog.text
+    assert "failure_kind=permanent" in caplog.text
     assert "trace_id=fake-trace-1" in caplog.text
+    assert "sensitive transport detail" not in caplog.text
     assert transport.uploads == []

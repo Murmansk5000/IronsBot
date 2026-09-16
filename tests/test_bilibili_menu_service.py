@@ -1,8 +1,16 @@
 import asyncio
+import logging
 from pathlib import Path
 
+import pytest
+
 from ironsbot.config.models.features import FeatureConfig
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    reference_digest,
+)
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
@@ -123,6 +131,7 @@ def test_build_dynamic_detail_for_selection_handles_missing_record(
 
 def test_bilibili_service_owns_dynamic_query_and_history(
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     service = build_test_bilibili_service(
         tmp_path,
@@ -156,10 +165,13 @@ def test_bilibili_service_owns_dynamic_query_and_history(
         )
 
     service.fetch_feed = fetch_feed
+    actor = ActorRef(Platform.ONEBOT, "2001")
+    conversation = ConversationRef(Platform.ONEBOT, "group", "1001")
+    caplog.set_level(logging.INFO, logger="ironsbot.services.bilibili.service")
     result = asyncio.run(
         service.query_dynamic_menu(
-            actor=ActorRef(Platform.ONEBOT, "2001"),
-            conversation=ConversationRef(Platform.ONEBOT, "group", "1001"),
+            actor=actor,
+            conversation=conversation,
         )
     )
 
@@ -167,6 +179,10 @@ def test_bilibili_service_owns_dynamic_query_and_history(
     assert result.dynamic_ids == ("dynamic-1",)
     assert "赛尔号（UID：912345678）" in result.prompt
     assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
+    assert actor.id not in caplog.text
+    assert conversation.id not in caplog.text
+    assert reference_digest(actor.id) in caplog.text
+    assert reference_digest(conversation.id) in caplog.text
 
 
 def test_history_detail_generates_and_reuses_persisted_summary(

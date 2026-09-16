@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import Counter
 from itertools import cycle
 from types import SimpleNamespace
@@ -17,7 +18,7 @@ from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarge
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from pytest import MonkeyPatch
+    from pytest import LogCaptureFixture, MonkeyPatch
 
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.rank import RankService
@@ -156,6 +157,22 @@ async def test_refresh_chooses_total_page_budget_before_target_selection(
 
     assert requested_limits == [1]
     assert result.total == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_log_redacts_worker_account(
+    monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
+) -> None:
+    worker_id = 10000
+    caplog.set_level(logging.INFO)
+    service = _service(_targets(1), _Rank(), monkeypatch)
+
+    result = await service.refresh(_games(1), background=True)
+
+    assert result.success == 1
+    assert str(worker_id) not in caplog.text
+    assert "worker_ref=" in caplog.text
 
 
 @pytest.mark.asyncio

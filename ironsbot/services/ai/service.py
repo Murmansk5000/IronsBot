@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.ai.client import AiRequestTimeoutError
 from ironsbot.services.ai.history import (
     HistoryMessage,
@@ -160,9 +161,9 @@ class AiService:
                 return None
 
             logger.info(
-                "AI intent action %s classified %s: %r",
+                "AI intent action %s classified actor_ref=%s: %r",
                 action.id or "<unnamed>",
-                actor,
+                reference_digest(actor.id),
                 completion.reply,
             )
             if reply_is_yes(completion.reply):
