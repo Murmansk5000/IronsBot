@@ -7,6 +7,7 @@ from ironsbot.core.outbound import DeliveryFailureKind
 from ironsbot.integrations.qq_official.api_errors import (
     QQOfficialApiError,
     QQOfficialHttpClient,
+    QQOfficialPartialDeliveryError,
     qq_official_exception_result,
 )
 
@@ -86,3 +87,23 @@ def test_wrapped_api_error_preserves_structured_failure_fields() -> None:
     assert result.error_message == "target unavailable"
     assert result.trace_id == "trace-wrapped"
     assert result.failure_kind is DeliveryFailureKind.PERMANENT
+
+
+def test_partial_delivery_is_uncertain_and_preserves_api_fields() -> None:
+    api_error = QQOfficialApiError(
+        http_status=400,
+        api_code="11255",
+        message="target unavailable",
+        trace_id="trace-partial",
+    )
+    partial = QQOfficialPartialDeliveryError("first-message")
+    partial.__cause__ = api_error
+
+    result = qq_official_exception_result(partial)
+
+    assert not result.delivered
+    assert result.message_id == "first-message"
+    assert result.error_code == "11255"
+    assert result.error_message == "QQ Official message was only partially delivered"
+    assert result.trace_id == "trace-partial"
+    assert result.failure_kind is DeliveryFailureKind.UNCERTAIN

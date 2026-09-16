@@ -36,6 +36,14 @@ class QQOfficialApiError(RuntimeError):
         self.trace_id = trace_id
 
 
+class QQOfficialPartialDeliveryError(RuntimeError):
+    """At least one payload was accepted before a later payload failed."""
+
+    def __init__(self, message_id: str) -> None:
+        self.message_id = message_id
+        super().__init__("QQ Official message was only partially delivered")
+
+
 @dataclass(frozen=True, slots=True)
 class QQOfficialHttpClient:
     """Reject failed responses with fields the SDK currently discards."""
@@ -72,6 +80,19 @@ class QQOfficialHttpClient:
 
 
 def qq_official_exception_result(error: Exception) -> SendResult:
+    if isinstance(error, QQOfficialPartialDeliveryError):
+        api_error = _find_api_error(error)
+        return SendResult(
+            delivered=False,
+            message_id=error.message_id,
+            error_code=(
+                api_error.api_code if api_error is not None else "partial_delivery"
+            ),
+            error_message=str(error),
+            trace_id=api_error.trace_id if api_error is not None else None,
+            failure_kind=DeliveryFailureKind.UNCERTAIN,
+        )
+
     api_error = _find_api_error(error)
     if api_error is not None:
         return SendResult(
