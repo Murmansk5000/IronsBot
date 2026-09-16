@@ -247,7 +247,7 @@ def test_player_ownership_preserves_literal_command_prefix(
     context = command_context(event)
     matcher = player_reference_input_matcher((prefix,), lambda *_: False)
     actual = (
-        asyncio.run(_is_binding_command(event, {}))
+        asyncio.run(_is_binding_command(event))
         if prefix == "绑定米米号"
         else extract_player_query_arg(text) is not None
     )
@@ -272,7 +272,7 @@ def test_player_ownership_preserves_literal_command_prefix(
     "target",
     ["numeric", "alias", "member", "bot", "mixed", "multiple", "unbound", "reply"],
 )
-async def test_installed_player_rules_admit_member_targets_and_enforce_feature(  # noqa: PLR0912 - input matrix
+async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
     prefix: str,
     index: int,
     target: str,
@@ -325,19 +325,15 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
     state: dict[str, Any] = {}
     admitted = enabled and not (target == "bot" and prefix == "成就榜")
     assert await rule(cast("Any", None), event, state) is admitted
-    if not admitted or prefix == "绑定米米号":
+    if not admitted or prefix in {"绑定米米号", "米米号"}:
         return
-    if prefix == "米米号":
-        resolved = state[player.PLAYER_TARGET_RESOLUTION_KEY]
-        player_id = resolved.player_id
-    else:
-        key = (
-            rank_list.RANK_PLAYER_COMMAND_KEY
-            if prefix == "成就榜"
-            else player_shortcuts._SHORTCUT_COMMAND_KEY
-        )
-        resolved = state[key]
-        player_id = resolved.command.player_id if resolved.command is not None else None
+    key = (
+        rank_list.RANK_PLAYER_COMMAND_KEY
+        if prefix == "成就榜"
+        else player_shortcuts._SHORTCUT_COMMAND_KEY
+    )
+    resolved = state[key]
+    player_id = resolved.command.player_id if resolved.command is not None else None
     if target in {"mixed", "multiple", "unbound"}:
         assert player_id is None
         assert resolved.error
