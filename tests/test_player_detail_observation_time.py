@@ -90,6 +90,7 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         current_peak_sub_key=lambda: 7,
         fetch_player_summary=AsyncMock(return_value=collection),
         fetch_peak_summary=AsyncMock(return_value=peak),
+        fetch_master_peak_summary=AsyncMock(return_value=peak),
         fetch_autocard_summary=AsyncMock(return_value=result),
     )
     base_snapshot = None
@@ -158,10 +159,11 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
             for query in (
                 rank.fetch_player_summary,
                 rank.fetch_peak_summary,
+                rank.fetch_master_peak_summary,
                 rank.fetch_autocard_summary,
             )
         )
-        == 1
+        == (2 if kind == "peak" else 1)
     )
     if base_snapshot is not None:
         game.get_user_info.assert_not_awaited()
@@ -189,6 +191,7 @@ async def test_failed_rank_target_does_not_hide_other_data_time(
         current_peak_sub_key=lambda: 7,
         fetch_player_summary=AsyncMock(return_value=collection),
         fetch_peak_summary=AsyncMock(return_value=peak),
+        fetch_master_peak_summary=AsyncMock(return_value=peak),
     )
     monkeypatch.setattr(
         "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",

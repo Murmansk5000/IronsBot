@@ -59,7 +59,7 @@ class RankExclusionPolicy:
         for rank_key, spec in GLOBAL_RANKS.items():
             if spec.key != key:
                 continue
-            if spec.peak_season_sub_key or spec.sub_key == sub_key:
+            if spec.season_limited or spec.sub_key == sub_key:
                 return rank_key
         return None
 
