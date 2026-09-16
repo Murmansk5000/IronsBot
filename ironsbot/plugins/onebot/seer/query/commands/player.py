@@ -1,23 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.core.commands import parse_confirmation
-from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import (
-    BOT_COMMAND_ARG_KEY,
     affix_command,
     explicit_command,
     member_target_command,
@@ -27,286 +22,31 @@ from ironsbot.services.identity_link_commands import (
     IdentityLinkCommands,
 )
 from ironsbot.services.portable_player_commands import build_portable_player_operations
-from ironsbot.services.seer.ids import (
-    PLAYER_ID_ERROR_MESSAGE,
-)
-from ironsbot.services.seer.player_binding import PlayerBindingState
-from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailExtensionRegistry,
-)
-from ironsbot.services.seer.player_id_resolver import (
-    PlayerIdResolution,
-    PlayerIdResolver,
-)
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import (
     extract_player_binding_arg,
     extract_player_query_arg,
 )
-from ironsbot.services.seer.player_service import (
-    PendingPlayerQuery,
-    PlayerQueryResult,
-)
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player_context import (
-    PLAYER_BINDING_NAMESPACE,
-    PLAYER_BINDING_PENDING_KEY,
-    PLAYER_BINDING_REPLACEMENT_KEY,
-    PLAYER_ID_KEY,
-    PLAYER_QUERY_IS_EXPLICIT_KEY,
-    PLAYER_TARGET_RESOLUTION_KEY,
-)
-from .player_detail_conversation import (
-    begin_player_detail_conversation,
-    send_player_info_with_detail_prompt,
-)
-from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
-    from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.services.seer.player_service import PlayerService
+    from ironsbot.services.portable_reply import PortableOperation
 
 
-@dataclass(frozen=True, slots=True)
-class PlayerCommandDependencies:
-    player: PlayerService
-    features: FeatureService
-    detail_extensions: PlayerDetailExtensionRegistry = field(
-        default_factory=PlayerDetailExtensionRegistry
-    )
-    player_id_resolver: PlayerIdResolver | None = None
-
-
-def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
-    _ = player_id
-    return parse_confirmation(text)
-
-
-async def prompt_for_unbound_player_id(
-    _dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    await finish_event_reply(
-        matcher,
-        event,
-        unbound_player_shortcut_message(),
+async def _is_player_query_command(event: Event) -> bool:
+    return isinstance(event, MessageEvent) and (
+        extract_player_query_arg(event.get_plaintext()) is not None
     )
 
 
-async def _is_player_id_query(
-    dependencies: PlayerCommandDependencies,
-    event: Event,
-    state: T_State,
-) -> bool:
-    if not isinstance(event, MessageEvent):
-        return False
-    arg = extract_player_query_arg(event.get_plaintext())
-    if arg is None:
-        return False
-    player_reference = arg or None
-
-    target = resolve_player_target(
-        event,
-        player_reference=player_reference,
-        resolver=dependencies.player_id_resolver,
+async def _is_binding_command(event: Event) -> bool:
+    return isinstance(event, MessageEvent) and (
+        extract_player_binding_arg(event.get_plaintext()) is not None
     )
-    if arg and not arg.isdecimal() and target.player_id is None:
-        context = message_input_context(event)
-        resolver = dependencies.player_id_resolver
-        if resolver is None or not resolver.has_known_reference(
-            arg, context.message.actor, context.message.conversation
-        ):
-            return False
-    state[PLAYER_TARGET_RESOLUTION_KEY] = target
-    state[PLAYER_QUERY_IS_EXPLICIT_KEY] = bool(arg)
-    return True
-
-
-async def _is_binding_command(event: Event, state: T_State) -> bool:
-    argument = extract_player_binding_arg(event.get_plaintext())
-    if argument is None:
-        return False
-    state[BOT_COMMAND_ARG_KEY] = argument
-    return True
 
 
 async def _is_private_message(event: Event) -> bool:
     return isinstance(event, PrivateMessageEvent)
-
-
-async def validate_player_id(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    target = state.get(PLAYER_TARGET_RESOLUTION_KEY)
-    if not isinstance(target, PlayerIdResolution):
-        await finish_event_reply(matcher, event, PLAYER_ID_ERROR_MESSAGE)
-        return
-    if target.error is not None:
-        await finish_event_reply(matcher, event, target.error)
-        return
-    if target.player_id is None:
-        await prompt_for_unbound_player_id(dependencies, matcher, event)
-        return
-    state[PLAYER_ID_KEY] = target.player_id
-    state[PLAYER_QUERY_IS_EXPLICIT_KEY] = target.offer_binding
-
-
-async def handle_player(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
-    await begin_player_detail_conversation(
-        dependencies.player,
-        dependencies.detail_extensions,
-        dependencies.features,
-        matcher,
-        event,
-    )
-    result = await dependencies.player.query(
-        int(state[PLAYER_ID_KEY]),
-        actor=message_input_context(event).message.actor,
-        explicit=explicit,
-        conversation=message_input_context(event).message.conversation,
-    )
-    await _handle_player_query_result(
-        dependencies,
-        matcher,
-        event,
-        state,
-        result,
-    )
-
-
-async def _handle_player_query_result(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-    result: PlayerQueryResult,
-) -> None:
-    if result.message:
-        await finish_event_reply(matcher, event, result.message)
-        return
-    pending = result.pending
-    if pending is None:
-        return
-    if result.offer_binding:
-        state[PLAYER_BINDING_PENDING_KEY] = pending
-        if result.binding_replacement is not None:
-            state[PLAYER_BINDING_REPLACEMENT_KEY] = result.binding_replacement
-        else:
-            state.pop(PLAYER_BINDING_REPLACEMENT_KEY, None)
-        await enter_event_reply_conversation(
-            matcher,
-            event,
-            namespace=PLAYER_BINDING_NAMESPACE,
-            handlers=[bind_async(handle_player_binding_choice, dependencies)],
-            reply_check=lambda reply: (
-                _parse_pending_binding_choice(
-                    reply.get_plaintext(),
-                    pending.player_id,
-                )
-                is not None
-            ),
-            prompt=dependencies.player.binding_offer(
-                pending,
-                replacement=result.binding_replacement,
-            ),
-        )
-    await _send_pending_player_query(
-        dependencies,
-        matcher,
-        event,
-        state,
-        pending,
-    )
-
-
-async def handle_player_binding_choice(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    pending = state.get(PLAYER_BINDING_PENDING_KEY)
-    if not isinstance(pending, PendingPlayerQuery):
-        return
-    choice = _parse_pending_binding_choice(
-        event.get_plaintext(),
-        pending.player_id,
-    )
-    if choice is None:
-        return
-    replacement = state.get(PLAYER_BINDING_REPLACEMENT_KEY)
-    dependencies.player.save_binding_choice(
-        message_input_context(event).message.actor,
-        pending,
-        accepted=choice,
-        replacing_existing=isinstance(replacement, PlayerBindingState),
-    )
-    await _send_pending_player_query(
-        dependencies,
-        matcher,
-        event,
-        state,
-        pending,
-    )
-
-
-async def _send_pending_player_query(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-    pending: PendingPlayerQuery,
-) -> None:
-    plan = pending.section_plan
-
-    def after_initial_reply_sent() -> None:
-        dependencies.player.record_returned_query(
-            message_input_context(event).message.actor,
-            pending,
-        )
-        dependencies.player.start_background_refresh(
-            pending,
-            conversation=message_input_context(event).message.conversation,
-        )
-
-    await send_player_info_with_detail_prompt(
-        dependencies.player,
-        dependencies.features,
-        dependencies.detail_extensions,
-        matcher,
-        event,
-        state,
-        player_id=pending.player_id,
-        player_message=pending.player_message,
-        has_collection=plan.has_collection,
-        has_peak=plan.needs_peak_section,
-        has_autocard=plan.has_autocard_rank,
-        base_snapshot=pending.base_snapshot,
-        on_sent=after_initial_reply_sent,
-    )
-
-
-async def handle_player_unbind(
-    service: PlayerService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    await finish_event_reply(
-        matcher,
-        event,
-        service.unbind(message_input_context(event).message.actor),
-    )
 
 
 async def handle_identity_link_begin(
@@ -346,13 +86,32 @@ async def handle_identity_link_revoke(
     )
 
 
+def _install_portable_matcher(
+    group: SeerMatcherGroup,
+    *,
+    operation: PortableOperation,
+    command_id: str,
+    help_id: str,
+    rule: Rule,
+) -> None:
+    matcher = group.on_message(
+        policy=CommandPolicy.command(command_id, help_ids=(help_id,)),
+        rule=seer_feature_rule(group.features, "seer_player") & rule,
+        priority=group.matcher_priority("seer_player"),
+        block=True,
+    )
+    matcher.append_handler(
+        make_portable_query_handler(operation, group.query_sessions)
+    )
+
+
 def install(group: SeerMatcherGroup) -> None:
-    service = group.resources.player
-    dependencies = PlayerCommandDependencies(
-        service,
+    operations = build_portable_player_operations(
+        group.resources.player,
+        group.player_id_resolver,
+        group.query_sessions,
         group.features,
         group.resources.player_detail_extensions,
-        group.player_id_resolver,
     )
     identity_begin_matcher = group.on_message(
         policy=CommandPolicy.command(
@@ -398,30 +157,13 @@ def install(group: SeerMatcherGroup) -> None:
         bind_async(handle_identity_link_revoke, group.identity_links)
     )
 
-    binding_matcher = group.on_message(
-        policy=CommandPolicy.command(
-            "seer_player_binding",
-            help_ids=("seer.player.bind",),
-        ),
-        rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(_is_binding_command)
-        & member_target_command(),
-        priority=group.matcher_priority("seer_player"),
-        block=True,
+    _install_portable_matcher(
+        group,
+        operation=operations["seer.player.bind"],
+        command_id="seer_player_binding",
+        help_id="seer.player.bind",
+        rule=Rule(_is_binding_command) & member_target_command(),
     )
-    binding_matcher.append_handler(
-        make_portable_query_handler(
-            build_portable_player_operations(
-                service,
-                group.player_id_resolver,
-                group.query_sessions,
-                group.features,
-                group.resources.player_detail_extensions,
-            )["seer.player.bind"],
-            group.query_sessions,
-        )
-    )
-
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
         policy=CommandPolicy.command(
@@ -432,18 +174,16 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    unbind_matcher.append_handler(bind_async(handle_player_unbind, service))
-
-    query_matcher = group.on_message(
-        policy=CommandPolicy.command(
-            "seer_player",
-            help_ids=("seer.player.query",),
-        ),
-        rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(bind_async(_is_player_id_query, dependencies))
-        & member_target_command(),
-        priority=group.matcher_priority("seer_player"),
-        block=True,
+    unbind_matcher.append_handler(
+        make_portable_query_handler(
+            operations["seer.player.unbind"],
+            group.query_sessions,
+        )
     )
-    query_matcher.append_handler(bind_async(validate_player_id, dependencies))
-    query_matcher.append_handler(bind_async(handle_player, dependencies))
+    _install_portable_matcher(
+        group,
+        operation=operations["seer.player.query"],
+        command_id="seer_player",
+        help_id="seer.player.query",
+        rule=Rule(_is_player_query_command) & member_target_command(),
+    )

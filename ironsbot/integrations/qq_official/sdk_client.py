@@ -17,6 +17,9 @@ from qqbot_agent_sdk.media_loader import (
     UploadFileTooLargeError,
 )
 
+from ironsbot.integrations.qq_official.api_errors import (
+    QQOfficialPartialDeliveryError,
+)
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
     QQOfficialPayload,
@@ -97,10 +100,14 @@ class TencentQQClient:
                     message_id=message_id,
                     sequence=sequence,
                 )
+                sent_id = _response_id(response)
+            except Exception as error:
+                if first_id is not None:
+                    raise QQOfficialPartialDeliveryError(first_id) from error
+                raise
             finally:
                 if self.token_observer is not None:
                     self.token_observer.observe(self.api.access_token)
-            sent_id = _response_id(response)
             logger.info(
                 "QQ Official payload delivered: scope=%s mode=%s sequence=%s "
                 "payload=%s",

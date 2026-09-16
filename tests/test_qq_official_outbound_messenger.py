@@ -7,12 +7,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.core.outbound import (
+    BinaryImagePart,
     DeliveryFailureKind,
     OutboundMessage,
     ReplyContext,
 )
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.qq_official.message_rendering import (
+    QQOfficialImagePayload,
+    QQOfficialTextPayload,
+)
 from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
@@ -113,6 +119,69 @@ def test_custom_keyboard_capability_is_account_scoped() -> None:
         account_id="other-app",
     )
     assert not messenger.capabilities_for(other_account).supports_interactive_prompts
+
+
+def _image_prompt() -> PromptSession:
+    return PromptSession(
+        "menu",
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "member-openid",
+            "member",
+            GROUP.id,
+            account_id="app",
+        ),
+        GROUP,
+        "event-id",
+        (PromptChoice("1", "第一项", frozenset({"1"})),),
+        4_102_444_800.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_prompt_does_not_require_text_without_keyboard_capability() -> None:
+    bot = _Bot()
+    prompt = _image_prompt()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    result = await messenger.reply(
+        _reply(GROUP, "event-id"),
+        OutboundMessage((BinaryImagePart(b"image", "image/png"),), prompt=prompt),
+    )
+
+    assert result.delivered
+    assert bot.calls[0][2] == (
+        QQOfficialImagePayload(content=b"image", filename="ironsbot.png"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_prompt_adds_one_keyboard_text_payload_when_enabled() -> None:
+    bot = _Bot()
+    prompt = _image_prompt()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+        account_custom_keyboards={"app": True},
+    )
+
+    result = await messenger.reply(
+        _reply(GROUP, "event-id"),
+        OutboundMessage((BinaryImagePart(b"image", "image/png"),), prompt=prompt),
+    )
+
+    assert result.delivered
+    payloads = bot.calls[0][2]
+    assert payloads == (
+        QQOfficialImagePayload(content=b"image", filename="ironsbot.png"),
+        QQOfficialTextPayload(
+            "请选择：\n1. 第一项\n\n回复序号选择",
+            prompt=prompt,
+        ),
+    )
 
 
 @pytest.mark.asyncio

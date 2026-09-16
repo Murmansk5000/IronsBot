@@ -29,11 +29,6 @@ class QQOfficialOutboundMessageError(ValueError):
     def unsupported_part(cls, part: object) -> QQOfficialOutboundMessageError:
         return cls(f"Unsupported outbound part: {type(part).__name__}")
 
-    @classmethod
-    def prompt_requires_text(cls) -> QQOfficialOutboundMessageError:
-        return cls("QQ Official interactive prompts require a text payload")
-
-
 @dataclass(frozen=True, slots=True)
 class QQOfficialTextPayload:
     content: str
@@ -54,40 +49,49 @@ def render_qq_official_outbound_message(
     message: OutboundMessage,
     *,
     conversation: ConversationRef,
+    supports_interactive_prompts: bool = False,
 ) -> tuple[QQOfficialPayload, ...]:
-    """Preserve ordered text/mention runs and individual image payloads."""
+    """Compact text around media into the fewest supported QQ messages."""
 
-    rendered: list[QQOfficialPayload] = []
+    images: list[QQOfficialImagePayload] = []
     text: list[str] = []
-
-    def flush_text() -> None:
-        content = "".join(text)
-        text.clear()
-        if content:
-            rendered.append(QQOfficialTextPayload(content))
+    saw_image = False
+    text_after_image = False
 
     for part in message.parts:
         if isinstance(part, TextPart):
             text.append(part.text)
+            if saw_image:
+                text_after_image = True
         elif isinstance(part, MentionPart):
             if not _supports_group_mention(conversation, part):
                 raise QQOfficialOutboundMessageError.unsupported_mention()
             text.append(f'<qqbot-at-user id="{escape(part.actor.id, quote=True)}" />')
+            if saw_image:
+                text_after_image = True
         elif isinstance(part, BinaryImagePart):
-            flush_text()
-            rendered.append(
+            saw_image = True
+            images.append(
                 QQOfficialImagePayload(
                     content=part.content,
                     filename=part.filename or _image_filename(part.content_type),
                 )
             )
         elif isinstance(part, RemoteImagePart):
-            flush_text()
-            rendered.append(QQOfficialImagePayload(url=part.url))
+            saw_image = True
+            images.append(QQOfficialImagePayload(url=part.url))
         else:
             raise QQOfficialOutboundMessageError.unsupported_part(part)
-    flush_text()
-    _attach_prompt(rendered, message.prompt)
+    text_payloads: list[QQOfficialPayload] = (
+        [QQOfficialTextPayload("".join(text))] if text else []
+    )
+    rendered = (
+        [*images, *text_payloads]
+        if text_after_image
+        else [*text_payloads, *images]
+    )
+    if supports_interactive_prompts:
+        _attach_prompt(rendered, message.prompt)
     return tuple(rendered)
 
 
@@ -101,7 +105,14 @@ def _attach_prompt(
         if isinstance(payload, QQOfficialTextPayload):
             rendered[index] = QQOfficialTextPayload(payload.content, prompt=prompt)
             return
-    raise QQOfficialOutboundMessageError.prompt_requires_text()
+    rendered.append(QQOfficialTextPayload(_prompt_text(prompt), prompt=prompt))
+
+
+def _prompt_text(prompt: PromptSession) -> str:
+    choices = "\n".join(
+        f"{choice.id}. {choice.label}" for choice in prompt.choices
+    )
+    return f"请选择：\n{choices}\n\n回复序号选择"
 
 
 def _supports_group_mention(
