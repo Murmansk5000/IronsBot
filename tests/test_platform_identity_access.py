@@ -10,7 +10,12 @@ from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.command_catalog import CommandAccess, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage, TextPart
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    reference_digest,
+)
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
@@ -105,4 +110,5 @@ async def test_scoped_notice_recipient_does_not_abort_other_destinations(
     assert summary.failed == (MEMBER,)
     assert [conversation for conversation, _ in transport.attempts] == [PRIVATE, GROUP]
     assert "scoped" in caplog.text
-    assert MEMBER.id in caplog.text
+    assert reference_digest(MEMBER.id) in caplog.text
+    assert MEMBER.id not in caplog.text

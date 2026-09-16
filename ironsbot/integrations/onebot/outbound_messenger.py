@@ -14,7 +14,7 @@ from ironsbot.core.outbound import (
     ReplyContext,
     SendResult,
 )
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     render_onebot_outbound_message,
@@ -170,9 +170,9 @@ class OneBotOutboundMessenger:
             if decision is not None:
                 self._outbound.rollback(decision.permit)
             logger.warning(
-                "OneBot outbound delivery failed: kind={} id={} error={}",
+                "OneBot outbound delivery failed: kind={} ref={} error={}",
                 conversation.kind,
-                conversation.id,
+                reference_digest(conversation.id),
                 error,
             )
             return SendResult(
