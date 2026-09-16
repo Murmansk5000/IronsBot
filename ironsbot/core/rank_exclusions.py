@@ -14,6 +14,7 @@ RANK_EXCLUSION_SUPPORTED_KEYS = (
     "竞技",
     "狂野",
     "专家",
+    "大师",
 )
 
 # Query routing keeps longer internal keys for these three peak boards. TOML
@@ -22,6 +23,7 @@ RANK_EXCLUSION_CONFIG_KEY_BY_RANK = {
     "竞技段位": "竞技",
     "狂野段位": "狂野",
     "专家段位": "专家",
+    "大师段位": "大师",
 }
 
 # Accounts created for internal Taomee testing share the same registration time.

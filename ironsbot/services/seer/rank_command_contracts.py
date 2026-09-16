@@ -50,7 +50,7 @@ def _global_rank_titles(*, peak: bool) -> tuple[str, ...]:
     return tuple(
         rank_command_names("global", key)[0]
         for key, spec in GLOBAL_RANKS.items()
-        if spec.peak_season_sub_key is peak
+        if spec.season_limited is peak
     )
 
 
@@ -74,14 +74,14 @@ def _matches_rank_query(
     if context.has_member_mentions and player is not None:
         return (
             kind == "global"
-            and GLOBAL_RANKS[player.rank_key].peak_season_sub_key is peak
+            and GLOBAL_RANKS[player.rank_key].season_limited is peak
         )
     listed = parse_rank_list_command(text)
     if listed is not None:
         if listed.kind != kind:
             return False
         return (
-            GLOBAL_RANKS[listed.rank_key].peak_season_sub_key
+            GLOBAL_RANKS[listed.rank_key].season_limited
             if kind == "global"
             else LOCAL_RANKS[listed.rank_key].season_limited
         ) is peak
@@ -89,11 +89,11 @@ def _matches_rank_query(
         return False
     scored = parse_rank_score_command(text)
     if scored is not None:
-        return GLOBAL_RANKS[scored.rank_key].peak_season_sub_key is peak
+        return GLOBAL_RANKS[scored.rank_key].season_limited is peak
     return (
         player is not None
         and player.player_reference is not None
-        and GLOBAL_RANKS[player.rank_key].peak_season_sub_key is peak
+        and GLOBAL_RANKS[player.rank_key].season_limited is peak
         and is_player_reference_input(
             player.player_reference, context, reference_is_known
         )

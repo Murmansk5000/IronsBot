@@ -55,6 +55,7 @@ def _rank(entries: list[RankEntry]) -> RankService:
         RankQueryConfig(limit=10, page_size=100),
         cast("RankPageCache", FakeRankCache([])),
         lambda: None,
+        lambda: None,
         fetch_online_page,
     )
 

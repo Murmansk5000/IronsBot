@@ -40,7 +40,7 @@ def test_rank_command_examples_are_derived_from_rank_specs() -> None:
     assert commands["rank.global_collection"].examples == tuple(
         spec.title
         for spec in GLOBAL_RANKS.values()
-        if not spec.peak_season_sub_key
+        if not spec.season_limited
     )
     assert commands["rank.sample_peak"].examples == tuple(
         spec.title
