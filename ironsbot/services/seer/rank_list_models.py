@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from dataclasses import dataclass
+from typing import Literal
 
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
@@ -11,6 +12,7 @@ from ironsbot.services.seer.rank_constants import (
     COUNTERMARK_RANK_KEY,
     COUNTERMARK_RANK_SUB_KEY,
     EXPERT_PEAK_USER_RANK_KEY,
+    MASTER_PEAK_USER_RANK_KEY,
     MOUNT_RANK_SUB_KEY,
     OUTFIT_PART_RANK_SUB_KEY,
     OUTFIT_RANK_KEY,
@@ -47,8 +49,12 @@ class GlobalRankSpec:
     key: int
     sub_key: int
     unit: str
-    peak_season_sub_key: bool = False
+    sub_key_source: Literal["fixed", "peak_season", "master_season"] = "fixed"
     score_format: str = ""
+
+    @property
+    def season_limited(self) -> bool:
+        return self.sub_key_source != "fixed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +139,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         STANDARD_PEAK_USER_RANK_KEY,
         0,
         "分",
-        peak_season_sub_key=True,
+        sub_key_source="peak_season",
         score_format="peak_rating",
     ),
     "狂野段位": GlobalRankSpec(
@@ -141,7 +147,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         WILD_PEAK_USER_RANK_KEY,
         0,
         "分",
-        peak_season_sub_key=True,
+        sub_key_source="peak_season",
         score_format="peak_rating",
     ),
     "专家段位": GlobalRankSpec(
@@ -149,7 +155,15 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         EXPERT_PEAK_USER_RANK_KEY,
         0,
         "分",
-        peak_season_sub_key=True,
+        sub_key_source="peak_season",
+    ),
+    "大师段位": GlobalRankSpec(
+        "大师段位榜",
+        MASTER_PEAK_USER_RANK_KEY,
+        0,
+        "分",
+        sub_key_source="master_season",
+        score_format="peak_rating",
     ),
 }
 

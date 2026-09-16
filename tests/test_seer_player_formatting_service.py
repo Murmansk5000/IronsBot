@@ -183,6 +183,13 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
             searched_limit=2000,
             queried=True,
         ),
+        master=RankLookupResult(
+            title="大师赛季榜",
+            score_name="段位分",
+            rank=12,
+            score=400004,
+            queried=True,
+        ),
     )
 
     message = format_compact_peak_section(
@@ -197,6 +204,7 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
     assert "竞技：圣皇0星" not in message
     assert "场次124" not in message
     assert "狂野：当前赛季前2000名未确认" in message
+    assert "大师：圣皇4星｜赛季榜第12" in message
 
 
 def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:

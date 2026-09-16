@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any, TypeVar
 
@@ -16,6 +16,7 @@ from ironsbot.services.seer.rank_constants import (
     COUNTERMARK_RANK_KEY,
     COUNTERMARK_RANK_SUB_KEY,
     EXPERT_PEAK_USER_RANK_KEY,
+    MASTER_PEAK_USER_RANK_KEY,
     MOUNT_RANK_SUB_KEY,
     OUTFIT_PART_RANK_SUB_KEY,
     OUTFIT_RANK_KEY,
@@ -44,6 +45,17 @@ RunLookupJobs = Callable[
 ]
 _LOGGER = logging.getLogger("ironsbot.seer.rank_summary")
 SummaryT = TypeVar("SummaryT")
+
+
+@dataclass(frozen=True, slots=True)
+class _PeakRankLookupSpec:
+    id: str
+    title: str
+    score_name: str
+    key: int
+    sub_key: int
+    candidate_score: int | None
+    search_without_score: bool = False
 
 
 async def fetch_partial_rank_summary(
@@ -165,6 +177,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
     key: int,
     sub_key: int,
     candidate_score: int | None,
+    search_without_score: bool,
     progress: RankSummaryProgress | None,
     anchor_only: bool,
 ) -> RankLookupResult:
@@ -197,7 +210,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
         score_name=score_name,
         key=key,
         sub_key=sub_key,
-        search_limit=0,
+        search_limit=None if search_without_score else 0,
         progress=progress,
         anchor_only=anchor_only,
     )
@@ -318,77 +331,81 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     expert_score: int | None = None,
     current_peak_sub_key: int | None,
     find_rank: FindRank,
+    current_master_sub_key: int | None = None,
     progress: RankSummaryProgress | None = None,
     anchor_only: bool = False,
     run_lookup_jobs: RunLookupJobs | None = None,
 ) -> PeakSeasonRankSummary:
-    if current_peak_sub_key is None:
+    if current_peak_sub_key is None and current_master_sub_key is None:
         return PeakSeasonRankSummary.empty()
 
-    jobs = (
-        PlayerRankLookupJob(
-            id="standard_peak",
-            title="竞技赛季榜",
-            key=STANDARD_PEAK_USER_RANK_KEY,
-            sub_key=current_peak_sub_key,
-            user_id=user_id,
-            target_score=standard_score,
-            operation=lambda: _find_current_peak_rank(
-                "standard_peak",
-                find_rank,
-                game,
-                user_id=user_id,
-                title="竞技赛季榜",
+    specs: list[_PeakRankLookupSpec] = []
+    if current_peak_sub_key is not None:
+        specs.extend(
+            (
+                _PeakRankLookupSpec(
+                    id="standard_peak",
+                    title="竞技赛季榜",
+                    score_name="段位分",
+                    key=STANDARD_PEAK_USER_RANK_KEY,
+                    sub_key=current_peak_sub_key,
+                    candidate_score=standard_score,
+                ),
+                _PeakRankLookupSpec(
+                    id="wild_peak",
+                    title="狂野赛季榜",
+                    score_name="段位分",
+                    key=WILD_PEAK_USER_RANK_KEY,
+                    sub_key=current_peak_sub_key,
+                    candidate_score=wild_score,
+                ),
+                _PeakRankLookupSpec(
+                    id="expert_peak",
+                    title="专家赛季榜",
+                    score_name="专家积分",
+                    key=EXPERT_PEAK_USER_RANK_KEY,
+                    sub_key=current_peak_sub_key,
+                    candidate_score=expert_score,
+                ),
+            )
+        )
+    if current_master_sub_key is not None:
+        specs.append(
+            _PeakRankLookupSpec(
+                id="master_peak",
+                title="大师赛季榜",
                 score_name="段位分",
-                key=STANDARD_PEAK_USER_RANK_KEY,
-                sub_key=current_peak_sub_key,
-                candidate_score=standard_score,
-                progress=progress,
-                anchor_only=anchor_only,
-            ),
-        ),
+                key=MASTER_PEAK_USER_RANK_KEY,
+                sub_key=current_master_sub_key,
+                candidate_score=None,
+                search_without_score=True,
+            )
+        )
+    jobs = tuple(
         PlayerRankLookupJob(
-            id="wild_peak",
-            title="狂野赛季榜",
-            key=WILD_PEAK_USER_RANK_KEY,
-            sub_key=current_peak_sub_key,
+            id=spec.id,
+            title=spec.title,
+            key=spec.key,
+            sub_key=spec.sub_key,
             user_id=user_id,
-            target_score=wild_score,
-            operation=lambda: _find_current_peak_rank(
-                "wild_peak",
+            target_score=spec.candidate_score,
+            operation=partial(
+                _find_current_peak_rank,
+                spec.id,
                 find_rank,
                 game,
                 user_id=user_id,
-                title="狂野赛季榜",
-                score_name="段位分",
-                key=WILD_PEAK_USER_RANK_KEY,
-                sub_key=current_peak_sub_key,
-                candidate_score=wild_score,
+                title=spec.title,
+                score_name=spec.score_name,
+                key=spec.key,
+                sub_key=spec.sub_key,
+                candidate_score=spec.candidate_score,
+                search_without_score=spec.search_without_score,
                 progress=progress,
                 anchor_only=anchor_only,
             ),
-        ),
-        PlayerRankLookupJob(
-            id="expert_peak",
-            title="专家赛季榜",
-            key=EXPERT_PEAK_USER_RANK_KEY,
-            sub_key=current_peak_sub_key,
-            user_id=user_id,
-            target_score=expert_score,
-            operation=lambda: _find_current_peak_rank(
-                "expert_peak",
-                find_rank,
-                game,
-                user_id=user_id,
-                title="专家赛季榜",
-                score_name="专家积分",
-                key=EXPERT_PEAK_USER_RANK_KEY,
-                sub_key=current_peak_sub_key,
-                candidate_score=expert_score,
-                progress=progress,
-                anchor_only=anchor_only,
-            ),
-        ),
+        )
+        for spec in specs
     )
     results = await _run_lookup_jobs(jobs, run_lookup_jobs, progress)
     return PeakSeasonRankSummary.from_results(results)

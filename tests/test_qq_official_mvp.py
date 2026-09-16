@@ -2265,7 +2265,14 @@ async def test_router_builds_extension_without_platform_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_portable_router_runs_rank_query() -> None:
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("成就榜", "榜单:成就点数:1:10"),
+        ("大师段位榜", "榜单:大师段位:1:10"),
+    ),
+)
+async def test_portable_router_runs_rank_query(command: str, expected: str) -> None:
     features = build_feature_service(
         FeatureConfig(),
         (),
@@ -2290,10 +2297,10 @@ async def test_portable_router_runs_rank_query() -> None:
         account_id="example-app",
     )
 
-    result = await router.dispatch(_portable_input("成就榜", actor, conversation))
+    result = await router.dispatch(_portable_input(command, actor, conversation))
 
     assert result is not None
-    assert cast("TextPart", result.message.parts[0]).text == "榜单:成就点数:1:10"
+    assert cast("TextPart", result.message.parts[0]).text == expected
 
 
 @pytest.mark.asyncio
