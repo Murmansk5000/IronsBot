@@ -1,9 +1,11 @@
 import asyncio
+import logging
 from typing import ClassVar
 
-from pytest import MonkeyPatch
+from pytest import LogCaptureFixture, MonkeyPatch
 
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.headless_seer import client as client_module
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.services.operations.headless import HeadlessLoginRequest
@@ -66,11 +68,13 @@ def _reset_fake_game() -> None:
 
 def test_client_manager_serializes_and_reuses_concurrent_login(
     monkeypatch: MonkeyPatch,
+    caplog: LogCaptureFixture,
 ) -> None:
     async def run() -> None:
         _reset_fake_game()
         monkeypatch.setattr(client_module, "SeerGame", _FakeSeerGame)
         manager = ClientManager(TaskOwner().create)
+        caplog.set_level(logging.INFO)
 
         first_task = asyncio.create_task(manager.login(LOGIN_REQUEST))
         await _FakeSeerGame.login_started.wait()
@@ -84,6 +88,8 @@ def test_client_manager_serializes_and_reuses_concurrent_login(
         assert first is second
         assert len(_FakeSeerGame.instances) == 1
         assert _FakeSeerGame.requested_timeouts == [20.0]
+        assert str(LOGIN_REQUEST.user_id) not in caplog.text
+        assert reference_digest(str(LOGIN_REQUEST.user_id)) in caplog.text
 
     asyncio.run(run())
 

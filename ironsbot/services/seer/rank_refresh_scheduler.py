@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import scheduled_clock_time, second_of_day
 from ironsbot.services.operations.scheduler import JobRegistry
 
@@ -92,7 +93,7 @@ async def _scheduled_rank_page_refresh(
         max_parallelism=parallelism,
     )
     workers = ",".join(
-        f"{user_id}:{count}"
+        f"{reference_digest(str(user_id))}:{count}"
         for user_id, count in sorted(result.worker_page_counts.items())
     ) or "none"
     logger.info(
