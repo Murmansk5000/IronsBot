@@ -83,11 +83,6 @@ def qq_official_incoming_message(
     )
 
 
-def is_qq_official_reply_event(event: InboundEvent) -> bool:
-    raw = event.raw if isinstance(event.raw, Mapping) else {}
-    return _reply_reference(event, raw) is not None
-
-
 def qq_official_event_mentions_bot(event: InboundEvent) -> bool:
     return event.event_type == GROUP_AT_MESSAGE_CREATE
 

@@ -36,6 +36,14 @@ class QQOfficialApiError(RuntimeError):
         self.trace_id = trace_id
 
 
+class QQOfficialPartialDeliveryError(RuntimeError):
+    """At least one payload was accepted before a later payload failed."""
+
+    def __init__(self, message_id: str) -> None:
+        self.message_id = message_id
+        super().__init__("QQ Official message was only partially delivered")
+
+
 @dataclass(frozen=True, slots=True)
 class QQOfficialHttpClient:
     """Reject failed responses with fields the SDK currently discards."""
@@ -72,13 +80,27 @@ class QQOfficialHttpClient:
 
 
 def qq_official_exception_result(error: Exception) -> SendResult:
-    if isinstance(error, QQOfficialApiError):
+    if isinstance(error, QQOfficialPartialDeliveryError):
+        api_error = _find_api_error(error)
         return SendResult(
             delivered=False,
-            error_code=error.api_code,
+            message_id=error.message_id,
+            error_code=(
+                api_error.api_code if api_error is not None else "partial_delivery"
+            ),
             error_message=str(error),
-            trace_id=error.trace_id,
-            failure_kind=_api_failure_kind(error),
+            trace_id=api_error.trace_id if api_error is not None else None,
+            failure_kind=DeliveryFailureKind.UNCERTAIN,
+        )
+
+    api_error = _find_api_error(error)
+    if api_error is not None:
+        return SendResult(
+            delivered=False,
+            error_code=api_error.api_code,
+            error_message=str(api_error),
+            trace_id=api_error.trace_id,
+            failure_kind=_api_failure_kind(api_error),
         )
 
     transport_error = _find_transport_error(error)
@@ -108,6 +130,15 @@ def _api_failure_kind(error: QQOfficialApiError) -> DeliveryFailureKind:
     if error.http_status >= _HTTP_SERVER_ERROR_STATUS:
         return DeliveryFailureKind.RETRYABLE
     return DeliveryFailureKind.PERMANENT
+
+
+def _find_api_error(error: BaseException) -> QQOfficialApiError | None:
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, QQOfficialApiError):
+            return current
+        current = current.__cause__
+    return None
 
 
 def _find_transport_error(error: BaseException) -> httpx.TransportError | None:

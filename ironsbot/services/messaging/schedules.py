@@ -41,7 +41,7 @@ async def send_private_schedule(
 ) -> None:
     eligible = tuple(
         private_conversation_for_actor(actor)
-        for actor in messaging._features.actors_with_superusers(task.feature)
+        for actor in messaging._features.private_actors_with_superusers(task.feature)
     )
     if target_conversations is None:
         overrides = cron_override_conversations(
@@ -167,7 +167,7 @@ def _register_private_schedule_overrides(
     key = schedule_key(index, task)
     eligible = {
         private_conversation_for_actor(actor)
-        for actor in messaging._features.actors_with_superusers(task.feature)
+        for actor in messaging._features.private_actors_with_superusers(task.feature)
     }
     for preference in messaging._store.all_time_preferences(
         conversation_kind="private",

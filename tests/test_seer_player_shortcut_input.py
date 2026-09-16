@@ -5,10 +5,8 @@ from typing import Any, cast
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.plugins.onebot.seer.query.commands.player import (
-    PlayerCommandDependencies,
-)
 from ironsbot.plugins.onebot.seer.query.commands.player_shortcuts import (
+    PlayerCommandDependencies,
     _resolve_player_shortcut_command,
 )
 from ironsbot.services.identity.player_accounts import (

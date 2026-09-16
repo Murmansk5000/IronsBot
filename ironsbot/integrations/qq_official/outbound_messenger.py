@@ -167,6 +167,12 @@ class QQOfficialOutboundMessenger:
             payloads = render_qq_official_outbound_message(
                 message,
                 conversation=conversation,
+                supports_interactive_prompts=(
+                    self.account_custom_keyboards.get(
+                        conversation.account_id or "",
+                        False,
+                    )
+                ),
             )
         except QQOfficialOutboundMessageError as error:
             return _failure(
