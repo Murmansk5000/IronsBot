@@ -167,6 +167,7 @@ def _build_rank(
             config,
             cast("RankPageCache", cache),
             lambda: None,
+            lambda: None,
             fetch_rank_page,
         ),
         cache,

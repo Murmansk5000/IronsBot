@@ -192,6 +192,12 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         kind="global",
         rank_key="专家段位",
     )
+    assert parse_rank_list_command("大师段位榜20名") == RankListCommand(
+        kind="global",
+        rank_key="大师段位",
+        start_rank=20,
+        limit=1,
+    )
     assert parse_rank_list_command("专家榜") == RankListCommand(
         kind="global",
         rank_key="专家段位",
@@ -249,6 +255,10 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
         score=3000,
     )
     assert parse_rank_score_command("专家段位榜王者0分") is None
+    assert parse_rank_score_command("大师榜圣皇4星") == RankScoreCommand(
+        rank_key="大师段位",
+        score=400004,
+    )
     assert parse_rank_score_command("样本群星牌榜3149分") is None
     assert parse_rank_score_command("群星牌榜第3149名") is None
 
