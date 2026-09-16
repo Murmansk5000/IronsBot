@@ -14,7 +14,7 @@ from ironsbot.config.loader import (
     ConfigFileNotFoundError,
     load_settings,
 )
-from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.config.models.features import build_feature_service
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
@@ -708,7 +708,7 @@ feature = "seerinfo_link"
     )
 
     config = load_settings(config_path)
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         config.features,
         frozenset(),
         command_features=config.messaging.command_feature_keys,
@@ -770,7 +770,7 @@ blocked_user = ["blacklist"]
 
     config = load_settings(config_path)
 
-    features = build_onebot_feature_service(config.features, config.superuser_ids)
+    features = build_feature_service(config.features, config.superuser_ids)
     assert features.is_message_blocked(
         ActorRef(Platform.ONEBOT, "123456789"),
         ConversationRef(Platform.ONEBOT, "private", "123456789"),
@@ -798,7 +798,7 @@ main = ["all"]
     )
 
     config = load_settings(config_path)
-    features = build_onebot_feature_service(config.features, config.superuser_ids)
+    features = build_feature_service(config.features, config.superuser_ids)
 
     assert features.is_feature_allowed(
         ActorRef(Platform.ONEBOT, "1"),

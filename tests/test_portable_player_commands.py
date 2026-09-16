@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.command_catalog import command_context_from_input
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
@@ -21,7 +22,7 @@ from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.portable_player_commands import (
-    build_portable_player_operations,
+    build_portable_player_operations as _build_player_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
@@ -41,6 +42,7 @@ from ironsbot.services.seer.player_service_models import (
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutCommand,
@@ -171,6 +173,7 @@ def _context(
     actor_id: str = "caller-openid",
     mentions: tuple[ActorRef, ...] = (),
     platform: Platform = Platform.QQ_OFFICIAL,
+    reply_to_id: str | None = None,
 ) -> MessageInputContext:
     conversation = ConversationRef(platform, "group", "group-openid")
     actor = ActorRef(
@@ -187,6 +190,7 @@ def _context(
             message_id=f"message-{text}",
             text=text,
             direct_mentions=mentions,
+            reply_to_id=reply_to_id,
         ),
         mentions_bot=True,
     )
@@ -207,6 +211,22 @@ def _resolver() -> PlayerIdResolver:
             "caller-openid": 600001,
             "target-openid": 800001,
         }.get(actor.id),
+    )
+
+
+def build_portable_player_operations(
+    service: PlayerService,
+    resolver: PlayerIdResolver,
+    sessions: PortableQuerySessions,
+    features: FeatureService | None = None,
+    extensions: PlayerDetailExtensionRegistry | None = None,
+) -> dict[str, PortableOperation]:
+    return _build_player_operations(
+        service,
+        resolver,
+        sessions,
+        features or FeatureService({}, {}, frozenset()),
+        extensions or PlayerDetailExtensionRegistry(),
     )
 
 
@@ -401,6 +421,77 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("delivery_outcome", ["delivered", "failed"])
+async def test_player_query_holds_fast_numeric_reply_until_prompt_delivery(
+    delivery_outcome: str,
+) -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+    )
+    context = _context("米米号700002", platform=Platform.QQ_OFFICIAL)
+    started = asyncio.Event()
+    finish_query = asyncio.Event()
+    original_query = service.query
+
+    async def delayed_query(
+        player_id: int,
+        *,
+        actor: ActorRef,
+        explicit: bool,
+        conversation: ConversationRef | None,
+    ) -> PlayerQueryResult:
+        started.set()
+        await finish_query.wait()
+        return await original_query(
+            player_id,
+            actor=actor,
+            explicit=explicit,
+            conversation=conversation,
+        )
+
+    service.query = AsyncMock(side_effect=delayed_query)
+    query_task = asyncio.ensure_future(
+        operations["seer.player.query"](context.text, context)
+    )
+    await started.wait()
+    reply_context = replace(
+        context,
+        message=replace(
+            context.message,
+            message_id="fast-selection",
+            text="1",
+        ),
+    )
+    assert sessions.recognizes_response("1", reply_context)
+    selection_task = asyncio.ensure_future(
+        sessions.select("1", reply_context, allow_deferred=True)
+    )
+    await asyncio.sleep(0)
+    assert not selection_task.done()
+
+    finish_query.set()
+    reply = cast("PortableReply", await query_task)
+    await asyncio.sleep(0)
+    assert not selection_task.done()
+
+    if delivery_outcome == "delivered":
+        reply.delivered()
+        selected = await selection_task
+        assert isinstance(selected, PortableReply)
+        assert "collection:700002" in _text(selected)
+        assert service.returned == [(context.message.actor, 700002)]
+    else:
+        reply.delivery_failed()
+        assert await selection_task is None
+        assert not sessions.has_active_session(context)
+        assert service.returned == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("selection", ["y", "n", "4", "5", "button", "0"])
 async def test_first_binding_confirmation_reuses_query_and_delivery(
@@ -497,6 +588,7 @@ async def test_player_query_menu_includes_available_shared_extension(
         "PortableReply",
         await operations["seer.player.query"](context.text, context),
     )
+    reply.delivered()
 
     assert "4. 【战队】" in _text(reply)
     allowed = not revoke
@@ -516,6 +608,50 @@ async def test_player_query_menu_includes_available_shared_extension(
 
 
 @pytest.mark.asyncio
+async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    allowed = True
+    features = cast(
+        "Any",
+        SimpleNamespace(
+            is_feature_allowed=lambda *_args: allowed,
+            is_actor_superuser=lambda _actor: False,
+        ),
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+    )
+    owner = _context("米米号700002")
+    initial = cast(
+        "PortableReply",
+        await operations["seer.player.query"](owner.text, owner),
+    )
+    initial.delivered()
+    responder = _context(
+        "1",
+        actor_id="other-member",
+        reply_to_id="current-menu",
+    )
+    allowed = False
+
+    assert sessions.recognizes_shared_response("1", owner, responder)
+    result = await sessions.select_shared(
+        "1", owner, responder, allow_deferred=True
+    )
+
+    assert isinstance(result, OutboundMessage)
+    part = result.parts[0]
+    assert isinstance(part, TextPart)
+    assert part.text == "该功能当前未对你开放。"
+    assert sessions.has_active_session(owner)
+    assert not sessions.has_active_session(responder)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("inputs", [("收集", "巅峰", "群星牌"), ("1", "2", "3")])
 async def test_player_detail_template_supports_repeated_named_and_numeric_choices(
@@ -527,7 +663,11 @@ async def test_player_detail_template_supports_repeated_named_and_numeric_choice
         cast("PlayerService", service), _resolver(), sessions,
     )
     context = _context("米米号700002", platform=platform)
-    await operations["seer.player.query"](context.text, context)
+    initial = cast(
+        "PortableReply",
+        await operations["seer.player.query"](context.text, context),
+    )
+    initial.delivered()
     for text, kind in zip(inputs, ("collection", "peak", "autocard"), strict=True):
         assert sessions.recognizes_response(text, context)
         reply = await sessions.select(text, context, allow_deferred=True)
@@ -665,6 +805,7 @@ async def test_player_query_accepts_configured_alias() -> None:
     )
 
     assert "player:700001" in _text(reply)
+    reply.delivered()
 
 
 @pytest.mark.asyncio
@@ -723,7 +864,11 @@ async def test_player_shortcut_feedback_uses_shared_delivery_template(
     if entry == "direct":
         reply = await operations["seer.player.default"](context.text, context)
     else:
-        await operations["seer.player.query"]("米米号700002", context)
+        initial = cast(
+            "PortableReply",
+            await operations["seer.player.query"]("米米号700002", context),
+        )
+        initial.delivered()
         reply = await sessions.select("巅峰", context, allow_deferred=True)
     assert isinstance(reply, PortableReply)
     expected_feedback = "已加入队列" if queued else "巅峰之战正在查询"
@@ -784,7 +929,11 @@ async def test_failed_player_progress_delivery_cancels_pending_query(
     if entry == "direct":
         reply = await operations["seer.player.default"](context.text, context)
     else:
-        await operations["seer.player.query"]("米米号700002", context)
+        initial = cast(
+            "PortableReply",
+            await operations["seer.player.query"]("米米号700002", context),
+        )
+        initial.delivered()
         reply = await sessions.select("收集", context, allow_deferred=True)
     assert isinstance(reply, PortableReply)
     assert reply.follow_up is not None
