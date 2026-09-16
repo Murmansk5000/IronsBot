@@ -299,8 +299,10 @@ uv run --no-sync python -m ironsbot
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
-  `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
+  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、`AI_KEY`、
+  按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
+  `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
 
 示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
 [配置布局与新增功能指南](docs/configuration-layout.md)，确认它应归入消息推送、赛尔实时无头查询、
@@ -311,12 +313,16 @@ uv run --no-sync python -m ironsbot
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
+DOCKER_REGISTRY_USERNAME=
+DOCKER_REGISTRY_TOKEN=
 ```
 
 每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和 `public`。

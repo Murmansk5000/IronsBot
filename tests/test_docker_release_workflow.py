@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
 UNRAID_TEMPLATE = ROOT / "templates" / "ironsbot.xml"
 ENV_EXAMPLE = ROOT / ".env.example"
+DOCKER_README = ROOT / "docker" / "README.md"
 DOCKERHUB_DESCRIPTION_WORKFLOW = (
     ROOT / ".github" / "workflows" / "dockerhub-description.yml"
 )
@@ -39,6 +40,25 @@ def test_seer_password_deployment_docs_require_plaintext_input() -> None:
     assert "enter the plain-text password" in unraid_template
     assert "填写明文密码" in unraid_template
     assert "密码 MD5 环境变量" not in unraid_template
+
+
+def test_docker_env_example_lists_all_deployment_credentials() -> None:
+    docker_readme = DOCKER_README.read_text(encoding="utf-8")
+    env_block = docker_readme.split("```env", 1)[1].split("```", 1)[0]
+
+    for variable in (
+        "APP_CONFIG_PATH",
+        "ONEBOT_ACCESS_TOKEN",
+        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT",
+        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT",
+        "AI_KEY",
+        "SEER_PASSWORD_123456789",
+        "SENDPIC_CNB_TOKEN",
+        "GITHUB_WORKFLOW_TOKEN",
+        "DOCKER_REGISTRY_USERNAME",
+        "DOCKER_REGISTRY_TOKEN",
+    ):
+        assert f"{variable}=" in env_block
 
 
 def _bash() -> str:
