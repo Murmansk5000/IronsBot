@@ -20,8 +20,6 @@ from ironsbot.services.identity_link_store import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from nonebot.adapters.onebot.v11 import GroupMessageEvent
-
     from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.identity_link_store import IdentityLinkStore
@@ -36,6 +34,14 @@ class IdentityObservationAccount:
     app_id: str
     trusted_onebot_sender_id: int
     groups: Mapping[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class OneBotReplyObservation:
+    sender_id: int
+    group_id: int
+    mentioned_qq_ids: tuple[str, ...]
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,10 +124,10 @@ class SilentIdentityObservationService:
             return
         self._pending = [item for item in self._pending if item.token != token]
 
-    async def observe_onebot(self, event: GroupMessageEvent) -> bool:
+    async def observe_onebot(self, observation: OneBotReplyObservation) -> bool:
         now = self.clock()
         self._prune(now)
-        match = self._match_onebot(event, now=now)
+        match = self._match_onebot(observation, now=now)
         if match is None:
             return False
         matched, qq_id = match
@@ -159,7 +165,7 @@ class SilentIdentityObservationService:
 
     def _match_onebot(
         self,
-        event: GroupMessageEvent,
+        observation: OneBotReplyObservation,
         *,
         now: float,
     ) -> tuple[_PendingReply, str] | None:
@@ -167,21 +173,21 @@ class SilentIdentityObservationService:
             (
                 value
                 for value in self.accounts.values()
-                if value.trusted_onebot_sender_id == event.user_id
+                if value.trusted_onebot_sender_id == observation.sender_id
             ),
             None,
         )
         if account is None:
             return None
-        mentioned = _mentioned_qq_ids(event)
-        text = _normalize_text(event.get_plaintext())
+        mentioned = observation.mentioned_qq_ids
+        text = _normalize_text(observation.text)
         if len(mentioned) != 1 or not text:
             return None
         matches = [
             item
             for item in self._pending
             if item.official.app_id == account.app_id
-            and item.onebot_group_id == event.group_id
+            and item.onebot_group_id == observation.group_id
             and item.text == text
             and now - item.created_at <= self.match_window_seconds
         ]
@@ -202,15 +208,3 @@ def _outbound_text(message: OutboundMessage) -> str:
 
 def _normalize_text(text: str) -> str:
     return _SPACE_PATTERN.sub(" ", text).strip()
-
-
-def _mentioned_qq_ids(event: GroupMessageEvent) -> tuple[str, ...]:
-    values: list[str] = []
-    message = event.original_message or event.message
-    for segment in message:
-        if segment.type != "at":
-            continue
-        value = str(segment.data.get("qq", "")).strip()
-        if value.isdecimal() and value not in values:
-            values.append(value)
-    return tuple(values)

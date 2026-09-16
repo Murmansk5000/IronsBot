@@ -208,7 +208,6 @@ def test_official_aliases_reject_duplicate_scoped_targets(kind: str) -> None:
     with pytest.raises(ValueError, match="must not map to the same scoped target"):
         QQOfficialAccountConfig.model_validate(
             {
-                "enabled": True,
                 "app_id": "app-a",
                 "secret": "secret",
                 kind: {
@@ -358,10 +357,8 @@ def test_settings_validate_official_bilibili_alias_target() -> None:
         {
             "bot": {
                 "qq_official": {
-                    "enabled": True,
                     "accounts": {
                         "example_bot": {
-                            "enabled": True,
                             "app_id": "app-a",
                             "secret": "secret",
                             "group_aliases": {
@@ -410,10 +407,8 @@ def test_settings_accept_cross_platform_logical_group_alias() -> None:
             },
             "bot": {
                 "qq_official": {
-                    "enabled": True,
                     "accounts": {
                         "example_bot": {
-                            "enabled": True,
                             "app_id": "app-a",
                             "secret": "secret",
                             "group_aliases": {"same": "group-openid"},
@@ -451,10 +446,8 @@ def test_settings_accept_official_only_alias_in_shared_feature_policy() -> None:
             },
             "bot": {
                 "qq_official": {
-                    "enabled": True,
                     "accounts": {
                         "example_bot": {
-                            "enabled": True,
                             "app_id": "app-a",
                             "secret": "secret",
                             "group_aliases": {

@@ -10,6 +10,8 @@ from nonebot.adapters.onebot.v11 import Event, GroupMessageEvent
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 
+from ironsbot.services.identity_observation import OneBotReplyObservation
+
 if TYPE_CHECKING:
     from ironsbot.services.identity_observation import (
         SilentIdentityObservationService,
@@ -28,7 +30,14 @@ class OneBotIngressPolicy:
             event,
             GroupMessageEvent,
         ):
-            await self.identity_observer.observe_onebot(event)
+            await self.identity_observer.observe_onebot(
+                OneBotReplyObservation(
+                    sender_id=event.user_id,
+                    group_id=event.group_id,
+                    mentioned_qq_ids=_mentioned_qq_ids(event),
+                    text=event.get_plaintext(),
+                )
+            )
         if not self.messages_enabled:
             raise IgnoredException(_SILENT_REASON)
 
@@ -38,3 +47,15 @@ class OneBotIngressPolicy:
         @event_preprocessor
         async def enforce_onebot_ingress(event: Event) -> None:
             await policy.process(event)
+
+
+def _mentioned_qq_ids(event: GroupMessageEvent) -> tuple[str, ...]:
+    values: list[str] = []
+    message = event.original_message or event.message
+    for segment in message:
+        if segment.type != "at":
+            continue
+        value = str(segment.data.get("qq", "")).strip()
+        if value.isdecimal() and value not in values:
+            values.append(value)
+    return tuple(values)

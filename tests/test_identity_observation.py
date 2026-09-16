@@ -18,6 +18,7 @@ from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.services.identity_link_store import OfficialIdentity
 from ironsbot.services.identity_observation import (
     IdentityObservationAccount,
+    OneBotReplyObservation,
     SilentIdentityObservationService,
 )
 from tests.helpers.onebot_events import group_message_event
@@ -68,6 +69,19 @@ def _observed_reply(
     )
 
 
+def _observation(
+    *,
+    sender: int = OFFICIAL_BOT_QQ,
+    text: str = "结果",
+) -> OneBotReplyObservation:
+    return OneBotReplyObservation(
+        sender,
+        ONEBOT_GROUP,
+        (str(MEMBER_QQ),),
+        text,
+    )
+
+
 def _service(
     tmp_path: Path,
     clock: list[float],
@@ -98,14 +112,14 @@ async def test_two_unique_observations_link_group_member_silently(
         _incoming("official-1"),
         OutboundMessage.from_text("结果"),
     )
-    assert not await service.observe_onebot(_observed_reply())
+    assert not await service.observe_onebot(_observation())
 
     clock[0] += 1
     service.record_official_reply(
         _incoming("official-2"),
         OutboundMessage.from_text("结果"),
     )
-    assert await service.observe_onebot(_observed_reply())
+    assert await service.observe_onebot(_observation())
 
     link = await store.for_official(
         OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP)
@@ -121,9 +135,9 @@ async def test_untrusted_or_ambiguous_messages_never_link(tmp_path: Path) -> Non
     message = OutboundMessage.from_text("结果")
     service.record_official_reply(_incoming("official-1"), message)
 
-    assert not await service.observe_onebot(_observed_reply(sender=99999))
+    assert not await service.observe_onebot(_observation(sender=99999))
     service.record_official_reply(_incoming("official-2"), message)
-    assert not await service.observe_onebot(_observed_reply())
+    assert not await service.observe_onebot(_observation())
     assert (
         await store.for_official(
             OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP)
