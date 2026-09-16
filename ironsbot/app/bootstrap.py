@@ -11,6 +11,7 @@ from nonebot.log import LoguruHandler
 
 from ironsbot.app.composition import build_application
 from ironsbot.app.nonebot_manifest import nonebot_manifest_path
+from ironsbot.config.environment import load_runtime_environment
 from ironsbot.config.loader import load_settings
 from ironsbot.core.plugin_install import scoped_plugin_install_context
 
@@ -64,6 +65,7 @@ def initialize_nonebot(settings: Settings) -> None:
 
 def bootstrap() -> Application:
     configure_third_party_logging()
+    load_runtime_environment()
     settings = load_settings()
     initialize_nonebot(settings)
     configure_application_logging(settings.bot.log_level)
