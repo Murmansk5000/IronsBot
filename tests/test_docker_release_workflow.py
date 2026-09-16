@@ -562,6 +562,7 @@ def test_runtime_python_baseline_is_consistent() -> None:
     assert extra_argument in candidate["with"]["build-args"]
     assert extra_argument in publish["with"]["build-args"]
     assert 'extra_args=(--extra "$IRONSBOT_RUNTIME_EXTRA")' in audit["run"]
+    assert workflow["env"]["IRONSBOT_RUNTIME_EXTRA"] == "qq-official"
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:

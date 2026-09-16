@@ -295,11 +295,11 @@ must become `READY`/`RESUMED` for the container to be considered started, and
 adjust `bot.qq_official.startup_timeout_seconds` when the default 15 seconds is
 not suitable. Neither setting contains a secret or belongs in Unraid variables.
 
-The QQ Official adapter is an optional runtime component so the standard
-OneBot image does not carry its cryptography dependency. Build an official-bot
-image with `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`. A source checkout
-uses `uv sync --extra qq-official` followed by
-`uv run --no-sync python -m ironsbot`.
+Published Docker images include the QQ Official runtime together with the
+OneBot/NapCat runtime, so the same image supports either transport or both at
+once. A source checkout uses `uv sync --extra qq-official` followed by
+`uv run --no-sync python -m ironsbot`. A custom OneBot-only image may explicitly
+set `--build-arg IRONSBOT_RUNTIME_EXTRA=` to omit the optional SDK dependency.
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.

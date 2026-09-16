@@ -12,7 +12,7 @@ env:
     PYTHON_VERSION: "3.11"
     DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-    IRONSBOT_RUNTIME_EXTRA: ${{ vars.IRONSBOT_RUNTIME_EXTRA }}
+    IRONSBOT_RUNTIME_EXTRA: qq-official
 
 jobs:
     docker:
