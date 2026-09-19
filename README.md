@@ -130,7 +130,9 @@ NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk
 可选的受信观察验证默认关闭，须显式配置 `bot.onebot.identity_verification`
 与 `bot.onebot.trusted_official_bots`，具体条件见下方说明。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
-同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+同一个 AI 服务；已注册查询始终优先。没有为已声明的 `[ai.providers.<别名>]`
+配置对应的 `AI_KEY_<提供商别名大写>` 时，不会开放 AI 聊天入口。提供商表中声明
+`base_url` 与 `models`，顺序由 `ai.provider_order` 决定；非空旧 `AI_KEY` 会阻止配置加载。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
 `[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
 `feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
@@ -314,7 +316,7 @@ Secret 时，QQ 官方成为唯一出站平台；NapCat 不处理业务指令，
 
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
-  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、`AI_KEY`、
+  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、`AI_KEY_<提供商别名大写>`、
   按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
   `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
 
@@ -329,7 +331,8 @@ APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
-AI_KEY=
+# 仅为 TOML 已声明的提供商设置变量，后缀为其别名大写；下例仅适用于已声明 [ai.providers.example]：
+AI_KEY_EXAMPLE=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=

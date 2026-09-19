@@ -269,7 +269,8 @@ APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
-AI_KEY=
+# Set only when [ai.providers.deepseek] is declared in TOML.
+AI_KEY_DEEPSEEK=
 # Add the plain password for each [[seer.player_accounts]] player ID that logs in.
 # IronsBot converts it to MD5 in memory.
 SEER_PASSWORD_123456789=
@@ -286,7 +287,7 @@ DOCKER_REGISTRY_TOKEN=
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. |
 | `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
-| `AI_KEY` | AI chat API key. |
+| `AI_KEY_<PROVIDER_ALIAS>` | API key for one declared `[ai.providers.<alias>]`; the suffix is the uppercase provider alias. Configure the provider and models in TOML. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
