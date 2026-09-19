@@ -11,7 +11,6 @@ from threading import Lock
 from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.api_client import QQApiClient
-from qqbot_agent_sdk.event_parser import EventParser
 from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
@@ -20,6 +19,12 @@ from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
+from ironsbot.integrations.qq_official.group_message_events import (
+    GROUP_MESSAGE_CREATE,
+    enable_group_message_dispatch,
+    message_event_family,
+    parse_message_event,
+)
 from ironsbot.integrations.qq_official.identity import (
     qq_official_event_mentions_bot,
     qq_official_incoming_message,
@@ -249,6 +254,7 @@ class QQOfficialRuntime:
         if startup_timeout_seconds <= 0:
             msg = "QQ Official startup timeout must be positive"
             raise ValueError(msg)
+        enable_group_message_dispatch()
         self._startup_timeout_seconds = startup_timeout_seconds
         self._inbound_deduplicator = QQOfficialInboundDeduplicator(
             session_root / "inbound.sqlite"
@@ -374,7 +380,7 @@ class QQOfficialRuntime:
         event_type: str,
         raw: Mapping[str, object],
     ) -> None:
-        event = EventParser.parse(event_type, dict(raw))
+        event = parse_message_event(event_type, raw)
         if event is None:
             logger.warning(
                 "QQ Official inbound event rejected by parser: "
@@ -391,7 +397,7 @@ class QQOfficialRuntime:
         incoming = qq_official_incoming_message(event, account_id=app_id)
         if not await self._inbound_deduplicator.claim(
             app_id=app_id,
-            event_type=event_type,
+            event_type=message_event_family(event_type),
             message_id=incoming.message_id,
         ):
             logger.info(
@@ -405,6 +411,7 @@ class QQOfficialRuntime:
         context = MessageInputContext(
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
+            automatic_fallback_allowed=event_type != GROUP_MESSAGE_CREATE,
         )
         recognized = router.recognizes(context)
         logger.info(
