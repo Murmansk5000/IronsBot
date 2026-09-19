@@ -100,6 +100,11 @@ class FeatureService:
     ) -> None:
         self.linked_onebot_ids.pop((official_app_id, official_openid), None)
 
+    def canonical_actor(self, actor: ActorRef) -> ActorRef:
+        """Return the stable OneBot principal for a linked official identity."""
+
+        return self._linked_onebot_actor(actor) or actor
+
     def _linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
         if actor.platform is not Platform.QQ_OFFICIAL or actor.account_id is None:
             return None

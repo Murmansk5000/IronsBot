@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from httpx import AsyncClient
@@ -1518,6 +1518,40 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
     ]
     assert bot.sent == len(expected_calls)
     assert [call[3:] for call in bot.calls] == expected_calls
+
+
+@pytest.mark.asyncio
+async def test_identity_observation_reply_mentions_the_group_member() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="member-openid",
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    observer = SimpleNamespace(
+        record_official_reply=lambda _incoming, _message: 1,
+        discard_official_reply=lambda _token: None,
+    )
+
+    await deliver_qq_official_reply(
+        messenger,
+        incoming,
+        PortableReply(OutboundMessage.from_text("result")),
+        identity_observer=cast("Any", observer),
+    )
+
+    payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
+    assert payloads == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" />result'
+        ),
+    )
 
 
 @pytest.mark.asyncio

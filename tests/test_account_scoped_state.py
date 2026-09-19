@@ -83,6 +83,30 @@ def test_actor_state_is_isolated_by_qq_official_account(tmp_path: Path) -> None:
     ).used_count == 0
 
 
+def test_player_binding_uses_canonical_cross_platform_actor(tmp_path: Path) -> None:
+    path = tmp_path / "qq_state.sqlite"
+    onebot_actor = ActorRef(Platform.ONEBOT, "10001")
+    official_actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "group-openid",
+        account_id="app-id",
+    )
+    bindings = SqlitePlayerBindingStore(path)
+    bindings.bind(actor=onebot_actor, player_id=_PLAYER_A, player_nick="A")
+    canonical = SqlitePlayerBindingStore(
+        path,
+        canonicalize_actor=lambda actor: (
+            onebot_actor if actor == official_actor else actor
+        ),
+    )
+
+    assert canonical.get(official_actor).player_id == _PLAYER_A
+    canonical.bind(actor=official_actor, player_id=_PLAYER_B, player_nick="B")
+    assert bindings.get(onebot_actor).player_id == _PLAYER_B
+
+
 def test_conversation_state_is_isolated_by_qq_official_account(
     tmp_path: Path,
 ) -> None:

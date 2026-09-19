@@ -555,7 +555,7 @@ async def deliver_qq_official_reply(
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
-    from ironsbot.core.outbound import ReplyContext
+    from ironsbot.core.outbound import MentionPart, OutboundMessage, ReplyContext
 
     context = ReplyContext.from_message(incoming)
 
@@ -584,7 +584,17 @@ async def deliver_qq_official_reply(
             if identity_observer is not None
             else None
         )
-        result = await messenger.reply(context, message)
+        delivery_message = message
+        if (
+            observation is not None
+            and incoming.conversation.kind == "group"
+            and incoming.actor.kind == "member"
+        ):
+            delivery_message = OutboundMessage(
+                (MentionPart(incoming.actor), *message.parts),
+                prompt=message.prompt,
+            )
+        result = await messenger.reply(context, delivery_message)
         if not result.delivered and identity_observer is not None:
             identity_observer.discard_official_reply(observation)
         return result

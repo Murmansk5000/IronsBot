@@ -129,7 +129,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     bot_router = common.bot_router
     proactive_delivery = common.proactive_delivery
     admin_notices = common.admin_notices
-    player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
+    player_bindings = SqlitePlayerBindingStore(
+        settings.paths.qq_state,
+        canonicalize_actor=features.canonical_actor,
+    )
     operations = build_operations_components(
         settings,
         databases,
