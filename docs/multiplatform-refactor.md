@@ -51,15 +51,25 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 当前权威状态（2026-09-19）
 
-Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前公共生产修订为 `226631b5`：Unraid
+Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前公共发布修订为 `33631b0a`，
+Docker Hub/GHCR 清单 digest 为
+`sha256:82910e762953e85e32506851be1737adf74027dddac670787d2d8924fcd36e04`，
+展开大小为 260,011,042 bytes。Unraid
 容器、QQ Official READY 和三个无头 worker 健康；生产“阵容”查询已按被动序号 1-3
 送达进度、文字与图片。群内请求者定位改用 source `message_reference`，客户端显示原生
 回复，不再发送会被原样显示的 `<qqbot-at-user>` 文本。身份静默观察也读取引用原消息的
 数字发送者，不再依赖可见 @。
 
-提交 `9aa4ee79` 进一步将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
+已发布提交 `9aa4ee79` 将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
 `superuser_bypass` 执行未对群开启的 Feature，普通成员仍受群策略限制，黑名单和命令
-audience 不被绕过。该提交尚未发布，生产权限矩阵仍是 Phase 7 的待验收项。
+audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级管理员、普通成员、黑名单和
+管理通知不外泄的同一 digest 客户端证据，因此仍是 Phase 7 的待验收项。
+
+公开 `origin/main` 与私有预览 `preview/main` 当前都指向 `33631b0a`，旧的“预览落后
+公开仓库 7 个提交”关系已经结束。当前本地候选为 `14ba3ddd`，仅比两个发布 main
+领先 2 个未推送提交：官方消息引用与成员提及分离，以及有序 AI provider/key failover。
+后续唯一公开镜像发布源为 `Murmansk5000/IronsBot` 的 main；预览仓库只保留同历史镜像，
+不得重新合入旧 `codex/multiplatform-architecture-v5` 分叉。
 
 其余外部门槛包括第二真实 AppID、多账号隔离、腾讯主动消息拒绝/额度、拒收事件、
 自定义键盘权限和腾讯实际重复重投。它们不得被单账号基础查询成功替代，也不阻塞继续
