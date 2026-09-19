@@ -5,7 +5,6 @@ import asyncio
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Bot  # noqa: TC002
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
@@ -45,7 +44,6 @@ async def _send_notice_part(
 
 
 async def send_startup_notice(
-    _bot: Bot,
     service: StartupNoticeService,
     config: StartupConfig,
 ) -> None:
@@ -96,20 +94,42 @@ async def send_startup_notice(
         service.finish_send()
 
 
+async def send_startup_notice_on_bot_connect(
+    _bot: object,
+    *,
+    service: StartupNoticeService,
+    config: StartupConfig,
+) -> None:
+    await send_startup_notice(service, config)
+
+
 def plugin_contribution(
     *,
     service: StartupNoticeService,
     config: StartupConfig,
+    send_on_startup: bool = False,
 ) -> PluginContribution:
     """Declare the first-connection startup notice lifecycle hook."""
 
     return PluginContribution(
         id="startup_notice",
         hooks=PluginHooks(
-            first_bot_connect=(
+            startup=(
                 (
                     "startup_notice",
                     partial(send_startup_notice, service=service, config=config),
+                ),
+            )
+            if send_on_startup
+            else (),
+            first_bot_connect=(
+                (
+                    "startup_notice",
+                    partial(
+                        send_startup_notice_on_bot_connect,
+                        service=service,
+                        config=config,
+                    ),
                 ),
             ),
         ),
@@ -122,5 +142,8 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             service=context.resources.startup_notice,
             config=context.settings.operations.startup_notice,
+            send_on_startup=(
+                context.settings.outbound_platform_selection.official_active
+            ),
         ),
     )

@@ -1231,12 +1231,15 @@ module-level values.
 
 Bootstrap registers exactly these driver hooks:
 
-- `startup`: start resources, migrate stores, start configured services, and
-  install scheduled jobs;
+- `startup`: start resources, migrate stores, start configured services,
+  install scheduled jobs, and deliver the startup notice after a selected QQ
+  Official account reaches ready;
 - `shutdown`: stop jobs and background tasks, then close resources in reverse
   ownership order;
 - `bot_connect`: record the connected OneBot instance, run readiness checks,
-  and deliver startup notices once for that connection;
+  and retry the same startup notice service when OneBot is the selected
+  outbound platform. A notice already delivered through QQ Official is not
+  repeated when an observer-mode OneBot later connects;
 - `bot_disconnect`: remove the disconnected OneBot instance from routing.
 
 Plugins do not call `get_driver()` and do not register driver hooks. Runtime

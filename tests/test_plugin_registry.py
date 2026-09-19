@@ -11,6 +11,9 @@ import tomllib
 if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
 
+    from ironsbot.config.models.operations import StartupConfig
+    from ironsbot.services.operations.startup import StartupNoticeService
+
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
@@ -25,6 +28,9 @@ from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
+)
+from ironsbot.plugins.onebot.startup_notice import (
+    plugin_contribution as startup_notice_plugin_contribution,
 )
 from ironsbot.services.ai.command_contracts import (
     ai_chat_command_contracts,
@@ -294,6 +300,23 @@ def test_manifest_startup_notice_owns_its_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["startup_notice"]
 
     assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
+        "startup_notice"
+    ]
+
+
+def test_official_startup_notice_does_not_wait_for_onebot_connect() -> None:
+    base = DEFINITIONS_BY_ID["startup_notice"]
+    contribution = startup_notice_plugin_contribution(
+        service=cast("StartupNoticeService", object()),
+        config=cast("StartupConfig", object()),
+        send_on_startup=True,
+    )
+
+    assert base.hooks.startup == ()
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "startup_notice"
+    ]
     assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
         "startup_notice"
     ]
