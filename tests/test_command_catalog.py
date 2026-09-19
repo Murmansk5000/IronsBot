@@ -10,6 +10,7 @@ from ironsbot.core.command_catalog import (
     CommandContract,
     parsed_command_input_matcher,
 )
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 
@@ -137,6 +138,107 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
         "superuser",
     ]
     assert [command.id for command in private] == ["regular"]
+
+
+@pytest.mark.parametrize("platform", (Platform.ONEBOT, Platform.QQ_OFFICIAL))
+def test_superuser_execution_bypass_does_not_expand_group_visibility(
+    platform: Platform,
+) -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="regular",
+            plugin_id="example",
+            section="查询",
+            examples=("查询",),
+            description="查询资料",
+            features_any=("example_feature",),
+            show_in_poke=True,
+        ),
+    )
+    account_id = "example-app" if platform is Platform.QQ_OFFICIAL else None
+    actor = ActorRef(platform, "admin", account_id=account_id)
+    conversation = ConversationRef(
+        platform,
+        "group",
+        "disabled-group",
+        account_id=account_id,
+    )
+    context = CommandContext(actor=actor, conversation=conversation)
+    features = FeatureService(
+        group_features={},
+        actor_features={},
+        superusers=frozenset({actor}),
+        superuser_bypass=True,
+    )
+
+    assert catalog.available_for_context(context, features) == ()
+    assert catalog.poke_candidates_for_context(context, features) == ()
+    assert [
+        command.id for command in catalog.executable_for_context(context, features)
+    ] == ["regular"]
+    assert catalog.claims_direct_input(context, features, "查询")
+
+
+@pytest.mark.parametrize("platform", (Platform.ONEBOT, Platform.QQ_OFFICIAL))
+def test_superuser_execution_bypass_can_be_disabled(platform: Platform) -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="regular",
+            plugin_id="example",
+            section="查询",
+            examples=("查询",),
+            description="查询资料",
+            features_any=("example_feature",),
+        ),
+    )
+    account_id = "example-app" if platform is Platform.QQ_OFFICIAL else None
+    actor = ActorRef(platform, "admin", account_id=account_id)
+    context = CommandContext(
+        actor=actor,
+        conversation=ConversationRef(
+            platform,
+            "group",
+            "disabled-group",
+            account_id=account_id,
+        ),
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={},
+        superusers=frozenset({actor}),
+        superuser_bypass=False,
+    )
+
+    assert catalog.executable_for_context(context, features) == ()
+    assert not catalog.claims_direct_input(context, features, "查询")
+
+
+def test_feature_access_does_not_bypass_command_audience() -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="manager",
+            plugin_id="example",
+            section="管理",
+            examples=("管理",),
+            description="管理资料",
+            features_any=("example_feature",),
+            access=(CommandAccess("group", "group_manager"),),
+        ),
+    )
+    actor = ActorRef(Platform.ONEBOT, "member")
+    conversation = ConversationRef(Platform.ONEBOT, "group", "group")
+    context = CommandContext(
+        actor=actor,
+        conversation=conversation,
+        group_role="member",
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={actor: frozenset({"example_feature"})},
+        superusers=frozenset(),
+    )
+
+    assert catalog.executable_for_context(context, features) == ()
 
 
 def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
