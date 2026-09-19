@@ -130,9 +130,9 @@ def test_private_direct_input_tries_intent_then_chat() -> None:
 
 
 def test_claimed_command_never_enters_ai() -> None:
-    decision = _decide(_input(PRIVATE, "查询"))
-
-    assert not decision.recognized
+    assert not _decide(_input(GROUP, "查询")).recognized
+    assert not _decide(_input(GROUP, "查询", mentions_bot=True)).recognized
+    assert not _decide(_input(PRIVATE, "查询")).recognized
 
 
 def test_reply_member_mention_and_blacklist_never_enter_ai() -> None:

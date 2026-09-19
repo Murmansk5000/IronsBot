@@ -1329,11 +1329,12 @@ example, a quoted `收集@成员` is a valid `member_target_command`, while an
 `@成员` contained in the quoted message itself is ignored.
 Matchers declare one input strategy instead of inspecting message segments:
 
-- `explicit_command` accepts direct commands and replies, except a current
-  ordinary-member mention;
+- `explicit_command` accepts direct commands, commands addressed with a bot
+  mention, and replies, except a current ordinary-member mention;
 - `member_target_command` and `member_targets_command` are the only command
   strategies allowed to consume current ordinary-member mentions;
-- `bot_mention` is reserved for direct AI and bot-mention-block handling;
+- `bot_mention` identifies addressed input for AI or help hints only after the
+  command catalog has declined ownership;
 - `natural_language` accepts only direct text with no mention.
 
 An anchored prompt keeps the direct owner path and may additionally allow a
