@@ -247,8 +247,8 @@ owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-Group and user aliases come from `[features.group_aliases]` and
-`[features.user_aliases]`; numeric IDs are also accepted. Replies to incoming
+Group and user aliases come from `[identities.groups]` and
+`[identities.users]`; numeric IDs are also accepted. Replies to incoming
 commands keep using the bot that received the event. Bilibili, activity,
 scheduled-message, server-status, startup, and other proactive deliveries use
 the configured route. Routing does not filter incoming events, so avoid placing
@@ -278,7 +278,10 @@ ONEBOT_IDENTITY_VERIFICATION=false
 ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
-AI_KEY=
+AI_KEY_DEEPSEEK=
+# Add one variable for each additional [ai.providers.<alias>].
+# AI_KEY_FUMIN=
+# AI_KEY_NOMISS=
 # Add the plain password for each [[seer.player_accounts]] player ID that logs in.
 # IronsBot converts it to MD5 in memory.
 SEER_PASSWORD_123456789=
@@ -295,11 +298,11 @@ DOCKER_REGISTRY_TOKEN=
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `ONEBOT_ENABLED` | Optional deployment override for `bot.onebot.enabled`. |
 | `ONEBOT_SEND_MESSAGES` | Optional deployment override for OneBot outbound. It is ignored when official credentials are active because NapCat is then forced silent. |
-| `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation. |
+| `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation through official source-message references seen by NapCat. |
 | `ONEBOT_TRUSTED_OFFICIAL_BOT_<ACCOUNT_ALIAS>` | Numeric QQ of the declared official account as seen by NapCat. Required for each active account when identity observation is enabled. |
 | `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one declared `[bot.qq_official.accounts.<alias>]`; a complete AppID/Secret pair activates the account and makes QQ Official the only outbound platform. |
 | `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret paired with the AppID. Each account obtains and refreshes its own AccessToken. |
-| `AI_KEY` | AI chat API key. |
+| `AI_KEY_<PROVIDER_ALIAS>` | API key for one declared `[ai.providers.<alias>]`. Providers and their models are tried in TOML order. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
@@ -376,15 +379,15 @@ Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.
 
 ```toml
-[features]
-superuser_bypass = true
-
-[features.group_aliases]
+[identities.groups]
 admin = 123456789
 main = 987654321
 
-[features.user_aliases]
+[identities.users]
 owner = 1234567890
+
+[features]
+superuser_bypass = true
 
 [features.group_policy]
 admin = ["admin_notice"]
@@ -437,13 +440,13 @@ This is the same kind of output as the built-in `战队<team_id>` query, but the
 Enable the feature and default reminder settings in `ironsbot.toml`:
 
 ```toml
-[features]
-
-[features.group_aliases]
+[identities.groups]
 example = 987654321
 
-[features.user_aliases]
+[identities.users]
 owner = 1234567890
+
+[features]
 
 [features.group_policy]
 example = ["team_resource_subscription"]

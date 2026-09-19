@@ -13,7 +13,7 @@ from ironsbot.services.ai.memory import AiMemoryTurn
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
-from tests.helpers.ai import FakeAiCompletionClient
+from tests.helpers.ai import FakeAiCompletionClient, configured_ai_config
 from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
@@ -74,8 +74,7 @@ async def _successful_completion(
 
 @pytest.mark.asyncio
 async def test_ai_chat_awaits_memory_store_reads_and_writes() -> None:
-    config = AiConfig(
-        api_key="test-key",
+    config = configured_ai_config(
         memory=True,
         memory_turns=2,
         memory_max_chars=100,
@@ -118,7 +117,7 @@ def _ai_service(
     superusers: tuple[int, ...] = (),
     request_completion: CompletionRequester = _successful_completion,
 ) -> AiService:
-    config = AiConfig(api_key="test-key", memory=False)
+    config = configured_ai_config(memory=False)
     runtime = build_test_runtime(
         feature_config=FeatureConfig(
             group_policy={str(group_id): ["admin_notice"] for group_id in admin_groups},

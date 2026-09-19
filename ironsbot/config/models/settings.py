@@ -19,6 +19,7 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.features import FeatureConfig, validate_feature_config
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
@@ -108,39 +109,6 @@ class QQOfficialConfigError(ValueError):
     @classmethod
     def empty_target_openid(cls) -> QQOfficialConfigError:
         return cls("QQ Official target OpenID must not be empty")
-
-    @classmethod
-    def invalid_alias_mapping(cls) -> QQOfficialConfigError:
-        return cls("QQ Official target aliases must be a table")
-
-    @classmethod
-    def empty_target_alias(cls) -> QQOfficialConfigError:
-        return cls("QQ Official target alias must not be empty or numeric")
-
-    @classmethod
-    def duplicate_alias_target(
-        cls,
-        kind: str,
-        first_alias: str,
-        second_alias: str,
-    ) -> QQOfficialConfigError:
-        return cls(
-            f"QQ Official {kind} aliases {first_alias} and {second_alias} "
-            "must not map to the same scoped target"
-        )
-
-    @classmethod
-    def duplicate_group_member_alias_target(
-        cls,
-        first_alias: str,
-        second_alias: str,
-    ) -> QQOfficialConfigError:
-        return cls.duplicate_alias_target(
-            "group member",
-            first_alias,
-            second_alias,
-        )
-
 
 def _command_starts(value: object) -> list[str]:
     if value is None:
@@ -264,11 +232,6 @@ class QQOfficialAccountConfig(BaseModel):
             "seer_rank",
         ]
     )
-    superusers: list[str] = Field(default_factory=list)
-    group_superusers: dict[str, list[str]] = Field(default_factory=dict)
-    group_aliases: dict[str, str] = Field(default_factory=dict)
-    user_aliases: dict[str, str] = Field(default_factory=dict)
-    group_member_aliases: dict[str, dict[str, str]] = Field(default_factory=dict)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -277,76 +240,10 @@ class QQOfficialAccountConfig(BaseModel):
     def normalize_credentials(cls, value: object) -> str:
         return str(value or "").strip()
 
-    @field_validator("features", "superusers", mode="before")
+    @field_validator("features", mode="before")
     @classmethod
     def normalize_string_lists(cls, value: object) -> list[str]:
         return _command_starts(value)
-
-    @field_validator("group_aliases", "user_aliases", mode="before")
-    @classmethod
-    def normalize_target_aliases(cls, value: object) -> dict[str, str]:
-        if not isinstance(value, Mapping):
-            raise QQOfficialConfigError.invalid_alias_mapping()
-        aliases: dict[str, str] = {}
-        for raw_alias, raw_openid in value.items():
-            alias = str(raw_alias).strip()
-            if not alias or alias.isdecimal():
-                raise QQOfficialConfigError.empty_target_alias()
-            openid = str(raw_openid).strip()
-            if not openid:
-                raise QQOfficialConfigError.empty_target_openid()
-            aliases[alias] = openid
-        return aliases
-
-    def resolve_group_openid(self, reference: str) -> str:
-        return self.group_aliases.get(reference, reference)
-
-    def resolve_user_openid(self, reference: str) -> str:
-        return self.user_aliases.get(reference, reference)
-
-    def resolve_group_member_openid(
-        self,
-        group_reference: str,
-        member_reference: str,
-    ) -> str:
-        return self.group_member_aliases.get(group_reference, {}).get(
-            member_reference,
-            member_reference,
-        )
-
-    @field_validator("group_member_aliases", mode="before")
-    @classmethod
-    def normalize_group_member_aliases(
-        cls,
-        value: object,
-    ) -> dict[str, dict[str, str]]:
-        if not isinstance(value, Mapping):
-            raise QQOfficialConfigError.invalid_alias_mapping()
-        groups: dict[str, dict[str, str]] = {}
-        for raw_group, raw_aliases in value.items():
-            group = str(raw_group).strip()
-            if not group:
-                raise QQOfficialConfigError.empty_target_openid()
-            groups[group] = cls.normalize_target_aliases(raw_aliases)
-        return groups
-
-    @model_validator(mode="after")
-    def validate_unique_alias_targets(self) -> QQOfficialAccountConfig:
-        _validate_unique_openid_aliases(self.group_aliases, kind="group")
-        _validate_unique_openid_aliases(self.user_aliases, kind="user")
-        member_targets: dict[tuple[str, str], str] = {}
-        for group_reference, aliases in self.group_member_aliases.items():
-            group_openid = self.resolve_group_openid(group_reference)
-            for alias, member_openid in aliases.items():
-                target = (group_openid, member_openid)
-                existing_alias = member_targets.get(target)
-                if existing_alias is not None:
-                    raise QQOfficialConfigError.duplicate_group_member_alias_target(
-                        existing_alias,
-                        alias,
-                    )
-                member_targets[target] = alias
-        return self
 
     @field_validator("group_policy", "user_policy", mode="before")
     @classmethod
@@ -361,24 +258,6 @@ class QQOfficialAccountConfig(BaseModel):
             policy[target] = _command_starts(raw_features)
         return policy
 
-    @field_validator("group_superusers", mode="before")
-    @classmethod
-    def normalize_group_superusers(cls, value: object) -> dict[str, list[str]]:
-        if not isinstance(value, Mapping):
-            raise QQOfficialConfigError.invalid_target_policy()
-        result: dict[str, list[str]] = {}
-        for raw_group, raw_members in value.items():
-            group = str(raw_group).strip()
-            if not group:
-                raise QQOfficialConfigError.empty_target_openid()
-            members = _command_starts(raw_members)
-            if not members:
-                raise ValueError(  # noqa: TRY003
-                    "QQ Official group superusers must not be empty"
-                )
-            result[group] = members
-        return result
-
     @property
     def configured_features(self) -> set[str]:
         return {
@@ -390,23 +269,6 @@ class QQOfficialAccountConfig(BaseModel):
                 for feature in features
             ),
         }
-
-
-def _validate_unique_openid_aliases(
-    aliases: Mapping[str, str],
-    *,
-    kind: str,
-) -> None:
-    target_aliases: dict[str, str] = {}
-    for alias, openid in aliases.items():
-        existing_alias = target_aliases.get(openid)
-        if existing_alias is not None:
-            raise QQOfficialConfigError.duplicate_alias_target(
-                kind,
-                existing_alias,
-                alias,
-            )
-        target_aliases[openid] = alias
 
 
 class QQOfficialConfig(BaseModel):
@@ -520,11 +382,12 @@ class PathsConfig(BaseModel):
 
 
 class Settings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     bot: BotConfig = Field(default_factory=BotConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
+    identities: IdentityConfig = Field(default_factory=IdentityConfig)
     promotions: dict[str, PromotionConfig] = Field(default_factory=dict)
     ai: AiConfig = Field(default_factory=AiConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
@@ -538,6 +401,7 @@ class Settings(BaseModel):
     def validate_registered_features(self) -> Settings:
         try:
             self._validate_platform_selection()
+            self._validate_identity_accounts()
             validate_feature_config(
                 self.features,
                 command_features=self.messaging.command_feature_keys,
@@ -562,6 +426,21 @@ class Settings(BaseModel):
                 ],
             ) from exc
         return self
+
+    def _validate_identity_accounts(self) -> None:
+        declared = set(self.bot.qq_official.accounts)
+        referenced = {
+            account
+            for targets in (self.identities.groups, self.identities.users)
+            for target in targets.values()
+            for account in target.official
+        }
+        unknown = sorted(referenced - declared)
+        if unknown:
+            msg = "identities reference undeclared official accounts: " + ", ".join(
+                unknown
+            )
+            raise ValueError(msg)
 
     def _validate_platform_selection(self) -> None:
         onebot = self.bot.onebot
@@ -623,15 +502,24 @@ class Settings(BaseModel):
     @property
     def onebot_references(self) -> OneBotReferenceResolver:
         return OneBotReferenceResolver(
-            group_aliases=self.features.group_aliases,
-            user_aliases=self.features.user_aliases,
+            group_aliases={
+                alias: target.qq
+                for alias, target in self.identities.groups.items()
+                if target.qq is not None
+            },
+            user_aliases={
+                alias: target.qq
+                for alias, target in self.identities.users.items()
+                if target.qq is not None
+            },
         )
 
     @property
     def platform_references(self) -> PlatformReferenceResolver:
         return build_platform_reference_resolver(
             self.onebot_references,
-            self.bot.qq_official.enabled_accounts.values(),
+            self.identities,
+            self.bot.qq_official.enabled_accounts,
         )
 
     @property

@@ -334,6 +334,26 @@ async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
 
 
 @pytest.mark.asyncio
+async def test_group_reply_references_inbound_message_index_without_mentions() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    result = await messenger.reply(
+        _reply(GROUP, "event-id", "source-message-index"),
+        TEXT,
+    )
+
+    assert result.delivered
+    assert not messenger.capabilities_for(GROUP).can_mention_members
+    assert bot.calls[0][2] == (
+        QQOfficialTextPayload("result", reference_id="source-message-index"),
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("context", "error_code"),
     [

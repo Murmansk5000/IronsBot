@@ -72,7 +72,12 @@ from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import NamedLifecycleHook
+    from ironsbot.services.identity_link_store import (
+        CrossPlatformIdentityLink,
+        OfficialIdentity,
+    )
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.startup import StartupNoticeService
 
@@ -87,6 +92,18 @@ async def _start_data_sync_resource(
         "startup data sync notice",
         await service.startup(scheduler),
     )
+
+
+async def _load_identity_links(
+    store: SqliteIdentityLinkStore,
+    features: FeatureService,
+) -> None:
+    for link in await store.all_links():
+        features.register_identity_link(
+            official_app_id=link.official.app_id,
+            official_openid=link.official.openid,
+            onebot_qq_id=link.onebot_qq_id,
+        )
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
@@ -112,7 +129,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     bot_router = common.bot_router
     proactive_delivery = common.proactive_delivery
     admin_notices = common.admin_notices
-    player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
+    player_bindings = SqlitePlayerBindingStore(
+        settings.paths.qq_state,
+        canonicalize_actor=features.canonical_actor,
+    )
     operations = build_operations_components(
         settings,
         databases,
@@ -237,15 +257,31 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
     identity_store = SqliteIdentityLinkStore(settings.paths.qq_state)
+
+    def register_identity_link(link: CrossPlatformIdentityLink) -> None:
+        features.register_identity_link(
+            official_app_id=link.official.app_id,
+            official_openid=link.official.openid,
+            onebot_qq_id=link.onebot_qq_id,
+        )
+
+    def unregister_identity_link(link: CrossPlatformIdentityLink) -> None:
+        features.unregister_identity_link(
+            official_app_id=link.official.app_id,
+            official_openid=link.official.openid,
+        )
+
     identity_linking = IdentityLinkingService(
         identity_store,
         {
             alias: OfficialAccount(alias, account.app_id)
             for alias, account in settings.bot.qq_official.enabled_accounts.items()
         },
+        on_link=register_identity_link,
+        on_unlink=unregister_identity_link,
     )
     identity_links = IdentityLinkCommands(identity_linking)
-    identity_observer = _build_identity_observer(settings, identity_store)
+    identity_observer = _build_identity_observer(settings, identity_store, features)
     onebot_ingress = OneBotIngressPolicy(
         messages_enabled=(
             settings.outbound_platform_selection.onebot_message_handling_enabled
@@ -341,6 +377,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     resource_startup_hooks: list[NamedLifecycleHook] = [
         (
+            "identity_links",
+            partial(_load_identity_links, identity_store, features),
+        ),
+        (
             "data_sync",
             partial(
                 _start_data_sync_resource,
@@ -394,15 +434,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 def _build_identity_observer(
     settings: Settings,
     store: SqliteIdentityLinkStore,
+    features: FeatureService,
 ) -> SilentIdentityObservationService | None:
     if not settings.bot.onebot.identity_verification:
         return None
     accounts: dict[str, IdentityObservationAccount] = {}
     for alias, account in settings.bot.qq_official.enabled_accounts.items():
         groups = {
-            account.resolve_group_openid(group_alias): group_id
-            for group_alias, group_id in settings.features.group_aliases.items()
-            if group_alias in account.group_aliases
+            target.official[alias]: target.qq
+            for target in settings.identities.groups.values()
+            if target.qq is not None and alias in target.official
         }
         accounts[account.app_id] = IdentityObservationAccount(
             app_id=account.app_id,
@@ -411,4 +452,11 @@ def _build_identity_observer(
             ),
             groups=groups,
         )
-    return SilentIdentityObservationService(store, accounts)
+    def register_link(qq_id: str, official: OfficialIdentity) -> None:
+        features.register_identity_link(
+            official_app_id=official.app_id,
+            official_openid=official.openid,
+            onebot_qq_id=qq_id,
+        )
+
+    return SilentIdentityObservationService(store, accounts, on_link=register_link)

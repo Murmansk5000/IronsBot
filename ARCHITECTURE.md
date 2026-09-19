@@ -680,18 +680,22 @@ class DeliveryCapabilities:
   never hide an expired official reply behind a generic retry loop.
 - Keep OneBot numeric QQ IDs separate from official open IDs. There is no
   implicit cross-platform identity mapping.
-- Cross-platform identity may only be linked after the same user explicitly
-  confirms control on both transports. The preferred flow is a short-lived,
-  single-use signed link or button issued from the OneBot side and confirmed on
-  the official side; a typed code is only a capability fallback. Nicknames,
-  avatars, message timing, `union_openid`, or any other heuristic must not be
-  used to infer a numeric QQ ID. Links must be revocable and scoped by AppID and
-  official identity kind.
+- Cross-platform identity has three exact sources: a deployment-owned identity
+  alias, an explicit short-lived challenge confirmed on both transports, or a
+  trusted silent observation. Silent observation is allowed only when an
+  official reply references the triggering group message and NapCat reports
+  that referenced message's numeric sender in the same configured logical
+  group. Two independent, unique observations are required before persistence.
+  Nicknames, avatars, fuzzy text similarity, bare timing, `union_openid`, or
+  speech-history guesses are never identity proof. Links are revocable and
+  scoped by AppID and official identity kind.
 - Store official targets with their platform and scope. Never treat an official
   identifier as a QQ number or reuse a OneBot group alias for it.
 - Treat mentions, callbacks, message references, and media as adapter-specific
-  capabilities. A command that needs an unavailable capability must degrade
-  safely, not guess.
+  capabilities. The current QQ Official group path targets a requester with a
+  source `message_reference`; it does not claim that the client rendered a
+  visible member mention. A command that needs an unavailable capability must
+  degrade safely, not guess.
 - QQ Official URL images use the SDK's server-fetch upload and binary images use
   its chunked local-file uploader through short-lived temporary files. The SDK
   1.2.2 high-level API does not expose the returned TTL, so `file_info` is used
@@ -1434,7 +1438,7 @@ values only.
 ```text
 APP_CONFIG_PATH
 ONEBOT_ACCESS_TOKEN
-AI_KEY
+AI_KEY_<provider_alias>
 SEER_PASSWORD_<player_id>
 SENDPIC_CNB_TOKEN
 GITHUB_WORKFLOW_TOKEN

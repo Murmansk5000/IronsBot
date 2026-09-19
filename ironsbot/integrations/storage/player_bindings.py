@@ -13,6 +13,7 @@ from ironsbot.integrations.storage.sqlite import (
 from ironsbot.services.seer.player_binding import PlayerBindingState
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ironsbot.core.platform import ActorRef
@@ -46,15 +47,22 @@ MIGRATION_NAMESPACE = "player_bindings"
 
 
 class SqlitePlayerBindingStore:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        canonicalize_actor: Callable[[ActorRef], ActorRef] | None = None,
+    ) -> None:
         self._database = SqliteDatabase(
             path,
             migrations=_MIGRATIONS,
             migration_namespace=MIGRATION_NAMESPACE,
         )
+        self._canonicalize_actor = canonicalize_actor or (lambda actor: actor)
 
     def get(self, actor: ActorRef) -> PlayerBindingState:
-        identity = ActorIdentityColumns.from_actor(actor)
+        canonical = self._canonicalize_actor(actor)
+        identity = ActorIdentityColumns.from_actor(canonical)
         with self._database.connect() as conn:
             row = conn.execute(
                 """
@@ -66,9 +74,9 @@ class SqlitePlayerBindingStore:
                 identity.values(),
             ).fetchone()
         if row is None:
-            return PlayerBindingState(actor)
+            return PlayerBindingState(canonical)
         return PlayerBindingState(
-            actor,
+            canonical,
             None if row[0] is None else int(row[0]),
             str(row[1] or ""),
             bool(row[2]),
@@ -84,7 +92,7 @@ class SqlitePlayerBindingStore:
         changed_at: datetime | None = None,
     ) -> None:
         now = _utc_now(changed_at)
-        identity = ActorIdentityColumns.from_actor(actor)
+        identity = ActorIdentityColumns.from_actor(self._canonicalize_actor(actor))
         with self._database.connect() as conn:
             conn.execute(
                 """
@@ -112,7 +120,7 @@ class SqlitePlayerBindingStore:
 
     def decline(self, *, actor: ActorRef) -> None:
         now = _utc_now()
-        identity = ActorIdentityColumns.from_actor(actor)
+        identity = ActorIdentityColumns.from_actor(self._canonicalize_actor(actor))
         with self._database.connect() as conn:
             conn.execute(
                 """
@@ -141,7 +149,7 @@ class SqlitePlayerBindingStore:
         changed_at: datetime | None = None,
     ) -> bool:
         now = _utc_now(changed_at)
-        identity = ActorIdentityColumns.from_actor(actor)
+        identity = ActorIdentityColumns.from_actor(self._canonicalize_actor(actor))
         with self._database.connect() as conn:
             cursor = conn.execute(
                 """

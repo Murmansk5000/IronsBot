@@ -114,6 +114,9 @@ class AiInputRoutingService:
     def _available_ai_commands(self, context: CommandContext) -> frozenset[str]:
         return frozenset(
             command.id
-            for command in self._commands.available_for_context(context, self._features)
+            for command in self._commands.executable_for_context(
+                context,
+                self._features,
+            )
             if command.plugin_id in _AI_PLUGIN_IDS
         )

@@ -137,7 +137,6 @@ async def test_service_links_explicit_onebot_and_official_identities(
         "official-app",
         "member",
         "member-openid",
-        "group-openid",
     )
     assert await service.links_for(_onebot()) == (link,)
     assert await service.links_for(_official_member()) == (link,)
@@ -172,7 +171,7 @@ async def test_service_resolves_only_the_exact_linked_official_identity(
     assert await service.linked_onebot_actor(_official_user()) is None
     assert (
         await service.linked_onebot_actor(_official_member(group_id="another-group"))
-        is None
+        == _onebot()
     )
 
 

@@ -10,6 +10,7 @@ import nonebot
 from nonebot.log import LoguruHandler
 
 from ironsbot.app.composition import build_application
+from ironsbot.app.log_privacy import configure_log_privacy
 from ironsbot.app.nonebot_manifest import nonebot_manifest_path
 from ironsbot.config.environment import load_runtime_environment
 from ironsbot.config.loader import load_settings
@@ -66,8 +67,11 @@ def initialize_nonebot(settings: Settings) -> None:
 def bootstrap() -> Application:
     configure_third_party_logging()
     load_runtime_environment()
+    configure_log_privacy(os.environ)
     settings = load_settings()
     initialize_nonebot(settings)
+    # NoneBot reconfigures Loguru during initialization, so restore the patcher.
+    configure_log_privacy(os.environ)
     configure_application_logging(settings.bot.log_level)
     application = build_application(settings)
     with scoped_plugin_install_context(

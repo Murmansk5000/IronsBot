@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.core.outbound import (
@@ -91,7 +91,7 @@ class QQOfficialOutboundMessenger:
         return DeliveryCapabilities(
             can_reply_to_event=True,
             can_send_proactively=self._proactive_enabled(conversation),
-            can_mention_members=True,
+            can_mention_members=False,
             supports_group_context=True,
             supports_private_context=True,
             supports_images=True,
@@ -166,7 +166,6 @@ class QQOfficialOutboundMessenger:
         try:
             payloads = render_qq_official_outbound_message(
                 message,
-                conversation=conversation,
                 supports_interactive_prompts=(
                     self.account_custom_keyboards.get(
                         conversation.account_id or "",
@@ -180,6 +179,7 @@ class QQOfficialOutboundMessenger:
                 str(error),
                 DeliveryFailureKind.PERMANENT,
             )
+        payloads = _reference_group_reply(payloads, reply_context)
         account_id = conversation.account_id
         assert account_id is not None
         bot = self.bot_provider(account_id)
@@ -251,6 +251,23 @@ def _supports_conversation(conversation: ConversationRef) -> bool:
         "group",
         "private",
     }
+
+
+def _reference_group_reply(
+    payloads: tuple[QQOfficialPayload, ...],
+    context: ReplyContext | None,
+) -> tuple[QQOfficialPayload, ...]:
+    if (
+        context is None
+        or context.conversation.kind != "group"
+        or context.sequence is None
+        or not payloads
+    ):
+        return payloads
+    return (
+        replace(payloads[0], reference_id=context.sequence),
+        *payloads[1:],
+    )
 
 
 def _result_id(result: object) -> str | None:

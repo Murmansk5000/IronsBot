@@ -49,7 +49,51 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 本轮验证（2026-09-14）
+## 当前权威状态（2026-09-19）
+
+Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前公共发布修订为 `33631b0a`，
+Docker Hub/GHCR 清单 digest 为
+`sha256:82910e762953e85e32506851be1737adf74027dddac670787d2d8924fcd36e04`，
+展开大小为 260,011,042 bytes。Unraid
+容器、QQ Official READY 和三个无头 worker 健康；生产“阵容”查询已按被动序号 1-3
+送达进度、文字与图片。群内请求者定位改用 source `message_reference`，客户端显示原生
+回复，不再发送会被原样显示的 `<qqbot-at-user>` 文本。身份静默观察也读取引用原消息的
+数字发送者，不再依赖可见 @。
+
+已发布提交 `9aa4ee79` 将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
+`superuser_bypass` 执行未对群开启的 Feature，普通成员仍受群策略限制，黑名单和命令
+audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级管理员、普通成员、黑名单和
+管理通知不外泄的同一 digest 客户端证据，因此仍是 Phase 7 的待验收项。
+
+公开 `origin/main` 与私有预览 `preview/main` 当前都指向 `33631b0a`，旧的“预览落后
+公开仓库 7 个提交”关系已经结束。当前本地候选为 `14ba3ddd`，仅比两个发布 main
+领先 2 个未推送提交：官方消息引用与成员提及分离，以及有序 AI provider/key failover。
+后续唯一公开镜像发布源为 `Murmansk5000/IronsBot` 的 main；预览仓库只保留同历史镜像，
+不得重新合入旧 `codex/multiplatform-architecture-v5` 分叉。
+
+其余外部门槛包括第二真实 AppID、多账号隔离、腾讯主动消息拒绝/额度、拒收事件、
+自定义键盘权限和腾讯实际重复重投。它们不得被单账号基础查询成功替代，也不阻塞继续
+完成可独立验证的本地与单账号生产项目。
+
+### 2026-09-19 三仓联合审计
+
+- IronsBot 本地候选 `14ba3ddd`：全量 `3804 passed, 7 skipped`；Ruff、生产与测试
+  BasedPyright、compileall、静态仓库检查和 diff check 通过。
+- SeerAPI 发布源为 `Murmansk-Seer/seerapi`，远端 main `dbd87b7`。本地 V5 代码提交
+  `a726adc` 与远端只差 3 个 `.build-state` 来源校验提交，生产代码和 schema 构建逻辑
+  没有差异。当前代码 `351 passed`、Ruff 通过；远端同一 main 的数据构建 workflow
+  `35439998503` 成功。
+- 本地已发布 `seerapi-data.sqlite` 由 IronsBot 消费端重新严格验证：schema contract
+  v2、149 张声明表、DDL 指纹匹配且存在构建时间。正常运行路径没有旧字段 fallback。
+- `ironsbot-private` main `9c3d61e` 与远端一致，发布 workflow `35439115557` 成功；
+  使用当前 IronsBot 公共扩展契约执行 `27 passed`，Ruff 与 BasedPyright 通过。仓库原有
+  未跟踪 `uv.lock` 保持未提交。
+- SeerAPI 仓库尚未把全仓 BasedPyright 设为绿门禁；用当前检查器审计 scripts/tests
+  得到 68 个既有类型问题。测试、发布构建与 consumer contract 均通过，但不得把这一
+  结果写成“三仓全量类型检查通过”。该类型债独立记录，不在 Phase 7 中用降低规则或
+  大规模无关重构掩盖。
+
+## 历史验证记录（始于 2026-09-14）
 
 总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
@@ -2366,30 +2410,21 @@ QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID polic
 必须明确携带原 AppID，不允许默认账号回退。当前 Python 适配器的 sandbox 仍是进程级
 配置，因此同一进程中的账号必须连接相同的正式或沙箱环境。
 
-跨平台配置目标随后按同一账户边界收口（`dc3d72d8`）。OneBot 别名继续位于
-`features.group_aliases` / `features.user_aliases`；QQ 官方群和用户 OpenID 别名改为
-位于各自 `bot.qq_official.accounts.<alias>` 下。统一解析器只产出带 platform、AppID
-和目标 ID 的类型化引用。当时跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
-不得进入无法表达所属 AppID 的全局推送目标。B站配置目标因此删除 OneBot 专用编译器，
+跨平台配置目标最终收口到唯一的 `[identities.groups]` / `[identities.users]` 目录。
+每个逻辑目标同时声明可选 QQ ID 与按官方账号别名区分的 OpenID；官方账号配置不再
+重复保存目标别名。统一解析器只产出带 platform、AppID 和目标 ID 的类型化引用，裸官方
+OpenID 不得进入无法表达所属 AppID 的全局推送目标。B站配置目标因此删除 OneBot 专用编译器，
 同一份 `bilibili.push` 可安全包含 OneBot 与官方 QQ 目标；`动态`、`B站账号` 和群/私聊
 `B站推送模式` 也共用便携执行注册表。该提交未增加依赖、SQLite、图片或镜像内容；
 Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 skipped`。腾讯官方
 多账号实现明确要求每个账号独立连接和 Token 缓存，Bot A 收到的 OpenID 不能由 Bot B
 发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
 
-后续目标模型进一步收口：群和用户别名现在表示部署者显式声明的逻辑目标，可同时
-拥有 OneBot ID、各官方 AppID 下的 OpenID，以及按群作用域保存的 member_openid。
-同一条全局 Feature policy 会展开到这些类型化端点；member_openid 不会变成 C2C
-目标。旧的“跨平台别名必须全局唯一”限制因此删除，未声明同名别名时仍不会进行任何
-昵称、头像、时间或 ID 猜测。跨平台推送配置会为逻辑目标编译各个可发送端点。
-
-QQ 官方管理员身份随后按事件场景拆分（`a6425b9c`）。C2C `superusers` 只接受可作为
-私聊目标的 `user_openid`；新增账号级 `group_superusers` 以群别名/群 OpenID 显式绑定
-该群事件中的 `member_openid`。群成员超级管理员以 `(AppID, group_openid,
-member_openid)` 精确授权，不能越过群或账号边界，并从私聊定时推送和管理通知目标中
-排除。实现没有猜测 C2C 与群 OpenID 的对应关系，也没有引入跨平台账号合并。Ruff、
-BasedPyright、compileall、差异检查通过，全量 `3363 passed, 7 skipped`；无新增数据库、
-依赖、图片资源或镜像层。真实 OpenID 获取及管理员命令仍需目标应用联机验收。
+同一条全局 Feature policy 会展开到逻辑目标的所有已声明端点。静默 NapCat 观察使用
+同群、可信官方机器人 QQ、唯一 @ 对象、规范化回复和短时间窗口匹配；两次独立确认后
+把 `member_openid` 与 QQ 号写入状态库。同一官方账号下相同 `member_openid` 跨群共用
+一个身份主体，群只保留为验证证据。普通用户不写入 TOML，静态 owner 等启动前必须
+已知的身份才在 `[identities.users]` 声明。
 
 可移植命令路由随后按领域拆分：`PortableCommandRouter` 仅保留权限筛选、会话选择、
 AI fallback 和结果归一化；数据、战队、榜单帮助、精灵、刻印、装备、属性、异常与巅峰
@@ -2431,13 +2466,13 @@ AccessToken、连接、Session 与 OpenID 命名空间；SDK 负责心跳、Resu
 存在不能代替真实平台授权。尚未关闭的回复时限、连续 `msg_seq`、结构化错误、READY
 健康状态和媒体上传验收记录在协议基线 Spec 中。
 
-跨平台身份随后实现为显式令牌协议。OneBot 数字 QQ 生成绑定到目标 AppID 的短时单次
-令牌，QQ Official 事件中的用户或群成员 OpenID 再确认；SQLite 只保存令牌哈希，并审计
-签发、成功关联和撤销。C2C `user_openid` 与群 `member_openid` 继续作为两条独立身份，
-同一 QQ 可分别确认，但一个精确官方身份不能静默改绑到另一个 QQ。命令目录新增平台
-归属字段，因此官方专属确认命令不会被伪装成 OneBot matcher。实现没有昵称、头像、
-消息时间、发言记录或 `union_openid` 猜测路径，也没有新增 TOML、env 或 Unraid 字段。
-详见[显式跨平台身份关联 Spec](specs/2026-09-15-cross-platform-identity-linking.md)。
+跨平台身份最初实现为显式令牌协议，随后收口为同一身份仓库的三种精确来源：部署配置
+别名、显式短时单次令牌，以及可信官方机器人 source `message_reference` 的静默群观察。
+静默观察由 NapCat 读取被引用原消息的数字发送者，并要求同一逻辑群内两次独立、唯一且
+一致的匹配；歧义、超时、来源不可信和既有冲突均失败关闭。C2C `user_openid` 与群
+`member_openid` 仍是不同身份作用域，一个精确官方身份不能静默改绑。实现不使用昵称、
+头像、模糊内容、裸时间、未引用发言记录或 `union_openid` 猜测。详见
+[跨平台身份关联 Spec](specs/2026-09-15-cross-platform-identity-linking.md)。
 
 全服榜单维护命令随后复用同一 portable 延迟回复契约。`/刷新榜单` 与
 `/缓存榜单 …` 会先发送进度回执，平台确认送达后才开始无头客户端请求，完成后再发送
