@@ -127,8 +127,7 @@ def test_local_rank_refresh_rejects_legacy_hour_and_minute(tmp_path: Path) -> No
         )
 
 
-def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
-) -> None:
+def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
     config = RankPageRefreshConfig(
         enabled=True,

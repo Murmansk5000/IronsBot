@@ -68,10 +68,7 @@ def build_portable_new_content_operations(
     )
     return {
         "seer.data.new_content": owner.root,
-        **{
-            spec.command_id: owner.focused
-            for spec in NEW_CONTENT_COMMAND_SPECS
-        },
+        **{spec.command_id: owner.focused for spec in NEW_CONTENT_COMMAND_SPECS},
     }
 
 
@@ -163,7 +160,8 @@ class _PortableNewContentOperations:
             )
 
         async def select(
-            action: NewContentAction, context: MessageInputContext,
+            action: NewContentAction,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             if action.kind == "category":
                 return await self._offer(

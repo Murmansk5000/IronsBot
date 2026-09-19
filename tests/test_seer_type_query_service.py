@@ -587,9 +587,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
                             inputs.images,
                             coordinator.render,
                         ),
-                        NewContentService(
-                            PublishedNewContentRepository(inputs.data)
-                        ),
+                        NewContentService(PublishedNewContentRepository(inputs.data)),
                     )
 
             class FixtureGame:

@@ -113,9 +113,7 @@ class PlayerRequestProtectionService:
         semantic_request: SemanticRequest | None = None,
         _retry_after_background_failure: bool = True,
     ) -> T:
-        is_superuser = (
-            actor is not None and self._features.is_actor_superuser(actor)
-        )
+        is_superuser = actor is not None and self._features.is_actor_superuser(actor)
         request_priority = self._request_priority(
             is_superuser=is_superuser,
             background=background,
@@ -129,9 +127,7 @@ class PlayerRequestProtectionService:
             ):
                 return await operation()
 
-        bypass_pause = (
-            is_superuser and self._config.superuser_bypass_pause
-        )
+        bypass_pause = is_superuser and self._config.superuser_bypass_pause
         if self._paused() and not bypass_pause:
             raise PlayerRequestPausedError(self.pause_remaining_seconds())
 
@@ -267,10 +263,7 @@ class PlayerRequestProtectionService:
             and not active.future.done()
             for active in self._active
         )
-        if (
-            active_foreground
-            >= foreground_capacity + self._config.max_queued_queries
-        ):
+        if active_foreground >= foreground_capacity + self._config.max_queued_queries:
             raise PlayerRequestBusyError
 
     def _request_priority(
@@ -454,9 +447,8 @@ class PlayerRequestProtectionService:
 
     def _release_request_key(self, item: _QueuedRequest) -> None:
         if (
-            (request_key := _semantic_request_key(item.semantic_request)) is not None
-            and self._by_request_key.get(request_key) is item
-        ):
+            request_key := _semantic_request_key(item.semantic_request)
+        ) is not None and self._by_request_key.get(request_key) is item:
             self._by_request_key.pop(request_key, None)
 
 

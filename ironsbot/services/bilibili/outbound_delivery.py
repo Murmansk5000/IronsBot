@@ -111,9 +111,7 @@ class BilibiliDynamicOutboundSender:
                 if self.content_compactor is not None
                 else None
             )
-            content_override = (
-                compacted.display_text if compacted is not None else None
-            )
+            content_override = compacted.display_text if compacted is not None else None
             if (
                 compacted is not None
                 and self.history is not None

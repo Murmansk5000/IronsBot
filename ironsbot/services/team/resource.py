@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
 
+
 class TeamResourceResult(NamedTuple):
     team_id: int
     team_name: str
@@ -185,8 +186,7 @@ class TeamResourceService:
             line = f"{index}. {label}｜阈值 {subscription.threshold}"
             if isinstance(subscription, TeamResourceSubscription):
                 line += (
-                    "｜提醒 "
-                    f"{format_subscription_actors(subscription.mention_actors)}"
+                    f"｜提醒 {format_subscription_actors(subscription.mention_actors)}"
                 )
             lines.append(line)
         lines.extend(("", *self._manage_usage_lines(target)))
@@ -237,9 +237,7 @@ class TeamResourceService:
         )
         prefix = "已订阅本群战队" if target.is_group else "已订阅战队"
         reminder = (
-            format_subscription_actors(mention_actors)
-            if target.is_group
-            else "你"
+            format_subscription_actors(mention_actors) if target.is_group else "你"
         )
         return (
             f"{prefix}：{result.team_name}（{result.team_id}）。\n"

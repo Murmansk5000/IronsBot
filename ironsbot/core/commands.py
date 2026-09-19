@@ -32,10 +32,7 @@ def strip_command_prefix(
 
 def command_text_matches(text: str, commands: Iterable[str]) -> bool:
     normalized = normalize_command_text(text)
-    return normalized in {
-        normalize_command_text(command)
-        for command in commands
-    }
+    return normalized in {normalize_command_text(command) for command in commands}
 
 
 def parse_confirmation(text: str) -> bool | None:

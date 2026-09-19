@@ -24,9 +24,9 @@ def test_full_group_event_is_registered_with_sdk_dispatch(
     enable_group_message_dispatch()
     enable_group_message_dispatch()
 
-    assert frozenset({GROUP_MESSAGE_CREATE}) == vars(sdk_websocket)[
-        "MESSAGE_EVENT_TYPES"
-    ]
+    assert (
+        frozenset({GROUP_MESSAGE_CREATE}) == vars(sdk_websocket)["MESSAGE_EVENT_TYPES"]
+    )
 
 
 def test_full_group_event_parser_preserves_unaddressed_content() -> None:

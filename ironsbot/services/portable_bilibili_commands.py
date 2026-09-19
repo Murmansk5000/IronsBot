@@ -50,9 +50,7 @@ def build_portable_bilibili_operations(
             return OutboundMessage.from_text("❌ 获取动态列表失败。")
 
         if result.status == "no_accounts":
-            return OutboundMessage.from_text(
-                "📭 当前会话没有配置可查询的 B 站账号。"
-            )
+            return OutboundMessage.from_text("📭 当前会话没有配置可查询的 B 站账号。")
         if result.status == "auth_invalid":
             await notify_auth_invalid("用户查询动态时发现 B 站登录失效")
             return OutboundMessage.from_text(

@@ -84,11 +84,7 @@ class DeniedDispatchGitHubClient(FakeGitHubClient):
         self.posts.append({"url": url, "headers": headers, "json": json})
         return _response(
             status_code=403,
-            payload={
-                "message": (
-                    "Resource not accessible by personal access token"
-                )
-            },
+            payload={"message": ("Resource not accessible by personal access token")},
         )
 
 
@@ -232,6 +228,4 @@ def test_trigger_and_wait_workflow_reports_dispatch_error_detail() -> None:
         GitHubActionsClientError,
         match="Resource not accessible by personal access token",
     ):
-        asyncio.run(
-            trigger_and_wait_workflow(_config(), token="token", client=client)
-        )
+        asyncio.run(trigger_and_wait_workflow(_config(), token="token", client=client))

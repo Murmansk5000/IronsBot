@@ -42,9 +42,7 @@ def _dynamic_item(
                 "major": {
                     "opus": {
                         "summary": {"text": text},
-                        "pics": [
-                            {"url": "http://i0.hdslb.com/bfs/new_dyn/test.jpg]"}
-                        ],
+                        "pics": [{"url": "http://i0.hdslb.com/bfs/new_dyn/test.jpg]"}],
                     }
                 }
             },

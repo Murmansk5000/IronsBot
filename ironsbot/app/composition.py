@@ -229,10 +229,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ai_service=ai,
         config=settings.bilibili,
     )
+
     def feature_visible_for_extension(event: object, feature: str) -> bool:
-        return (
-            isinstance(event, Event)
-            and event_is_feature_visible_in_help(features, event, feature)
+        return isinstance(event, Event) and event_is_feature_visible_in_help(
+            features, event, feature
         )
 
     extension_contexts = {
@@ -388,7 +388,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 startup_notice=operations.startup_notice,
                 scheduler=scheduler,
             ),
-        )
+        ),
     ]
     resource_shutdown_hooks = [
         ("file_logging", file_logging.close),
@@ -447,11 +447,10 @@ def _build_identity_observer(
         }
         accounts[account.app_id] = IdentityObservationAccount(
             app_id=account.app_id,
-            trusted_onebot_sender_id=(
-                settings.bot.onebot.trusted_official_bots[alias]
-            ),
+            trusted_onebot_sender_id=(settings.bot.onebot.trusted_official_bots[alias]),
             groups=groups,
         )
+
     def register_link(qq_id: str, official: OfficialIdentity) -> None:
         features.register_identity_link(
             official_app_id=official.app_id,

@@ -198,6 +198,7 @@ class TencentQQClient:
             keyboard=keyboard,
         )
 
+
 def _response_id(response: Mapping[str, object]) -> str:
     value = str(response.get("id", "")).strip()
     if not value:

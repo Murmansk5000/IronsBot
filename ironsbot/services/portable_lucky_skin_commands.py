@@ -58,7 +58,11 @@ def build_portable_lucky_skin_operations(
     resolver: PlayerIdResolver,
 ) -> dict[str, PortableOperation]:
     commands = PortableLuckySkinCommands(
-        service, pet, identity_links, sessions, resolver,
+        service,
+        pet,
+        identity_links,
+        sessions,
+        resolver,
     )
     return {
         "seer.lucky_skin_window.query": commands.query,
@@ -86,13 +90,19 @@ class PortableLuckySkinCommands:
             msg = "invalid lucky window command"
             raise ValueError(msg)
         if reference and not context.has_member_mentions:
+
             async def execute(
-                player_id: int, context: MessageInputContext,
+                player_id: int,
+                context: MessageInputContext,
             ) -> OutboundMessage:
                 return await self._query_target(context, player_id)
 
             return await select_player_reference(
-                reference, context, self.resolver, self.sessions, execute,
+                reference,
+                context,
+                self.resolver,
+                self.sessions,
+                execute,
                 title="请选择要查询橱窗的玩家：",
             )
         player_id = None
@@ -104,7 +114,9 @@ class PortableLuckySkinCommands:
         return await self._query_target(context, player_id)
 
     async def _query_target(
-        self, context: MessageInputContext, player_id: int | None,
+        self,
+        context: MessageInputContext,
+        player_id: int | None,
     ) -> OutboundMessage:
         actor = await self._linked_actor(context)
         if actor is None and player_id is None:
@@ -170,8 +182,10 @@ class PortableLuckySkinCommands:
         request: LuckySkinQuery,
     ) -> OutboundMessage:
         target_label = f"（米米号 {request.player_id}）" if request.player_id else ""
+
         async def select(
-            choice: _Confirmation, context: MessageInputContext,
+            choice: _Confirmation,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             if choice == "cancel":
                 return OutboundMessage.from_text("已取消幸运橱窗查询。")
@@ -214,9 +228,7 @@ class PortableLuckySkinCommands:
                 reference_digest(request.requester.id),
                 error,
             )
-            return OutboundMessage.from_text(
-                "❌ 幸运橱窗数据暂时不可用，请稍后再试。"
-            )
+            return OutboundMessage.from_text("❌ 幸运橱窗数据暂时不可用，请稍后再试。")
         except Exception:
             logger.exception(
                 "lucky skin window query failed: platform=%s actor=%s",
@@ -282,7 +294,8 @@ class PortableLuckySkinCommands:
         watched: bool,
     ) -> OutboundMessage:
         async def select(
-            item: LuckySkinWatchItem, _context: MessageInputContext,
+            item: LuckySkinWatchItem,
+            _context: MessageInputContext,
         ) -> OutboundMessage:
             return OutboundMessage.from_text(
                 self.service.watch_change_message(actor, item, watched=watched)
