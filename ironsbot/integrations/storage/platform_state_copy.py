@@ -47,8 +47,7 @@ def contains_platform_identities(
     tables: frozenset[str],
 ) -> bool:
     return any(
-        {"actor_platform", "conversation_platform"}
-        & table_columns(connection, table)
+        {"actor_platform", "conversation_platform"} & table_columns(connection, table)
         for table in tables
         if table_exists(connection, table)
     )
@@ -126,9 +125,7 @@ def _column_value(
         return ""
     account_id = str(qq_official_account_id or "").strip()
     if not account_id:
-        raise PlatformStateDataError.missing_qq_official_account_id(
-            f"{table}.{column}"
-        )
+        raise PlatformStateDataError.missing_qq_official_account_id(f"{table}.{column}")
     return account_id
 
 

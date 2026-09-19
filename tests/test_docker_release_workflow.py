@@ -459,9 +459,10 @@ def test_ghcr_image_repository_is_fork_aware() -> None:
     metadata = next(step for step in _steps() if step["name"] == "Generate Tags")
 
     assert "ghcr.io/${{ github.repository }}" in metadata["with"]["images"]
-    assert "ghcr.io/murmansk5000/ironsbot" not in WORKFLOW.read_text(
-        encoding="utf-8"
-    ).lower()
+    assert (
+        "ghcr.io/murmansk5000/ironsbot"
+        not in WORKFLOW.read_text(encoding="utf-8").lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -487,9 +488,9 @@ def test_candidate_image_growth_shell(
     )
 
     assert (result.returncode == 0) is expected_ok, result.stdout + result.stderr
-    evidence = (
-        tmp_path / "ironsbot-candidate-image-growth.txt"
-    ).read_text(encoding="utf-8")
+    evidence = (tmp_path / "ironsbot-candidate-image-growth.txt").read_text(
+        encoding="utf-8"
+    )
     assert f"growth_bytes={growth_kib * 1024}" in evidence
     assert "baseline_digest=" in evidence
 
@@ -503,9 +504,9 @@ def test_candidate_image_growth_requires_readable_baseline(tmp_path: Path) -> No
     )
 
     assert result.returncode != 0
-    evidence = (
-        tmp_path / "ironsbot-candidate-image-growth.txt"
-    ).read_text(encoding="utf-8")
+    evidence = (tmp_path / "ironsbot-candidate-image-growth.txt").read_text(
+        encoding="utf-8"
+    )
     assert "candidate_bytes=" in evidence
     assert "baseline_digest=" not in evidence
 
@@ -571,9 +572,7 @@ def test_runtime_python_baseline_is_consistent() -> None:
     expected = workflow["env"]["PYTHON_VERSION"]
     setup = next(step for step in _steps() if step["name"] == "Setup Python")
     audit = next(
-        step
-        for step in _steps()
-        if step["name"] == "Audit locked runtime dependencies"
+        step for step in _steps() if step["name"] == "Audit locked runtime dependencies"
     )
     candidate = next(
         step for step in _steps() if step["name"] == "Build runtime candidate"

@@ -49,6 +49,26 @@ reply sequences, and outbound routing by the owning AppID.
 - Persistent account columns and their offline v2 migration are specified by the
   preceding account-scoped state work.
 
+## Shared-Group Topology
+
+- One NoneBot process may accept several OneBot/NapCat connections. Silent
+  identity observation treats them as interchangeable observers; duplicate
+  reports of one official reply do not count as independent confirmations.
+- Every official account has one distinct trusted bot QQ number. Observation
+  first selects that trusted sender, then requires the owning AppID, mapped
+  official group OpenID, numeric OneBot group, exact normalized reply text and
+  one mentioned QQ member to agree.
+- Several official accounts may be present in the same numeric QQ group without
+  sharing identity state. Their OpenIDs and links remain scoped by AppID.
+- Only one official account in a group should enable full-message command
+  handling. If two accounts receive all group messages and expose the same
+  command, both may legitimately claim an unaddressed command and send duplicate
+  replies. Other accounts in that group must remain mention-only or disable the
+  overlapping features; identity isolation is not responder election.
+- A second NapCat observer is redundant, not an automatic failover mechanism.
+  Deployments that require observer high availability need an explicit
+  connection-health and leader policy rather than relying on duplicate events.
+
 ## Dependency Evidence
 
 The Tencent `qqbot-agent-sdk 1.2.2` transport constructs one `QQApiClient`,
@@ -66,6 +86,8 @@ for every AppID.
 - [x] Proactive delivery selects the owning bot and per-account permission.
 - [x] Identical message IDs allocate independent reply sequences per AppID.
 - [x] Account-less and unknown-account outbound targets are rejected.
+- [x] Duplicate NapCat observations cannot satisfy the two-observation threshold.
+- [x] Trusted bot QQ and AppID isolate observations when accounts share a group.
 - [x] Full pytest, Ruff, BasedPyright, compileall, diff checks, and preview image
   build pass.
 
@@ -76,11 +98,50 @@ Commit `4de228dd` implements the target path. Public tests completed with
 preview workflow `34777514033` built, smoke-tested, size-checked, and published
 the image successfully.
 
+On 2026-09-19, a second, independently configured public-facing account was
+checked directly against Tencent without starting the existing personal account.
+The runtime obtained its credentials from ignored environment configuration,
+reached `ready`, remained `ready` during the observation interval, and completed
+a normal transition to `stopped`. No message was sent and no AppID, AppSecret,
+OpenID, or access token was logged. This proves the second account's credential
+and isolated lifecycle path, but not simultaneous two-account delivery.
+
+The same account then passed a bounded full-application smoke using an isolated
+temporary TOML and state root. `bootstrap()` loaded the core manifest and six
+plugin contributions, cached Seer databases, command catalog, lifecycle and
+official transport; resource startup reached `ready` while OneBot message
+handling remained disabled, stayed healthy during observation, and resource
+shutdown reached `stopped`. The smoke emitted only the two already-known
+SQLAlchemy relationship warnings. It did not send a client-visible message and
+therefore does not close any Phase 7 delivery row.
+
+A subsequent bounded live run used the same isolated core configuration. The
+public account recovered from one unexpected WebSocket close and returned to
+`ready` in about three seconds. It then received a real `C2C_MESSAGE_CREATE`
+for the `帮助` command, classified the input as direct, claimed the command once,
+and received a successful Tencent passive-send response for text sequence 1.
+The user subsequently confirmed that the first-level help was visible in the QQ
+client. A second isolated run received `帮助`, `1`, `2`, `0`, and `3` in order:
+the first four inputs were recognized and each produced one successful passive
+delivery, while `3` after exit was explicitly unrecognized and was not consumed
+by the closed menu. This proves real inbound routing, reconnect recovery, client
+visibility for C2C help, and menu-exit cleanup for the second account. Group help
+and the exact rendered contents of the two second-level pages remain separate
+acceptance gates.
+
+Commit `108c4fc0` adds regression evidence that duplicate NapCat observations
+cannot satisfy the confirmation threshold and that trusted bot QQ plus AppID
+separate observations when two official accounts share one numeric group. The
+post-commit full suite completed with `3817 passed, 7 skipped`; Ruff, formatting,
+production and test BasedPyright, compileall, repository static checks, and diff
+checks all passed.
+
 ## Remaining External Gate
 
-This spec does not claim successful login, passive reply, or proactive delivery
-against a real QQ application. Phase 7 remains open until those operations are
-verified with real AppIDs and the platform-granted permissions and quotas.
+This spec does not yet claim simultaneous login of two accounts in one process,
+cross-account passive or proactive delivery, or shared-group client behavior.
+Phase 7 remains open until those operations are verified with a precise build and
+the platform-granted permissions and quotas.
 
 ## Rollback
 

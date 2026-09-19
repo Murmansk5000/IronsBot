@@ -67,7 +67,8 @@ class _PortableAutocardOperations:
             return OutboundMessage.from_text("❌ 未找到对应群星牌资料。")
 
         async def select(
-            value: AutocardPromptValue, _context: MessageInputContext,
+            value: AutocardPromptValue,
+            _context: MessageInputContext,
         ) -> OutboundMessage:
             try:
                 entry = self.service.select(value)
@@ -128,7 +129,8 @@ class _PortableAutocardOperations:
         prompt: str,
     ) -> OutboundMessage:
         async def select(
-            value: SanctuaryPromptValue, context: MessageInputContext,
+            value: SanctuaryPromptValue,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             try:
                 result = self.sanctuary.select(value)

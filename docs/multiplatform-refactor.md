@@ -51,23 +51,23 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 当前权威状态（2026-09-19）
 
-Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前公共发布修订为 `33631b0a`，
+Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前最新公共发布修订为 `812d8bc2`，
 Docker Hub/GHCR 清单 digest 为
-`sha256:82910e762953e85e32506851be1737adf74027dddac670787d2d8924fcd36e04`，
-展开大小为 260,011,042 bytes。Unraid
-容器、QQ Official READY 和三个无头 worker 健康；生产“阵容”查询已按被动序号 1-3
-送达进度、文字与图片。群内请求者定位改用 source `message_reference`，客户端显示原生
-回复，不再发送会被原样显示的 `<qqbot-at-user>` 文本。身份静默观察也读取引用原消息的
-数字发送者，不再依赖可见 @。
+`sha256:bd09d556838daa7fcae4c7cd24aa74e057c807d497c83483b367b819cb999bc3`，
+展开大小为 260,017,194 bytes。较早生产 digest 已记录 Unraid、QQ Official READY、无头
+worker 和“阵容”进度、文字、图片送达；当前公开镜像及本地后续提交仍须按最终精确 digest
+复验。群内请求者定位使用 source `message_reference`，客户端显示原生回复，不再发送会被
+原样显示的 `<qqbot-at-user>` 文本。身份静默观察也读取引用原消息的数字发送者，不再依赖
+可见 @。
 
 已发布提交 `9aa4ee79` 将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
 `superuser_bypass` 执行未对群开启的 Feature，普通成员仍受群策略限制，黑名单和命令
 audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级管理员、普通成员、黑名单和
 管理通知不外泄的同一 digest 客户端证据，因此仍是 Phase 7 的待验收项。
 
-公开 `origin/main` 与私有预览 `preview/main` 当前都指向 `33631b0a`，旧的“预览落后
-公开仓库 7 个提交”关系已经结束。当前本地候选为 `14ba3ddd`，仅比两个发布 main
-领先 2 个未推送提交：官方消息引用与成员提及分离，以及有序 AI provider/key failover。
+公开 `origin/main` 与私有预览 `preview/main` 当前都指向 `812d8bc2`，旧的“预览落后
+公开仓库 7 个提交”关系已经结束。当前本地代码候选为 `108c4fc0`，比两个发布 main
+多绑定玩家橱窗修复及多账号身份观察隔离测试；其后的提交只更新验收证据和文档。
 后续唯一公开镜像发布源为 `Murmansk5000/IronsBot` 的 main；预览仓库只保留同历史镜像，
 不得重新合入旧 `codex/multiplatform-architecture-v5` 分叉。
 
@@ -77,14 +77,14 @@ audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级�
 
 ### 2026-09-19 三仓联合审计
 
-- IronsBot 本地候选 `14ba3ddd`：全量 `3804 passed, 7 skipped`；Ruff、生产与测试
+- IronsBot 本地代码候选 `108c4fc0`：全量 `3817 passed, 7 skipped`；Ruff、生产与测试
   BasedPyright、compileall、静态仓库检查和 diff check 通过。
 - SeerAPI 发布源为 `Murmansk-Seer/seerapi`，远端 main `dbd87b7`。本地 V5 代码提交
-  `a726adc` 与远端只差 3 个 `.build-state` 来源校验提交，生产代码和 schema 构建逻辑
-  没有差异。当前代码 `351 passed`、Ruff 通过；远端同一 main 的数据构建 workflow
-  `35439998503` 成功。
-- 本地已发布 `seerapi-data.sqlite` 由 IronsBot 消费端重新严格验证：schema contract
-  v2、149 张声明表、DDL 指纹匹配且存在构建时间。正常运行路径没有旧字段 fallback。
+  已纯快进到同一远端提交。release contract、metadata 和架构专项 `5 passed`、Ruff
+  通过；远端同一 main 的数据构建 workflow `35439998503` 成功。
+- 当前远端 `seerapi-data-latest` 为 133,435,392 bytes，下载 SHA-256 与发布校验文件
+  一致，并由 IronsBot 消费端重新严格验证 schema contract v2 与 DDL 指纹。正常运行
+  路径没有旧字段 fallback。
 - `ironsbot-private` main `9c3d61e` 与远端一致，发布 workflow `35439115557` 成功；
   使用当前 IronsBot 公共扩展契约执行 `27 passed`，Ruff 与 BasedPyright 通过。仓库原有
   未跟踪 `uv.lock` 保持未提交。

@@ -33,9 +33,7 @@ class _FakeUploader:
         path = Path(source)
         is_file = await asyncio.to_thread(path.is_file)
         content = await asyncio.to_thread(path.read_bytes) if is_file else None
-        self.calls.append(
-            (chat_type, chat_id, source, file_type, file_name, content)
-        )
+        self.calls.append((chat_type, chat_id, source, file_type, file_name, content))
         if self.error is not None:
             raise self.error
         return "file-info"

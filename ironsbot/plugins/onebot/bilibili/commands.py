@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.bilibili.targets import BiliTargetService
 
+
 def install(
     registry: MatcherFactory,
     service: BilibiliService,

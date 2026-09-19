@@ -443,7 +443,6 @@ def build_test_plugin_registry(
             resources.seer.pet_query,
             runtime.features,
             SchedulerFacade(),
-            resources.identity_links.service,
             resources.query_sessions,
             resources.player_id_resolver,
         ),

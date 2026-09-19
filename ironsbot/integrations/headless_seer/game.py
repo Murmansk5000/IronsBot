@@ -299,7 +299,9 @@ class SeerGame:
 
     def _format_request_history(self, *, limit: int = 8) -> str:
         impl = self._impl
-        return impl.format_recent_request_history(limit=limit) if impl is not None else ""
+        return (
+            impl.format_recent_request_history(limit=limit) if impl is not None else ""
+        )
 
     async def _notify_state(
         self,
@@ -349,8 +351,7 @@ class SeerGame:
             attempt += 1
             retries_label = "∞" if infinite else str(self._reconnect_retries)
             logger.info(
-                "headless reconnect scheduled: worker_ref=%s delay=%.1fs "
-                "attempt=%s/%s",
+                "headless reconnect scheduled: worker_ref=%s delay=%.1fs attempt=%s/%s",
                 self._worker_ref,
                 delay,
                 attempt,

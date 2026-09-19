@@ -95,8 +95,7 @@ def _canonicalize_member_links(connection: sqlite3.Connection) -> None:
     ).fetchall()
     if conflicts:
         msg = (
-            "conflicting group-scoped identity links prevent canonical member "
-            "migration"
+            "conflicting group-scoped identity links prevent canonical member migration"
         )
         raise RuntimeError(msg)
     connection.execute(

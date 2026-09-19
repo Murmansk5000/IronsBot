@@ -133,8 +133,7 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
     assert (
-        docker_update.handoff_timeout_seconds
-        == DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS
+        docker_update.handoff_timeout_seconds == DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS
     )
     assert docker_update.fallback_to_current_image_on_handoff_failure
     assert docker_update.registry_username == ""

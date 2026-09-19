@@ -17,10 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def normalize_notice_text(text_value: str) -> str:
     return html.unescape(
-        text_value
-        .replace("\\r", "\n")
-        .replace("\\n", "\n")
-        .replace("\\/", "/")
+        text_value.replace("\\r", "\n").replace("\\n", "\n").replace("\\/", "/")
     )
 
 
@@ -47,8 +44,6 @@ class UnityNoticeSource:
             self.expires_at = now + UNITY_NOTICE_ERROR_TTL
             return self.text
 
-        self.text = normalize_notice_text(
-            response.content.decode("utf-8", "replace")
-        )
+        self.text = normalize_notice_text(response.content.decode("utf-8", "replace"))
         self.expires_at = now + UNITY_NOTICE_CACHE_TTL
         return self.text

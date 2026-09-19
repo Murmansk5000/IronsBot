@@ -44,6 +44,7 @@ _PYTHON_MODULE_PATTERN = re.compile(
 _PRIVATE_MODULE_PREFIX = "ironsbot_private_"
 logger = logging.getLogger(__name__)
 
+
 class PrivateExtensionError(RuntimeError):
     pass
 

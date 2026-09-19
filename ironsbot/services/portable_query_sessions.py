@@ -256,7 +256,8 @@ class PortableQuerySessions:
         spec: QueryOperationSpec[_T],
     ) -> OutboundMessage:
         async def select_untyped(
-            value: object, _context: MessageInputContext,
+            value: object,
+            _context: MessageInputContext,
         ) -> QueryResult[Any]:
             return await spec.select(cast("_T", value))
 
@@ -281,7 +282,8 @@ class PortableQuerySessions:
         """Present choices produced outside the standard search operation."""
 
         async def select_untyped(
-            value: object, _context: MessageInputContext,
+            value: object,
+            _context: MessageInputContext,
         ) -> QueryResult[Any]:
             return await select(cast("_T", value))
 
@@ -332,7 +334,8 @@ class PortableQuerySessions:
                 PromptChoice(
                     str(index),
                     spec.labels[index - 1] if spec.labels else f"选项 {index}",
-                    frozenset({str(index)}) | (
+                    frozenset({str(index)})
+                    | (
                         spec.text_inputs[index - 1] if spec.text_inputs else frozenset()
                     ),
                 )
@@ -350,9 +353,7 @@ class PortableQuerySessions:
                 shared_select_untyped if spec.shared_select is not None else None
             ),
             semantic_request=(
-                semantic_request_untyped
-                if spec.semantic_request is not None
-                else None
+                semantic_request_untyped if spec.semantic_request is not None else None
             ),
             shared_choice_ids=frozenset(
                 str(index) for index in spec.shared_choice_indexes

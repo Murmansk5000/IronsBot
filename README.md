@@ -436,6 +436,18 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 程序只读并严格校验配置，不会修改磁盘上的 TOML。真实 env 文件包含密钥，不纳入仓库；
 使用 Docker Compose 时可参考 [.env.example](.env.example) 手动创建。
 
+改动 TOML 或环境变量后，可以只执行严格配置校验，不启动 NoneBot、QQ 官方连接、
+调度器、数据库或其他网络客户端：
+
+```bash
+python -m ironsbot.config_check --config /config/ironsbot.toml
+```
+
+源码环境可将 `python` 换成 `uv run python`。命令默认按正常启动顺序读取 `.env` 和
+`.env.<ENVIRONMENT>`；容器环境只使用已经注入的变量时可加 `--no-dotenv`。成功输出只包含
+所选发送平台、已启用的官方账号别名和 AI provider 别名/模型数量，不输出 Key、AppID、
+OpenID、QQ 号或密码。建议复制生产 TOML 后先对副本运行，再修改真实生产配置。
+
 如果没有设置 `APP_CONFIG_PATH`，IronsBot 会默认读取当前工作目录的
 `config/ironsbot.toml`；文件不存在会立即报错。日志默认写入当前工作目录的 `logs/`，
 运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载

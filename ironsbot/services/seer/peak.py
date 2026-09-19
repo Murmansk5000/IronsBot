@@ -707,9 +707,7 @@ class PeakQueryService:
             item_kind = "title"
         if not rank_data:
             return PeakQueryResult(message=f"❌找不到{kind}榜数据。")
-        names = self._repository.item_names(
-            item_kind, {item.id for item in rank_data}
-        )
+        names = self._repository.item_names(item_kind, {item.id for item in rank_data})
         lines: list[str] = []
         for index, item in enumerate(rank_data, 1):
             lines.append(

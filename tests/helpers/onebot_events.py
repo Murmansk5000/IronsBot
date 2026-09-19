@@ -101,14 +101,10 @@ def group_at_message_event(  # noqa: PLR0913
                 time=0,
                 message_type="group",
                 message_id=(
-                    message_id - 1
-                    if reply_message_id is None
-                    else reply_message_id
+                    message_id - 1 if reply_message_id is None else reply_message_id
                 ),
                 real_id=(
-                    message_id - 1
-                    if reply_message_id is None
-                    else reply_message_id
+                    message_id - 1 if reply_message_id is None else reply_message_id
                 ),
                 sender=Sender(user_id=reply_sender_user_id),
                 message=Message("reply"),

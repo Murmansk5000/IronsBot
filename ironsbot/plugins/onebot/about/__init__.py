@@ -29,6 +29,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
 )
 
+
 def install(registry: MatcherFactory, service: AboutService) -> None:
     async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
         await finish_event_reply(

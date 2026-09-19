@@ -175,9 +175,7 @@ def present_peak_pool(
         pools=pools,
         pool_type=pool_type,
         change_label=(
-            "大师池"
-            if snapshot.master
-            else ("专家池" if snapshot.expert else "竞技池")
+            "大师池" if snapshot.master else ("专家池" if snapshot.expert else "竞技池")
         ),
         change_state=snapshot.change_state,
         grid_width=grid_width,
@@ -259,10 +257,7 @@ def _current_pool_pets(
                     result[position].append(pet)
                     current_ids.add(pet.id)
     for transition in snapshot.transitions:
-        if (
-            transition.current_limit in result
-            and transition.pet.id not in current_ids
-        ):
+        if transition.current_limit in result and transition.pet.id not in current_ids:
             result[transition.current_limit].append(transition.pet)
             current_ids.add(transition.pet.id)
     return result

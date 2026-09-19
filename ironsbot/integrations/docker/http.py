@@ -32,4 +32,3 @@ def raise_for_docker_status(response: httpx.Response) -> None:
             raise
         message = f"Docker API returned HTTP {response.status_code}: {detail}"
         raise RuntimeError(message) from exc
-

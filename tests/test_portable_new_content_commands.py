@@ -133,7 +133,8 @@ def _features(*features: str) -> FeatureService:
 
 
 def _resources(
-    snapshot: NewContentSnapshot, renderer: _MenuRenderer | None = None,
+    snapshot: NewContentSnapshot,
+    renderer: _MenuRenderer | None = None,
 ) -> SeerQueryResources:
     return cast(
         "SeerQueryResources",
@@ -148,9 +149,7 @@ def _resources(
 
 def _text(message: OutboundMessage | None) -> str:
     assert message is not None
-    return "".join(
-        part.text for part in message.parts if isinstance(part, TextPart)
-    )
+    return "".join(part.text for part in message.parts if isinstance(part, TextPart))
 
 
 @pytest.mark.asyncio
@@ -175,7 +174,8 @@ async def test_root_menu_replaces_category_session_with_numeric_item_menu() -> N
     assert root.parts == (BinaryImagePart(b"rendered-menu", "image/png"),)
     assert root.prompt is not None
     assert [choice.label for choice in root.prompt.choices][:2] == [
-        "▶ 新增精灵", "▶ 新增成就",
+        "▶ 新增精灵",
+        "▶ 新增成就",
     ]
     assert category is not None
     assert category.parts == root.parts

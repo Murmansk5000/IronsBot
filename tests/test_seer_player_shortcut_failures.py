@@ -624,9 +624,7 @@ async def test_detail_completeness_uses_all_requested_stages(
             return_value=PeakSeasonRankSummary(result, result, result, result)
         ),
         fetch_master_peak_summary=AsyncMock(
-            return_value=PeakSeasonRankSummary.from_results(
-                {"master_peak": result}
-            )
+            return_value=PeakSeasonRankSummary.from_results({"master_peak": result})
         ),
         fetch_autocard_summary=AsyncMock(return_value=result),
         current_peak_sub_key=lambda: 7,

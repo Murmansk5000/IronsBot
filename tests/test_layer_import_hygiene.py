@@ -136,9 +136,7 @@ def _calls() -> list[tuple[Path, ast.Call]]:
 
 def _is_broad_exception_handler(node: ast.ExceptHandler) -> bool:
     names = (
-        [node.type]
-        if not isinstance(node.type, ast.Tuple)
-        else list(node.type.elts)
+        [node.type] if not isinstance(node.type, ast.Tuple) else list(node.type.elts)
     )
     return node.type is None or any(
         isinstance(name, ast.Name) and name.id in {"BaseException", "Exception"}

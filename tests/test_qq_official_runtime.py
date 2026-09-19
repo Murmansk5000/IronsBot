@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from qqbot_agent_sdk.websocket import WSCallbacks
 
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.services.portable_commands import PortableCommandRouter
 
@@ -76,8 +77,10 @@ class _FakeWebSocket:
 class _CountingRouter:
     def __init__(self) -> None:
         self.dispatch_count = 0
+        self.contexts: list[object] = []
 
-    def recognizes(self, _context: object) -> bool:
+    def recognizes(self, context: object) -> bool:
+        self.contexts.append(context)
         return True
 
     async def dispatch(self, _context: object) -> None:
@@ -306,6 +309,52 @@ def test_runtime_deduplicates_full_and_at_group_delivery(
             )
 
             assert router.dispatch_count == 1
+
+    asyncio.run(run())
+
+
+def test_runtime_treats_full_group_self_mention_as_addressed_input(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("private-app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+            )
+            raw = {
+                "id": "message-id",
+                "content": "@babyQ 帮助",
+                "timestamp": "2026-09-19T22:22:00+08:00",
+                "group_openid": "group-openid",
+                "author": {"member_openid": "member-openid"},
+                "mentions": [
+                    {
+                        "is_you": True,
+                        "member_openid": "bot-openid",
+                        "username": "babyQ",
+                    }
+                ],
+            }
+
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_MESSAGE_CREATE",
+                raw,
+            )
+
+            assert router.dispatch_count == 1
+            assert len(router.contexts) == 1
+            context = cast("MessageInputContext", router.contexts[0])
+            assert context.text == "帮助"
+            assert context.mentions_bot
+            assert context.automatic_fallback_allowed
 
     asyncio.run(run())
 

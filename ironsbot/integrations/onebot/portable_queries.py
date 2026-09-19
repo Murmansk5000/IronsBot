@@ -110,9 +110,7 @@ class _OneBotPortableQueryAdapter:
         return self.sessions.resolve_semantic_request(
             context.text,
             owner_context,
-            context
-            if state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)
-            else None,
+            context if state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY) else None,
         )
 
     async def handle(

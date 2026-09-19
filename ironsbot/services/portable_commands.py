@@ -82,7 +82,6 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
-    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -163,18 +162,22 @@ class PortableCommandRouter:
         raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
-        return self._query_sessions.recognizes_response(command, context) or (
-            self._matching_input_contract(
-                raw_command,
-                command,
-                context=command_context,
+        return (
+            self._query_sessions.recognizes_response(command, context)
+            or (
+                self._matching_input_contract(
+                    raw_command,
+                    command,
+                    context=command_context,
+                )
+                is not None
             )
-            is not None
-        ) or self._ai_input_routing.decide(
-            context,
-            command_context,
-            normalized_text=command,
-        ).recognized
+            or self._ai_input_routing.decide(
+                context,
+                command_context,
+                normalized_text=command,
+            ).recognized
+        )
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
@@ -308,9 +311,7 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if decision.offer_help_hint and self._addressed_input_hints.admit(
-            context
-        ):
+        if decision.offer_help_hint and self._addressed_input_hints.admit(context):
             return PortableReply(
                 OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
             )
@@ -322,6 +323,7 @@ class PortableCommandRouter:
             message.actor,
             message.conversation,
         )
+
 
 def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     *,
@@ -336,7 +338,6 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
     lucky_skin_window: LuckySkinWindowService | None = None,
-    identity_linking: IdentityLinkingService | None = None,
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
     refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
@@ -390,7 +391,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             else build_portable_lucky_skin_operations(
                 lucky_skin_window,
                 seer.pet_query,
-                identity_linking or identity_links.service,
+                features,
                 sessions,
                 player_id_resolver,
             )
@@ -543,7 +544,10 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     if OFFICIAL_IDENTITY_INFO_COMMAND_ID in catalog.command_ids:
         operations[OFFICIAL_IDENTITY_INFO_COMMAND_ID] = official_identity_info
     extension_operation = build_player_extension_operation(
-        seer.player_detail_extensions, player_id_resolver, features, sessions,
+        seer.player_detail_extensions,
+        player_id_resolver,
+        features,
+        sessions,
     )
     for action in seer.player_detail_extensions.actions():
         # A detail action may link to an existing, broader direct command (team).

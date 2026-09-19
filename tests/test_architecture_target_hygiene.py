@@ -526,8 +526,9 @@ def test_plugin_resources_do_not_expose_legacy_onebot_delivery() -> None:
     assert {"delivery", "outbound", "push_message_limiter"}.isdisjoint(fields)
 
 
-def test_legacy_onebot_delivery_is_not_reintroduced_into_services_or_composition(
-) -> None:
+def test_legacy_onebot_delivery_is_not_reintroduced_into_services_or_composition() -> (
+    None
+):
     """All application and service delivery uses the typed outbound port."""
 
     offenders = [

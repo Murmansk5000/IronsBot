@@ -196,12 +196,8 @@ async def test_portable_bilibili_account_and_push_mode_keep_account_scope() -> N
         ),
     )
 
-    assert cast("TextPart", accounts.parts[0]).text == (
-        "账号:example-app:opaque-user"
-    )
-    assert cast("TextPart", mode.parts[0]).text == (
-        "模式:example-app:示例账号:链接"
-    )
+    assert cast("TextPart", accounts.parts[0]).text == ("账号:example-app:opaque-user")
+    assert cast("TextPart", mode.parts[0]).text == ("模式:example-app:示例账号:链接")
 
 
 async def _refresh_result(message: str) -> str:

@@ -268,12 +268,11 @@ def test_parse_rank_player_target_command_preserves_plain_digits() -> None:
         rank_key="成就点数",
         player_reference="123456",
     )
-    assert (
-        parse_rank_player_target_command("群星之巅榜712345678")
-        == RankPlayerTargetCommand(
-            rank_key="群星牌",
-            player_reference="712345678",
-        )
+    assert parse_rank_player_target_command(
+        "群星之巅榜712345678"
+    ) == RankPlayerTargetCommand(
+        rank_key="群星牌",
+        player_reference="712345678",
     )
     assert parse_rank_player_target_command("竞技榜123456") == RankPlayerTargetCommand(
         rank_key="竞技段位",
@@ -348,12 +347,11 @@ def test_all_global_rank_families_preserve_plain_number_player_targets(
     alias: str,
     rank_key: str,
 ) -> None:
-    assert (
-        parse_rank_player_target_command(f"{alias}123456")
-        == RankPlayerTargetCommand(
-            rank_key=rank_key,
-            player_reference="123456",
-        )
+    assert parse_rank_player_target_command(
+        f"{alias}123456"
+    ) == RankPlayerTargetCommand(
+        rank_key=rank_key,
+        player_reference="123456",
     )
     assert parse_rank_list_command(f"{alias}123456") is None
 
@@ -506,18 +504,24 @@ def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     item = RankItem(nick="Alice", id=100, score=123)
 
-    assert format_global_rank_message(
-        spec,
-        [item],
-        timestamp="2026-06-12 10:00:00",
-    ) == "测试榜（截至2026-06-12 10:00:00）\n1. Alice（100） 123分"
-    assert format_global_rank_message(
-        spec,
-        [item],
-        timestamp="2026-06-12 10:00:00",
-        start_rank=21,
-        requested_count=20,
-    ) == "测试榜（第 21 名，截至2026-06-12 10:00:00）\n21. Alice（100） 123分"
+    assert (
+        format_global_rank_message(
+            spec,
+            [item],
+            timestamp="2026-06-12 10:00:00",
+        )
+        == "测试榜（截至2026-06-12 10:00:00）\n1. Alice（100） 123分"
+    )
+    assert (
+        format_global_rank_message(
+            spec,
+            [item],
+            timestamp="2026-06-12 10:00:00",
+            start_rank=21,
+            requested_count=20,
+        )
+        == "测试榜（第 21 名，截至2026-06-12 10:00:00）\n21. Alice（100） 123分"
+    )
     assert (
         format_global_rank_message(spec, [], timestamp="未知") == "❌找不到测试榜数据。"
     )
@@ -648,8 +652,7 @@ def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
     )
 
     assert format_global_rank_score_message(spec, result, timestamp="未知") == (
-        "❌999分不在测试榜前 10000 名范围内。\n"
-        "当前范围末位约为 1000分。"
+        "❌999分不在测试榜前 10000 名范围内。\n当前范围末位约为 1000分。"
     )
 
 
@@ -713,10 +716,13 @@ def test_page_cache_rank_interval_and_interval_formatting() -> None:
     page = PageSummary(start_index=10, item_count=5)
 
     assert page_cache_rank_interval(page, spec) == (11, 15)
-    assert page_cache_rank_interval(
-        PageSummary(start_index=10, item_count=0),
-        spec,
-    ) is None
+    assert (
+        page_cache_rank_interval(
+            PageSummary(start_index=10, item_count=0),
+            spec,
+        )
+        is None
+    )
     assert merge_rank_intervals([(5, 6), (1, 3), (4, 4), (10, 10)]) == [
         (1, 6),
         (10, 10),
@@ -892,12 +898,18 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
     progress = overview_line.split("[", maxsplit=1)[1].split("]", maxsplit=1)[0]
     assert progress == "█" * 20 + "░" * 80
     assert overview_line.endswith("100/500 名（20.0%）｜下一刷 缺失:101-200")
-    assert build_rank_page_refresh_start_message(
-        RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
-    ) == "🔄 正在刷新皮肤图鉴榜缓存。"
-    assert build_rank_page_refresh_result_message(
-        PageRefreshResult(total=0, success=0, failed=0)
-    ) == "✅【榜单页缓存刷新】当前没有缺失、部分缺失或过期页面。"
+    assert (
+        build_rank_page_refresh_start_message(
+            RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
+        )
+        == "🔄 正在刷新皮肤图鉴榜缓存。"
+    )
+    assert (
+        build_rank_page_refresh_result_message(
+            PageRefreshResult(total=0, success=0, failed=0)
+        )
+        == "✅【榜单页缓存刷新】当前没有缺失、部分缺失或过期页面。"
+    )
 
 
 def test_format_local_rank_message_uses_sample_and_season_context() -> None:

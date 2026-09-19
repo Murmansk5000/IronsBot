@@ -45,9 +45,13 @@ class PlayerAccountPolicyMixin:
         current = self._bindings.get(actor)
         if current.player_id == pending.player_id:
             return f"当前已绑定该米米号：{pending.player_id}。"
-        change_error = "" if bypass_cooldown else self._binding_change_error(
-            actor,
-            target_player_id=pending.player_id,
+        change_error = (
+            ""
+            if bypass_cooldown
+            else self._binding_change_error(
+                actor,
+                target_player_id=pending.player_id,
+            )
         )
         if change_error:
             return change_error

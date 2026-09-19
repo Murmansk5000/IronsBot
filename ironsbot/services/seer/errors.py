@@ -12,8 +12,7 @@ from ironsbot.services.operations.headless_errors import (
 ErrorMessageLookup = Callable[[int], str | None]
 PLAYER_NOT_FOUND_RESULT_CODES = {101105}
 DATABASE_UNAVAILABLE_MESSAGE = (
-    "❌数据尚未载入，暂时无法使用这个命令。\n"
-    "请将命令和这条消息反馈给机器人维护者。"
+    "❌数据尚未载入，暂时无法使用这个命令。\n请将命令和这条消息反馈给机器人维护者。"
 )
 SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE = (
     "查询需要连接赛尔号游戏服务器；当前服务器维护或未开放，请稍后再试。"
@@ -40,12 +39,8 @@ def format_player_query_error(
         result_code = error.result_code
         if result_code in PLAYER_NOT_FOUND_RESULT_CODES:
             return f"❌ 米米号 {player_id} 不存在或用户信息不可查询。"
-        return (
-            f"❌ 米米号 {player_id} "
-            f"{format_socket_recv_error(error, error_message)}"
-        )
+        return f"❌ 米米号 {player_id} {format_socket_recv_error(error, error_message)}"
 
     return (
-        f"❌ 米米号 {player_id} 暂时查不了："
-        f"{SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE}"
+        f"❌ 米米号 {player_id} 暂时查不了：{SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE}"
     )

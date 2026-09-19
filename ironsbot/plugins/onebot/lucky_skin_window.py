@@ -63,7 +63,6 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
@@ -87,7 +86,6 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
     pet: PetQueryService,
     features: FeatureService,
     scheduler: Scheduler,
-    identity_links: IdentityLinkingService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
 ) -> PluginContribution:
@@ -106,8 +104,12 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
         ),
         commands=lucky_skin_window_command_contracts(),
         install=partial(
-            _install, service=service, pet=pet, features=features,
-            identity_links=identity_links, sessions=sessions, resolver=resolver,
+            _install,
+            service=service,
+            pet=pet,
+            features=features,
+            sessions=sessions,
+            resolver=resolver,
         ),
         hooks=PluginHooks(
             startup=(
@@ -211,20 +213,22 @@ def _semantic_request(
     )
 
 
-
 def _install(  # noqa: PLR0913 - explicit plugin resources
     registry: MatcherFactory,
     *,
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
-    identity_links: IdentityLinkingService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
     operations = build_portable_lucky_skin_operations(
-        service, pet, identity_links, sessions, resolver,
+        service,
+        pet,
+        features,
+        sessions,
+        resolver,
     )
     matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -260,9 +264,12 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
         priority=priority,
         block=True,
     )
-    watch_list.append_handler(make_portable_query_handler(
-        operations[LUCKY_SKIN_WATCH_LIST_ACTION.id], sessions,
-    ))
+    watch_list.append_handler(
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_LIST_ACTION.id],
+            sessions,
+        )
+    )
 
     watch_add = registry.on_message(
         policy=CommandPolicy.command(
@@ -282,7 +289,8 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     )
     watch_add.append_handler(
         make_portable_query_handler(
-            operations[LUCKY_SKIN_WATCH_ADD_ACTION.id], sessions,
+            operations[LUCKY_SKIN_WATCH_ADD_ACTION.id],
+            sessions,
         )
     )
 
@@ -304,7 +312,8 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     )
     watch_remove.append_handler(
         make_portable_query_handler(
-            operations[LUCKY_SKIN_WATCH_REMOVE_ACTION.id], sessions,
+            operations[LUCKY_SKIN_WATCH_REMOVE_ACTION.id],
+            sessions,
         )
     )
 
@@ -331,9 +340,12 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
             priority=priority,
             block=True,
         )
-        watch_action.append_handler(make_portable_query_handler(
-            operations[action.id], sessions,
-        ))
+        watch_action.append_handler(
+            make_portable_query_handler(
+                operations[action.id],
+                sessions,
+            )
+        )
 
 
 def _register_schedule(
@@ -372,7 +384,6 @@ if (context := active_plugin_install_context()) is not None:
             context.resources.seer.pet_query,
             context.resources.features,
             context.scheduler,
-            context.resources.identity_links.service,
             context.resources.query_sessions,
             context.resources.player_id_resolver,
         ),

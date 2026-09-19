@@ -325,6 +325,21 @@ OneBot outbound. A source checkout uses `uv sync --extra qq-official` followed b
 `uv run --no-sync python -m ironsbot`. A custom OneBot-only image may explicitly
 set `--build-arg IRONSBOT_RUNTIME_EXTRA=` to omit the optional SDK dependency.
 
+Validate a mounted configuration without starting adapters, schedulers,
+databases, or network clients:
+
+```bash
+docker run --rm --entrypoint python \
+  -v /mnt/user/appdata/ironsbot/config:/config:ro \
+  --env-file /path/to/a/temporary-validation.env \
+  murmansk5000/ironsbot:<exact-tag> \
+  -m ironsbot.config_check --no-dotenv --config /config/ironsbot.toml
+```
+
+Use a copied TOML and a temporary env file for migration checks. The command
+prints only transport selection, configured account aliases, and AI provider
+aliases/model counts; it never prints credential values or transport IDs.
+
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
 When file logging is enabled, the default logs rotate at local midnight, keep

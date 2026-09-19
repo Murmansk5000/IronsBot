@@ -1,9 +1,7 @@
 import subprocess
 import sys
 
-PURE_BILIBILI_SERVICE_MODULES = (
-    "ironsbot.services.bilibili.menu",
-)
+PURE_BILIBILI_SERVICE_MODULES = ("ironsbot.services.bilibili.menu",)
 
 
 def test_pure_bilibili_services_do_not_import_runtime_modules() -> None:

@@ -181,9 +181,7 @@ class _FakeRankAdminService:
 
     async def cache_refresh(self, *, actor: ActorRef, progress: object) -> str:
         del actor
-        await cast("Callable[[str], Awaitable[None]]", progress)(
-            "sample refresh start"
-        )
+        await cast("Callable[[str], Awaitable[None]]", progress)("sample refresh start")
         return "sample refresh done"
 
 
@@ -342,6 +340,7 @@ class _FakeTeamQuery:
         assert not actor.can_manage
         return "战队:" + ",".join(str(value) for value in team_ids)
 
+
 class _FakeRankQueries:
     def default_limit(self, _conversation: ConversationRef | None) -> int:
         return 10
@@ -357,8 +356,7 @@ class _FakeRankQueries:
         assert conversation is not None
         assert can_manage
         return (
-            f"榜单显示:{conversation.account_id}:"
-            f"{conversation.id}:{actor.id}:{limit}"
+            f"榜单显示:{conversation.account_id}:{conversation.id}:{actor.id}:{limit}"
         )
 
     async def list(
@@ -620,7 +618,8 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
         PluginContribution(id="help", commands=help_command_contracts()),
         PluginContribution(id="about", commands=about_command_contracts()),
         PluginContribution(
-            id="seer_query", commands=(*seer_contracts, *extra_commands),
+            id="seer_query",
+            commands=(*seer_contracts, *extra_commands),
         ),
         PluginContribution(id="rank_help", commands=rank_contracts),
     ]
@@ -877,8 +876,7 @@ features = ["about"]
 
     accounts = settings.bot.qq_official.enabled_accounts
     actual = [
-        (name, account.app_id, account.secret)
-        for name, account in accounts.items()
+        (name, account.app_id, account.secret) for name, account in accounts.items()
     ]
     assert actual == [
         ("example_a", "app-a", "secret-a"),
@@ -915,9 +913,7 @@ identity_verification = false
     assert settings.bot.onebot.enabled
     assert not settings.bot.onebot.send_messages
     assert settings.bot.onebot.identity_verification
-    assert settings.bot.onebot.trusted_official_bots == {
-        "example_bot": 123456789
-    }
+    assert settings.bot.onebot.trusted_official_bots == {"example_bot": 123456789}
 
 
 def test_onebot_trusted_bot_environment_rejects_undeclared_account(
@@ -1039,8 +1035,7 @@ def test_qq_official_config_exposes_every_enabled_account() -> None:
                 app_id="app-b",
                 secret="secret-b",
             ),
-            "disabled": QQOfficialAccountConfig(
-            ),
+            "disabled": QQOfficialAccountConfig(),
         },
     )
 
@@ -1131,16 +1126,8 @@ def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
         qq_official=config,
         references=_official_references(
             config,
-            groups={
-                "official_group": {
-                    "official": {"example_bot": "opaque-group"}
-                }
-            },
-            users={
-                "official_user": {
-                    "official": {"example_bot": "opaque-user"}
-                }
-            },
+            groups={"official_group": {"official": {"example_bot": "opaque-group"}}},
+            users={"official_user": {"official": {"example_bot": "opaque-user"}}},
         ),
     )
 
@@ -1168,12 +1155,8 @@ def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
     )
     references = _official_references(
         config,
-        groups={
-            "official_group": {"official": {"example_bot": "opaque-group"}}
-        },
-        users={
-            "official_admin": {"official": {"example_bot": "opaque-admin"}}
-        },
+        groups={"official_group": {"official": {"example_bot": "opaque-group"}}},
+        users={"official_admin": {"official": {"example_bot": "opaque-admin"}}},
     )
     features = build_feature_service(
         FeatureConfig(superuser_bypass=True),
@@ -1236,9 +1219,7 @@ def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> Non
     config = _qq_config(features=[])
     references = _official_references(
         config,
-        groups={
-            "admin": {"qq": 1001, "official": {"example_bot": "opaque-group"}}
-        },
+        groups={"admin": {"qq": 1001, "official": {"example_bot": "opaque-group"}}},
         users={
             "owner": {
                 "qq": 2002,
@@ -1388,12 +1369,86 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
     assert incoming.reply_deadline.isoformat() == "2099-01-01T00:05:00+08:00"
 
 
-def test_only_group_at_event_is_classified_as_bot_mention() -> None:
+def test_group_at_or_structured_self_mention_is_classified_as_bot_mention() -> None:
     full_message = _sdk_event(event_type="GROUP_MESSAGE_CREATE")
+    mentioned_full_message = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        content="@babyQ help",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                    "username": "babyQ",
+                }
+            ]
+        },
+    )
     at_message = _sdk_event(event_type="GROUP_AT_MESSAGE_CREATE")
 
     assert not qq_official_event_mentions_bot(full_message)
+    assert qq_official_event_mentions_bot(mentioned_full_message)
     assert qq_official_event_mentions_bot(at_message)
+
+
+def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@babyQ @target 战队",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                    "username": "babyQ",
+                },
+                {
+                    "is_you": False,
+                    "member_openid": "target-openid",
+                    "username": "target",
+                },
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "@target 战队"
+    assert incoming.direct_mentions == (
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            event.chat_id,
+            account_id="example-app",
+        ),
+    )
+
+
+def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@another-bot help",
+        raw={
+            "mentions": [
+                {
+                    "bot": True,
+                    "is_you": False,
+                    "member_openid": "another-bot-openid",
+                    "username": "another-bot",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert not qq_official_event_mentions_bot(event)
+    assert incoming.text == "@another-bot help"
 
 
 def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> None:
@@ -1648,8 +1703,7 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert router.recognizes(_portable_input("1", actor, conversation))
 
     assert (
-        await router.dispatch(_portable_input("数据版本", actor, conversation))
-        is None
+        await router.dispatch(_portable_input("数据版本", actor, conversation)) is None
     )
 
 
@@ -1790,9 +1844,7 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
 
     assert current is not None
     assert cast("TextPart", current.message.parts[0]).text == "当前活动"
-    assert not router.recognizes(
-        _portable_input("当前活动", admin, admin_conversation)
-    )
+    assert not router.recognizes(_portable_input("当前活动", admin, admin_conversation))
 
 
 @pytest.mark.asyncio
@@ -1916,9 +1968,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
 
     maintenance = await router.dispatch(context("/重启机器人", admin))
     assert maintenance is not None
-    assert "选择机器人维护操作" in cast(
-        "TextPart", maintenance.message.parts[0]
-    ).text
+    assert "选择机器人维护操作" in cast("TextPart", maintenance.message.parts[0]).text
     prepared = await router.dispatch(context("1", admin))
     assert prepared is not None
     assert cast("TextPart", prepared.message.parts[0]).text == "maintenance prepared"
@@ -2086,9 +2136,7 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
     reply = await router.dispatch(_portable_input("雷伊配置", actor, conversation))
 
     assert reply is not None
-    assert reply.message.parts == (
-        BinaryImagePart(b"pet-config", "image/png"),
-    )
+    assert reply.message.parts == (BinaryImagePart(b"pet-config", "image/png"),)
 
 
 @pytest.mark.asyncio
@@ -2097,9 +2145,7 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
     router = build_portable_command_router(
         catalog=_portable_catalog(rank_status=True),
         about=AboutService("test"),
-        seer=_fake_seer(
-            rank_admin=cast("RankAdminService", _FakeRankAdminService())
-        ),
+        seer=_fake_seer(rank_admin=cast("RankAdminService", _FakeRankAdminService())),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         identity_links=_identity_links(),
         features=features,
@@ -2143,9 +2189,7 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
         admin.id,
         account_id="example-app",
     )
-    refresh = await router.dispatch(
-        _portable_input("/刷新样本", admin, conversation)
-    )
+    refresh = await router.dispatch(_portable_input("/刷新样本", admin, conversation))
 
     assert refresh is not None
     assert cast("TextPart", refresh.message.parts[0]).text == "sample refresh start"
@@ -2189,9 +2233,7 @@ async def test_portable_router_runs_scoped_query_selection(
         account_id="example-app",
     )
 
-    choices = await router.dispatch(
-        _portable_input("精灵雷伊", actor, conversation)
-    )
+    choices = await router.dispatch(_portable_input("精灵雷伊", actor, conversation))
     assert choices is not None
     assert "1. 雷伊" in cast("TextPart", choices.message.parts[0]).text
     prompt = choices.message.prompt
@@ -2233,9 +2275,7 @@ async def test_portable_router_runs_mintmark_query_and_selection() -> None:
         account_id="example-app",
     )
 
-    choices = await router.dispatch(
-        _portable_input("刻印V8", actor, conversation)
-    )
+    choices = await router.dispatch(_portable_input("刻印V8", actor, conversation))
     assert choices is not None
     assert "1. V8-1" in cast("TextPart", choices.message.parts[0]).text
     prompt = choices.message.prompt
@@ -2302,11 +2342,17 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         raise AssertionError(msg)
 
     extensions = PlayerDetailExtensionRegistry()
-    extensions.register(PlayerDetailExtensionAction(
-        id="player_team", feature="seer_team", label="战队", aliases=("战队",),
-        command_help_id="seer.team.query", query=detail_query,
-        action=ActionDefinition("player_team", "玩家所属战队"),
-    ))
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="player_team",
+            feature="seer_team",
+            label="战队",
+            aliases=("战队",),
+            command_help_id="seer.team.query",
+            query=detail_query,
+            action=ActionDefinition("player_team", "玩家所属战队"),
+        )
+    )
     features = build_feature_service(
         FeatureConfig(),
         (),
@@ -2354,30 +2400,47 @@ async def test_router_builds_extension_without_platform_handler() -> None:
         return QueryReply(text="extension result")
 
     extensions = PlayerDetailExtensionRegistry()
-    extensions.register(PlayerDetailExtensionAction(
-        id="sample_detail", feature="seer_player", label="档案", aliases=("档案",),
-        command_help_id="sample.detail", query=query,
-        action=ActionDefinition("sample_detail", "档案"),
-    ))
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="sample_detail",
+            feature="seer_player",
+            label="档案",
+            aliases=("档案",),
+            command_help_id="sample.detail",
+            query=query,
+            action=ActionDefinition("sample_detail", "档案"),
+        )
+    )
     contract = CommandContract(
-        id="sample.detail", plugin_id="seer_query", section="玩家",
-        examples=("档案700001",), description="查询玩家档案",
+        id="sample.detail",
+        plugin_id="seer_query",
+        section="玩家",
+        examples=("档案700001",),
+        description="查询玩家档案",
         features_all=("seer_player",),
     )
     features = build_feature_service(
-        FeatureConfig(), (), qq_official=_qq_config(features=["seer_player"]),
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["seer_player"]),
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(extra_commands=(contract,)),
-        about=AboutService("test"), seer=_fake_seer(player_details=extensions),
-        player_id_resolver=_FakePlayerIdResolver(), identity_links=_identity_links(),
-        features=features, ai=cast("AiService", _FakeAi()),
+        about=AboutService("test"),
+        seer=_fake_seer(player_details=extensions),
+        player_id_resolver=_FakePlayerIdResolver(),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "member-a", account_id="example-app")
     conversation = ConversationRef(
-        Platform.QQ_OFFICIAL, "private", actor.id, account_id="example-app",
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
     )
     result = await router.dispatch(_portable_input("档案700001", actor, conversation))
     assert result is not None
@@ -2554,9 +2617,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         team_resource=_unused_team_resource(),
     )
 
-    guarded = await disabled.dispatch(
-        _portable_input("不会处理", actor, conversation)
-    )
+    guarded = await disabled.dispatch(_portable_input("不会处理", actor, conversation))
 
     assert guarded is not None
     assert cast("TextPart", guarded.message.parts[0]).text == (

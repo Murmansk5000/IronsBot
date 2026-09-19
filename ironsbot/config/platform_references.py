@@ -38,6 +38,7 @@ class QQOfficialReferenceAccount(Protocol):
     @property
     def app_id(self) -> str: ...
 
+
 @dataclass(frozen=True, slots=True)
 class PlatformReferenceResolver:
     """Resolve logical aliases into platform-scoped delivery endpoints."""

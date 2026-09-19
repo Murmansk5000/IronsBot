@@ -64,9 +64,7 @@ def _activity_notice_blocks(activity_name: str, notice_text: str) -> list[str]:
         for match in re.finditer(pattern, notice_text):
             start = max(0, match.start() - NOTICE_ACTIVITY_LOOKBEHIND_CHARS)
             relative_match_start = match.start() - start
-            block = notice_text[
-                start : match.start() + NOTICE_ACTIVITY_BLOCK_CHARS
-            ]
+            block = notice_text[start : match.start() + NOTICE_ACTIVITY_BLOCK_CHARS]
             next_item = re.search(
                 r"\n\s*\d+(?:\.|\uFF0E)\s*",
                 block[relative_match_start + 1 :],

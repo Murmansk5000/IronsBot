@@ -61,8 +61,9 @@ def test_plan_player_query_sections_maps_configured_sections() -> None:
     )
 
 
-def test_player_detail_prompt_assigns_standard_menu_numbers_in_registration_order(
-) -> None:
+def test_player_detail_prompt_assigns_standard_menu_numbers_in_registration_order() -> (
+    None
+):
     extension = PlayerDetailExtensionAction(
         id="private_action",
         feature="private_feature",

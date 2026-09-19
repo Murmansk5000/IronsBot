@@ -100,9 +100,7 @@ class AutocardSanctuaryService:
             return _sanctuary_menu_result(dataset)
         values = _matching_values(dataset, query)
         if not values:
-            return SanctuarySearchResult(
-                message=f"❌ 未找到群星牌场地或祝印：{query}"
-            )
+            return SanctuarySearchResult(message=f"❌ 未找到群星牌场地或祝印：{query}")
         if len(values) == 1:
             return _selection_result(dataset, values[0])
         if len(values) > SANCTUARY_PROMPT_MAX_ITEMS:
@@ -122,7 +120,9 @@ class AutocardSanctuaryService:
         return _selection_result(dataset, value)
 
 
-def format_sanctuary_overview(sanctuary: Sanctuary) -> tuple[
+def format_sanctuary_overview(
+    sanctuary: Sanctuary,
+) -> tuple[
     tuple[SanctuaryPromptValue, ...],
     str,
 ]:
@@ -212,6 +212,8 @@ def _build_sanctuary_dataset(
     return _SanctuaryDataset(
         tuple(sorted(sanctuaries, key=lambda sanctuary: sanctuary.id))
     )
+
+
 def _matching_values(
     dataset: _SanctuaryDataset,
     query: str,
@@ -328,8 +330,7 @@ def _matching_prompt_text(
     return format_selection_menu(
         title="请问你想查询的群星牌场地效果是……",
         items=tuple(
-            SelectionMenuItem(label=_prompt_label(dataset, value))
-            for value in values
+            SelectionMenuItem(label=_prompt_label(dataset, value)) for value in values
         ),
     )
 
@@ -343,8 +344,7 @@ def _prompt_label(
         return "已失效的场地数据"
     if value.kind == "sanctuary":
         return (
-            f"{sanctuary.name}（圣域 {sanctuary.id}｜"
-            f"精灵王：{_pet_label(sanctuary)}）"
+            f"{sanctuary.name}（圣域 {sanctuary.id}｜精灵王：{_pet_label(sanctuary)}）"
         )
     effect = next(
         (effect for effect in sanctuary.effects if effect.id == value.effect_id),
@@ -377,9 +377,7 @@ def _effect_entry(
 
 def _phase_name(effect: SanctuaryEffect) -> str:
     return (
-        "基础圣域"
-        if effect.unlock_round == 0
-        else f"第 {effect.unlock_round} 回合祝印"
+        "基础圣域" if effect.unlock_round == 0 else f"第 {effect.unlock_round} 回合祝印"
     )
 
 

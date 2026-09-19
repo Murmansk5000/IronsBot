@@ -130,7 +130,8 @@ class _PortableSubscriptionMenus:
             return OutboundMessage.from_text("当前没有可管理的推送订阅。")
 
         async def select(
-            option: PushSubscriptionOption, context: MessageInputContext,
+            option: PushSubscriptionOption,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             menu = replace(self, context=context)
             if _push_read_only(self.messaging, context):
@@ -158,7 +159,8 @@ class _PortableSubscriptionMenus:
         notice: str | None = None,
     ) -> OutboundMessage:
         async def select(
-            option: PushSubscriptionOption, context: MessageInputContext,
+            option: PushSubscriptionOption,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             menu = replace(self, context=context)
             if _push_read_only(self.messaging, context):
@@ -220,7 +222,8 @@ class _PortablePushTimeMenus:
         prompt = build_push_time_menu_prompt(self.conversation, options)
 
         async def select(
-            option: PushTimeOption, context: MessageInputContext,
+            option: PushTimeOption,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             return replace(self, context=context)._request_value(option)
 

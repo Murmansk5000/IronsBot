@@ -34,15 +34,9 @@ def test_headless_operation_context_keeps_recent_operation() -> None:
         source="后台刷榜缓存",
         background=True,
     ):
-        assert (
-            operations.format_recent()
-            == "后台刷榜缓存：群星牌 1-100名（后台操作）"
-        )
+        assert operations.format_recent() == "后台刷榜缓存：群星牌 1-100名（后台操作）"
 
-    assert (
-        operations.format_recent()
-        == "后台刷榜缓存：群星牌 1-100名（后台操作）"
-    )
+    assert operations.format_recent() == "后台刷榜缓存：群星牌 1-100名（后台操作）"
     assert operations.format_recent(now=float("inf")) == ""
 
 
@@ -57,8 +51,7 @@ def test_headless_operation_context_includes_conversation() -> None:
     ):
         description = operations.format_current()
         assert description == (
-            "基础资料：米米号 123456"
-            "（用户操作，会话：onebot/group/8a9bcf1e51e8）"
+            "基础资料：米米号 123456（用户操作，会话：onebot/group/8a9bcf1e51e8）"
         )
         assert "987654321" not in description
 

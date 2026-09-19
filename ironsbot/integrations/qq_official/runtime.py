@@ -98,8 +98,7 @@ class QQOfficialStartupError(RuntimeError):
     def __init__(self, accounts: tuple[str, ...]) -> None:
         self.accounts = accounts
         super().__init__(
-            "Required official accounts failed to become ready: "
-            + ", ".join(accounts)
+            "Required official accounts failed to become ready: " + ", ".join(accounts)
         )
 
 
@@ -408,10 +407,13 @@ class QQOfficialRuntime:
                 reference_digest(incoming.message_id),
             )
             return
+        mentions_bot = qq_official_event_mentions_bot(event)
         context = MessageInputContext(
             incoming,
-            mentions_bot=qq_official_event_mentions_bot(event),
-            automatic_fallback_allowed=event_type != GROUP_MESSAGE_CREATE,
+            mentions_bot=mentions_bot,
+            automatic_fallback_allowed=(
+                event_type != GROUP_MESSAGE_CREATE or mentions_bot
+            ),
         )
         recognized = router.recognizes(context)
         logger.info(
@@ -564,7 +566,10 @@ async def deliver_qq_official_reply(
             _log_delivery_success(incoming, stage=stage, account_label=account_label)
         else:
             _log_delivery_failure(
-                incoming, result, stage=stage, account_label=account_label,
+                incoming,
+                result,
+                stage=stage,
+                account_label=account_label,
             )
 
     def on_follow_up_error(error: Exception) -> OutboundMessage:
@@ -574,9 +579,7 @@ async def deliver_qq_official_reply(
             incoming.conversation.kind,
             reference_digest(incoming.conversation.id),
         )
-        return OutboundMessage.from_text(
-            f"❌ 操作执行失败：{type(error).__name__}"
-        )
+        return OutboundMessage.from_text(f"❌ 操作执行失败：{type(error).__name__}")
 
     async def send(message: OutboundMessage) -> SendResult:
         observation = (
