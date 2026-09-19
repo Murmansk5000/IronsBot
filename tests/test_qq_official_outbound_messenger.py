@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -25,6 +25,7 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 
 if TYPE_CHECKING:
+    from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.integrations.qq_official.message_rendering import QQOfficialPayload
 
 
@@ -54,6 +55,19 @@ class _Bot:
     ) -> object:
         self.calls.append(("group", group_openid, payloads, msg_id, msg_seq))
         return SimpleNamespace(id=self.response_id)
+
+
+@dataclass
+class _UnexpectedMessenger:
+    send_calls: int = 0
+
+    async def send(
+        self,
+        _conversation: ConversationRef,
+        _message: OutboundMessage,
+    ) -> object:
+        self.send_calls += 1
+        raise AssertionError
 
 
 GROUP = ConversationRef(
@@ -482,3 +496,24 @@ async def test_platform_router_delegates_and_rejects_missing_adapter() -> None:
     assert delivered.delivered
     assert rejected.error_code == "unsupported_platform"
     assert rejected.failure_kind is DeliveryFailureKind.PERMANENT
+
+
+@pytest.mark.asyncio
+async def test_official_failure_never_falls_back_to_onebot() -> None:
+    official = QQOfficialOutboundMessenger(
+        {"app": True},
+        bot_provider=lambda _app_id: None,
+    )
+    onebot = _UnexpectedMessenger()
+    routed = PlatformOutboundMessenger(
+        {
+            Platform.QQ_OFFICIAL: cast("OutboundMessenger", official),
+            Platform.ONEBOT: cast("OutboundMessenger", onebot),
+        }
+    )
+
+    result = await routed.send(GROUP, TEXT)
+
+    assert result.error_code == "bot_unavailable"
+    assert result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+    assert onebot.send_calls == 0
