@@ -1434,7 +1434,7 @@ def test_qq_official_renderer_compacts_text_around_image() -> None:
     )
 
 
-def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
+def test_qq_official_renderer_marks_member_target_as_source_reference() -> None:
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
         "group",
@@ -1456,7 +1456,8 @@ def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-&quot;openid" /> result'
+            " result",
+            reference_source=True,
         ),
     )
 
@@ -1549,7 +1550,8 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
     payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
     assert payloads == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" />result'
+            "result",
+            reference_source=True,
         ),
     )
 

@@ -140,6 +140,23 @@ async def test_sdk_client_sends_text_with_passive_reply_identity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_client_references_source_message_for_member_target() -> None:
+    api = _FakeApi()
+
+    await _client(api).send_to_group(
+        "group-openid",
+        (QQOfficialTextPayload("result", reference_source=True),),
+        msg_id="incoming-id",
+        msg_seq=PASSIVE_SEQUENCE,
+    )
+
+    message = api.messages[0][2]
+    assert message.content == "result"
+    assert message.message_reference is not None
+    assert message.message_reference.message_id == "incoming-id"
+
+
+@pytest.mark.asyncio
 async def test_sdk_client_sends_opt_in_command_keyboard() -> None:
     api = _FakeApi()
     prompt = _prompt()

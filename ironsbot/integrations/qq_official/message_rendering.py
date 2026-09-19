@@ -3,8 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from html import escape
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import (
@@ -33,6 +32,7 @@ class QQOfficialOutboundMessageError(ValueError):
 class QQOfficialTextPayload:
     content: str
     prompt: PromptSession | None = None
+    reference_source: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +40,7 @@ class QQOfficialImagePayload:
     content: bytes | None = None
     url: str | None = None
     filename: str = "ironsbot.png"
+    reference_source: bool = False
 
 
 QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
@@ -57,6 +58,7 @@ def render_qq_official_outbound_message(
     text: list[str] = []
     saw_image = False
     text_after_image = False
+    reference_source = False
 
     for part in message.parts:
         if isinstance(part, TextPart):
@@ -66,9 +68,7 @@ def render_qq_official_outbound_message(
         elif isinstance(part, MentionPart):
             if not _supports_group_mention(conversation, part):
                 raise QQOfficialOutboundMessageError.unsupported_mention()
-            text.append(f'<qqbot-at-user id="{escape(part.actor.id, quote=True)}" />')
-            if saw_image:
-                text_after_image = True
+            reference_source = True
         elif isinstance(part, BinaryImagePart):
             saw_image = True
             images.append(
@@ -90,6 +90,8 @@ def render_qq_official_outbound_message(
         if text_after_image
         else [*text_payloads, *images]
     )
+    if reference_source and rendered:
+        rendered[0] = replace(rendered[0], reference_source=True)
     if supports_interactive_prompts:
         _attach_prompt(rendered, message.prompt)
     return tuple(rendered)
@@ -103,7 +105,11 @@ def _attach_prompt(
         return
     for index, payload in enumerate(rendered):
         if isinstance(payload, QQOfficialTextPayload):
-            rendered[index] = QQOfficialTextPayload(payload.content, prompt=prompt)
+            rendered[index] = QQOfficialTextPayload(
+                payload.content,
+                prompt=prompt,
+                reference_source=payload.reference_source,
+            )
             return
     rendered.append(QQOfficialTextPayload(_prompt_text(prompt), prompt=prompt))
 

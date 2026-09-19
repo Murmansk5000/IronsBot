@@ -59,13 +59,14 @@ def _observed_reply(
     sender: int = OFFICIAL_BOT_QQ,
     text: str = "结果",
 ) -> GroupMessageEvent:
-    message = Message([MessageSegment.at(MEMBER_QQ), MessageSegment.text(text)])
+    message = Message(MessageSegment.text(text))
     return group_message_event(
         text=text,
         user_id=sender,
         group_id=ONEBOT_GROUP,
         message=message,
         original_message=message,
+        reply_sender_user_id=MEMBER_QQ,
     )
 
 

@@ -58,4 +58,8 @@ def _mentioned_qq_ids(event: GroupMessageEvent) -> tuple[str, ...]:
         value = str(segment.data.get("qq", "")).strip()
         if value.isdecimal() and value not in values:
             values.append(value)
+    if not values and event.reply is not None:
+        value = str(event.reply.sender.user_id or "").strip()
+        if value.isdecimal():
+            values.append(value)
     return tuple(values)
