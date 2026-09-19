@@ -45,6 +45,44 @@ silent even when `send_messages = true`. Missing one half of the pair, or using
 an environment suffix not declared in TOML, prevents startup. An official
 connection or delivery failure never enables OneBot fallback.
 
+### Multiple official accounts
+
+Declare every account alias in TOML, then provide one complete environment pair
+for each alias. Do not reuse one alias for two applications:
+
+```toml
+[bot.qq_official.accounts.group_bot]
+required = false
+proactive_messages = true
+custom_keyboards = false
+features = ["help", "about", "seer_data"]
+
+[bot.qq_official.accounts.private_bot]
+required = true
+proactive_messages = false
+custom_keyboards = false
+features = ["help", "about", "seer_data"]
+```
+
+```env
+QQ_OFFICIAL_APP_ID_GROUP_BOT=
+QQ_OFFICIAL_SECRET_GROUP_BOT=
+QQ_OFFICIAL_APP_ID_PRIVATE_BOT=
+QQ_OFFICIAL_SECRET_PRIVATE_BOT=
+```
+
+All accounts with complete credentials connect independently. `required` only
+controls whether that account's startup failure aborts the application; it does
+not select a fallback sender. A group feature policy authorizes the logical
+group and does not require two official bots to reply there. C2C and group
+replies always return through the AppID that received the event, so acceptance
+tests for a designated private bot must send the private message to that bot.
+
+In Unraid, duplicate the AppID/AppSecret variable pair for each TOML alias and
+replace the suffix with the alias in uppercase. Adding environment variables
+without the matching TOML account, or adding the TOML account without both
+environment variables when it is intended to run, is not a complete migration.
+
 ## Silent group identity observation
 
 NapCat can remain connected only to verify group member identities:

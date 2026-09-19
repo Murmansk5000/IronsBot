@@ -118,6 +118,14 @@ class DockerGateway(Protocol):
         timeout_seconds: float,
     ) -> None: ...
 
+    async def remove_image_if_unused(
+        self,
+        *,
+        image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> bool: ...
+
 
 class DockerUpdateService:
     def __init__(
@@ -164,6 +172,7 @@ class DockerUpdateService:
     async def confirm_update_handoff(
         self,
         *,
+        previous_image_id: str,
         expected_image_id: str,
         updater_container_id: str,
     ) -> bool:
@@ -187,12 +196,31 @@ class DockerUpdateService:
                     socket_path=socket_path,
                     timeout_seconds=float(self._config.timeout_seconds),
                 )
-            except (OSError, RuntimeError):
+            except Exception:  # noqa: BLE001 - cleanup must not invalidate handoff
                 logger.warning(
                     "could not remove completed Watchtower updater: %s",
                     updater_container_id,
                     exc_info=True,
                 )
+            if previous_image_id and previous_image_id != expected_image_id:
+                try:
+                    removed = await self._docker.remove_image_if_unused(
+                        image_id=previous_image_id,
+                        socket_path=socket_path,
+                        timeout_seconds=float(self._config.timeout_seconds),
+                    )
+                    if not removed:
+                        logger.info(
+                            "previous IronsBot image is still referenced; "
+                            "retaining it: image_id=%s",
+                            previous_image_id[:19],
+                        )
+                except Exception:  # noqa: BLE001 - cleanup must not invalidate handoff
+                    logger.warning(
+                        "could not remove previous IronsBot image: image_id=%s",
+                        previous_image_id[:19],
+                        exc_info=True,
+                    )
             return True
 
     async def abandon_update_handoff(

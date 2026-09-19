@@ -2558,6 +2558,63 @@ async def test_portable_router_does_not_send_unavailable_command_to_ai() -> None
 
 
 @pytest.mark.asyncio
+async def test_portable_router_applies_official_superuser_bypass_in_group() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "restricted-group",
+        account_id="example-app",
+    )
+    superuser = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "owner-openid",
+        "user",
+        account_id="example-app",
+    )
+    owner_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        superuser.id,
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    ordinary_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "ordinary-openid",
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={},
+        superusers=frozenset({superuser}),
+        superuser_bypass=True,
+        platform_default_features={Platform.QQ_OFFICIAL: frozenset()},
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    owner_input = _portable_input("关于", owner_member, conversation)
+    ordinary_input = _portable_input("关于", ordinary_member, conversation)
+
+    assert router.recognizes(owner_input)
+    owner_reply = await router.dispatch(owner_input)
+    assert owner_reply is not None
+    assert "IronsBot" in cast("TextPart", owner_reply.message.parts[0]).text
+    assert not router.recognizes(ordinary_input)
+    assert await router.dispatch(ordinary_input) is None
+
+
+@pytest.mark.asyncio
 async def test_portable_router_routes_group_mention_by_ai_availability() -> None:
     actor = ActorRef(
         Platform.QQ_OFFICIAL,

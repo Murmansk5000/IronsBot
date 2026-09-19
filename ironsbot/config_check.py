@@ -19,6 +19,7 @@ from ironsbot.config.loader import (
     TOMLDecodeError,
     load_settings,
 )
+from ironsbot.config.models.features import build_feature_service
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping, Sequence
@@ -73,6 +74,23 @@ def configuration_summary(settings: Settings) -> tuple[str, ...]:
     )
 
 
+def validate_runtime_references(settings: Settings) -> None:
+    """Compile pure feature and identity references without starting resources."""
+
+    build_feature_service(
+        settings.features,
+        settings.bot.superusers,
+        command_features=settings.messaging.command_feature_keys,
+        schedule_features=settings.messaging.schedule_feature_keys,
+        qq_official=(
+            settings.bot.qq_official
+            if settings.bot.qq_official.enabled_accounts
+            else None
+        ),
+        references=settings.platform_references,
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -86,6 +104,7 @@ def main(
 
     try:
         settings = load_settings(args.config, env=values)
+        validate_runtime_references(settings)
     except (
         ConfigFileNotFoundError,
         TOMLDecodeError,

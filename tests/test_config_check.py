@@ -97,3 +97,44 @@ def test_config_check_redacts_secret_from_validation_error(tmp_path: Path) -> No
     assert "unknown" in result.stderr
     assert secret not in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_config_check_rejects_undeclared_official_policy_target(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "invalid-official-policy.toml"
+    text = (ROOT / "config.example.toml").read_text(encoding="utf-8")
+    text = text.replace(
+        "[bot.qq_official.accounts.example_bot.user_policy]",
+        '[bot.qq_official.accounts.example_bot.user_policy]\n'
+        '"raw-official-openid" = ["help"]',
+    )
+    config_path.write_text(text, encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ironsbot.config_check",
+            "--no-dotenv",
+            "--config",
+            str(config_path),
+        ],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=15,
+    )
+
+    assert result.returncode == CONFIG_ERROR_EXIT_CODE
+    assert "IronsBot configuration invalid" in result.stderr
+    assert "has no official endpoint for account example_bot" in result.stderr
+    assert "Traceback" not in result.stderr

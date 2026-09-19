@@ -406,7 +406,8 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
 
     assert "player:700002" in _text(reply)
     assert "1. 【收集】" in _text(reply)
-    assert "绑定米米号700002" in _text(reply)
+    assert "回复“是”或“y”确认，回复“否”或“n”跳过" in _text(reply)
+    assert "绑定米米号700002" not in _text(reply)
     assert service.returned == []
     assert service.refreshed == []
     reply.delivered()
@@ -418,6 +419,27 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
     part = selected.message.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == "caller-openid:collection:700002"
+
+
+@pytest.mark.asyncio
+async def test_player_query_menu_accepts_short_binding_confirmation() -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+    )
+    context = _context("米米号700002")
+
+    await operations["seer.player.query"](context.text, context)
+    selected = await sessions.select("y", context, allow_deferred=True)
+
+    assert isinstance(selected, OutboundMessage)
+    assert service.bound == [(context.message.actor, 700002)]
+    part = selected.parts[0]
+    assert isinstance(part, TextPart)
+    assert "choice:True" in part.text
 
 
 @pytest.mark.asyncio

@@ -24,10 +24,12 @@ from .daemon import (
     ensure_watchtower_image,
     inspect_container_image_id,
     inspect_image_info,
+    inspect_image_info_if_present,
     inspect_remote_image_digest,
     pull_docker_image,
     read_container_archive,
     remove_container_quietly,
+    remove_image_if_unused,
 )
 from .http import raise_for_docker_status
 from .metadata import resolve_image_commit_summary
@@ -107,6 +109,24 @@ class DockerClient:
                 params={"force": "true"},
             )
             raise_for_docker_status(response)
+
+    async def remove_image_if_unused(
+        self,
+        *,
+        image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> bool:
+        if not await self.socket_exists(socket_path):
+            message = f"Docker socket not found: {socket_path}"
+            raise RuntimeError(message)
+        transport = httpx.AsyncHTTPTransport(uds=socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            return await remove_image_if_unused(client, image_id)
 
     async def start_update(self, request: DockerUpdateRequest) -> DockerUpdateResult:
         logger.warning(
@@ -282,6 +302,7 @@ class DockerClient:
             base_url="http://docker",
             timeout=httpx.Timeout(request.timeout_seconds),
         ) as client:
+            previous_image = await inspect_image_info_if_present(client, request.image)
             image = await pull_docker_image(
                 client,
                 request.image,
@@ -296,4 +317,23 @@ class DockerClient:
                 )
             finally:
                 await remove_container_quietly(client, container_id)
+            if previous_image is not None and previous_image.image_id != image.image_id:
+                try:
+                    removed = await remove_image_if_unused(
+                        client,
+                        previous_image.image_id,
+                    )
+                    if not removed:
+                        logger.info(
+                            "previous private extension image is still referenced; "
+                            "retaining it: image_id=%s",
+                            previous_image.image_id[:19],
+                        )
+                except Exception:  # noqa: BLE001 - archive remains valid
+                    logger.warning(
+                        "could not remove previous private extension image: "
+                        "image_id=%s",
+                        previous_image.image_id[:19],
+                        exc_info=True,
+                    )
         return DockerImageArchive(image=image, content=content)

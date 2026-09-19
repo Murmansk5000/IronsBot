@@ -40,7 +40,7 @@ reply sequences, and outbound routing by the owning AppID.
 - Bootstrap creates one Tencent SDK API client, WebSocket, and session store for
   each enabled account.
 - Inbound identity uses the owning connection's AppID as `account_id`.
-- Feature defaults, OpenID policy, and superusers are compiled per AppID.
+- Feature defaults, logical identity policy, and superusers are compiled per AppID.
 - C2C superusers use `user_openid`; group superusers are explicitly scoped by
   group OpenID and `member_openid`, and are not private-message targets.
 - Official outbound targets without an AppID, or with an unknown AppID, fail;

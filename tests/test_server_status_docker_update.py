@@ -8,6 +8,7 @@ import nonebot
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+DOCKER_CONFLICT_STATUS = 409
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
 try:
@@ -20,8 +21,10 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.docker.daemon import (
     create_watchtower_container,
     ensure_watchtower_image,
+    inspect_image_info_if_present,
     inspect_remote_image_digest,
     pull_docker_image,
+    remove_image_if_unused,
 )
 from ironsbot.integrations.docker.registry import (
     inspect_registry_image_info,
@@ -34,6 +37,7 @@ from ironsbot.services.operations.docker_formatting import (
     format_docker_update_reply,
 )
 from ironsbot.services.operations.docker_models import (
+    DockerImageArchiveRequest,
     DockerImageCheckResult,
     DockerImageInfo,
     DockerRegistryCredentials,
@@ -436,6 +440,7 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
     class FakeDocker:
         checked: tuple[str, str] | None = None
         removed: str | None = None
+        removed_image: str | None = None
 
         async def socket_exists(self, _socket_path: str) -> bool:
             return True
@@ -464,6 +469,18 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
             assert timeout_seconds > 0
             self.removed = container_id
 
+        async def remove_image_if_unused(
+            self,
+            *,
+            image_id: str,
+            socket_path: str,
+            timeout_seconds: float,
+        ) -> bool:
+            assert socket_path == "/var/run/docker.sock"
+            assert timeout_seconds > 0
+            self.removed_image = image_id
+            return True
+
     docker = FakeDocker()
     service = DockerUpdateService(
         DockerUpdateConfig(),
@@ -473,6 +490,7 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
 
     matched = asyncio.run(
         service.confirm_update_handoff(
+            previous_image_id="sha256:previous",
             expected_image_id="sha256:target",
             updater_container_id="watchtower-id",
         )
@@ -481,6 +499,7 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
     assert matched is True
     assert docker.checked == ("ironsbot", "sha256:target")
     assert docker.removed == "watchtower-id"
+    assert docker.removed_image == "sha256:previous"
 
 
 def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> None:
@@ -505,6 +524,7 @@ def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> N
 
     matched = asyncio.run(
         service.confirm_update_handoff(
+            previous_image_id="sha256:previous",
             expected_image_id="sha256:target",
             updater_container_id="watchtower-id",
         )
@@ -636,6 +656,113 @@ def test_target_image_pull_failure_includes_docker_error_detail() -> None:
                 "murmansk5000/ironsbot:latest",
             )
         )
+
+
+@pytest.mark.parametrize(
+    "status_code",
+    (200, 404, 409),
+)
+def test_remove_image_if_unused_handles_daemon_outcomes(
+    status_code: int,
+) -> None:
+    class FakeClient:
+        request: httpx.Request | None = None
+
+        async def delete(
+            self,
+            url: str,
+            *,
+            params: dict[str, str],
+        ) -> httpx.Response:
+            self.request = httpx.Request("DELETE", f"http://docker{url}", params=params)
+            return httpx.Response(status_code, request=self.request)
+
+    client = FakeClient()
+
+    result = asyncio.run(
+        remove_image_if_unused(client, "sha256:previous")  # type: ignore[arg-type]
+    )
+
+    assert result is (status_code != DOCKER_CONFLICT_STATUS)
+    assert client.request is not None
+    assert client.request.url.path == "/images/sha256:previous"
+    assert dict(client.request.url.params) == {
+        "force": "false",
+        "noprune": "false",
+    }
+
+
+def test_inspect_image_info_if_present_returns_none_for_missing_tag() -> None:
+    class FakeClient:
+        async def get(self, url: str) -> httpx.Response:
+            return httpx.Response(
+                404,
+                request=httpx.Request("GET", f"http://docker{url}"),
+            )
+
+    result = asyncio.run(
+        inspect_image_info_if_present(
+            FakeClient(),  # type: ignore[arg-type]
+            "example/private:latest",
+        )
+    )
+
+    assert result is None
+
+
+def test_private_image_archive_removes_replaced_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_inspections = 0
+    removed_images: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal image_inspections
+        if request.method == "GET" and request.url.path.endswith("/json"):
+            image_inspections += 1
+            image_id = "sha256:old" if image_inspections == 1 else "sha256:new"
+            return httpx.Response(
+                200,
+                json={"Id": image_id, "Config": {"Labels": {}}},
+            )
+        if request.method == "POST" and request.url.path == "/images/create":
+            return httpx.Response(200, json={})
+        if request.method == "POST" and request.url.path == "/containers/create":
+            return httpx.Response(201, json={"Id": "archive-container"})
+        if request.method == "GET" and request.url.path.endswith("/archive"):
+            return httpx.Response(200, content=b"archive-content")
+        if request.method == "DELETE" and request.url.path.startswith("/containers/"):
+            return httpx.Response(204)
+        if request.method == "DELETE" and request.url.path.startswith("/images/"):
+            removed_images.append(request.url.path.rsplit("/", maxsplit=1)[-1])
+            return httpx.Response(200, json=[])
+        message = f"unexpected Docker request: {request.method} {request.url}"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(
+        "ironsbot.integrations.docker.client.httpx.AsyncHTTPTransport",
+        lambda **_kwargs: httpx.MockTransport(handler),
+    )
+
+    class SocketDockerClient(DockerClient):
+        async def socket_exists(self, socket_path: str) -> bool:
+            del socket_path
+            return True
+
+    artifact = asyncio.run(
+        SocketDockerClient().fetch_image_archive(
+            DockerImageArchiveRequest(
+                image="example/private:latest",
+                archive_path="/opt/extension",
+                socket_path="/var/run/docker.sock",
+                timeout_seconds=30.0,
+            )
+        )
+    )
+
+    assert artifact.image.image_id == "sha256:new"
+    assert artifact.content == b"archive-content"
+    assert removed_images == ["sha256:old"]
 
 
 def test_target_image_pull_retries_transient_registry_eof(

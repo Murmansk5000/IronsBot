@@ -42,6 +42,7 @@ class DockerUpdateRunner(Protocol):
     async def confirm_update_handoff(
         self,
         *,
+        previous_image_id: str,
         expected_image_id: str,
         updater_container_id: str,
     ) -> bool: ...
@@ -232,6 +233,7 @@ class DockerStartupPreflightService:
             return False
         try:
             completed = await self._update_runner.confirm_update_handoff(
+                previous_image_id=record.result.current_image_id,
                 expected_image_id=target_image_id,
                 updater_container_id=updater_id,
             )
