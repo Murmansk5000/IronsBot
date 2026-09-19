@@ -13,6 +13,7 @@ from ironsbot.config.models.features import (
     FeatureConfig,
     build_feature_service,
 )
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
@@ -118,7 +119,8 @@ def _target_service(
             config,
             build_platform_reference_resolver(
                 OneBotReferenceResolver({}, {}),
-                (),
+                IdentityConfig(),
+                {},
             ),
         ),
         SqliteBiliPushPreferenceStore(data_dir / "preferences.sqlite"),

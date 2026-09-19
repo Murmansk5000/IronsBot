@@ -11,7 +11,6 @@ from threading import Lock
 from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.api_client import QQApiClient
-from qqbot_agent_sdk.event_parser import EventParser
 from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
@@ -20,6 +19,12 @@ from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
+from ironsbot.integrations.qq_official.group_message_events import (
+    GROUP_MESSAGE_CREATE,
+    enable_group_message_dispatch,
+    message_event_family,
+    parse_message_event,
+)
 from ironsbot.integrations.qq_official.identity import (
     qq_official_event_mentions_bot,
     qq_official_incoming_message,
@@ -41,6 +46,9 @@ if TYPE_CHECKING:
 
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.services.identity_observation import (
+        SilentIdentityObservationService,
+    )
     from ironsbot.services.portable_commands import PortableCommandRouter
     from ironsbot.services.portable_reply import DeliveryStage
 
@@ -246,12 +254,14 @@ class QQOfficialRuntime:
         if startup_timeout_seconds <= 0:
             msg = "QQ Official startup timeout must be positive"
             raise ValueError(msg)
+        enable_group_message_dispatch()
         self._startup_timeout_seconds = startup_timeout_seconds
         self._inbound_deduplicator = QQOfficialInboundDeduplicator(
             session_root / "inbound.sqlite"
         )
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
+        self._identity_observer: SilentIdentityObservationService | None = None
         self._connections: dict[str, _Connection] = {}
         for index, account in enumerate(accounts, start=1):
             if account.app_id in self._connections:
@@ -316,12 +326,15 @@ class QQOfficialRuntime:
         self,
         router: PortableCommandRouter,
         messenger: OutboundMessenger,
+        *,
+        identity_observer: SilentIdentityObservationService | None = None,
     ) -> None:
         if self._router is not None or self._messenger is not None:
             msg = "QQ Official runtime is already bound"
             raise RuntimeError(msg)
         self._router = router
         self._messenger = messenger
+        self._identity_observer = identity_observer
 
     async def start(self) -> None:
         if self._router is None or self._messenger is None:
@@ -367,7 +380,7 @@ class QQOfficialRuntime:
         event_type: str,
         raw: Mapping[str, object],
     ) -> None:
-        event = EventParser.parse(event_type, dict(raw))
+        event = parse_message_event(event_type, raw)
         if event is None:
             logger.warning(
                 "QQ Official inbound event rejected by parser: "
@@ -384,7 +397,7 @@ class QQOfficialRuntime:
         incoming = qq_official_incoming_message(event, account_id=app_id)
         if not await self._inbound_deduplicator.claim(
             app_id=app_id,
-            event_type=event_type,
+            event_type=message_event_family(event_type),
             message_id=incoming.message_id,
         ):
             logger.info(
@@ -398,6 +411,7 @@ class QQOfficialRuntime:
         context = MessageInputContext(
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
+            automatic_fallback_allowed=event_type != GROUP_MESSAGE_CREATE,
         )
         recognized = router.recognizes(context)
         logger.info(
@@ -432,6 +446,7 @@ class QQOfficialRuntime:
                 incoming,
                 reply,
                 account_label=self._connections[app_id].lifecycle.account,
+                identity_observer=self._identity_observer,
             )
 
     def _callbacks(
@@ -536,10 +551,11 @@ async def deliver_qq_official_reply(
     reply: PortableReply,
     *,
     account_label: str = "official-account",
+    identity_observer: SilentIdentityObservationService | None = None,
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
-    from ironsbot.core.outbound import ReplyContext
+    from ironsbot.core.outbound import OutboundMessage, ReplyContext
 
     context = ReplyContext.from_message(incoming)
 
@@ -562,9 +578,24 @@ async def deliver_qq_official_reply(
             f"❌ 操作执行失败：{type(error).__name__}"
         )
 
+    async def send(message: OutboundMessage) -> SendResult:
+        observation = (
+            identity_observer.record_official_reply(incoming, message)
+            if identity_observer is not None
+            else None
+        )
+        result = await messenger.reply(context, message)
+        if (
+            not result.delivered
+            and observation is not None
+            and identity_observer is not None
+        ):
+            identity_observer.discard_official_reply(observation)
+        return result
+
     await deliver_portable_reply(
         reply,
-        lambda message: messenger.reply(context, message),
+        send,
         on_sent=on_sent,
         on_follow_up_error=on_follow_up_error,
     )

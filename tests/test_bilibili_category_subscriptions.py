@@ -7,6 +7,7 @@ from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import BiliConfig
@@ -53,12 +54,18 @@ def _service(
     if not categories:
         config.category_subscriptions.enabled = False
     conversation = ConversationRef(Platform.ONEBOT, "group", "123456")
+    identities = IdentityConfig.model_validate({"groups": {"example_group": 123456}})
+    references = build_platform_reference_resolver(
+        OneBotReferenceResolver({"example_group": 123456}, {}),
+        identities,
+        {},
+    )
     features = build_feature_service(
         FeatureConfig(
-            group_aliases={"example_group": 123456},
             group_policy={"example_group": ["bili_push"]},
         ),
         frozenset(),
+        references=references,
     )
     return (
         BiliTargetService(
@@ -66,10 +73,7 @@ def _service(
             features,
             build_bili_configured_targets(
                 config,
-                build_platform_reference_resolver(
-                    OneBotReferenceResolver({"example_group": 123456}, {}),
-                    (),
-                ),
+                references,
             ),
             SqliteBiliPushPreferenceStore(path / "qq_state.sqlite"),
             PushUnsubscribeStore(path / "qq_state.sqlite"),

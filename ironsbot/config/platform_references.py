@@ -14,36 +14,29 @@ from ironsbot.core.platform import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Mapping
 
+    from ironsbot.config.models.identities import IdentityConfig
     from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 
 class PlatformReferenceError(ValueError):
     @classmethod
-    def no_private_endpoint(
+    def missing_official_endpoint(
         cls,
         location: str,
         alias: str,
+        account_alias: str,
     ) -> PlatformReferenceError:
         return cls(
-            f"{location} user alias has only group-scoped member endpoints: {alias}"
+            f"{location} identity {alias} has no official endpoint for "
+            f"account {account_alias}"
         )
 
 
 class QQOfficialReferenceAccount(Protocol):
     @property
     def app_id(self) -> str: ...
-
-    @property
-    def group_aliases(self) -> Mapping[str, str]: ...
-
-    @property
-    def user_aliases(self) -> Mapping[str, str]: ...
-
-    @property
-    def group_member_aliases(self) -> Mapping[str, Mapping[str, str]]: ...
-
 
 @dataclass(frozen=True, slots=True)
 class PlatformReferenceResolver:
@@ -52,7 +45,7 @@ class PlatformReferenceResolver:
     onebot: OneBotReferenceResolver
     qq_groups: Mapping[str, tuple[ConversationRef, ...]]
     qq_users: Mapping[str, tuple[ActorRef, ...]]
-    qq_members: Mapping[str, tuple[ActorRef, ...]]
+    account_app_ids: Mapping[str, str]
 
     def group_conversation_refs(
         self,
@@ -82,7 +75,6 @@ class PlatformReferenceResolver:
         if value in self.onebot.user_aliases:
             actors.append(self.onebot.actor_ref(reference, location=location))
         actors.extend(self.qq_users.get(value, ()))
-        actors.extend(self.qq_members.get(value, ()))
         if actors:
             return tuple(actors)
         return (self.onebot.actor_ref(reference, location=location),)
@@ -100,24 +92,75 @@ class PlatformReferenceResolver:
         actors.extend(self.qq_users.get(value, ()))
         if actors:
             return tuple(private_conversation_for_actor(actor) for actor in actors)
-        if value in self.qq_members:
-            raise PlatformReferenceError.no_private_endpoint(location, value)
         return tuple(
             self.onebot.private_conversation_refs([reference], location=location)
         )
 
+    def official_group_conversation_ref(
+        self,
+        reference: object,
+        *,
+        account_alias: str,
+        location: str,
+    ) -> ConversationRef:
+        alias = str(reference).strip()
+        app_id = self.account_app_ids[account_alias]
+        endpoint = next(
+            (
+                candidate
+                for candidate in self.qq_groups.get(alias, ())
+                if candidate.account_id == app_id
+            ),
+            None,
+        )
+        if endpoint is None:
+            raise PlatformReferenceError.missing_official_endpoint(
+                location,
+                alias,
+                account_alias,
+            )
+        return endpoint
+
+    def official_actor_ref(
+        self,
+        reference: object,
+        *,
+        account_alias: str,
+        location: str,
+    ) -> ActorRef:
+        alias = str(reference).strip()
+        app_id = self.account_app_ids[account_alias]
+        endpoint = next(
+            (
+                candidate
+                for candidate in self.qq_users.get(alias, ())
+                if candidate.account_id == app_id
+            ),
+            None,
+        )
+        if endpoint is None:
+            raise PlatformReferenceError.missing_official_endpoint(
+                location,
+                alias,
+                account_alias,
+            )
+        return endpoint
+
 
 def build_platform_reference_resolver(
     onebot: OneBotReferenceResolver,
-    qq_accounts: Iterable[QQOfficialReferenceAccount],
+    identities: IdentityConfig,
+    qq_accounts: Mapping[str, QQOfficialReferenceAccount],
 ) -> PlatformReferenceResolver:
     """Build logical group aliases and strict user aliases across platforms."""
 
     qq_groups: dict[str, list[ConversationRef]] = {}
     qq_users: dict[str, list[ActorRef]] = {}
-    qq_members: dict[str, list[ActorRef]] = {}
-    for account in qq_accounts:
-        for alias, openid in account.group_aliases.items():
+    for alias, target in identities.groups.items():
+        for account_alias, openid in target.official.items():
+            account = qq_accounts.get(account_alias)
+            if account is None:
+                continue
             qq_groups.setdefault(alias, []).append(
                 ConversationRef(
                     Platform.QQ_OFFICIAL,
@@ -126,7 +169,11 @@ def build_platform_reference_resolver(
                     account_id=account.app_id,
                 )
             )
-        for alias, openid in account.user_aliases.items():
+    for alias, target in identities.users.items():
+        for account_alias, openid in target.official.items():
+            account = qq_accounts.get(account_alias)
+            if account is None:
+                continue
             qq_users.setdefault(alias, []).append(
                 ActorRef(
                     Platform.QQ_OFFICIAL,
@@ -134,21 +181,9 @@ def build_platform_reference_resolver(
                     account_id=account.app_id,
                 )
             )
-        for group_reference, aliases in account.group_member_aliases.items():
-            group_openid = account.group_aliases.get(group_reference, group_reference)
-            for alias, member_openid in aliases.items():
-                qq_members.setdefault(alias, []).append(
-                    ActorRef(
-                        Platform.QQ_OFFICIAL,
-                        member_openid,
-                        "member",
-                        group_openid,
-                        account.app_id,
-                    )
-                )
     return PlatformReferenceResolver(
         onebot,
         {alias: tuple(conversations) for alias, conversations in qq_groups.items()},
         {alias: tuple(actors) for alias, actors in qq_users.items()},
-        {alias: tuple(actors) for alias, actors in qq_members.items()},
+        {alias: account.app_id for alias, account in qq_accounts.items()},
     )
