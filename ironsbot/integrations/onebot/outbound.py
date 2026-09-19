@@ -403,8 +403,7 @@ class GroupOutboundRateLimitService:
                 queue.worker = self._spawn(
                     self._run_push_queue(group_id, queue),
                     name=(
-                        "ironsbot-push-rate-limit-"
-                        f"{reference_digest(str(group_id))}"
+                        f"ironsbot-push-rate-limit-{reference_digest(str(group_id))}"
                     ),
                 )
 

@@ -189,7 +189,5 @@ def build_common_components(
 
 def _configure_qq_sdk_api(*, sandbox: bool) -> None:
     os.environ["QQ_API_BASE"] = (
-        "https://sandbox.api.sgroup.qq.com"
-        if sandbox
-        else "https://api.sgroup.qq.com"
+        "https://sandbox.api.sgroup.qq.com" if sandbox else "https://api.sgroup.qq.com"
     )

@@ -222,9 +222,7 @@ class DatabaseSync:
                     local_before=local_before,
                     remote=remote,
                     message=(
-                        "已更新"
-                        if cache_saved
-                        else "已加载到内存，但本地缓存写入失败"
+                        "已更新" if cache_saved else "已加载到内存，但本地缓存写入失败"
                     ),
                 )
                 if local_timestamp_after is not None:
@@ -304,9 +302,7 @@ class DatabaseSync:
 
         async with self._sync_all_lock:
             busy_names = [
-                name
-                for name in self.registered_syncs
-                if self._lock(name).locked()
+                name for name in self.registered_syncs if self._lock(name).locked()
             ]
             if busy_names:
                 logger.info(
@@ -474,9 +470,7 @@ class DatabaseSync:
             or not entry.local_path
         ):
             return False
-        logger.info(
-            f"数据库 '{name}' 本地缓存已是最新 ({fingerprint[:12]})，跳过下载"
-        )
+        logger.info(f"数据库 '{name}' 本地缓存已是最新 ({fingerprint[:12]})，跳过下载")
         self.databases.load_from_file(name, entry.local_path)
         self.fingerprints[name] = fingerprint
         self.last_sync_statuses[name] = SyncStatus(
@@ -501,9 +495,7 @@ class DatabaseSync:
             await to_thread.run_sync(_write_bytes_atomic, entry.local_path, content)
             return True, _file_timestamp(entry.local_path)
         except OSError:
-            logger.exception(
-                f"数据库 '{name}' 本地缓存写入失败: {entry.local_path}"
-            )
+            logger.exception(f"数据库 '{name}' 本地缓存写入失败: {entry.local_path}")
             return False, local.timestamp
 
     async def _sync_all(

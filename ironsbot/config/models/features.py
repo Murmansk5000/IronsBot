@@ -466,10 +466,13 @@ def build_feature_service(  # noqa: PLR0913
             raw_ref,
             location=f"features.group_policy.{raw_ref}",
         ):
-            group_features[conversation] = group_features.get(
-                conversation,
-                frozenset(),
-            ) | expanded
+            group_features[conversation] = (
+                group_features.get(
+                    conversation,
+                    frozenset(),
+                )
+                | expanded
+            )
 
     actor_features: dict[ActorRef, frozenset[str]] = {}
     for raw_ref, features in config.user_policy.items():
@@ -490,9 +493,7 @@ def build_feature_service(  # noqa: PLR0913
                 conversation = references.official_group_conversation_ref(
                     reference,
                     account_alias=account_alias,
-                    location=(
-                        f"bot.qq_official.accounts.{account_alias}.group_policy"
-                    ),
+                    location=(f"bot.qq_official.accounts.{account_alias}.group_policy"),
                 )
                 group_features[conversation] = group_features.get(
                     conversation,
@@ -502,9 +503,7 @@ def build_feature_service(  # noqa: PLR0913
                 actor = references.official_actor_ref(
                     reference,
                     account_alias=account_alias,
-                    location=(
-                        f"bot.qq_official.accounts.{account_alias}.user_policy"
-                    ),
+                    location=(f"bot.qq_official.accounts.{account_alias}.user_policy"),
                 )
                 actor_features[actor] = actor_features.get(
                     actor,

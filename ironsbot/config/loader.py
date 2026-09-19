@@ -28,9 +28,7 @@ LEGACY_AI_KEY_ERROR = (
     "AI_KEY is retired; use AI_KEY_<PROVIDER> for a provider declared under "
     "ai.providers"
 )
-AI_PROVIDER_ENV_COLLISION_ERROR = (
-    "AI provider aliases collide as environment names"
-)
+AI_PROVIDER_ENV_COLLISION_ERROR = "AI provider aliases collide as environment names"
 _ONEBOT_ENV_PATHS = (
     ("ONEBOT_ENABLED", ("bot", "onebot", "enabled")),
     ("ONEBOT_SEND_MESSAGES", ("bot", "onebot", "send_messages")),
@@ -96,9 +94,7 @@ def _inject_ai_provider_credentials(
         provider = providers[alias]
         if not isinstance(provider, dict):
             continue
-        provider["api_key"] = str(
-            env[AI_KEY_ENV_PREFIX + environment_name]
-        ).strip()
+        provider["api_key"] = str(env[AI_KEY_ENV_PREFIX + environment_name]).strip()
 
 
 def _inject_qq_official_credentials(
@@ -186,8 +182,7 @@ def _inject_onebot_deployment_settings(
     trusted = onebot.setdefault("trusted_official_bots", {})
     if not isinstance(trusted, dict):
         msg = (
-            "configuration table bot.onebot.trusted_official_bots "
-            "must be a TOML table"
+            "configuration table bot.onebot.trusted_official_bots must be a TOML table"
         )
         raise TypeError(msg)
 
@@ -204,8 +199,7 @@ def _inject_onebot_deployment_settings(
     environment_names = {
         key[len(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX) :].upper()
         for key, value in env.items()
-        if key.startswith(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX)
-        and str(value).strip()
+        if key.startswith(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX) and str(value).strip()
     }
     unknown_names = sorted(environment_names - declared_names.keys())
     if unknown_names:
@@ -215,9 +209,7 @@ def _inject_onebot_deployment_settings(
         )
     for environment_name in environment_names:
         alias = declared_names[environment_name]
-        trusted[alias] = env[
-            ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX + environment_name
-        ]
+        trusted[alias] = env[ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX + environment_name]
 
 
 def _set_environment_override(
@@ -230,9 +222,7 @@ def _set_environment_override(
     for part in path[:-1]:
         child = table.setdefault(part, {})
         if not isinstance(child, dict):
-            msg = (
-                f"configuration table {'.'.join(path[:-1])} must be a TOML table"
-            )
+            msg = f"configuration table {'.'.join(path[:-1])} must be a TOML table"
             raise TypeError(msg)
         table = child
     table[path[-1]] = value
@@ -261,10 +251,7 @@ def _inject_secret(
     for part in path[:-1]:
         child = table.setdefault(part, {})
         if not isinstance(child, dict):
-            msg = (
-                f"configuration table {'.'.join(path[:-1])} "
-                "must be a TOML table"
-            )
+            msg = f"configuration table {'.'.join(path[:-1])} must be a TOML table"
             raise TypeError(msg)
         table = child
 
@@ -305,9 +292,7 @@ def _inject_player_account_passwords(  # noqa: C901, PLR0912
         accounts_by_reference[str(player_id)] = (player_id, entry, path)
         for field in ("name", "aliases"):
             raw_values = (
-                (entry.get(field),)
-                if field == "name"
-                else entry.get(field, [])
+                (entry.get(field),) if field == "name" else entry.get(field, [])
             )
             if not isinstance(raw_values, (list, tuple)):
                 continue
@@ -388,9 +373,7 @@ def _environment_secret(
 ) -> str:
     value = env.get(env_name)
     if value is None or not str(value).strip():
-        message = (
-            f"{path} references missing environment variable {env_name}"
-        )
+        message = f"{path} references missing environment variable {env_name}"
         raise ValueError(message)
     return str(value)
 
@@ -402,9 +385,7 @@ def load_settings(
 ) -> Settings:
     values = env if env is not None else os.environ
     resolved_path = Path(
-        path
-        if path is not None
-        else values.get(CONFIG_ENV, DEFAULT_CONFIG_PATH)
+        path if path is not None else values.get(CONFIG_ENV, DEFAULT_CONFIG_PATH)
     )
     if not resolved_path.exists():
         raise ConfigFileNotFoundError(resolved_path)

@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 API_BASE = "https://api.cnb.cool"
 CNB_CONFIG_REQUIRED_ERROR = "启用 CNB 图床时必须配置 token 和 cnb_repo"
+
+
 class SendpicBackendProvider:
     def __init__(
         self,

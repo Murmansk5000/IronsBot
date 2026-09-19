@@ -215,14 +215,12 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         seer_database.master_season_start,
         fetch_rank_page,
     )
-    images, render_coordinator, render_sessions = (
-        build_seer_rendering_components(
-            http_clients,
-            cache_paths,
-            settings.seer.render,
-            seer_database,
-            spawn=task_owner.create,
-        )
+    images, render_coordinator, render_sessions = build_seer_rendering_components(
+        http_clients,
+        cache_paths,
+        settings.seer.render,
+        seer_database,
+        spawn=task_owner.create,
     )
 
     async def render_pet(pet_id: int) -> bytes:
@@ -429,7 +427,8 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         is_privileged_actor=features.is_actor_superuser,
         reference_search=lambda reference, actor, conversation: (
             player_accounts.find_references(
-                reference, conversation=conversation,
+                reference,
+                conversation=conversation,
                 include_private=features.is_actor_superuser(actor),
             )
         ),

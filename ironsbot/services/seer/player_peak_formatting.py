@@ -80,9 +80,7 @@ def format_peak_line(  # noqa: PLR0913
     failure = rank_result.failure
     cached_fallback = format_rank_cache_fallback(rank_result)
     if cached_fallback:
-        rank_text = (
-            f"{format_peak_rank_text(rank_result.rank)}（{cached_fallback}）"
-        )
+        rank_text = f"{format_peak_rank_text(rank_result.rank)}（{cached_fallback}）"
     elif failure:
         rank_text = f"赛季榜{failure}"
     elif rank_result.rank is not None:

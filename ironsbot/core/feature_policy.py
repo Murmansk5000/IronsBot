@@ -64,10 +64,14 @@ class FeatureService:
         )
 
     def is_actor_superuser(self, actor: ActorRef) -> bool:
-        return actor in self.superusers or any(
-            _same_official_principal(actor, configured)
-            for configured in self.superusers
-        ) or self._linked_onebot_actor(actor) in self.superusers
+        return (
+            actor in self.superusers
+            or any(
+                _same_official_principal(actor, configured)
+                for configured in self.superusers
+            )
+            or self._linked_onebot_actor(actor) in self.superusers
+        )
 
     def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
         if feature in self.actor_features.get(actor, frozenset()):
@@ -115,9 +119,7 @@ class FeatureService:
         return (
             self.actor_has_feature(actor, feature)
             or feature in self._default_features(actor.platform, actor.account_id)
-            or (
-                self.superuser_bypass and self.is_actor_superuser(actor)
-            )
+            or (self.superuser_bypass and self.is_actor_superuser(actor))
         )
 
     def conversation_has_feature(
@@ -139,9 +141,7 @@ class FeatureService:
         account_id: str | None,
     ) -> frozenset[str]:
         if account_id is not None:
-            account_features = self.account_default_features.get(
-                (platform, account_id)
-            )
+            account_features = self.account_default_features.get((platform, account_id))
             if account_features is not None:
                 return account_features
         return self.platform_default_features.get(platform, frozenset())

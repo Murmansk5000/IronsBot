@@ -121,6 +121,7 @@ def install(
     )
     direct_matcher.append_handler(run_ai_chat)
 
+
 def plugin_contribution(
     *,
     settings: Settings,

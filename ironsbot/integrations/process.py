@@ -17,11 +17,7 @@ async def terminate_bot_process(
 ) -> None:
     current_pid = os.getpid()
     parent_pid = os.getppid()
-    target_pid = (
-        parent_pid
-        if signal_parent and parent_pid > 0
-        else current_pid
-    )
+    target_pid = parent_pid if signal_parent and parent_pid > 0 else current_pid
     logger.warning(
         "%s: current_pid=%s, target_pid=%s",
         reason,

@@ -153,18 +153,15 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         return
     clock[0] += 30
     assert await service.shortcut(cast("Any", game), command, PLAYER_ID) is reply
-    assert (
-        sum(
-            query.await_count
-            for query in (
-                rank.fetch_player_summary,
-                rank.fetch_peak_summary,
-                rank.fetch_master_peak_summary,
-                rank.fetch_autocard_summary,
-            )
+    assert sum(
+        query.await_count
+        for query in (
+            rank.fetch_player_summary,
+            rank.fetch_peak_summary,
+            rank.fetch_master_peak_summary,
+            rank.fetch_autocard_summary,
         )
-        == (2 if kind == "peak" else 1)
-    )
+    ) == (2 if kind == "peak" else 1)
     if base_snapshot is not None:
         game.get_user_info.assert_not_awaited()
 

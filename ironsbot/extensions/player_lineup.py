@@ -273,8 +273,7 @@ class PlayerLineupQueryServices:
                     )
                 except Exception as error:
                     logger.warning(
-                        "player_lineup failed stage=profile player_id=%s "
-                        "error_type=%s",
+                        "player_lineup failed stage=profile player_id=%s error_type=%s",
                         player_id,
                         type(error).__name__,
                     )

@@ -33,9 +33,7 @@ class _Bot:
     response_id: str | None = "message-1"
     calls: list[
         tuple[str, str, tuple[QQOfficialPayload, ...], str | None, int | None]
-    ] = field(
-        default_factory=list
-    )
+    ] = field(default_factory=list)
 
     async def send_to_c2c(
         self,
@@ -212,9 +210,7 @@ async def test_account_scoped_conversation_uses_its_matching_bot() -> None:
     requested_accounts: list[str] = []
     messenger = QQOfficialOutboundMessenger(
         {"app": True},
-        bot_provider=lambda account_id: (
-            requested_accounts.append(account_id) or bot
-        ),
+        bot_provider=lambda account_id: requested_accounts.append(account_id) or bot,
     )
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,

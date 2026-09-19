@@ -59,12 +59,7 @@ def test_offer_end_time_handles_24_hour_deadline() -> None:
 def test_offer_blocks_filters_notice_text_without_network() -> None:
     blocks = notice.offer_blocks(
         _activity(),
-        (
-            "◇「审判天使」\n"
-            "首周优惠截止至6月12日 10:00\n"
-            "2. 其他活动\n"
-            "没有优惠"
-        ),
+        ("◇「审判天使」\n首周优惠截止至6月12日 10:00\n2. 其他活动\n没有优惠"),
     )
 
     assert len(blocks) == 1

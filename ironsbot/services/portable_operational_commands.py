@@ -79,7 +79,8 @@ class _PortableDataSyncOperations:
                 return message
 
             async def select(
-                option: ManualDataSyncOption, _context: MessageInputContext,
+                option: ManualDataSyncOption,
+                _context: MessageInputContext,
             ) -> PortableReply:
                 async def run(action_progress: ProgressReporter) -> str:
                     return await self.service.run_manual(
@@ -127,7 +128,8 @@ def build_portable_docker_operations(
         del text
 
         async def select(
-            option: DockerMaintenanceOption, _context: MessageInputContext,
+            option: DockerMaintenanceOption,
+            _context: MessageInputContext,
         ) -> PortableReply:
             message, action = await service.prepare_maintenance(option.choice)
 
@@ -204,9 +206,7 @@ def build_portable_meeting_operations(
         del text, context
         reply = build_meeting_reply(number, template)
         if reply is None:
-            reply = (
-                "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。"
-            )
+            reply = "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。"
         return OutboundMessage.from_text(reply)
 
     return {
