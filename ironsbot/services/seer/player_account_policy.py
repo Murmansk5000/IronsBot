@@ -7,20 +7,13 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import TZ_CN
-from ironsbot.services.seer.player_binding import (
-    player_binding_offer_message,
-    player_binding_replacement_offer_message,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.seer.player_binding import (
-        PlayerBindingState,
-        PlayerBindingStore,
-    )
+    from ironsbot.services.seer.player_binding import PlayerBindingStore
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_service_models import PendingPlayerQuery
 
@@ -88,31 +81,6 @@ class PlayerAccountPolicyMixin:
                 status = f"⚠️ 默认米米号设置保存失败：{error}"
         pending.player_message = f"{status}\n\n{pending.player_message}"
         return status
-
-    def binding_offer(
-        self,
-        pending: PendingPlayerQuery,
-        *,
-        replacement: PlayerBindingState | None = None,
-    ) -> str:
-        if replacement is not None and replacement.player_id is not None:
-            return player_binding_replacement_offer_message(
-                replacement.player_id,
-                replacement.player_nick,
-                pending.player_id,
-                str(pending.user_info.nick),
-            )
-        limits = self._config.player.query_limits
-        return player_binding_offer_message(
-            pending.player_id,
-            str(pending.user_info.nick),
-            unbound_daily_limit=(
-                limits.unbound_daily_limit if limits.enabled else None
-            ),
-            bound_default_daily_limit=(
-                limits.bound_default_daily_limit if limits.enabled else None
-            ),
-        )
 
     def _check_quota(
         self,
