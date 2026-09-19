@@ -79,7 +79,7 @@ def test_configured_patcher_redacts_every_loguru_sink() -> None:
     messages: list[str] = []
     sink_id = logger.add(messages.append, format="{message}")
     try:
-        configure_log_privacy({"AI_KEY": secret})
+        configure_log_privacy({"AI_KEY_DEEPSEEK": secret})
         logger.info("key={} actor={}", secret, 1621582661)
     finally:
         logger.remove(sink_id)

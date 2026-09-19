@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
 EMPTY_REPLY = "AI没有返回有效内容，请稍后再试。"
-MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 AI_KEY。"
+MISSING_KEY_REPLY = "AI聊天还没有配置可用的提供商密钥。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 BILIBILI_SUMMARY_PROMPT_TEMPLATE = (
@@ -76,7 +76,7 @@ class AiService:
 
     @property
     def waiting_notice(self) -> bool:
-        return self._config.waiting_notice and bool(self._config.api_key.strip())
+        return self._config.waiting_notice and self._config.enabled
 
     def _can_show_admin_notice(
         self,
@@ -138,7 +138,7 @@ class AiService:
     ) -> AiIntentAction | None:
         if (
             not self._config.intent_actions_enabled
-            or not self._config.api_key.strip()
+            or not self._config.enabled
             or not is_ai_intent_allowed(self._features, actor, conversation)
         ):
             return None
@@ -193,8 +193,10 @@ class AiService:
         max_chars: int,
     ) -> str | None:
         """Summarize a push without chat history, memory, or feature checks."""
-        if not self._config.api_key.strip():
-            logger.warning("Bilibili dynamic summary skipped: AI_KEY is not configured")
+        if not self._config.enabled:
+            logger.warning(
+                "Bilibili dynamic summary skipped: no AI provider is configured"
+            )
             return None
 
         messages = build_messages(
@@ -248,13 +250,13 @@ class AiService:
         memory: list[HistoryMessage],
         source_context: str | None,
     ) -> _Completion:
-        if not self._config.api_key.strip():
+        if not self._config.enabled:
             await self._notify_admin_once(
                 "missing_api_key",
                 _append_notice_source(
                     "AI聊天还没有配置 API Key。\n"
-                    "请在 Unraid 容器变量或 .env.prod 中设置 "
-                    "AI_KEY。",
+                    "请在 Unraid 容器变量或 .env.prod 中设置至少一个 "
+                    "AI_KEY_<PROVIDER>。",
                     source_context,
                 ),
             )
@@ -275,7 +277,7 @@ class AiService:
                 "timeout",
                 _append_notice_source(
                     "AI聊天接口响应超时。\n"
-                    f"接口：{self._config.base_url}\n"
+                    f"已配置提供商：{_configured_provider_summary(self._config)}\n"
                     f"超时时间：{self._config.timeout} 秒\n"
                     "请检查网络或适当调大 ai.timeout。",
                     source_context,
@@ -306,7 +308,8 @@ class AiService:
                 "empty_reply",
                 _append_notice_source(
                     "AI聊天接口返回了空内容。\n"
-                    f"模型：{result.model or self._config.model}\n"
+                    f"提供商：{result.provider or '未知'}\n"
+                    f"模型：{result.model or '未知'}\n"
                     "请检查模型配置或稍后重试。",
                     source_context,
                 ),
@@ -328,10 +331,10 @@ class AiService:
                 "AI聊天接口异常。\n"
                 f"类型：{result.error_title}\n"
                 f"HTTP：{result.status_code}\n"
-                f"模型：{result.model or self._config.model}\n"
-                f"接口：{self._config.base_url}\n"
+                f"提供商：{result.provider or '未知'}\n"
+                f"模型：{result.model or '未知'}\n"
                 f"详情：{result.error_detail}\n"
-                "请检查 AI_KEY、账户额度、模型名和网络连接。",
+                "请检查对应 AI_KEY_<PROVIDER>、账户额度、模型名和网络连接。",
                 source_context,
             ),
         )
@@ -416,6 +419,10 @@ def _chat_key(actor: ActorRef, conversation: ConversationRef) -> str:
 def _append_notice_source(message: str, source_context: str | None) -> str:
     source = (source_context or "").strip()
     return f"{message.rstrip()}\n\n触发来源：\n{source}" if source else message
+
+
+def _configured_provider_summary(config: AiConfig) -> str:
+    return "、".join(name for name, _provider in config.configured_providers)
 
 
 def _truncate_reply(text: str, max_chars: int) -> str:
