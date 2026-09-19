@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.platform import ActorRef
 
+
 class PlayerBindingState(NamedTuple):
     actor: ActorRef
     player_id: int | None = None
@@ -40,6 +41,7 @@ class PlayerBindingStore(Protocol):
         actor: ActorRef,
         changed_at: datetime | None = None,
     ) -> bool: ...
+
 
 def player_binding_offer_message(
     player_id: int,

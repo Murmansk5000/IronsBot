@@ -17,8 +17,7 @@ class OneBotGroupProbe:
             await bot.get_group_info(group_id=group_id, no_cache=True)
         except ActionFailed as error:
             logger.warning(
-                "bot cannot access group: conversation_ref=%s bot_ref=%s "
-                "error_type=%s",
+                "bot cannot access group: conversation_ref=%s bot_ref=%s error_type=%s",
                 reference_digest(str(group_id)),
                 reference_digest(str(getattr(bot, "self_id", "unknown"))),
                 type(error).__name__,

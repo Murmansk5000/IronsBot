@@ -98,10 +98,7 @@ class PlayerQueryQuotaService:
     ) -> PlayerQueryQuotaDecision:
         if not self._config.enabled:
             return PlayerQueryQuotaDecision(allowed=True)
-        if (
-            self._config.superuser_bypass
-            and self._features.is_actor_superuser(actor)
-        ):
+        if self._config.superuser_bypass and self._features.is_actor_superuser(actor):
             return PlayerQueryQuotaDecision(allowed=True)
 
         scope, storage_player_id, storage_action_key, limit = self._quota_key(
@@ -125,9 +122,7 @@ class PlayerQueryQuotaService:
                 scope=scope,
                 player_id=player_id,
                 limit=usage.limit,
-                bound_default_daily_limit=(
-                    self._config.bound_default_daily_limit
-                ),
+                bound_default_daily_limit=(self._config.bound_default_daily_limit),
             ),
         )
 
@@ -140,10 +135,7 @@ class PlayerQueryQuotaService:
     ) -> PlayerQueryQuotaDecision:
         if not self._config.enabled:
             return PlayerQueryQuotaDecision(allowed=True)
-        if (
-            self._config.superuser_bypass
-            and self._features.is_actor_superuser(actor)
-        ):
+        if self._config.superuser_bypass and self._features.is_actor_superuser(actor):
             return PlayerQueryQuotaDecision(allowed=True)
 
         scope, storage_player_id, storage_action_key, limit = self._quota_key(
@@ -167,9 +159,7 @@ class PlayerQueryQuotaService:
                 scope=scope,
                 player_id=player_id,
                 limit=usage.limit,
-                bound_default_daily_limit=(
-                    self._config.bound_default_daily_limit
-                ),
+                bound_default_daily_limit=(self._config.bound_default_daily_limit),
             ),
         )
 

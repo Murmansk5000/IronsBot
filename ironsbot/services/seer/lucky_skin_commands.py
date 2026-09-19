@@ -76,8 +76,9 @@ def parse_lucky_skin_query(text: str) -> str | None:
     for command in sorted(prefixes, key=len, reverse=True):
         if text.startswith(command):
             return (
-                text[len(command):].strip()
-                if command in LUCKY_SKIN_QUERY_COMMANDS else None
+                text[len(command) :].strip()
+                if command in LUCKY_SKIN_QUERY_COMMANDS
+                else None
             )
     return None
 

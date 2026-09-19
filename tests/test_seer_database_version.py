@@ -726,9 +726,10 @@ def test_retained_content_index_is_checked_against_bound_publication(
             with engine.begin() as connection:
                 connection.exec_driver_sql("UPDATE new_content_item SET name = 'old'")
             databases.load_from_file("seerapi", str(source))
-            assert NewContentService(
-                PublishedNewContentRepository(data)
-            ).snapshot() == menu
+            assert (
+                NewContentService(PublishedNewContentRepository(data)).snapshot()
+                == menu
+            )
             with pytest.raises(DataPublicationChangedError):
                 bound.require_current()
     finally:

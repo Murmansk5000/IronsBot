@@ -41,9 +41,7 @@ def _service(path: Path) -> tuple[BiliTargetService, ConversationRef]:
         }
     )
     conversation = ConversationRef(Platform.ONEBOT, "group", "123456")
-    identities = IdentityConfig.model_validate(
-        {"groups": {"example_group": 123456}}
-    )
+    identities = IdentityConfig.model_validate({"groups": {"example_group": 123456}})
     references = build_platform_reference_resolver(
         OneBotReferenceResolver({"example_group": 123456}, {}),
         identities,

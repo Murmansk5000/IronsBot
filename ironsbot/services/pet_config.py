@@ -45,8 +45,7 @@ class PetConfigQueryService:
 
         with self._data.resolve(self._data.pet, query) as values:
             pets = tuple(
-                PetConfigPet(id=int(pet.id), name=str(pet.name))
-                for pet in values
+                PetConfigPet(id=int(pet.id), name=str(pet.name)) for pet in values
             )
         if not pets:
             return QueryResult()
@@ -54,25 +53,18 @@ class PetConfigQueryService:
             return QueryResult(reply=await self._reply_for_pet(pets[0]))
         if len(pets) > PET_CONFIG_PROMPT_MAX_ITEMS:
             exact = next(
-                (
-                    pet
-                    for pet in pets
-                    if len(query) == 1 and pet.name == query
-                ),
+                (pet for pet in pets if len(query) == 1 and pet.name == query),
                 None,
             )
             if exact is not None:
                 return QueryResult(reply=await self._reply_for_pet(exact))
             return QueryResult(
-                message=(
-                    f"重名超过{PET_CONFIG_PROMPT_MAX_ITEMS}个，请重新检索关键词："
-                )
+                message=(f"重名超过{PET_CONFIG_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
             )
 
         return QueryResult(
             choices=tuple(
-                QueryChoice(str(pet.name), str(pet.id), int(pet.id))
-                for pet in pets
+                QueryChoice(str(pet.name), str(pet.id), int(pet.id)) for pet in pets
             )
         )
 
@@ -80,10 +72,7 @@ class PetConfigQueryService:
         with self._data.get(self._data.pet, pet_id) as pet:
             if pet is None:
                 return QueryResult(
-                    message=(
-                        f"❌未找到精灵 {pet_id}"
-                        "（这是一个bug，请反馈给开发者）"
-                    )
+                    message=(f"❌未找到精灵 {pet_id}（这是一个bug，请反馈给开发者）")
                 )
             selected = PetConfigPet(id=int(pet.id), name=str(pet.name))
         return QueryResult(reply=await self._reply_for_pet(selected))
@@ -91,9 +80,7 @@ class PetConfigQueryService:
     async def _reply_for_pet(self, pet: PetConfigPet) -> QueryReply:
         image = await self._images.load(pet.id)
         if image is None:
-            return QueryReply(
-                text=f"❌暂未收录精灵 {pet.name}（{pet.id}）的配置图。"
-            )
+            return QueryReply(text=f"❌暂未收录精灵 {pet.name}（{pet.id}）的配置图。")
         return QueryReply(
             leading_text=f"🧩【{pet.name}配置】\n",
             image=image,

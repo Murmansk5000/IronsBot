@@ -37,7 +37,9 @@ def copy_sqlite_bundle(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     for source_file, target_file in zip(
-        _bundle_paths(source)[1:], _bundle_paths(destination)[1:], strict=True,
+        _bundle_paths(source)[1:],
+        _bundle_paths(destination)[1:],
+        strict=True,
     ):
         if source_file.is_file():
             shutil.copy2(source_file, target_file)
@@ -116,7 +118,9 @@ def _replace_bundle(source: Path, target: Path) -> None:
         path.unlink(missing_ok=True)
     source.replace(target)
     for source_file, target_file in zip(
-        _bundle_paths(source)[1:], _bundle_paths(target)[1:], strict=True,
+        _bundle_paths(source)[1:],
+        _bundle_paths(target)[1:],
+        strict=True,
     ):
         if source_file.exists():
             source_file.replace(target_file)

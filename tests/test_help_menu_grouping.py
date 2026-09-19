@@ -14,10 +14,7 @@ except ValueError:
 from ironsbot.services.help_menu import HELP_GROUP_TITLES
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
-DEFINITIONS = {
-    definition.id: definition
-    for definition in build_test_plugin_registry()
-}
+DEFINITIONS = {definition.id: definition for definition in build_test_plugin_registry()}
 
 
 def _help_group(plugin_id: str) -> str | None:

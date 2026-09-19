@@ -29,9 +29,7 @@ TRANSPORT_REFERENCE_NAMES = frozenset(
     }
 )
 BUSINESS_REFERENCE_NAMES = frozenset({"actor", "conversation", "worker_id"})
-HEADLESS_REFERENCE_NAMES = frozenset(
-    {"head", "headinfo", "user_id", "worker_id"}
-)
+HEADLESS_REFERENCE_NAMES = frozenset({"head", "headinfo", "user_id", "worker_id"})
 
 
 def _logger_calls(path: Path) -> list[ast.Call]:
@@ -57,8 +55,7 @@ def _is_direct_reference(  # noqa: PLR0911 - explicit AST node semantics
         return any(
             _is_direct_reference(argument, names) for argument in node.args
         ) or any(
-            _is_direct_reference(keyword.value, names)
-            for keyword in node.keywords
+            _is_direct_reference(keyword.value, names) for keyword in node.keywords
         )
     if isinstance(node, ast.IfExp):
         return _is_direct_reference(node.body, names) or _is_direct_reference(
@@ -85,9 +82,7 @@ def _is_direct_reference(  # noqa: PLR0911 - explicit AST node semantics
 
 def _is_reference_sanitizer(node: ast.AST) -> bool:
     sanitizer_names = frozenset({"reference_digest", "_actor_log_label"})
-    return (
-        isinstance(node, ast.Name) and node.id in sanitizer_names
-    ) or (
+    return (isinstance(node, ast.Name) and node.id in sanitizer_names) or (
         isinstance(node, ast.Attribute) and node.attr in sanitizer_names
     )
 

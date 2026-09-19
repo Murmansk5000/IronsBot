@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+
 def load_pet_derived_display_data(
     session: Session,
     *,
@@ -93,9 +94,7 @@ def _build_effect_views(
         PetSpecialEffectView(
             name=str(row["name"]),
             description=(
-                str(row["description"])
-                if row["description"] is not None
-                else None
+                str(row["description"]) if row["description"] is not None else None
             ),
             glossary_id=(
                 int(cast("int", row["glossary_id"]))
@@ -258,8 +257,6 @@ def _load_soulmark_display_additions(
 
 def _tags_from_json(value: object) -> tuple[str, ...]:
     parsed = json.loads(str(value))
-    if not isinstance(parsed, list) or not all(
-        isinstance(tag, str) for tag in parsed
-    ):
+    if not isinstance(parsed, list) or not all(isinstance(tag, str) for tag in parsed):
         raise TypeError("pet_soulmark_display_addition.tags_json")
     return tuple(parsed)

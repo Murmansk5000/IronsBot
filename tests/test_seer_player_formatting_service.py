@@ -274,9 +274,7 @@ def test_format_peak_keeps_successful_mode_when_another_mode_times_out() -> None
     standard_line = next(
         line for line in message.splitlines() if line.startswith("竞技：")
     )
-    wild_line = next(
-        line for line in message.splitlines() if line.startswith("狂野：")
-    )
+    wild_line = next(line for line in message.splitlines() if line.startswith("狂野："))
     expert_line = next(
         line for line in message.splitlines() if line.startswith("专家：")
     )

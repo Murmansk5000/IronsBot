@@ -100,9 +100,7 @@ def _install_portable_matcher(
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    matcher.append_handler(
-        make_portable_query_handler(operation, group.query_sessions)
-    )
+    matcher.append_handler(make_portable_query_handler(operation, group.query_sessions))
 
 
 def install(group: SeerMatcherGroup) -> None:

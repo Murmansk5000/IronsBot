@@ -68,8 +68,7 @@ def test_docker_maintenance_menu_has_two_explicit_actions() -> None:
     assert "1. 仅重启机器人" in message
     assert "2. 检查并更新镜像后重启" in message
     assert (
-        parse_docker_maintenance_choice(" 1 ")
-        is DockerMaintenanceChoice.RESTART_ONLY
+        parse_docker_maintenance_choice(" 1 ") is DockerMaintenanceChoice.RESTART_ONLY
     )
     assert (
         parse_docker_maintenance_choice("2")
@@ -538,9 +537,7 @@ def test_docker_update_service_abandons_failed_watchtower_handoff() -> None:
         noop_restart_process,
     )
 
-    asyncio.run(
-        service.abandon_update_handoff(updater_container_id="watchtower-id")
-    )
+    asyncio.run(service.abandon_update_handoff(updater_container_id="watchtower-id"))
 
     assert docker.removed == (
         "watchtower-id",
@@ -663,11 +660,7 @@ def test_target_image_pull_retries_transient_registry_eof(
             if self.post_count == 1:
                 return httpx.Response(
                     500,
-                    json={
-                        "message": (
-                            'Get "https://registry-1.docker.io/v2/": EOF'
-                        )
-                    },
+                    json={"message": ('Get "https://registry-1.docker.io/v2/": EOF')},
                     request=httpx.Request(
                         "POST",
                         "http://docker/images/create",

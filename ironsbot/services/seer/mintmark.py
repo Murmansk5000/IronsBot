@@ -106,8 +106,7 @@ class MintmarkQueryService:
             if not mintmarks:
                 return QueryResult(
                     message=(
-                        f"❌未找到刻印 {mintmark_id}"
-                        "（这是一个bug，请反馈给开发者）"
+                        f"❌未找到刻印 {mintmark_id}（这是一个bug，请反馈给开发者）"
                     )
                 )
             views = build_mintmark_views(
@@ -117,8 +116,7 @@ class MintmarkQueryService:
             if not views:
                 return QueryResult(
                     message=(
-                        f"❌未找到刻印 {mintmark_id}"
-                        "（这是一个bug，请反馈给开发者）"
+                        f"❌未找到刻印 {mintmark_id}（这是一个bug，请反馈给开发者）"
                     )
                 )
             reply_data = self._reply_data(views[0])
@@ -156,8 +154,7 @@ class MintmarkQueryService:
             if category is None:
                 return QueryResult(
                     message=(
-                        f"❌未找到宝石 {category_id}"
-                        "（这是一个bug，请反馈给开发者）"
+                        f"❌未找到宝石 {category_id}（这是一个bug，请反馈给开发者）"
                     )
                 )
             reply = _gem_reply(category)
@@ -246,17 +243,11 @@ def format_mintmark_choice_description(
     merge_connected: bool,
 ) -> str:
     attributes = _mark_attributes(view.mintmark)
-    description = (
-        _mark_type_description(attributes)
-        if attributes is not None
-        else ""
-    )
+    description = _mark_type_description(attributes) if attributes is not None else ""
     if merge_connected:
         id_text = "、".join(str(mintmark_id) for mintmark_id in view.ids)
         return " ".join(part for part in (id_text, description) if part)
-    related_text = "、".join(
-        str(mintmark_id) for mintmark_id in view.related_ids
-    )
+    related_text = "、".join(str(mintmark_id) for mintmark_id in view.related_ids)
     parts = [str(view.mintmark.id)]
     if related_text:
         parts.append(f"关联{related_text}")
@@ -273,9 +264,7 @@ def _format_mintmark_details(
     mintmark = view.mintmark
     id_text = "、".join(str(mintmark_id) for mintmark_id in view.ids)
     if not merge_connected and view.related_ids:
-        related = "、".join(
-            str(mintmark_id) for mintmark_id in view.related_ids
-        )
+        related = "、".join(str(mintmark_id) for mintmark_id in view.related_ids)
         id_text = f"{mintmark.id}（关联{related}）"
     text = f"🆔：{id_text}\n"
     if mintmark.pet:
@@ -293,9 +282,7 @@ def _format_mintmark_details(
         )
         text += f"系列：{class_name} \n"
     elif isinstance(part, SkillPartORM):
-        skills = " | ".join(
-            f"{skill.name}（{skill.id}）" for skill in mintmark.skill
-        )
+        skills = " | ".join(f"{skill.name}（{skill.id}）" for skill in mintmark.skill)
         return text + f"技能：{skills}\n效果：{mintmark.desc}"
     elif not isinstance(part, AbilityPartORM):
         raise UnknownMintmarkTypeError(part)
@@ -434,6 +421,4 @@ def _gem_reply(category: GemCategoryORM) -> QueryReply:
         + " | ".join(effect.info for effect in gem.skill_effect_in_use)
         for gem in category.gem
     ]
-    return QueryReply(
-        text=f"💎以下是{category.name}系列信息：\n" + "\n".join(lines)
-    )
+    return QueryReply(text=f"💎以下是{category.name}系列信息：\n" + "\n".join(lines))

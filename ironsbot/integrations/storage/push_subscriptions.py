@@ -219,9 +219,7 @@ class PushUnsubscribeStore:
             if (conversation := _conversation_from_row(row)) is not None
         }
         return [
-            conversation
-            for conversation in requested
-            if conversation not in blocked
+            conversation for conversation in requested if conversation not in blocked
         ]
 
     def get_time_preference(

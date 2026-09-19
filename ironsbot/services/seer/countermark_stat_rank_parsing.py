@@ -157,6 +157,7 @@ def parse_stat_spec(text: str) -> StatSpec | None:
         components=tuple(components),
     )
 
+
 def _strip_single_all_marker(text: str) -> tuple[str, bool]:
     all_scope = False
     if text.startswith("全刻印"):

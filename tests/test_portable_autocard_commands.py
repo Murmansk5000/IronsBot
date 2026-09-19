@@ -125,9 +125,7 @@ def _context(text: str) -> MessageInputContext:
 
 def _text(message: OutboundMessage | None) -> str:
     assert message is not None
-    return "".join(
-        part.text for part in message.parts if isinstance(part, TextPart)
-    )
+    return "".join(part.text for part in message.parts if isinstance(part, TextPart))
 
 
 @pytest.mark.asyncio

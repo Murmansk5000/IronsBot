@@ -265,8 +265,7 @@ class DockerUpdateService:
         action = await self._ordinary_restart_action()
         target = "机器人容器" if action == "docker" else "机器人进程"
         return (
-            f"正在重启{target}。\n"
-            "本次选择“仅重启”，不会检查或更新 Docker 镜像。",
+            f"正在重启{target}。\n本次选择“仅重启”，不会检查或更新 Docker 镜像。",
             action,
         )
 

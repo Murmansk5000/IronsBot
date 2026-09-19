@@ -79,9 +79,7 @@ def headless_request_priority_scope(
 
 def current_headless_request_priority() -> HeadlessRequestPriorityState:
     current = _request_priority.get()
-    return current or HeadlessRequestPriorityState(
-        HeadlessRequestPriority.INTERACTIVE
-    )
+    return current or HeadlessRequestPriorityState(HeadlessRequestPriority.INTERACTIVE)
 
 
 @dataclass(slots=True)
@@ -199,8 +197,7 @@ class HeadlessRequestDispatcher:
     @property
     def idle_worker_count(self) -> int:
         return sum(
-            not worker.active and worker.game() is not None
-            for worker in self._workers
+            not worker.active and worker.game() is not None for worker in self._workers
         )
 
     @property
@@ -303,10 +300,7 @@ class HeadlessRequestDispatcher:
         retained: deque[_PacketRequest] = deque()
         while self._pending:
             request = self._pending.popleft()
-            if (
-                request.priority_state.priority
-                is HeadlessRequestPriority.BACKGROUND
-            ):
+            if request.priority_state.priority is HeadlessRequestPriority.BACKGROUND:
                 if not request.future.done():
                     request.future.set_result(
                         _PacketOutcome(worker_user_id=None, error=error)
@@ -344,8 +338,7 @@ class HeadlessRequestDispatcher:
         candidates = [
             item
             for item in self._pending
-            if not item.future.cancelled()
-            and self._has_worker_for(item)
+            if not item.future.cancelled() and self._has_worker_for(item)
         ]
         if not candidates:
             return None
@@ -353,9 +346,7 @@ class HeadlessRequestDispatcher:
             candidates,
             key=lambda item: (
                 item.priority_state.priority,
-                item.workflow.sequence
-                if item.workflow is not None
-                else item.sequence,
+                item.workflow.sequence if item.workflow is not None else item.sequence,
                 item.sequence,
             ),
         )
@@ -432,8 +423,7 @@ class HeadlessRequestDispatcher:
 
     def _has_healthy_alternative(self, request: _PacketRequest) -> bool:
         return any(
-            worker.name not in request.excluded_workers
-            and worker.game() is not None
+            worker.name not in request.excluded_workers and worker.game() is not None
             for worker in self._workers
         )
 

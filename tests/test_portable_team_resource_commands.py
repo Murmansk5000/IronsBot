@@ -152,9 +152,7 @@ def _context(
 ) -> MessageInputContext:
     actor = ActorRef(Platform.QQ_OFFICIAL, ACTOR.id) if private else ACTOR
     conversation = (
-        ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
-        if private
-        else GROUP
+        ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id) if private else GROUP
     )
     return MessageInputContext(
         IncomingMessageRef(

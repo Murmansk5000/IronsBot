@@ -48,10 +48,7 @@ class ClientManager:
         async with self._login_lock:
             current = self._client
             if current is not None:
-                if (
-                    current.is_logged_in
-                    and int(current.user_id) == request.user_id
-                ):
+                if current.is_logged_in and int(current.user_id) == request.user_id:
                     logger.info(
                         "Headless Seer login reused existing client: worker_ref=%s",
                         reference_digest(str(request.user_id)),

@@ -43,9 +43,8 @@ def matches_active_queued_conversation_exit(
     event: Event,
     state: T_State,
 ) -> bool:
-    return (
-        event.get_plaintext().strip() == "0"
-        and matches_active_queued_conversation(prompt_sessions, event, state)
+    return event.get_plaintext().strip() == "0" and matches_active_queued_conversation(
+        prompt_sessions, event, state
     )
 
 

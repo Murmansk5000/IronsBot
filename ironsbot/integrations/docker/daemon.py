@@ -112,9 +112,8 @@ async def pull_docker_image(
             raise_for_docker_status(response)
             break
         except Exception as error:
-            if (
-                attempt >= IMAGE_PULL_RETRY_ATTEMPTS
-                or not is_transient_pull_error(error)
+            if attempt >= IMAGE_PULL_RETRY_ATTEMPTS or not is_transient_pull_error(
+                error
             ):
                 raise
             logger.warning(

@@ -206,9 +206,11 @@ async def _check_week(cookie_path: Path, *, uid: int, days: int) -> None:
             )
             after = dynamic_content(resolved)
             resolved_count += int(not before and bool(after))
-            published = datetime.fromtimestamp(
-                item_pub_ts(item), tz=timezone.utc
-            ).astimezone().isoformat()
+            published = (
+                datetime.fromtimestamp(item_pub_ts(item), tz=timezone.utc)
+                .astimezone()
+                .isoformat()
+            )
             print(
                 f"{published} id={dynamic_id(item)} "
                 f"feed_chars={len(before)} resolved_chars={len(after)}"

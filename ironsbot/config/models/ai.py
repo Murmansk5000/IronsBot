@@ -213,8 +213,7 @@ def _validate_resolved_action(action: AiIntentAction) -> None:
 
     if action.action == "team_recommend" and not action.messages:
         raise ValueError(  # noqa: TRY003
-            f"ai.intent_actions.{action.id}: "
-            f"{TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR}"
+            f"ai.intent_actions.{action.id}: {TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR}"
         )
 
     if action.action == "ai_reply" and not action.reply_prompt.strip():

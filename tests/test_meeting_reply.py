@@ -11,11 +11,7 @@ def test_build_meeting_reply_returns_none_without_number() -> None:
 def test_build_meeting_reply_formats_tencent_meeting_number() -> None:
     reply = build_meeting_reply(
         "6638682008",
-        (
-            "会议号：{meeting_number}\n"
-            "数字：{meeting_digits}\n"
-            "链接：{meeting_url}"
-        ),
+        ("会议号：{meeting_number}\n数字：{meeting_digits}\n链接：{meeting_url}"),
     )
 
     assert reply == (
