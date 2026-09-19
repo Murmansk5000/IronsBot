@@ -59,6 +59,10 @@ DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB = 1000
 DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
 DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
 EXAMPLE_BILI_ACCOUNT_UID = 912345678
+EXAMPLE_GROUP_A_ID = 987654321
+EXAMPLE_GROUP_B_ID = 876543210
+EXAMPLE_OWNER_ID = 1234567890
+EXAMPLE_USER_A_ID = 2345678901
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS = 90.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
@@ -271,18 +275,18 @@ def _assert_example_new_content(config: Settings) -> None:
     )
 
 
+def _assert_example_identities(config: Settings) -> None:
+    assert config.identities.groups["group_a"].qq == EXAMPLE_GROUP_A_ID
+    assert config.identities.groups["group_b"].qq == EXAMPLE_GROUP_B_ID
+    assert config.identities.users["owner"].qq == EXAMPLE_OWNER_ID
+    assert config.identities.users["user_a"].qq == EXAMPLE_USER_A_ID
+
+
 def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
 
     assert config.features.superuser_bypass
-    assert config.features.group_aliases == {
-        "group_a": 987654321,
-        "group_b": 876543210,
-    }
-    assert config.features.user_aliases == {
-        "owner": 1234567890,
-        "user_a": 2345678901,
-    }
+    _assert_example_identities(config)
     assert config.features.user_policy == {}
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
@@ -663,7 +667,7 @@ def test_keyword_reply_actions_parse_and_register_features(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 main = 123456789
 
 [features.group_policy]
@@ -690,7 +694,7 @@ def test_message_command_feature_registers_for_bundle_and_group_policy(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 main = 123456789
 
 [features.bundles]
@@ -714,6 +718,7 @@ feature = "seerinfo_link"
         frozenset(),
         command_features=config.messaging.command_feature_keys,
         schedule_features=config.messaging.schedule_feature_keys,
+        references=config.platform_references,
     )
 
     assert config.messaging.command_feature_keys == frozenset({"seerinfo_link"})
@@ -730,7 +735,7 @@ def test_message_schedule_feature_registers_for_user_policy(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.user_aliases]
+[identities.users]
 owner = 123456789
 
 [features.user_policy]
@@ -754,10 +759,10 @@ def test_blacklist_feature_loads_user_and_group_aliases(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 blocked_group = 987654321
 
-[features.user_aliases]
+[identities.users]
 blocked_user = 123456789
 
 [features.group_policy]
@@ -771,7 +776,11 @@ blocked_user = ["blacklist"]
 
     config = load_settings(config_path)
 
-    features = build_feature_service(config.features, config.superuser_ids)
+    features = build_feature_service(
+        config.features,
+        config.superuser_ids,
+        references=config.platform_references,
+    )
     assert features.is_message_blocked(
         ActorRef(Platform.ONEBOT, "123456789"),
         ConversationRef(Platform.ONEBOT, "private", "123456789"),
@@ -786,7 +795,7 @@ def test_all_bundle_declares_custom_extension_feature(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 main = 123456789
 
 [features.bundles]
@@ -799,7 +808,11 @@ main = ["all"]
     )
 
     config = load_settings(config_path)
-    features = build_feature_service(config.features, config.superuser_ids)
+    features = build_feature_service(
+        config.features,
+        config.superuser_ids,
+        references=config.platform_references,
+    )
 
     assert features.is_feature_allowed(
         ActorRef(Platform.ONEBOT, "1"),
@@ -817,10 +830,10 @@ def test_onebot_config_references_accept_aliases_and_numeric_ids(
 [bot]
 superusers = ["owner", "300"]
 
-[features.group_aliases]
+[identities.groups]
 main_group = 100
 
-[features.user_aliases]
+[identities.users]
 owner = 200
 at_user = 201
 
@@ -900,10 +913,10 @@ unknown_group = ["seer"]
         ),
         (
             """
-[features.group_aliases]
+[identities.groups]
 "123" = 100
 """,
-            "features.group_aliases.123 must not use a numeric alias",
+            "identity aliases must be nonempty and nonnumeric",
         ),
         (
             """
@@ -1108,7 +1121,7 @@ def test_lucky_skin_window_resolves_user_alias_and_rejects_duplicates(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.user_aliases]
+[identities.users]
 owner = 123456789
 
 [seer.lucky_skin_window]
@@ -1174,7 +1187,7 @@ def test_lucky_skin_window_rejects_duplicate_configured_player_id(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.user_aliases]
+[identities.users]
 owner = 123456789
 friend = 987654321
 
@@ -1467,7 +1480,7 @@ def test_player_account_aliases_can_be_public_or_group_scoped(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 allowed_group = 123456789
 
 [[seer.player_accounts]]
@@ -1528,7 +1541,7 @@ def test_player_account_alias_group_all_grants_every_private_account(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 allowed_group = 123456789
 
 [[seer.player_accounts]]

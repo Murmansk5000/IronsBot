@@ -167,6 +167,28 @@ async def test_group_direct_intent_returns_every_action_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_unaddressed_full_group_message_does_not_run_ai_fallback() -> None:
+    ai = _Ai(action=ACTION)
+    router = _router(ai)
+    context = MessageInputContext(
+        IncomingMessageRef(
+            Platform.QQ_OFFICIAL,
+            ACTOR,
+            GROUP,
+            "message-1",
+            "群里的普通聊天",
+        ),
+        mentions_bot=False,
+        automatic_fallback_allowed=False,
+    )
+
+    assert not router.recognizes(context)
+    assert await router.dispatch(context) is None
+    assert ai.intent_calls == []
+    assert ai.chat_calls == []
+
+
+@pytest.mark.asyncio
 async def test_private_input_falls_back_to_chat_after_unmatched_intent() -> None:
     ai = _Ai(action=None)
     router = _router(ai)

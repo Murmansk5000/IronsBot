@@ -271,6 +271,45 @@ def test_runtime_claims_message_before_business_dispatch(
     asyncio.run(run())
 
 
+def test_runtime_deduplicates_full_and_at_group_delivery(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("private-app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+            )
+            raw = {
+                "id": "same-message-id",
+                "content": "帮助",
+                "timestamp": "2026-09-19T12:00:00+08:00",
+                "group_openid": "group-openid",
+                "author": {"member_openid": "member-openid"},
+            }
+
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_MESSAGE_CREATE",
+                raw,
+            )
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_AT_MESSAGE_CREATE",
+                raw,
+            )
+
+            assert router.dispatch_count == 1
+
+    asyncio.run(run())
+
+
 def test_runtime_reports_parser_rejection_without_event_details(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,

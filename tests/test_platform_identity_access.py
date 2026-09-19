@@ -83,6 +83,24 @@ def test_supported_context_keeps_group_and_private_access(platform: Platform) ->
     )
 
 
+def test_feature_service_exposes_linked_onebot_principal() -> None:
+    policy = FeatureService({}, {}, frozenset())
+    official = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "group-openid",
+        account_id="app-id",
+    )
+    policy.register_identity_link(
+        official_app_id="app-id",
+        official_openid="member-openid",
+        onebot_qq_id="10001",
+    )
+
+    assert policy.canonical_actor(official) == ActorRef(Platform.ONEBOT, "10001")
+
+
 @pytest.mark.asyncio
 async def test_scoped_notice_recipient_does_not_abort_other_destinations(
     tmp_path: Path, caplog: pytest.LogCaptureFixture

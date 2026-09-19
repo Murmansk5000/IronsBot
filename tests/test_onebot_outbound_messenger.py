@@ -111,6 +111,35 @@ async def test_onebot_outbound_messenger_rejects_unsupported_conversation() -> N
 
 
 @pytest.mark.asyncio
+async def test_onebot_outbound_messenger_rejects_all_sends_when_disabled() -> None:
+    bot = _Bot()
+    runtime = build_test_runtime(
+        outbound_config=OutboundRateLimitConfig(enabled=False),
+    )
+    messenger = OneBotOutboundMessenger(
+        cast("Any", _Router(bot)),
+        runtime.outbound,
+        enabled=False,
+    )
+    conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+
+    proactive = await messenger.send(
+        conversation,
+        OutboundMessage((TextPart("hello"),)),
+    )
+    reply = await messenger.reply(
+        ReplyContext(conversation, "99"),
+        OutboundMessage((TextPart("hello"),)),
+    )
+
+    assert not messenger.capabilities_for(conversation).can_reply_to_event
+    assert not messenger.capabilities_for(conversation).can_send_proactively
+    assert proactive.error_code == "outbound_disabled"
+    assert reply.error_code == "outbound_disabled"
+    assert bot.group_messages == []
+
+
+@pytest.mark.asyncio
 async def test_onebot_outbound_messenger_marks_disconnected_route() -> None:
     result = await _messenger().send(
         ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)),
