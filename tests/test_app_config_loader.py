@@ -288,7 +288,8 @@ def test_example_config_parses() -> None:
     assert config.features.superuser_bypass
     _assert_example_identities(config)
     assert config.features.user_policy == {}
-    assert config.ai.model == "deepseek-v4-pro"
+    assert config.ai.provider_order == ["deepseek"]
+    assert config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
     assert "fire_manual" in config.ai.intent_actions
     assert config.ai.intent_actions["fire_manual"].promotion == "fire_manual"
     assert config.promotions["fire_manual"].append_to_push
@@ -547,7 +548,7 @@ def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
     config = load_settings(env={CONFIG_ENV: str(ROOT / "config.example.toml")})
-    assert config.ai.model == "deepseek-v4-pro"
+    assert config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
 
 
 def test_unknown_app_config_fields_are_rejected(tmp_path: Path) -> None:
@@ -1405,7 +1406,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
 def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     env = {
         "ONEBOT_ACCESS_TOKEN": "token",
-        "AI_KEY": "sk-test",
+        "AI_KEY_DEEPSEEK": "sk-test",
         "SENDPIC_CNB_TOKEN": "cnb-token",
         "GITHUB_WORKFLOW_TOKEN": "gh-token",
     }
@@ -1413,9 +1414,56 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     settings = load_settings(ROOT / "config.example.toml", env=env)
 
     assert settings.bot.onebot_token == "token"
-    assert settings.ai.api_key == "sk-test"
+    assert settings.ai.providers["deepseek"].api_key == "sk-test"
     assert settings.messaging.sendpic.cnb_token == "cnb-token"
     assert settings.operations.data_sync.github_token == "gh-token"
+
+
+def test_ai_provider_keys_are_injected_independently(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[ai]
+provider_order = ["primary", "backup"]
+
+[ai.providers.primary]
+base_url = "https://primary.test/v1"
+models = ["fast", "quality"]
+
+[ai.providers.backup]
+base_url = "https://backup.test/v1"
+models = ["stable"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        config_path,
+        env={"AI_KEY_PRIMARY": "first", "AI_KEY_BACKUP": "second"},
+    )
+
+    assert [name for name, _provider in settings.ai.configured_providers] == [
+        "primary",
+        "backup",
+    ]
+    assert settings.ai.providers["primary"].api_key == "first"
+    assert settings.ai.providers["backup"].api_key == "second"
+
+
+def test_legacy_ai_key_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text("[ai]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="AI_KEY is retired"):
+        load_settings(config_path, env={"AI_KEY": "legacy"})
+
+
+def test_undeclared_ai_provider_key_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text("[ai]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="undeclared providers: EXTRA"):
+        load_settings(config_path, env={"AI_KEY_EXTRA": "secret"})
 
 
 def test_player_accounts_resolve_names_and_hash_environment_passwords(
@@ -1768,7 +1816,7 @@ def test_docker_registry_credentials_read_from_environment(
 def test_app_config_defaults_cover_runtime_services() -> None:
     app_config = load_settings(ROOT / "config.example.toml")
 
-    assert app_config.ai.model == "deepseek-v4-pro"
+    assert app_config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (
