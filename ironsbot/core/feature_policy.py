@@ -37,6 +37,11 @@ class FeatureService:
     account_default_features: Mapping[tuple[Platform, str], frozenset[str]] = field(
         default_factory=dict
     )
+    linked_onebot_ids: dict[tuple[str, str], str] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
@@ -59,10 +64,52 @@ class FeatureService:
         )
 
     def is_actor_superuser(self, actor: ActorRef) -> bool:
-        return actor in self.superusers
+        return actor in self.superusers or any(
+            _same_official_principal(actor, configured)
+            for configured in self.superusers
+        ) or self._linked_onebot_actor(actor) in self.superusers
 
     def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
-        return feature in self.actor_features.get(actor, frozenset())
+        if feature in self.actor_features.get(actor, frozenset()):
+            return True
+        linked = self._linked_onebot_actor(actor)
+        if linked is not None and feature in self.actor_features.get(
+            linked,
+            frozenset(),
+        ):
+            return True
+        return any(
+            feature in features and _same_official_principal(actor, configured)
+            for configured, features in self.actor_features.items()
+        )
+
+    def register_identity_link(
+        self,
+        *,
+        official_app_id: str,
+        official_openid: str,
+        onebot_qq_id: str,
+    ) -> None:
+        self.linked_onebot_ids[(official_app_id, official_openid)] = onebot_qq_id
+
+    def unregister_identity_link(
+        self,
+        *,
+        official_app_id: str,
+        official_openid: str,
+    ) -> None:
+        self.linked_onebot_ids.pop((official_app_id, official_openid), None)
+
+    def canonical_actor(self, actor: ActorRef) -> ActorRef:
+        """Return the stable OneBot principal for a linked official identity."""
+
+        return self._linked_onebot_actor(actor) or actor
+
+    def _linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
+        if actor.platform is not Platform.QQ_OFFICIAL or actor.account_id is None:
+            return None
+        qq_id = self.linked_onebot_ids.get((actor.account_id, actor.id))
+        return None if qq_id is None else ActorRef(Platform.ONEBOT, qq_id)
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
         return (
@@ -176,3 +223,12 @@ class FeatureService:
             actor for actor in self.private_superuser_actors() if actor not in actors
         )
         return actors
+
+
+def _same_official_principal(first: ActorRef, second: ActorRef) -> bool:
+    return (
+        first.platform is Platform.QQ_OFFICIAL
+        and second.platform is Platform.QQ_OFFICIAL
+        and first.account_id == second.account_id
+        and first.id == second.id
+    )

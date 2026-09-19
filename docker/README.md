@@ -242,8 +242,8 @@ owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-Group and user aliases come from `[features.group_aliases]` and
-`[features.user_aliases]`; numeric IDs are also accepted. Replies to incoming
+Group and user aliases are declared in `[identities.groups]` and
+`[identities.users]` with a `qq` endpoint; numeric IDs are also accepted. Replies to incoming
 commands keep using the bot that received the event. Bilibili, activity,
 scheduled-message, server-status, startup, and other proactive deliveries use
 the configured route. Routing does not filter incoming events, so avoid placing
@@ -364,12 +364,12 @@ Message actions may also use feature names such as `web_activity_link`,
 [features]
 superuser_bypass = true
 
-[features.group_aliases]
-admin = 123456789
-main = 987654321
+[identities.groups]
+admin = { qq = 123456789 }
+main = { qq = 987654321 }
 
-[features.user_aliases]
-owner = 1234567890
+[identities.users]
+owner = { qq = 1234567890 }
 
 [features.group_policy]
 admin = ["admin_notice"]
@@ -424,11 +424,11 @@ Enable the feature and default reminder settings in `ironsbot.toml`:
 ```toml
 [features]
 
-[features.group_aliases]
-example = 987654321
+[identities.groups]
+example = { qq = 987654321 }
 
-[features.user_aliases]
-owner = 1234567890
+[identities.users]
+owner = { qq = 1234567890 }
 
 [features.group_policy]
 example = ["team_resource_subscription"]

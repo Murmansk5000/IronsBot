@@ -25,6 +25,12 @@ services:
       - .env.prod
     environment:
       APP_CONFIG_PATH: "/config/ironsbot.toml"
+      # Optional deployment overrides. Complete QQ Official credentials always
+      # force OneBot outbound silent regardless of ONEBOT_SEND_MESSAGES.
+      # ONEBOT_ENABLED: "true"
+      # ONEBOT_SEND_MESSAGES: "true"
+      # ONEBOT_IDENTITY_VERIFICATION: "false"
+      # ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT: "123456789"
     logging:
       driver: "json-file"
       options:

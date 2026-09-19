@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from html import escape
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import (
@@ -14,7 +13,6 @@ from ironsbot.core.outbound import (
     RemoteImagePart,
     TextPart,
 )
-from ironsbot.core.platform import ConversationRef, Platform
 
 if TYPE_CHECKING:
     from ironsbot.core.interactive_prompts import PromptSession
@@ -23,7 +21,7 @@ if TYPE_CHECKING:
 class QQOfficialOutboundMessageError(ValueError):
     @classmethod
     def unsupported_mention(cls) -> QQOfficialOutboundMessageError:
-        return cls("QQ Official mentions require a member in the current group")
+        return cls("QQ Official does not provide reliable visible member mentions")
 
     @classmethod
     def unsupported_part(cls, part: object) -> QQOfficialOutboundMessageError:
@@ -33,6 +31,7 @@ class QQOfficialOutboundMessageError(ValueError):
 class QQOfficialTextPayload:
     content: str
     prompt: PromptSession | None = None
+    reference_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +39,7 @@ class QQOfficialImagePayload:
     content: bytes | None = None
     url: str | None = None
     filename: str = "ironsbot.png"
+    reference_id: str | None = None
 
 
 QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
@@ -48,7 +48,6 @@ QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
 def render_qq_official_outbound_message(
     message: OutboundMessage,
     *,
-    conversation: ConversationRef,
     supports_interactive_prompts: bool = False,
 ) -> tuple[QQOfficialPayload, ...]:
     """Compact text around media into the fewest supported QQ messages."""
@@ -57,18 +56,13 @@ def render_qq_official_outbound_message(
     text: list[str] = []
     saw_image = False
     text_after_image = False
-
     for part in message.parts:
         if isinstance(part, TextPart):
             text.append(part.text)
             if saw_image:
                 text_after_image = True
         elif isinstance(part, MentionPart):
-            if not _supports_group_mention(conversation, part):
-                raise QQOfficialOutboundMessageError.unsupported_mention()
-            text.append(f'<qqbot-at-user id="{escape(part.actor.id, quote=True)}" />')
-            if saw_image:
-                text_after_image = True
+            raise QQOfficialOutboundMessageError.unsupported_mention()
         elif isinstance(part, BinaryImagePart):
             saw_image = True
             images.append(
@@ -103,7 +97,11 @@ def _attach_prompt(
         return
     for index, payload in enumerate(rendered):
         if isinstance(payload, QQOfficialTextPayload):
-            rendered[index] = QQOfficialTextPayload(payload.content, prompt=prompt)
+            rendered[index] = QQOfficialTextPayload(
+                payload.content,
+                prompt=prompt,
+                reference_id=payload.reference_id,
+            )
             return
     rendered.append(QQOfficialTextPayload(_prompt_text(prompt), prompt=prompt))
 
@@ -113,20 +111,6 @@ def _prompt_text(prompt: PromptSession) -> str:
         f"{choice.id}. {choice.label}" for choice in prompt.choices
     )
     return f"请选择：\n{choices}\n\n回复序号选择"
-
-
-def _supports_group_mention(
-    conversation: ConversationRef,
-    part: MentionPart,
-) -> bool:
-    return (
-        conversation.platform is Platform.QQ_OFFICIAL
-        and conversation.kind == "group"
-        and part.actor.platform is Platform.QQ_OFFICIAL
-        and part.actor.kind == "member"
-        and part.actor.scope_id == conversation.id
-        and part.actor.account_id == conversation.account_id
-    )
 
 
 def _image_filename(content_type: str) -> str:
