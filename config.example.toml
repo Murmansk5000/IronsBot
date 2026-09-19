@@ -122,8 +122,8 @@ proactive_messages = false
 #     invite-only custom-button capability. Text choices always remain available.
 # ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
 custom_keyboards = false
-# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
-# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
+# EN: Features exposed through the official SDK preview. ai_chat also requires at least one AI_KEY_<PROVIDER>.
+# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需至少一个 AI_KEY_<PROVIDER>。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 # EN: Optional account-scoped targets keyed by group/user alias or OpenID. Declaring a
 #     target also enables these extra features there; global features remain active.
@@ -358,23 +358,9 @@ text = "火火手册链接：{url}"
 append_to_push = true
 
 [ai]
-# Default: "https://api.deepseek.com"
-# EN: OpenAI-compatible AI API base URL.
-# ZH: OpenAI 兼容 AI 接口地址。
-# Example: "https://api.openai.com/v1"
-base_url = "https://api.deepseek.com"
-
-# Default: "deepseek-v4-pro"
-# EN: AI chat model name.
-# ZH: AI 聊天模型名称。
-# Example: "deepseek-chat"
-model = "deepseek-v4-pro"
-
-# Default: []
-# EN: Backup models tried in order when the preferred model fails.
-# ZH: 首选模型失败时按顺序尝试的备用模型；全部失败后才向用户报错。
-# Example: ["deepseek-chat", "gpt-5.4"]
-fallback_models = []
+# EN: Providers are tried in this order. Every declared provider must appear once.
+# ZH: 按此顺序尝试 AI 提供商；每个已声明提供商必须且只能出现一次。
+provider_order = ["deepseek"]
 
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
@@ -431,12 +417,6 @@ max_tokens = 800
 temperature = 0.7
 
 # Default: false
-# EN: Enable provider-specific thinking mode.
-# ZH: 是否启用供应商特定的思考模式。
-# Example: true
-thinking = false
-
-# Default: false
 # EN: Send a processing notice before AI replies.
 # ZH: AI 回复前是否发送“处理中”提示。
 # Example: true
@@ -460,6 +440,21 @@ admin_notice_cooldown_seconds = 600.0
 # ZH: 是否启用 AI 意图动作。
 # Example: false
 intent_actions_enabled = true
+
+[ai.providers.deepseek]
+# EN: OpenAI-compatible endpoint and ordered model fallback list. Store the
+# secret only in AI_KEY_DEEPSEEK, never in TOML.
+# ZH: OpenAI 兼容接口与模型备用顺序。密钥只能写入 AI_KEY_DEEPSEEK，禁止写入 TOML。
+base_url = "https://api.deepseek.com"
+models = ["deepseek-v4-pro"]
+thinking = false
+
+# Add independent backup providers with their own environment keys:
+# [ai.providers.fumin]
+# base_url = "https://example.com/v1"
+# models = ["primary-model", "backup-model"]
+# thinking = false
+# Then set provider_order = ["deepseek", "fumin"] and AI_KEY_FUMIN.
 
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.

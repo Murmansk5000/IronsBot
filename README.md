@@ -134,7 +134,9 @@ AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
 查询或绑定目标。跨平台群成员身份可选由静默 NapCat 观察验证，见下方配置。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
-同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+同一个 AI 服务；已注册查询始终优先。没有为任一 `[ai.providers.<别名>]`
+配置对应的 `AI_KEY_<大写别名>` 时，不会开放 AI 聊天入口。提供商按
+`ai.provider_order` 切换，每个提供商内部再按 `models` 顺序切换模型。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
 `[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
 `feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
@@ -319,7 +321,8 @@ IronsBot 会处理其中明确匹配的命令和正在进行的选项会话，
 
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
-  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、`AI_KEY`、
+  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、
+  每个 AI 提供商的 `AI_KEY_<提供商别名>`、
   按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
   `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
 - Unraid 部署覆盖：`ONEBOT_ENABLED`、`ONEBOT_SEND_MESSAGES`、
@@ -340,7 +343,10 @@ ONEBOT_IDENTITY_VERIFICATION=false
 ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
-AI_KEY=
+AI_KEY_DEEPSEEK=
+# 若 TOML 声明了 fumin、nomiss，还可分别设置：
+AI_KEY_FUMIN=
+AI_KEY_NOMISS=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=

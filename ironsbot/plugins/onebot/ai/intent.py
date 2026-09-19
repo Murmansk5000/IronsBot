@@ -146,7 +146,7 @@ def plugin_contribution(
 ) -> PluginContribution:
     """Declare configured intent actions and their natural-language matcher."""
 
-    enabled = bool(settings.ai.api_key.strip()) and settings.ai.intent_actions_enabled
+    enabled = settings.ai.enabled and settings.ai.intent_actions_enabled
     command_contracts = ai_intent_command_contracts(settings)
     return PluginContribution(
         id="ai_intent",

@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ironsbot.core.commands import json_object
+from ironsbot.config.loader import load_settings
 from ironsbot.integrations.http.ai import (
     AiApiSettings,
     check_ai_api,
@@ -56,44 +56,6 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def _json_env(env: dict[str, str], key: str) -> dict:
-    raw_value = env.get(key, "").strip()
-    if not raw_value:
-        return {}
-
-    try:
-        return json_object(raw_value, name=key)
-    except (TypeError, ValueError):
-        return {}
-
-
-def _float_config(config: dict, key: str, default: float) -> float:
-    try:
-        return float(config.get(key) or default)
-    except (TypeError, ValueError):
-        return default
-
-
-def _bool_config(config: dict, key: str, *, default: bool = False) -> bool:
-    value = config.get(key, default)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(value)
-
-
-def _build_settings(env: dict[str, str]) -> AiApiSettings:
-    ai_config = _json_env(env, "AI_CONFIG")
-    return AiApiSettings(
-        api_key=env.get("AI_KEY", ""),
-        base_url=str(ai_config.get("base_url") or "https://api.deepseek.com"),
-        model=str(ai_config.get("model") or "deepseek-v4-pro"),
-        timeout=_float_config(ai_config, "timeout", 45.0),
-        thinking=_bool_config(ai_config, "thinking"),
-    )
-
-
 def _merged_env(env_file: Path) -> dict[str, str]:
     values = _load_env_file(env_file)
     values.update(os.environ)
@@ -111,9 +73,40 @@ async def _main() -> int:
         default=DEFAULT_ENV_FILE,
         help="Environment file to load before reading process env.",
     )
+    parser.add_argument(
+        "--provider",
+        help="Provider alias to test; defaults to the first configured provider.",
+    )
+    parser.add_argument(
+        "--model",
+        help="Model to test; defaults to the provider's first model.",
+    )
     args = parser.parse_args()
 
-    settings = _build_settings(_merged_env(REPO_ROOT / args.env))
+    env = _merged_env(REPO_ROOT / args.env)
+    config = load_settings(env=env).ai
+    providers = dict(config.configured_providers)
+    provider_name = args.provider or next(iter(providers), "")
+    provider = providers.get(provider_name)
+    if provider is None:
+        _write_lines(["AI API 测试失败", "没有找到已配置密钥的 AI 提供商。"])
+        return 1
+    model = args.model or provider.models[0]
+    if model not in provider.models:
+        _write_lines(
+            [
+                "AI API 测试失败",
+                f"模型 {model} 未在 ai.providers.{provider_name}.models 中声明。",
+            ]
+        )
+        return 1
+    settings = AiApiSettings(
+        api_key=provider.api_key,
+        base_url=provider.base_url,
+        model=model,
+        timeout=config.timeout,
+        thinking=provider.thinking,
+    )
     result = await check_ai_api(settings)
     status = result.status_code if result.status_code is not None else "未知"
 
@@ -121,6 +114,7 @@ async def _main() -> int:
         _write_lines(
             [
                 "AI API 测试成功",
+                f"提供商：{provider_name}",
                 f"接口：{settings.base_url.rstrip('/')}",
                 f"模型：{settings.model}",
                 f"HTTP：{status}",
@@ -133,6 +127,7 @@ async def _main() -> int:
     _write_lines(
         [
             "AI API 测试失败",
+            f"提供商：{provider_name}",
             f"接口：{settings.base_url.rstrip('/')}",
             f"模型：{settings.model}",
             f"HTTP：{status}",
