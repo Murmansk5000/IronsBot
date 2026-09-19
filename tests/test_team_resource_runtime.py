@@ -164,9 +164,7 @@ class FakeJob:
 
 def test_register_team_resource_jobs_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
-    service = _service(
-        TeamResourceConfig(enabled=True, times=["22:30:15", "23:45"])
-    )
+    service = _service(TeamResourceConfig(enabled=True, times=["22:30:15", "23:45"]))
 
     service.register_jobs(scheduler)
 

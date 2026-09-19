@@ -125,7 +125,8 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
-    tmp_path: Path, platform: Platform,
+    tmp_path: Path,
+    platform: Platform,
 ) -> None:
     operator = ActorRef(platform, "operator")
     target = ActorRef(platform, "recipient")
@@ -140,8 +141,12 @@ def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
         section_plan=cast("Any", object()),
     )
     service = PlayerService(
-        config=SeerConfig(), headless=cast("Any", None), bindings=store,
-        error_message=cast("Any", None), details=cast("Any", None), now=lambda: now,
+        config=SeerConfig(),
+        headless=cast("Any", None),
+        bindings=store,
+        error_message=cast("Any", None),
+        details=cast("Any", None),
+        now=lambda: now,
     )
     service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
     result = asyncio.run(service.bind_player(_PLAYER_ID, actor=operator, target=target))
@@ -151,7 +156,10 @@ def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     assert result.offer_binding is False
     assert pending.player_message.startswith("已为该成员设置默认米米号")
     service.query.assert_awaited_once_with(
-        _PLAYER_ID, actor=operator, explicit=True, conversation=None,
+        _PLAYER_ID,
+        actor=operator,
+        explicit=True,
+        conversation=None,
     )
 
 
@@ -237,9 +245,7 @@ def test_direct_binding_returns_invalid_player_error_without_saving() -> None:
     )
     service._save_binding = Mock()
 
-    result = asyncio.run(
-        service.bind_player(1, actor=_actor())
-    )
+    result = asyncio.run(service.bind_player(1, actor=_actor()))
 
     assert result.message == "❌ 米米号无效，请输入数字。"
     service._save_binding.assert_not_called()

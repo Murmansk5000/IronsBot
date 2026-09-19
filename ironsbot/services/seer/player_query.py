@@ -218,9 +218,7 @@ def validate_player_peak_season(
         # its match data unless the rank lookup positively returns a different
         # current score.
         scores[mode] = (
-            confirmed_score
-            if confirmed_score is not None
-            else candidate_score
+            confirmed_score if confirmed_score is not None else candidate_score
         )
         if confirmed_score is None or confirmed_score == candidate_score:
             continue

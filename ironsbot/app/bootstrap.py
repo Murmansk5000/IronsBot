@@ -31,8 +31,7 @@ def configure_application_logging(level: str) -> None:
 
     application_logger = logging.getLogger("ironsbot")
     if not any(
-        isinstance(handler, LoguruHandler)
-        for handler in application_logger.handlers
+        isinstance(handler, LoguruHandler) for handler in application_logger.handlers
     ):
         application_logger.addHandler(LoguruHandler())
     application_logger.setLevel(level.upper())
@@ -121,9 +120,7 @@ def bootstrap() -> Application:
                 meeting_number=settings.messaging.meeting.number,
                 meeting_template=settings.messaging.meeting.template,
                 pet_config=application.resources.pet_config,
-                image_command_texts=(
-                    application.resources.sendpic.exact_command_texts
-                ),
+                image_command_texts=(application.resources.sendpic.exact_command_texts),
                 new_content_expanded_categories=frozenset(
                     settings.seer.new_content.expanded_categories
                 ),

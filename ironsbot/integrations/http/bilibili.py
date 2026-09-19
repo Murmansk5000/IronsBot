@@ -15,9 +15,7 @@ DYNAMIC_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 ACCOUNT_CARD_URL = "https://api.bilibili.com/x/web-interface/card"
 HTTP_OK = 200
 OPUS_STYLE_FEATURE = "itemOpusStyle"
-QR_GENERATE_URL = (
-    "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
-)
+QR_GENERATE_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 QR_POLL_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 
 

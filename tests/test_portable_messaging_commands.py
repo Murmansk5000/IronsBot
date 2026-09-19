@@ -110,7 +110,9 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
 @pytest.mark.parametrize("button", [False, True])
 async def test_portable_subscription_menu_persists_qq_official_openid(
     tmp_path: Path,
-    *, demote: bool, button: bool,
+    *,
+    demote: bool,
+    button: bool,
 ) -> None:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 
@@ -170,7 +172,8 @@ async def test_portable_subscription_menu_persists_qq_official_openid(
 async def test_portable_push_time_updates_qq_official_conversation(
     tmp_path: Path,
     demote_at: str,
-    *, button: bool,
+    *,
+    button: bool,
 ) -> None:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 

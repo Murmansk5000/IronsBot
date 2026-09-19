@@ -43,13 +43,15 @@ def test_direct_group_query_reply_mentions_sender(monkeypatch: Any) -> None:
 
     event = group_message_event("梦天睡神技能")
     with suppress(FinishedException):
-        asyncio.run(_run(
-            handler(
-                cast("Any", object()),
-                {},
-                event,
+        asyncio.run(
+            _run(
+                handler(
+                    cast("Any", object()),
+                    {},
+                    event,
+                )
             )
-        ))
+        )
 
     send_reply.assert_awaited_once_with(
         QueryReply(image=b"image"),

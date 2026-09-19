@@ -144,9 +144,7 @@ def _text(message: object) -> str:
 async def test_portable_operational_queries_use_shared_services() -> None:
     service = _FakeServerStatus([])
     operations = {
-        **build_portable_server_status_operations(
-            cast("ServerStatusService", service)
-        ),
+        **build_portable_server_status_operations(cast("ServerStatusService", service)),
         **build_portable_meeting_operations(
             "6638682008",
             "会议号：{meeting_number}\n{meeting_url}",

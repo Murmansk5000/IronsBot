@@ -14,6 +14,7 @@ from ironsbot.services.seer.rank_list_models import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+
 def _rank_titles(
     kind: str,
     ranks: Mapping[str, GlobalRankSpec | LocalRankSpec],

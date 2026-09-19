@@ -52,9 +52,7 @@ def test_message_input_context_uses_fixed_routing_precedence() -> None:
 
 def test_message_input_context_reads_reply_segment_without_reply_metadata() -> None:
     event = group_message_event(
-        message=Message(
-            [MessageSegment.reply(99), MessageSegment.text("帮助")]
-        ),
+        message=Message([MessageSegment.reply(99), MessageSegment.text("帮助")]),
         original_message=Message(MessageSegment.text("帮助")),
     )
     event.reply = None

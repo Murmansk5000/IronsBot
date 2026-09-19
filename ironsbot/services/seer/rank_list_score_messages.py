@@ -44,8 +44,7 @@ def format_global_rank_score_message(
             lines.extend(proof_lines)
         else:
             lines = [
-                f"❌{spec.title}前 {result.searched_limit} 名"
-                f"没有{score_text}的用户。"
+                f"❌{spec.title}前 {result.searched_limit} 名没有{score_text}的用户。"
             ]
         return "\n".join(lines)
 

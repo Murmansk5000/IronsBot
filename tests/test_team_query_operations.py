@@ -68,7 +68,9 @@ async def test_team_operation_preserves_id_kind_and_selects_player_targets(
     reply = await operation(text, context)
     assert isinstance(reply, OutboundMessage)
     actor = TeamQueryActor(
-        context.message.actor, context.message.conversation, can_manage=False,
+        context.message.actor,
+        context.message.conversation,
+        can_manage=False,
     )
     if text == "战队90001 90002":
         service.query.assert_awaited_once_with((90001, 90002), actor)

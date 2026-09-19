@@ -202,9 +202,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         last_page_start = deps.rank_page_start(max(first_same_or_lower, tie_end - 1))
         page_starts = range(first_page_start, last_page_start + 1, page_size)
     else:
-        page_starts = sorted(
-            {deps.rank_page_start(index) for index in sample_indexes}
-        )
+        page_starts = sorted({deps.rank_page_start(index) for index in sample_indexes})
 
     max_pages = deps.score_search_tie_page_limit()
     fetched_pages = 0

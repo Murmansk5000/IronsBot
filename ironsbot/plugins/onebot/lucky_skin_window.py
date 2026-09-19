@@ -106,8 +106,13 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
         ),
         commands=lucky_skin_window_command_contracts(),
         install=partial(
-            _install, service=service, pet=pet, features=features,
-            identity_links=identity_links, sessions=sessions, resolver=resolver,
+            _install,
+            service=service,
+            pet=pet,
+            features=features,
+            identity_links=identity_links,
+            sessions=sessions,
+            resolver=resolver,
         ),
         hooks=PluginHooks(
             startup=(
@@ -211,7 +216,6 @@ def _semantic_request(
     )
 
 
-
 def _install(  # noqa: PLR0913 - explicit plugin resources
     registry: MatcherFactory,
     *,
@@ -224,7 +228,11 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
 ) -> None:
     priority = registry.priority("lucky_skin_window")
     operations = build_portable_lucky_skin_operations(
-        service, pet, identity_links, sessions, resolver,
+        service,
+        pet,
+        identity_links,
+        sessions,
+        resolver,
     )
     matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -260,9 +268,12 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
         priority=priority,
         block=True,
     )
-    watch_list.append_handler(make_portable_query_handler(
-        operations[LUCKY_SKIN_WATCH_LIST_ACTION.id], sessions,
-    ))
+    watch_list.append_handler(
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_LIST_ACTION.id],
+            sessions,
+        )
+    )
 
     watch_add = registry.on_message(
         policy=CommandPolicy.command(
@@ -282,7 +293,8 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     )
     watch_add.append_handler(
         make_portable_query_handler(
-            operations[LUCKY_SKIN_WATCH_ADD_ACTION.id], sessions,
+            operations[LUCKY_SKIN_WATCH_ADD_ACTION.id],
+            sessions,
         )
     )
 
@@ -304,7 +316,8 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     )
     watch_remove.append_handler(
         make_portable_query_handler(
-            operations[LUCKY_SKIN_WATCH_REMOVE_ACTION.id], sessions,
+            operations[LUCKY_SKIN_WATCH_REMOVE_ACTION.id],
+            sessions,
         )
     )
 
@@ -331,9 +344,12 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
             priority=priority,
             block=True,
         )
-        watch_action.append_handler(make_portable_query_handler(
-            operations[action.id], sessions,
-        ))
+        watch_action.append_handler(
+            make_portable_query_handler(
+                operations[action.id],
+                sessions,
+            )
+        )
 
 
 def _register_schedule(

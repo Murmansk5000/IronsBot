@@ -75,7 +75,8 @@ async def select_player_reference(  # noqa: PLR0913 - explicit session and domai
         return await execute(choices[0].player_id, context)
 
     async def select(
-        choice: PlayerReferenceChoice, context: MessageInputContext,
+        choice: PlayerReferenceChoice,
+        context: MessageInputContext,
     ) -> OutboundMessage | PortableReply:
         current = resolver.reference_choices(
             reference,

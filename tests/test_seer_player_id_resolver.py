@@ -52,7 +52,8 @@ def test_partial_reference_visibility_and_exact_precedence() -> None:
     )
     actor, conversation = context.message.actor, context.message.conversation
     binding = next(
-        command for command in seer_command_contracts(resolver)
+        command
+        for command in seer_command_contracts(resolver)
         if command.id == "seer.player.bind"
     )
     command_context = CommandContext(actor=actor, conversation=conversation)

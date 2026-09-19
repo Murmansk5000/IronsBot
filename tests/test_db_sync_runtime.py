@@ -524,9 +524,7 @@ def test_sync_database_uses_matching_local_cache(
 
     class FakeHeadResponse:
         def __init__(self) -> None:
-            self.headers = {
-                "last-modified": "Mon, 22 Jun 2026 12:00:00 GMT"
-            }
+            self.headers = {"last-modified": "Mon, 22 Jun 2026 12:00:00 GMT"}
 
         def raise_for_status(self) -> None:
             return None

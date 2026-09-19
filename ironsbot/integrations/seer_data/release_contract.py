@@ -144,7 +144,9 @@ def validate_published_seerapi_release(engine: Engine) -> None:
                     "tables_key": _SCHEMA_TABLES_KEY,
                     "fingerprint_key": _SCHEMA_FINGERPRINT_KEY,
                 },
-            ).tuples().all()
+            )
+            .tuples()
+            .all()
         )
 
     version = metadata.get(_SCHEMA_CONTRACT_KEY)

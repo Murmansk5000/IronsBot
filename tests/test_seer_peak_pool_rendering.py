@@ -213,9 +213,7 @@ async def test_peak_pool_adapter_deduplicates_assets_and_writes_final_cache() ->
     assert cache.writes == [
         (
             "peak_pool",
-            render_request_cache_key(
-                "peak_pool", ("竞技池", _pool_render_snapshot())
-            ),
+            render_request_cache_key("peak_pool", ("竞技池", _pool_render_snapshot())),
             b"rendered",
         )
     ]

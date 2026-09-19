@@ -91,18 +91,14 @@ def test_startup_check_records_first_healthy_model(monkeypatch: MonkeyPatch) -> 
     notice = Notice()
     config = configured_ai_config(api_key="secret", models=("primary", "backup"))
 
-    asyncio.run(
-        check_configured_ai_api(config, startup_notice=notice)
-    )
+    asyncio.run(check_configured_ai_api(config, startup_notice=notice))
 
     assert calls == ["primary", "backup"]
     assert notice.parts == [
         (
             "startup_ai_api_check",
             "AI API startup check",
-            "AI API 检查通过。\n"
-            "提供商/模型：test/backup\n"
-            "HTTP：200\n耗时：12 ms",
+            "AI API 检查通过。\n提供商/模型：test/backup\nHTTP：200\n耗时：12 ms",
         )
     ]
 
