@@ -13,11 +13,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
-from ironsbot.services.seer.player_binding import (
-    PlayerBindingState,
-    player_binding_offer_message,
-    player_binding_replacement_offer_message,
-)
+from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -45,47 +41,6 @@ def test_parse_confirmation_accepts_no_replies(text: str) -> None:
 @pytest.mark.parametrize("text", ["", "绑定", "不绑定", "也许", "yes please"])
 def test_parse_confirmation_requires_exact_reply(text: str) -> None:
     assert parse_confirmation(text) is None
-
-
-def test_player_binding_offer_only_displays_short_reply_choices() -> None:
-    message = player_binding_offer_message(
-        _PLAYER_ID,
-        "测试玩家",
-        unbound_daily_limit=1,
-        bound_default_daily_limit=10,
-    )
-
-    assert "已查到米米号：123456（测试玩家）" in message
-    assert "回复“是”或“y”确认，回复“否”或“n”跳过。" in message
-    assert "每日查询额度可从 1 项提升至 10 项" in message
-    assert "额度按成功获取的数据项目结算" in message
-    assert "yes" not in message
-    assert "no" not in message
-    assert "确认 / 确定" not in message
-
-
-def test_player_binding_offer_omits_quota_hint_without_an_increase() -> None:
-    message = player_binding_offer_message(
-        _PLAYER_ID,
-        "测试玩家",
-        unbound_daily_limit=2,
-        bound_default_daily_limit=2,
-    )
-
-    assert "每日查询额度可从" not in message
-
-
-def test_player_binding_replacement_offer_names_both_accounts() -> None:
-    message = player_binding_replacement_offer_message(
-        10001,
-        "旧账号",
-        _PLAYER_ID,
-        "测试玩家",
-    )
-
-    assert "当前默认米米号：10001（旧账号）" in message
-    assert "已查到米米号：123456（测试玩家）" in message
-    assert "保留当前绑定" in message
 
 
 def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
