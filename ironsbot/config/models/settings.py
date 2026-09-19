@@ -382,7 +382,7 @@ class PathsConfig(BaseModel):
 
 
 class Settings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     bot: BotConfig = Field(default_factory=BotConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)

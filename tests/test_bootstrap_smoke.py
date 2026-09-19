@@ -94,6 +94,21 @@ from ironsbot.app.bootstrap import bootstrap
 state = bootstrap()
 assert nonebot.get_driver().env == "test"
 assert os.environ["ENVIRONMENT"] == "outer"
+messages = []
+privacy_sink = logger.add(messages.append, format="{message}")
+try:
+    logger.info(
+        "secret={} actor={}",
+        os.environ["QQ_OFFICIAL_SECRET_EXAMPLE_BOT"],
+        1621582661,
+    )
+finally:
+    logger.remove(privacy_sink)
+rendered = "".join(messages)
+assert "test-secret" not in rendered
+assert "1621582661" not in rendered
+assert "<secret:" in rendered
+assert "<id:" in rendered
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
 assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
