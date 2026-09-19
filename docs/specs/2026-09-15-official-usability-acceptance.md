@@ -5,10 +5,14 @@
 
 ## 当前结论
 
-2026-09-19 的当前权威发布基线为公共镜像修订 `33631b0a`，清单 digest 为
-`sha256:82910e762953e85e32506851be1737adf74027dddac670787d2d8924fcd36e04`。
-Unraid 容器已确认
-running，QQ Official 账号已进入 READY，三个无头 worker 健康。用户随后在生产群执行
+2026-09-19 的当前权威发布基线为公共镜像修订 `b74735b8`，清单 digest 为
+`sha256:3ae9ca2de8a5de8b4cfed680c5629ab66240b7a9f98c20125fc48a630815c4c0`。
+同一提交已快进推送到公共与预览仓库，发布流水线的依赖审计、候选镜像冒烟、体积门禁
+和 Docker Hub/GHCR 发布全部通过。Unraid 使用模板原生更新入口完成重建；启动后的只读
+配置检查确认 QQ Official 是唯一出站平台、OneBot 出站关闭且身份观察开启，官方账号
+进入 READY，三个无头 worker 健康。旧生产日志已清空，发布前 TOML 与 Unraid 模板备份
+保留在仅 root 可读的时间戳目录中。以下历史客户端证据来自上一发布基线，必须按矩阵在
+当前 digest 上复验，不能直接继承。用户此前在生产群执行
 “阵容”：进度、结果文字和图片分别以被动序号 1、2、3 成功送达。客户端显示对原消息
 的原生回复，不再显示原始 `<qqbot-at-user>` 标签；NapCat 也观察到相同来源引用。
 这关闭了本次 `message_reference` 验收，但不声称客户端显示了可见成员 @。
@@ -398,17 +402,18 @@ Secret、Token 或 AI Key。
 
 ### 发布与配置前置条件
 
-- 当前生产镜像仍为修订 `33631b0a`，manifest digest 为
-  `sha256:82910e762953e85e32506851be1737adf74027dddac670787d2d8924fcd36e04`。
-- 本地功能候选 `14ba3ddd` 及其后的审计文档尚未 push、构建或部署；当前生产实例不能
-  用来验收该候选的新行为。
-- 发布 AI 多提供商候选前，必须复制生产 TOML 做严格加载 dry-run：删除顶层
-  `ai.base_url`、`ai.model`、`ai.fallback_models`、`ai.thinking`，声明
-  `[ai.providers.<alias>]` 和包含全部别名且不重复的 `ai.provider_order`。
-- 删除旧环境变量 `AI_KEY`，改为每个已声明提供商独立的 `AI_KEY_<ALIAS>`；同一服务的
-  多个 Key 也要使用不同 provider alias，不能在一个字段中拼接多个 Key。
-- dry-run 只能使用配置副本并输出字段名和校验结果，不得输出密钥或完整生产身份。
-- 未经用户明确授权，不修改生产 TOML、环境变量、Unraid 容器或数据目录。
+- 当前生产镜像修订为 `b74735b8`，manifest digest 为
+  `sha256:3ae9ca2de8a5de8b4cfed680c5629ab66240b7a9f98c20125fc48a630815c4c0`。
+- CI 记录的展开镜像大小为 `260015873` bytes，较直接基线增加 `4831` bytes（约 4 KiB）；
+  `/app` 为 4772 KiB、site-packages 为 106000 KiB、字体为 19452 KiB，增长门禁通过。
+- 生产 TOML 已删除顶层 `ai.base_url`、`ai.model`、`ai.fallback_models`、`ai.thinking`，
+  并迁移为 `ai.provider_order = ["deepseek"]` 与 `[ai.providers.deepseek]`。原主模型与
+  后备模型顺序保持不变；只读 `config_check` 已在候选镜像和运行容器内各通过一次。
+- `AI_KEY_DEEPSEEK` 继续由 Unraid 加密环境变量注入。尚未提供 endpoint/model 定义的
+  `FUMIN`、`NOMISS` 值已从当前模板清空，原模板只存在于权限为 `600` 的部署备份中；
+  在 TOML 正式声明对应 provider 前不得重新填入。
+- 当前发布没有运行状态数据库 schema 变化，不需要再次执行平台身份迁移。
+- 实机验收从此处开始必须绑定当前 digest；上一 digest 的行为只作历史线索。
 
 ### A. 主要查询功能
 
