@@ -491,7 +491,7 @@ async def test_platform_migration_preserves_explicit_identity_links(
     migrated = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
     links = await migrated.for_onebot("1001")
     assert len(links) == 1
-    assert links[0].official == official
+    assert links[0].official == OfficialIdentity("app-a", "member", "member-a")
 
 
 def test_platform_state_migration_rejects_invalid_target_type(tmp_path: Path) -> None:
