@@ -88,8 +88,7 @@ class PlatformStateMigrationError(RuntimeError):
         error: sqlite3.Error,
     ) -> PlatformStateMigrationError:
         return cls(
-            "cannot read platform identity migration source under "
-            f"{data_root}: {error}"
+            f"cannot read platform identity migration source under {data_root}: {error}"
         )
 
     @classmethod
@@ -222,10 +221,12 @@ def migrate_platform_state_identities(  # noqa: PLR0913
             qq_official_account_id=qq_official_account_id,
         )
         _validate_target_files(temporary, expected)
-        apply_sqlite_bundle_changes(tuple(
-            SqliteBundleChange(source, target, backup.files.get(source))
-            for source, target in zip(paths.targets, temporary, strict=True)
-        ))
+        apply_sqlite_bundle_changes(
+            tuple(
+                SqliteBundleChange(source, target, backup.files.get(source))
+                for source, target in zip(paths.targets, temporary, strict=True)
+            )
+        )
     finally:
         cleanup_sqlite_bundles(temporary)
     return PlatformStateMigrationResult(

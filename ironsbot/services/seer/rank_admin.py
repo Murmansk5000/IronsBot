@@ -47,6 +47,8 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 ProgressReporter = Callable[[str], Awaitable[None]]
+
+
 @dataclass(frozen=True, slots=True)
 class RankAdminPolicy:
     rank_limit: int
@@ -146,11 +148,7 @@ class RankAdminService:
         specs = configured_rank_specs(refresh.config, self._rank)
         targets = refresh.preview()
         targets_by_rank = {
-            rank_key: [
-                target
-                for target in targets
-                if target.rank_key == rank_key
-            ]
+            rank_key: [target for target in targets if target.rank_key == rank_key]
             for rank_key, _spec in specs
         }
         entries = [

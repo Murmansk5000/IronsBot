@@ -142,9 +142,7 @@ def registry_image_reference(image: str) -> tuple[str, str, str]:
         message = f"Docker image does not include a repository path: {image}"
         raise ValueError(message)
     registry = (
-        "registry-1.docker.io"
-        if first.lower() in DOCKER_HUB_REGISTRIES
-        else first
+        "registry-1.docker.io" if first.lower() in DOCKER_HUB_REGISTRIES else first
     )
     return f"https://{registry}", registry_path, reference
 

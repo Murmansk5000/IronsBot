@@ -90,11 +90,14 @@ async def test_ai_chat_awaits_memory_store_reads_and_writes() -> None:
         memory,
     )
 
-    assert await service.chat_reply(
-        actor=ACTOR,
-        conversation=CONVERSATION,
-        prompt="hello",
-    ) == "正常回复"
+    assert (
+        await service.chat_reply(
+            actor=ACTOR,
+            conversation=CONVERSATION,
+            prompt="hello",
+        )
+        == "正常回复"
+    )
     assert len(memory.loads) == 1
     actor, session_key, exclude_current_session, limit = memory.loads[0]
     assert actor == ACTOR

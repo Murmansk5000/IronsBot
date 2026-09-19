@@ -64,8 +64,7 @@ class BattleEffectQueryService:
             if effect is None:
                 return QueryResult(
                     message=(
-                        f"❌未找到异常状态 {effect_id}"
-                        "（这是一个bug，请反馈给开发者）"
+                        f"❌未找到异常状态 {effect_id}（这是一个bug，请反馈给开发者）"
                     )
                 )
             reply_data = self._reply_data(effect)

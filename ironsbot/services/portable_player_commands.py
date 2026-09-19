@@ -144,13 +144,20 @@ class _PortablePlayerOperations:
             return await self._bind_player(player_id, context, target)
 
         reply = await select_player_reference(
-            reference, context, self.resolver, self.sessions, execute,
+            reference,
+            context,
+            self.resolver,
+            self.sessions,
+            execute,
             title="请选择要绑定的玩家：",
         )
         return reply if isinstance(reply, PortableReply) else PortableReply(reply)
 
     async def _bind_player(
-        self, player_id: int, context: MessageInputContext, target: ActorRef | None,
+        self,
+        player_id: int,
+        context: MessageInputContext,
+        target: ActorRef | None,
     ) -> PortableReply:
         if target is not None and not self.features.is_actor_superuser(
             context.message.actor
@@ -167,16 +174,22 @@ class _PortablePlayerOperations:
             previous = result.binding_replacement
 
             async def confirm(
-                choice: Literal["confirm", "keep"], context: MessageInputContext,
+                choice: Literal["confirm", "keep"],
+                context: MessageInputContext,
             ) -> PortableReply:
                 self.service.save_binding_choice(
-                    context.message.actor, pending,
-                    accepted=choice == "confirm", replacing_existing=True,
+                    context.message.actor,
+                    pending,
+                    accepted=choice == "confirm",
+                    replacing_existing=True,
                 )
                 return _prepare_player_query_reply(
-                    self.service, self.sessions, context,
+                    self.service,
+                    self.sessions,
+                    context,
                     replace(result, offer_binding=False, binding_replacement=None),
-                    self.features, self.extensions,
+                    self.features,
+                    self.extensions,
                 )
 
             prompt = OutboundMessage.from_text(
@@ -184,18 +197,26 @@ class _PortablePlayerOperations:
                 f"新的默认米米号：{pending.player_id}\n"
                 "1. 确认换绑\n2. 保留原绑定\n0. 退出"
             )
-            reply = PortableReply(self.sessions.offer_menu(
-                context,
-                PortableMenuSpec(
-                    choices=("confirm", "keep"), select=confirm, prompt=prompt,
-                    labels=("确认换绑", "保留原绑定"),
-                    exit_message="已保留原绑定。",
-                ),
-            ))
+            reply = PortableReply(
+                self.sessions.offer_menu(
+                    context,
+                    PortableMenuSpec(
+                        choices=("confirm", "keep"),
+                        select=confirm,
+                        prompt=prompt,
+                        labels=("确认换绑", "保留原绑定"),
+                        exit_message="已保留原绑定。",
+                    ),
+                )
+            )
         else:
             reply = _prepare_player_query_reply(
-                self.service, self.sessions, context, result,
-                self.features, self.extensions,
+                self.service,
+                self.sessions,
+                context,
+                result,
+                self.features,
+                self.extensions,
             )
         return reply
 
@@ -205,9 +226,7 @@ class _PortablePlayerOperations:
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text
-        return OutboundMessage.from_text(
-            self.service.unbind(context.message.actor)
-        )
+        return OutboundMessage.from_text(self.service.unbind(context.message.actor))
 
     async def shortcut(
         self,
@@ -218,13 +237,20 @@ class _PortablePlayerOperations:
         if parsed is None:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
             raise ValueError(msg)
+
         async def query(player_id: int, context: MessageInputContext) -> PortableReply:
             return await _player_shortcut_reply(
-                self.service, PlayerShortcutCommand(parsed.kind, player_id), context,
+                self.service,
+                PlayerShortcutCommand(parsed.kind, player_id),
+                context,
             )
 
         return await select_player_target(
-            parsed.player_reference, context, self.resolver, self.sessions, query,
+            parsed.player_reference,
+            context,
+            self.resolver,
+            self.sessions,
+            query,
             title="请选择要查询的玩家：",
         )
 
@@ -236,8 +262,11 @@ async def _player_shortcut_reply(
 ) -> PortableReply:
     async def execute(send_status: ProgressReporter) -> OutboundMessage:
         reply = await execute_player_shortcut(
-            service, command, context.message.actor,
-            conversation=context.message.conversation, send_status=send_status,
+            service,
+            command,
+            context.message.actor,
+            conversation=context.message.conversation,
+            send_status=send_status,
         )
         return reply.to_outbound()
 
@@ -261,9 +290,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
 
     player_message = pending.player_message
     if result.offer_binding:
-        player_message += (
-            f"\n\n发送“绑定米米号{pending.player_id}”可设为默认米米号。"
-        )
+        player_message += f"\n\n发送“绑定米米号{pending.player_id}”可设为默认米米号。"
     requests = available_player_detail_requests(
         has_collection=pending.section_plan.has_collection,
         has_peak=pending.section_plan.needs_peak_section,
@@ -304,7 +331,10 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             ).message
         if isinstance(command, PlayerDetailExtensionAction):
             return await query_player_extension(
-                command, pending.player_id, context, features,
+                command,
+                pending.player_id,
+                context,
+                features,
             )
         return await _player_shortcut_reply(service, command, context)
 
@@ -402,18 +432,14 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
 
 async def _select_shared_player_detail(
     command: (
-        PlayerShortcutCommand
-        | PlayerDetailExtensionAction
-        | Literal["bind", "decline"]
+        PlayerShortcutCommand | PlayerDetailExtensionAction | Literal["bind", "decline"]
     ),
     context: MessageInputContext,
     *,
     sessions: PortableQuerySessions,
     features: FeatureService,
     select: MenuSelect[
-        PlayerShortcutCommand
-        | PlayerDetailExtensionAction
-        | Literal["bind", "decline"]
+        PlayerShortcutCommand | PlayerDetailExtensionAction | Literal["bind", "decline"]
     ],
 ) -> OutboundMessage | PortableReply:
     if isinstance(command, str):
@@ -436,9 +462,7 @@ async def _select_shared_player_detail(
 
 def _player_detail_semantic_request(
     command: (
-        PlayerShortcutCommand
-        | PlayerDetailExtensionAction
-        | Literal["bind", "decline"]
+        PlayerShortcutCommand | PlayerDetailExtensionAction | Literal["bind", "decline"]
     ),
     player_id: int,
 ) -> SemanticRequest | None:
@@ -446,9 +470,7 @@ def _player_detail_semantic_request(
         return None
     request = player_shortcut_semantic_request(
         kind=(
-            command.kind
-            if isinstance(command, PlayerShortcutCommand)
-            else "collection"
+            command.kind if isinstance(command, PlayerShortcutCommand) else "collection"
         ),
         player_id=player_id,
         source=SemanticRequestSource.MENU,

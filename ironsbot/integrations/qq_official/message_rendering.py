@@ -27,6 +27,7 @@ class QQOfficialOutboundMessageError(ValueError):
     def unsupported_part(cls, part: object) -> QQOfficialOutboundMessageError:
         return cls(f"Unsupported outbound part: {type(part).__name__}")
 
+
 @dataclass(frozen=True, slots=True)
 class QQOfficialTextPayload:
     content: str
@@ -80,9 +81,7 @@ def render_qq_official_outbound_message(
         [QQOfficialTextPayload("".join(text))] if text else []
     )
     rendered = (
-        [*images, *text_payloads]
-        if text_after_image
-        else [*text_payloads, *images]
+        [*images, *text_payloads] if text_after_image else [*text_payloads, *images]
     )
     if supports_interactive_prompts:
         _attach_prompt(rendered, message.prompt)
@@ -107,9 +106,7 @@ def _attach_prompt(
 
 
 def _prompt_text(prompt: PromptSession) -> str:
-    choices = "\n".join(
-        f"{choice.id}. {choice.label}" for choice in prompt.choices
-    )
+    choices = "\n".join(f"{choice.id}. {choice.label}" for choice in prompt.choices)
     return f"请选择：\n{choices}\n\n回复序号选择"
 
 

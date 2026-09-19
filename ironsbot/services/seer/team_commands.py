@@ -56,11 +56,13 @@ def build_team_query_operation(
         reference = reference.removeprefix("米米号").strip()
 
         async def query_player(
-            player_id: int, context: MessageInputContext,
+            player_id: int,
+            context: MessageInputContext,
         ) -> OutboundMessage:
             message = context.message
             actor = TeamQueryActor(
-                message.actor, message.conversation,
+                message.actor,
+                message.conversation,
                 message.group_role in GROUP_MANAGER_ROLES
                 or features.is_actor_superuser(message.actor),
             )

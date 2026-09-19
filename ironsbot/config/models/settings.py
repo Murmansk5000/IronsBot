@@ -57,8 +57,7 @@ VALID_LOG_LEVELS = {
     "CRITICAL",
 }
 _QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR = (
-    "proactive_messages must be true when "
-    "team_resource_subscription is enabled"
+    "proactive_messages must be true when team_resource_subscription is enabled"
 )
 _QQ_OFFICIAL_ACCOUNT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
@@ -87,9 +86,7 @@ class SettingsReferenceError(ValueError):
 class QQOfficialConfigError(ValueError):
     @classmethod
     def invalid_account_name(cls) -> QQOfficialConfigError:
-        return cls(
-            "bot.qq_official account names must match [A-Za-z][A-Za-z0-9_]*"
-        )
+        return cls("bot.qq_official account names must match [A-Za-z][A-Za-z0-9_]*")
 
     @classmethod
     def duplicate_app_id(cls, app_id: str) -> QQOfficialConfigError:
@@ -109,6 +106,7 @@ class QQOfficialConfigError(ValueError):
     @classmethod
     def empty_target_openid(cls) -> QQOfficialConfigError:
         return cls("QQ Official target OpenID must not be empty")
+
 
 def _command_starts(value: object) -> list[str]:
     if value is None:
@@ -370,6 +368,7 @@ class BotConfig(BaseModel):
     @classmethod
     def normalize_command_start(cls, value: object) -> object:
         return _command_starts(value)
+
 
 class PathsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

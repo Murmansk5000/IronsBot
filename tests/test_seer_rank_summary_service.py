@@ -286,16 +286,13 @@ async def test_partial_summary_preserves_failure_and_propagates_cancellation(
 
 
 @pytest.mark.asyncio
-async def test_peak_rank_summary_does_not_linearly_rescan_stale_candidate(
-) -> None:
+async def test_peak_rank_summary_does_not_linearly_rescan_stale_candidate() -> None:
     calls: list[tuple[int, int | None]] = []
 
     async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
         key = _int_kwarg(kwargs, "key")
         target_score = kwargs.get("target_score")
-        calls.append(
-            (key, target_score if isinstance(target_score, int) else None)
-        )
+        calls.append((key, target_score if isinstance(target_score, int) else None))
         if key == WILD_PEAK_USER_RANK_KEY:
             return RankLookupResult(
                 title=str(kwargs["title"]),
@@ -325,8 +322,7 @@ async def test_peak_rank_summary_does_not_linearly_rescan_stale_candidate(
 
 
 @pytest.mark.asyncio
-async def test_peak_rank_summary_reaches_expert_after_earlier_score_misses(
-) -> None:
+async def test_peak_rank_summary_reaches_expert_after_earlier_score_misses() -> None:
     calls: list[int] = []
 
     async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
@@ -362,8 +358,7 @@ async def test_peak_rank_summary_reaches_expert_after_earlier_score_misses(
 
 
 @pytest.mark.asyncio
-async def test_peak_rank_summary_does_not_report_restricted_cache_miss_as_unranked(
-) -> None:
+async def test_peak_rank_summary_keeps_restricted_cache_miss_unknown() -> None:
     async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
         result = RankLookupResult(
             title=str(kwargs["title"]),
@@ -391,8 +386,9 @@ async def test_peak_rank_summary_does_not_report_restricted_cache_miss_as_unrank
 
 
 @pytest.mark.asyncio
-async def test_peak_rank_summary_queries_current_season_without_candidate_score(
-) -> None:
+async def test_peak_rank_summary_queries_current_season_without_candidate_score() -> (
+    None
+):
     calls: list[dict[str, object]] = []
 
     async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
