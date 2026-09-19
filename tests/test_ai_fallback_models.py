@@ -3,13 +3,14 @@ import asyncio
 from pytest import MonkeyPatch
 
 from ironsbot.app.ai_health import check_configured_ai_api
-from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.ai import AiConfig, AiProviderConfig
 from ironsbot.integrations.http.ai import (
     AiApiSettings,
     AiApiTestResult,
     HttpAiCompletionClient,
 )
 from ironsbot.services.ai.responses import AiResponseResult
+from tests.helpers.ai import configured_ai_config
 
 
 class _Response:
@@ -40,16 +41,15 @@ class _Client:
 
 
 def test_ai_config_deduplicates_models_in_priority_order() -> None:
-    config = AiConfig(
-        model=" primary ",
-        fallback_models=["backup", "primary", "backup"],
+    config = configured_ai_config(
+        models=(" primary ", "backup", "primary", "backup"),
     )
 
-    assert config.models == ("primary", "backup")
+    assert config.providers["test"].models == ["primary", "backup"]
 
 
 def test_completion_tries_fallback_after_api_error() -> None:
-    config = AiConfig(model="primary", fallback_models=["backup"])
+    config = configured_ai_config(models=("primary", "backup"))
     client = _Client()
 
     result = asyncio.run(HttpAiCompletionClient(client, config).complete([]))
@@ -89,7 +89,7 @@ def test_startup_check_records_first_healthy_model(monkeypatch: MonkeyPatch) -> 
         fake_check,
     )
     notice = Notice()
-    config = AiConfig(api_key="secret", model="primary", fallback_models=["backup"])
+    config = configured_ai_config(api_key="secret", models=("primary", "backup"))
 
     asyncio.run(
         check_configured_ai_api(config, startup_notice=notice)
@@ -100,7 +100,9 @@ def test_startup_check_records_first_healthy_model(monkeypatch: MonkeyPatch) -> 
         (
             "startup_ai_api_check",
             "AI API startup check",
-            "AI API 检查通过。\n模型：backup\nHTTP：200\n耗时：12 ms",
+            "AI API 检查通过。\n"
+            "提供商/模型：test/backup\n"
+            "HTTP：200\n耗时：12 ms",
         )
     ]
 
@@ -113,13 +115,54 @@ def test_completion_returns_last_api_error_when_all_models_fail() -> None:
     result = asyncio.run(
         HttpAiCompletionClient(
             FailingClient(),
-            AiConfig(model="primary", fallback_models=["backup"]),
+            configured_ai_config(models=("primary", "backup")),
         ).complete([])
     )
 
     assert result == AiResponseResult(
         status_code=500,
+        provider="test",
+        model="backup",
         error_kind="http",
         error_title="接口返回异常",
         error_detail="nope",
     )
+
+
+def test_completion_uses_next_provider_after_auth_failure() -> None:
+    class ProviderClient:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        async def post(self, url: str, *_: object, **__: object) -> _Response:
+            self.urls.append(url)
+            if "primary.test" in url:
+                return _Response(401, {"error": {"message": "bad key"}})
+            return _Response(200, {"choices": [{"message": {"content": "OK"}}]})
+
+    config = AiConfig(
+        provider_order=["primary", "backup"],
+        providers={
+            "primary": AiProviderConfig(
+                api_key="first",
+                base_url="https://primary.test/v1",
+                models=["one", "two"],
+            ),
+            "backup": AiProviderConfig(
+                api_key="second",
+                base_url="https://backup.test/v1",
+                models=["three"],
+            ),
+        },
+    )
+    client = ProviderClient()
+
+    result = asyncio.run(HttpAiCompletionClient(client, config).complete([]))
+
+    assert result.ok
+    assert result.provider == "backup"
+    assert result.model == "three"
+    assert client.urls == [
+        "https://primary.test/v1/chat/completions",
+        "https://backup.test/v1/chat/completions",
+    ]

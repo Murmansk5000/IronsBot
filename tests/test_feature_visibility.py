@@ -11,6 +11,7 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.features import (
     FeatureConfig,
     build_feature_service,
@@ -21,6 +22,7 @@ from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.services.help_menu import visible_help_entries
+from tests.helpers.ai import configured_ai_config
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -55,7 +57,7 @@ def _settings(
             superuser_bypass=False,
         )
     )
-    settings.ai.api_key = "test-key" if ai_key_configured else ""
+    settings.ai = configured_ai_config() if ai_key_configured else AiConfig()
     settings.ai.intent_actions_enabled = ai_intent_enabled
     settings.seer.team_resource.enabled = team_resource_enabled
     if messaging_enabled:

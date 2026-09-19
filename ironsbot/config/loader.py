@@ -23,6 +23,14 @@ SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
 QQ_OFFICIAL_APP_ID_ENV_PREFIX = "QQ_OFFICIAL_APP_ID_"
 QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
 ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX = "ONEBOT_TRUSTED_OFFICIAL_BOT_"
+AI_KEY_ENV_PREFIX = "AI_KEY_"
+LEGACY_AI_KEY_ERROR = (
+    "AI_KEY is retired; use AI_KEY_<PROVIDER> for a provider declared under "
+    "ai.providers"
+)
+AI_PROVIDER_ENV_COLLISION_ERROR = (
+    "AI provider aliases collide as environment names"
+)
 _ONEBOT_ENV_PATHS = (
     ("ONEBOT_ENABLED", ("bot", "onebot", "enabled")),
     ("ONEBOT_SEND_MESSAGES", ("bot", "onebot", "send_messages")),
@@ -33,7 +41,6 @@ _ONEBOT_ENV_PATHS = (
 )
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
-    ("AI_KEY", ("ai", "api_key")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
     ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
     (
@@ -45,6 +52,53 @@ _SECRET_ENV_PATHS = (
         ("operations", "docker_update", "registry_token"),
     ),
 )
+
+
+def _inject_ai_provider_credentials(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    legacy_key = str(env.get("AI_KEY", "")).strip()
+    if legacy_key:
+        raise ValueError(LEGACY_AI_KEY_ERROR)
+
+    ai = data.get("ai")
+    providers = ai.get("providers") if isinstance(ai, dict) else None
+    if not isinstance(providers, dict):
+        providers = {}
+
+    declared_names = {str(name).upper(): str(name) for name in providers}
+    if len(declared_names) != len(providers):
+        raise ValueError(AI_PROVIDER_ENV_COLLISION_ERROR)
+    for alias, provider in providers.items():
+        if isinstance(provider, dict) and "api_key" in provider:
+            environment_name = str(alias).upper()
+            raise ValueError(  # noqa: TRY003
+                f"ai.providers.{alias}.api_key is a deployment credential and "
+                f"must be set with {AI_KEY_ENV_PREFIX}{environment_name}"
+            )
+
+    environment_names = {
+        key[len(AI_KEY_ENV_PREFIX) :].upper()
+        for key, value in env.items()
+        if key.startswith(AI_KEY_ENV_PREFIX) and str(value).strip()
+    }
+    unknown_names = sorted(environment_names - declared_names.keys())
+    if unknown_names:
+        raise ValueError(
+            "AI environment keys reference undeclared providers: "
+            + ", ".join(unknown_names)
+        )
+
+    for environment_name in environment_names:
+        alias = declared_names[environment_name]
+        provider = providers[alias]
+        if not isinstance(provider, dict):
+            continue
+        provider["api_key"] = str(
+            env[AI_KEY_ENV_PREFIX + environment_name]
+        ).strip()
 
 
 def _inject_qq_official_credentials(
@@ -364,6 +418,7 @@ def load_settings(
             path=field_path,
             env=values,
         )
+    _inject_ai_provider_credentials(data, env=values)
     _inject_onebot_deployment_settings(data, env=values)
     _inject_qq_official_credentials(data, env=values)
     _inject_player_account_passwords(data, env=values)
