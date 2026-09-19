@@ -36,6 +36,18 @@ class OfficialIdentity:
     scope_id: str = ""
 
 
+def canonical_official_identity(identity: OfficialIdentity) -> OfficialIdentity:
+    """Return the stable principal key used for cross-platform links."""
+
+    if identity.kind != "member" or not identity.scope_id:
+        return identity
+    return OfficialIdentity(
+        app_id=identity.app_id,
+        kind=identity.kind,
+        openid=identity.openid,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class CrossPlatformIdentityLink:
     onebot_qq_id: str
@@ -62,6 +74,14 @@ class IdentityLinkStore(Protocol):
         now: float,
     ) -> CrossPlatformIdentityLink: ...
 
+    async def link_verified(
+        self,
+        *,
+        onebot_qq_id: str,
+        official: OfficialIdentity,
+        now: float,
+    ) -> CrossPlatformIdentityLink: ...
+
     async def for_onebot(
         self,
         onebot_qq_id: str,
@@ -71,6 +91,8 @@ class IdentityLinkStore(Protocol):
         self,
         official: OfficialIdentity,
     ) -> CrossPlatformIdentityLink | None: ...
+
+    async def all_links(self) -> tuple[CrossPlatformIdentityLink, ...]: ...
 
     async def revoke_onebot(self, onebot_qq_id: str, *, now: float) -> int: ...
 

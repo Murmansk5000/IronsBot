@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 from qqbot_agent_sdk.dto import (
     MediaInfo,
+    MessageReference,
     MessageToCreate,
     QQMessageType,
 )
@@ -180,6 +181,7 @@ class TencentQQClient:
         else:  # pragma: no cover - closed union guarded by renderer tests
             msg = f"Unsupported QQ Official payload: {type(payload).__name__}"
             raise TypeError(msg)
+        _attach_message_reference(message, payload, message_id=message_id)
         if scope == "group":
             if keyboard is None:
                 return await self.api.post_group_message(target_id, message)
@@ -202,6 +204,20 @@ def _response_id(response: Mapping[str, object]) -> str:
         msg = "QQ Official send response returned no message id"
         raise RuntimeError(msg)
     return value
+
+
+def _attach_message_reference(
+    message: MessageToCreate,
+    payload: QQOfficialPayload,
+    *,
+    message_id: str | None,
+) -> None:
+    if payload.reference_id is None:
+        return
+    if message_id is None:
+        msg = "QQ Official source references require a passive reply"
+        raise ValueError(msg)
+    message.message_reference = MessageReference(message_id=payload.reference_id)
 
 
 def _media_fallback_message(

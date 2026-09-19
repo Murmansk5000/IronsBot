@@ -30,10 +30,8 @@ def _private(user_id: int) -> ConversationRef:
 
 def test_feature_service_reads_feature_config() -> None:
     feature_config = FeatureConfig(
-        group_aliases={"main": 123},
-        user_aliases={"owner": 456},
-        group_policy={"main": ["seer"]},
-        user_policy={"owner": ["ai_chat"]},
+        group_policy={"123": ["seer"]},
+        user_policy={"456": ["ai_chat"]},
         superuser_bypass=False,
     )
     feature_service = build_feature_service(feature_config, frozenset())
@@ -47,14 +45,47 @@ def test_feature_service_reads_feature_config() -> None:
 def test_user_policy_applies_to_the_same_actor_in_group_chat() -> None:
     feature_service = build_feature_service(
         FeatureConfig(
-            user_aliases={"owner": 456},
-            user_policy={"owner": ["ai_chat"]},
+            user_policy={"456": ["ai_chat"]},
         ),
         (),
     )
 
     assert feature_service.is_feature_allowed(_actor(456), _group(123), "ai_chat")
     assert not feature_service.is_feature_allowed(_actor(789), _group(123), "ai_chat")
+
+
+def test_verified_official_identity_inherits_onebot_user_policy() -> None:
+    feature_service = build_feature_service(
+        FeatureConfig(
+            user_policy={"456": ["ai_chat"]},
+            superuser_bypass=True,
+        ),
+        (456,),
+    )
+    official_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "group-openid",
+        "app-id",
+    )
+
+    feature_service.register_identity_link(
+        official_app_id="app-id",
+        official_openid="member-openid",
+        onebot_qq_id="456",
+    )
+
+    assert feature_service.actor_has_feature(official_member, "ai_chat")
+    assert feature_service.is_actor_superuser(official_member)
+
+    feature_service.unregister_identity_link(
+        official_app_id="app-id",
+        official_openid="member-openid",
+    )
+
+    assert not feature_service.actor_has_feature(official_member, "ai_chat")
+    assert not feature_service.is_actor_superuser(official_member)
 
 
 def test_feature_service_exposes_only_explicitly_configured_feature_keys() -> None:
@@ -142,8 +173,7 @@ def test_feature_service_reads_query_bundle() -> None:
     assert "custom" not in FEATURE_BUNDLES
 
     feature_config = FeatureConfig(
-        group_aliases={"main": 123},
-        group_policy={"main": ["query"]},
+        group_policy={"123": ["query"]},
         superuser_bypass=False,
     )
     feature_service = build_feature_service(feature_config, frozenset())
@@ -169,12 +199,11 @@ def test_seer_activity_is_the_only_activity_feature_bundle() -> None:
 
 def test_feature_service_expands_configured_bundles() -> None:
     feature_config = FeatureConfig(
-        group_aliases={"main": 123},
         bundles={
             "lite": ["seer_player", "seer_rank"],
             "standard": ["lite", "image", "bili_query"],
         },
-        group_policy={"main": ["standard"]},
+        group_policy={"123": ["standard"]},
         superuser_bypass=False,
     )
     feature_service = build_feature_service(feature_config, frozenset())
@@ -188,9 +217,8 @@ def test_feature_service_expands_configured_bundles() -> None:
 
 def test_message_action_features_are_registered_for_bundles_and_policies() -> None:
     feature_config = FeatureConfig(
-        group_aliases={"main": 123},
         bundles={"custom_links": ["seerinfo_link"]},
-        group_policy={"main": ["custom_links"]},
+        group_policy={"123": ["custom_links"]},
         superuser_bypass=False,
     )
     feature_service = build_feature_service(
@@ -285,8 +313,7 @@ def test_seer_bundle_enables_all_seer_subfeatures() -> None:
     assert FEATURE_BUNDLES["seer"] == SEER_FEATURES
 
     feature_config = FeatureConfig(
-        group_aliases={"main": 123},
-        group_policy={"main": ["seer"]},
+        group_policy={"123": ["seer"]},
         superuser_bypass=False,
     )
     feature_service = build_feature_service(feature_config, frozenset())
@@ -300,8 +327,7 @@ def test_all_feature_bundle_does_not_include_admin_notice() -> None:
     assert "admin_notice" not in FEATURE_BUNDLES["all"]
 
     feature_config = FeatureConfig(
-        group_aliases={"main": 123},
-        group_policy={"main": ["all"]},
+        group_policy={"123": ["all"]},
         superuser_bypass=False,
     )
     feature_service = build_feature_service(feature_config, frozenset())

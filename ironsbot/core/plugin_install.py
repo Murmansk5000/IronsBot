@@ -60,6 +60,7 @@ class PluginContribution:
     help: HelpEntry | None = None
     commands: tuple[CommandContract, ...] = ()
     install: PluginInstall | None = None
+    install_without_onebot_messages: bool = False
     hooks: PluginHooks = PluginHooks()
 
 

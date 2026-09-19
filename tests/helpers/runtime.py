@@ -82,8 +82,8 @@ def build_test_runtime(  # noqa: PLR0913
     push_config = push_unsubscribe or PushUnsubscribeConfig()
     tasks = TaskOwner()
     onebot_references = OneBotReferenceResolver(
-        resolved_feature_config.group_aliases,
-        resolved_feature_config.user_aliases,
+        {},
+        {},
     )
     outbound = GroupOutboundRateLimitService(
         outbound_config or OutboundRateLimitConfig(),
