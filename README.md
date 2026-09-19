@@ -633,6 +633,12 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
 
+### 只校验配置
+
+可运行 `python -m ironsbot.config_check --config <TOML路径>` 校验配置而不启动应用。
+默认按正常启动顺序读取 `.env` 与 `.env.<ENVIRONMENT>`；只使用已注入环境变量时加 `--no-dotenv`。
+成功输出发送平台、账号别名及 AI 提供商别名/模型数量，不输出密钥值；配置错误返回退出码 `2`。
+
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：

@@ -90,6 +90,8 @@ class SqliteLuckySkinWatchPreferenceStore:
                 """,
                 (*ActorIdentityColumns.from_actor(actor).values(), payload, now, now),
             )
+
+
 def _decode_skin_ids(value: object) -> tuple[int, ...]:
     try:
         decoded = json.loads(str(value))

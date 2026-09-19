@@ -68,9 +68,7 @@ def test_configured_ai_key_is_checked_on_startup(
         (
             "startup_ai_api_check",
             "AI API startup check",
-            "AI API 检查通过。\n"
-            "提供商/模型：test/test-model\n"
-            "HTTP：200\n耗时：42 ms",
+            "AI API 检查通过。\n提供商/模型：test/test-model\nHTTP：200\n耗时：42 ms",
         )
     ]
 

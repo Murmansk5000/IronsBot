@@ -72,8 +72,7 @@ def format_rank_intervals(intervals: Sequence[tuple[int, int]]) -> str:
 
     shown = intervals[:MAX_CACHE_INTERVALS_SHOWN]
     text = "、".join(
-        str(start) if start == end else f"{start}-{end}"
-        for start, end in shown
+        str(start) if start == end else f"{start}-{end}" for start, end in shown
     )
     if len(intervals) > len(shown):
         text += f"、...另 {len(intervals) - len(shown)} 段"

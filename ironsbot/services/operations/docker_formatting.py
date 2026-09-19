@@ -15,6 +15,7 @@ DOCKER_TIMESTAMP_PATTERN = re.compile(
     r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
 )
 
+
 def format_docker_update_reply(
     *,
     container_name: str,

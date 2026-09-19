@@ -59,9 +59,7 @@ async def test_fetch_bili_account_name_uses_public_card_name() -> None:
             },
         )
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler)
-    ) as client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         name = await fetch_bili_account_name(client, 1310714247)
 
     assert name == "赛尔号官号"
@@ -106,9 +104,7 @@ def test_parse_bili_login_qrcode_response() -> None:
 
 
 def test_build_bili_login_qrcode_message_parts_encodes_qr_image() -> None:
-    parts = build_bili_login_qrcode_message_parts(
-        "https://passport.example.test/qr"
-    )
+    parts = build_bili_login_qrcode_message_parts("https://passport.example.test/qr")
 
     assert "二维码约3分钟内有效" in parts.tip_text
     assert not parts.image_error

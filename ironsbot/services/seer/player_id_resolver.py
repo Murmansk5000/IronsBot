@@ -110,7 +110,10 @@ class PlayerIdResolver:
         return self._lookup_reference(reference, actor, conversation) is not None
 
     def reference_choices(
-        self, reference: str, actor: ActorRef, conversation: ConversationRef,
+        self,
+        reference: str,
+        actor: ActorRef,
+        conversation: ConversationRef,
     ) -> tuple[PlayerReferenceChoice, ...]:
         """Exact references take precedence over visible substring candidates."""
         player_id = self._lookup_reference(reference, actor, conversation)
@@ -121,7 +124,10 @@ class PlayerIdResolver:
         return self._reference_search(reference, actor, conversation)
 
     def has_reference_choices(
-        self, reference: str, actor: ActorRef, conversation: ConversationRef,
+        self,
+        reference: str,
+        actor: ActorRef,
+        conversation: ConversationRef,
     ) -> bool:
         return bool(self.reference_choices(reference, actor, conversation))
 
