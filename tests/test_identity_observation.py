@@ -126,6 +126,30 @@ async def test_two_unique_observations_link_group_member_silently(
     )
     assert link is not None
     assert link.onebot_qq_id == str(MEMBER_QQ)
+    assert link.official.scope_id == ""
+
+
+@pytest.mark.asyncio
+async def test_observed_member_link_is_shared_across_groups(tmp_path: Path) -> None:
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    await store.link_verified(
+        onebot_qq_id=str(MEMBER_QQ),
+        official=OfficialIdentity(
+            APP_ID,
+            "member",
+            "member-openid",
+            "first-group",
+        ),
+        now=100.0,
+    )
+
+    link = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "member-openid", "second-group")
+    )
+
+    assert link is not None
+    assert link.onebot_qq_id == str(MEMBER_QQ)
+    assert link.official.scope_id == ""
 
 
 @pytest.mark.asyncio

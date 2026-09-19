@@ -17,6 +17,7 @@ from ironsbot.services.identity_link_store import (
     IdentityLinkConflictError,
     IdentityLinkStore,
     OfficialIdentity,
+    canonical_official_identity,
 )
 
 if TYPE_CHECKING:
@@ -221,11 +222,13 @@ def _onebot_qq_id(actor: ActorRef) -> str:
 def _official_identity(actor: ActorRef) -> OfficialIdentity:
     if actor.platform is not Platform.QQ_OFFICIAL or actor.account_id is None:
         raise IdentityLinkingPlatformError.official_required()
-    return OfficialIdentity(
-        app_id=actor.account_id,
-        kind=actor.kind,
-        openid=actor.id,
-        scope_id=actor.scope_id or "",
+    return canonical_official_identity(
+        OfficialIdentity(
+            app_id=actor.account_id,
+            kind=actor.kind,
+            openid=actor.id,
+            scope_id=actor.scope_id or "",
+        )
     )
 
 

@@ -14,6 +14,7 @@ from ironsbot.services.identity_link_store import (
     IdentityLinkChallengeInvalidError,
     IdentityLinkConflictError,
     OfficialIdentity,
+    canonical_official_identity,
 )
 
 if TYPE_CHECKING:
@@ -75,7 +76,72 @@ _MIGRATIONS = (
             """,
         ),
     ),
+    SqliteMigration(
+        2,
+        callback=lambda connection: _canonicalize_member_links(connection),  # noqa: PLW0108
+    ),
 )
+
+
+def _canonicalize_member_links(connection: sqlite3.Connection) -> None:
+    conflicts = connection.execute(
+        """
+        SELECT official_app_id, official_openid
+        FROM cross_platform_identity_links
+        WHERE official_kind = 'member'
+        GROUP BY official_app_id, official_openid
+        HAVING COUNT(DISTINCT onebot_qq_id) > 1
+        """
+    ).fetchall()
+    if conflicts:
+        msg = (
+            "conflicting group-scoped identity links prevent canonical member "
+            "migration"
+        )
+        raise RuntimeError(msg)
+    connection.execute(
+        """
+        CREATE TABLE cross_platform_identity_links_v2 (
+            official_app_id TEXT NOT NULL,
+            official_kind TEXT NOT NULL
+                CHECK (official_kind IN ('member', 'user')),
+            official_openid TEXT NOT NULL,
+            official_scope_id TEXT NOT NULL DEFAULT '',
+            onebot_qq_id TEXT NOT NULL,
+            linked_at REAL NOT NULL,
+            PRIMARY KEY (
+                official_app_id, official_kind,
+                official_openid, official_scope_id
+            )
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO cross_platform_identity_links_v2 (
+            official_app_id, official_kind, official_openid,
+            official_scope_id, onebot_qq_id, linked_at
+        )
+        SELECT official_app_id, official_kind, official_openid,
+               CASE WHEN official_kind = 'member' THEN '' ELSE official_scope_id END,
+               onebot_qq_id, MAX(linked_at)
+        FROM cross_platform_identity_links
+        GROUP BY official_app_id, official_kind, official_openid,
+                 CASE WHEN official_kind = 'member' THEN '' ELSE official_scope_id END,
+                 onebot_qq_id
+        """
+    )
+    connection.execute("DROP TABLE cross_platform_identity_links")
+    connection.execute(
+        "ALTER TABLE cross_platform_identity_links_v2 "
+        "RENAME TO cross_platform_identity_links"
+    )
+    connection.execute(
+        """
+        CREATE INDEX cross_platform_identity_links_onebot
+        ON cross_platform_identity_links (onebot_qq_id, official_app_id)
+        """
+    )
 
 
 @dataclass(slots=True)
@@ -173,6 +239,7 @@ class SqliteIdentityLinkStore:
         official: OfficialIdentity,
         now: float,
     ) -> CrossPlatformIdentityLink:
+        official = canonical_official_identity(official)
         with self._database.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             challenge = connection.execute(
@@ -266,6 +333,7 @@ class SqliteIdentityLinkStore:
         official: OfficialIdentity,
         now: float,
     ) -> CrossPlatformIdentityLink:
+        official = canonical_official_identity(official)
         with self._database.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
@@ -350,6 +418,7 @@ class SqliteIdentityLinkStore:
         self,
         official: OfficialIdentity,
     ) -> CrossPlatformIdentityLink | None:
+        official = canonical_official_identity(official)
         with self._database.connect() as connection:
             row = connection.execute(
                 """
@@ -398,6 +467,7 @@ class SqliteIdentityLinkStore:
             return await asyncio.to_thread(self._revoke_official_sync, official, now)
 
     def _revoke_official_sync(self, official: OfficialIdentity, now: float) -> bool:
+        official = canonical_official_identity(official)
         link = self._for_official_sync(official)
         if link is None:
             return False

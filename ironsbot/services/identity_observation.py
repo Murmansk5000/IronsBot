@@ -15,6 +15,7 @@ from ironsbot.core.platform import Platform, reference_digest
 from ironsbot.services.identity_link_store import (
     IdentityLinkConflictError,
     OfficialIdentity,
+    canonical_official_identity,
 )
 
 if TYPE_CHECKING:
@@ -105,11 +106,13 @@ class SilentIdentityObservationService:
         self._pending.append(
             _PendingReply(
                 token,
-                OfficialIdentity(
-                    incoming.actor.account_id,
-                    "member",
-                    incoming.actor.id,
-                    incoming.conversation.id,
+                canonical_official_identity(
+                    OfficialIdentity(
+                        incoming.actor.account_id,
+                        "member",
+                        incoming.actor.id,
+                        incoming.conversation.id,
+                    )
                 ),
                 onebot_group_id,
                 text,
