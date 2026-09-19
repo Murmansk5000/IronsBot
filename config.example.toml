@@ -5,7 +5,7 @@
 # See README.md "Feature 对照表" for every feature key and its meaning.
 #
 # 快速阅读顺序：
-# 1. [features.group_aliases] / [features.user_aliases]
+# 1. [identities.groups] / [identities.users]
 #    先给群号、QQ 号起短名字，后面策略里都用这些短名字。
 # 2. [features.bundles]
 #    可选：把经常重复的功能清单定义成 standard、lite 等自定义组合。
@@ -69,10 +69,13 @@ plugin_manifest = "full"
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
+# EN: Optional trusted identity observation is off by default; configure every enabled official account alias with its trusted OneBot bot identity before enabling it.
+# ZH: 可选的受信身份观察验证默认关闭；启用前须为每个已启用官方账号别名配置其受信 OneBot 机器人标识。
+# [bot.onebot]
+# identity_verification = false
+# trusted_official_bots = {}
+
 [bot.qq_official]
-# EN: Enable one or more QQ Official Bot accounts in this process.
-# ZH: 在同一进程启用一个或多个 QQ 官方机器人账号。
-enabled = false
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
 sandbox = false
@@ -90,7 +93,6 @@ startup_timeout_seconds = 15.0
 #     此示例的 AppID 和 AppSecret 分别使用 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT
 #     和 QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
 [bot.qq_official.accounts.example_bot]
-enabled = false
 # EN: A required account prevents application startup when it cannot become ready.
 #     Optional accounts remain observable as degraded and may recover later.
 # ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
@@ -106,9 +108,6 @@ custom_keyboards = false
 # EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-# EN: C2C user_openids with superuser bypass. These are not QQ numbers.
-# ZH: 私聊超级管理员的 user_openid；这里不是 QQ 号。
-superusers = []
 
 # EN: Optional account-scoped targets keyed by group/user alias or OpenID. Declaring a
 #     target also enables these extra features there; global features remain active.
@@ -124,29 +123,6 @@ superusers = []
 #     values are member aliases declared below or member_openids observed there.
 # ZH: 群聊超级管理员。键为群别名或群 OpenID，值为该群事件里的 member_openid，
 #     也可写下方声明的成员别名；不能填写私聊 user_openid。
-[bot.qq_official.accounts.example_bot.group_superusers]
-# group_a = ["owner"]
-
-# EN: Account-scoped endpoints for logical group/user aliases. Reusing a OneBot
-#     alias explicitly declares that both native IDs represent the same target.
-#     One native endpoint may belong to only one logical alias.
-# ZH: 逻辑群/用户别名在当前官方账号下的端点。同名 OneBot 别名与官方 OpenID
-#     会被视为同一个目标，共用 [features.group_policy] / user_policy；一个原生端点
-#     只能归属一个逻辑别名，重复映射会在启动时失败。
-[bot.qq_official.accounts.example_bot.group_aliases]
-# group_a = "example-group-openid"
-
-[bot.qq_official.accounts.example_bot.user_aliases]
-# owner = "example-c2c-user-openid"
-
-# EN: Group-scoped member endpoints. The first key is a group alias/OpenID;
-#     nested keys reuse logical user aliases. A member_openid is never treated
-#     as a C2C user_openid or a private-message destination.
-# ZH: 群成员端点。第一层是群别名/OpenID，第二层复用逻辑用户别名；member_openid
-#     只在该群内有效，绝不会当作私聊 user_openid 或私聊推送目标。
-[bot.qq_official.accounts.example_bot.group_member_aliases.group_a]
-# owner = "example-member-openid"
-
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
@@ -228,22 +204,21 @@ runtime_state = "data/state/runtime_state.sqlite"
 # Example: false
 superuser_bypass = true
 
-[features.group_aliases]
-# Default: empty table
-# EN: Logical group aliases and their unique OneBot QQ group endpoints.
-# ZH: 逻辑群别名及其唯一 OneBot QQ 群号端点；官方端点可复用同名别名。
-group_a = 987654321
-group_b = 876543210
+# EN: Logical identity endpoints preserve the original OneBot targets.
+# ZH: 逻辑身份端点保留原 OneBot 目标；不新增官方端点或权限。
+[identities.groups.group_a]
+qq = 987654321
 
-[features.user_aliases]
-# Default: empty table
-# EN: Logical user aliases and their unique OneBot QQ user endpoints.
-# ZH: 逻辑用户别名及其唯一 OneBot QQ 号端点；官方私聊和群成员端点可复用同名别名。
-owner = 1234567890
-user_a = 2345678901
-# Example automated account. Add the same alias to user_policy with blacklist so
-# its messages never trigger commands or AI handling.
-# blocked_bot = 3456789012
+[identities.groups.group_b]
+qq = 876543210
+
+# EN: Logical identity endpoints preserve the original OneBot targets.
+# ZH: 逻辑身份端点保留原 OneBot 目标；不新增官方端点或权限。
+[identities.users.owner]
+qq = 1234567890
+
+[identities.users.user_a]
+qq = 2345678901
 
 [features.bundles]
 # Default: empty table
@@ -921,13 +896,13 @@ main_bot = 111111111
 backup_bot = 222222222
 
 # EN: Keys may be group aliases or numeric group IDs.
-# ZH: 群别名来自 [features.group_aliases]，也可直接把 key 写成群号。
+# ZH: 群别名来自 [identities.groups]，也可直接把 key 写成群号。
 [messaging.bot_routing.groups]
 group_a = "main_bot"
 group_b = "backup_bot"
 
 # EN: Keys may be user aliases or numeric QQ user IDs.
-# ZH: 用户别名来自 [features.user_aliases]，也可直接把 key 写成 QQ 号。
+# ZH: 用户别名来自 [identities.users]，也可直接把 key 写成 QQ 号。
 [messaging.bot_routing.users]
 owner = "main_bot"
 user_a = "backup_bot"
@@ -1079,7 +1054,7 @@ timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
 # Add one table per QQ user allowed to query and receive a configured account's
-# window. `user` accepts a [features.user_aliases] alias or QQ ID. `account`
+# window. `user` accepts a [identities.users] alias or QQ ID. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must
 # bind that same player ID. `watched_skin_ids` accepts either the skin table ID
 # or its 140xxxx resource ID and seeds the user's watch list only once. Users

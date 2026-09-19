@@ -83,8 +83,8 @@ owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-`group_a/group_b` 和 `owner/user_a` 分别引用 `[features.group_aliases]`、
-`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
+`group_a/group_b` 和 `owner/user_a` 统一引用 `[identities.groups]`、
+`[identities.users]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
 `default_bot`；若默认机器人也未连接或没有配置，主动发送会明确失败并记录 warning，
 不会选择任意在线 OneBot 机器人。第一版只控制主动发送，不过滤接收事件；同一个群
 放入多个机器人时，它们仍可能同时收到并响应。
@@ -126,8 +126,9 @@ NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk
 发送 `0` 退出；已开通并启用自定义按钮的账号还会显示同一组快捷按钮。其中
 `下周预告` 同时验证官方图片回复链路。引用内容仅作为回复元数据，本次新输入仍按权限和会话规则处理；
 有效菜单支持引用后输入序号。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
-查询或绑定目标。OneBot 与 QQ 官方身份可通过短时单次令牌显式关联；程序不会根据
-昵称、头像、发言时间或消息记录猜测身份。
+查询或绑定目标。OneBot 与 QQ 官方身份默认通过短时单次令牌显式关联。
+可选的受信观察验证默认关闭，须显式配置 `bot.onebot.identity_verification`
+与 `bot.onebot.trusted_official_bots`，具体条件见下方说明。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
 同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
@@ -149,17 +150,17 @@ NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk
 
 ```toml
 [bot.qq_official]
-enabled = true
+# QQ 官方账号不使用 enabled 开关；App ID 与 Secret 由环境变量成对注入。
+# QQ_OFFICIAL_APP_ID_<账号别名大写> 与 QQ_OFFICIAL_SECRET_<账号别名大写>
+# 均未配置则不启用该账号，完整配置后自动启用，只配置其中一项会报错。
 sandbox = false
 startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.example_bot]
-enabled = true
 required = false
 proactive_messages = false
 custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-superusers = []
 
 [bot.qq_official.accounts.example_bot.group_policy]
 "群 OpenID" = ["seer_activity_push", "bili_push"]
@@ -182,11 +183,11 @@ Resume、平台重投或进程重启导致同一条指令执行两次；该状�
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
 
-跨平台使用同一个真实群或用户时，可以在 `features.group_aliases` / `user_aliases`
-声明 OneBot 端点，再在官方账号的 `group_aliases` / `user_aliases` 复用同一个别名。
-一条全局 `features.group_policy` / `user_policy` 会展开到该逻辑目标的所有显式端点，
-不需要再起 `official_admin` 之类的平台专用名字。群事件里的 `member_openid` 必须在
-`group_member_aliases.<群别名>` 下声明，它只在对应群内有效，不能用于私聊发送。
+跨平台使用同一个真实群或用户时，在 `[identities.groups.<别名>]` / `[identities.users.<别名>]`
+用 `qq` 声明 OneBot 端点，用 `official.<账号别名>` 声明该账号的 OpenID。
+一条全局 `features.group_policy` / `features.user_policy` 仍作用于该逻辑目标的显式端点；
+不再维护账号内 `group_aliases` / `user_aliases` / `group_member_aliases` 表。
+OpenID 必须按实际账号与身份作用域使用，不能把群成员标识当作私聊地址。
 每个原生端点只能归属一个逻辑别名；同一群号、QQ 号或同一账号作用域内的 OpenID
 若被多个别名重复声明，严格配置加载会直接失败，而不是任意选择其中一个。
 
@@ -234,8 +235,12 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 一个短时单次令牌，再由同一用户在目标官方机器人中发送 `关联账号 <令牌>` 完成确认。
 两端都可发送 `账号关联` 查询，并发送 `解除账号关联` 撤销。群成员 OpenID 与 C2C
 用户 OpenID 仍是不同身份，需要分别确认；链接按 AppID、身份类型和群作用域保存。
-令牌只以哈希写入 SQLite，原文不会落盘。程序不会使用昵称、头像、发言时间、消息记录
-或 `union_openid` 猜测数字 QQ。
+令牌只以哈希写入 SQLite，原文不会落盘。程序不根据昵称、头像或 `union_openid` 猜测数字 QQ。
+如需启用可选的受信观察验证，将 `bot.onebot.identity_verification` 显式设为 `true`，
+并在 `bot.onebot.trusted_official_bots` 为每个已启用的官方账号别名配置受信机器人在 OneBot 中的 QQ 标识。
+验证限定在已声明的同一逻辑群，核对官方回复与受信观察的规范化文本、时间窗口和唯一目标；
+至少两条不同源消息的一致观察后才建立关联；重复观察同一条源消息不会增加确认次数。
+歧义或已有映射冲突不会建立或覆盖关联。这不恢复 OneBot 业务收发，也不会授予平台权限。
 
 依赖数字 QQ 账号配置的个人幸运橱窗也使用这条显式关联。完成关联后，QQ 官方端可查询
 当天橱窗、查看皮肤详情以及管理关注列表；未关联身份不会尝试按昵称或其他资料猜测。
@@ -259,9 +264,17 @@ uv run --no-sync python -m ironsbot
 官方机器人专用镜像或传入 build arg。只有自行构建纯 OneBot 镜像时，才显式传入空的
 `--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略腾讯 SDK。
 
-当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
-`GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
-腾讯平台开放相应事件并由 SDK 支持；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
+IronsBot 已为 SDK 接入普通群消息 `GROUP_MESSAGE_CREATE`：平台实际投递该事件时，
+可处理已注册命令与查询会话输入；这不代表腾讯已向任一应用开放相应权限或事件订阅，
+也不能仅靠本地配置保证收到全部群消息。未提及机器人的普通群消息不触发自动 AI
+意图、聊天或帮助提示。同一消息的 `GROUP_MESSAGE_CREATE` 与
+`GROUP_AT_MESSAGE_CREATE` 投递共用去重边界；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
+
+平台选择以配置解析后的有效官方账号为准：任一 TOML 官方账号具备完整 AppID 和
+Secret 时，QQ 官方成为唯一出站平台；NapCat 不处理业务指令，也不主动发送业务消息。
+官方端掉线或发送失败不会自动回退到 NapCat；仅安装 SDK extra 不会激活官方账号。
+没有有效官方账号时，`bot.onebot.enabled` 与 `bot.onebot.send_messages` 才决定是否
+启用 OneBot 业务收发。身份辅助观察由独立配置控制，不等于恢复 OneBot 业务收发。
 
 ## 常用赛尔查询
 
@@ -418,12 +431,14 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 [features]
 superuser_bypass = true
 
-[features.group_aliases]
-admin = 123456789
-example = 987654321
+[identities.groups.admin]
+qq = 123456789
 
-[features.user_aliases]
-owner = 1234567890
+[identities.groups.example]
+qq = 987654321
+
+[identities.users.owner]
+qq = 1234567890
 
 [features.bundles]
 all = ["my_extension_feature"]
@@ -504,8 +519,8 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
 群或用户；超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于
 `[features.help]`。所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
-数字字符串或数字 ID；别名在 `[features.user_aliases]` 和
-`[features.group_aliases]` 中定义，纯数字别名不可用。
+数字字符串或数字 ID；别名由 `[identities.users.<别名>]` 和
+`[identities.groups.<别名>]` 的 `qq` / `official` 端点声明，纯数字别名不可用。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
 跨群、私聊和多个机器人账号共用多个精确滑动窗口，不同语义命令互不影响。
 默认关闭；显式设置 `enabled = true` 后，内置窗口是 `60 秒 3 次` 与 `300 秒 5 次`。

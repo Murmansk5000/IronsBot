@@ -26,6 +26,7 @@ class MessageInputContext:
 
     message: IncomingMessageRef
     mentions_bot: bool
+    automatic_fallback_allowed: bool = True
 
     @property
     def text(self) -> str:
