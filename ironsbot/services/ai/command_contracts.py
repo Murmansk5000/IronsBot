@@ -55,7 +55,7 @@ def ai_intent_command_contracts(
 ) -> tuple[CommandContract, ...]:
     """Describe configured automatic AI intent actions."""
 
-    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
+    if not config.ai.enabled or not config.ai.intent_actions_enabled:
         return ()
     return tuple(
         CommandContract(

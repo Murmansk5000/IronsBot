@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 AI_TEST_PROMPT = "请只回复 OK"
 AI_MODELS_EMPTY_ERROR = "AI model list is empty"
+AUTH_FAILURE_STATUS_CODES = frozenset({401, 403})
 logger = logging.getLogger(__name__)
 
 
@@ -52,30 +53,49 @@ class HttpAiCompletionClient:
         messages: list[HistoryMessage],
     ) -> AiResponseResult:
         last_failure: Exception | AiResponseResult | None = None
-        for model in self._config.models:
-            try:
-                response = await self._client.post(
-                    f"{self._config.base_url}/chat/completions",
-                    headers=_authorization_headers(self._config.api_key),
-                    json=_completion_payload(self._config, messages, model=model),
-                    timeout=self._config.timeout,
-                    follow_redirects=True,
-                )
-            except httpx.HTTPError as exc:
-                logger.warning("AI model request failed: model=%s error=%s", model, exc)
-                last_failure = exc
-                continue
+        for provider_name, provider in self._config.configured_providers:
+            for model in provider.models:
+                try:
+                    response = await self._client.post(
+                        f"{provider.base_url}/chat/completions",
+                        headers=_authorization_headers(provider.api_key),
+                        json=_completion_payload(
+                            self._config,
+                            messages,
+                            model=model,
+                            thinking=provider.thinking,
+                        ),
+                        timeout=self._config.timeout,
+                        follow_redirects=True,
+                    )
+                except httpx.HTTPError as exc:
+                    logger.warning(
+                        "AI provider request failed: provider=%s model=%s error=%s",
+                        provider_name,
+                        model,
+                        exc,
+                    )
+                    last_failure = exc
+                    continue
 
-            result = _parse_http_response(response)
-            if result.ok:
-                return replace(result, model=model)
-            logger.warning(
-                "AI model returned an error: model=%s HTTP=%s detail=%s",
-                model,
-                result.status_code,
-                result.error_detail,
-            )
-            last_failure = result
+                result = replace(
+                    _parse_http_response(response),
+                    provider=provider_name,
+                    model=model,
+                )
+                if result.ok:
+                    return result
+                logger.warning(
+                    "AI provider returned an error: provider=%s model=%s "
+                    "HTTP=%s detail=%s",
+                    provider_name,
+                    model,
+                    result.status_code,
+                    result.error_detail,
+                )
+                last_failure = result
+                if result.status_code in AUTH_FAILURE_STATUS_CODES:
+                    break
 
         if isinstance(last_failure, AiResponseResult):
             return last_failure
@@ -109,7 +129,7 @@ async def check_ai_api(settings: AiApiSettings) -> AiApiTestResult:
         return AiApiTestResult(
             ok=False,
             elapsed_ms=0,
-            error="未配置 AI_KEY",
+            error="未配置 AI provider key",
         )
 
     started_at = perf_counter()
@@ -168,6 +188,7 @@ def _completion_payload(
     messages: list[HistoryMessage],
     *,
     model: str,
+    thinking: bool,
 ) -> dict[str, Any]:
     return {
         "model": model,
@@ -176,7 +197,7 @@ def _completion_payload(
         "max_tokens": config.max_tokens,
         "stream": False,
         "thinking": {
-            "type": "enabled" if config.thinking else "disabled",
+            "type": "enabled" if thinking else "disabled",
         },
     }
 
