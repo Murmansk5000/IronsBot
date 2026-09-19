@@ -34,10 +34,18 @@ Official、普通成员、关闭 bypass、命令 audience 与黑名单优先级�
 直接报错，不能静默出现在帮助中但执行无响应。
 
 玩家与二级栏目、扩展入口、榜单参数、候选菜单、图片和新增内容、B站、配置消息、
-战队、AI 及 QQ 官方投递链的 520 项聚焦回归通过。最终全量结果为 3768 passed、7 skipped；
+战队、AI 及 QQ 官方投递链的 520 项聚焦回归通过。最新全量结果为 3810 passed、7 skipped；
 Ruff、生产与测试 BasedPyright、compileall、`scripts/check_repo.py --static` 和 diff check
 全部通过。公共仓库的共享功能实现与自动化守护已收口；阵容的实际封包解析和最终渲染
 仍按既定架构由私有扩展制品提供，公共端只负责稳定扩展契约与跨平台执行入口。
+
+同日重新对照原版 OneBot 输入规则与当前共享路由：原版明确拒绝把 `BOT_MENTION`
+交给 `explicit_command`，所以 `@机器人 + 指令` 会先被 AI 或提示 matcher 消费。当前实现
+只放宽这一点：直接指令与 `@机器人 + 指令` 都先由同一命令目录认领；只有未认领的
+`@机器人 + 非指令` 才在 AI 聊天与帮助提示之间选择。未 @ 的普通文本继续保留原版
+AI 意图或静默语义。提交 `6028b63b` 为 direct/mentioned 两种输入增加同一业务 operation
+断言，并要求 AI 意图与聊天调用次数均为零；扩大回归 120 项及上述全量门禁通过。
+该提交只修改测试和架构说明，不改变当前生产镜像或实机验收 digest。
 
 部署说明同时修正：`SEER_PASSWORD_<player_id>` 必须填写明文密码，IronsBot 只在内存中
 生成登录 MD5；`.env.example` 与 Unraid 中文模板已统一并增加守护测试。此项不改变 TOML
