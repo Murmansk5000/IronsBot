@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.app import ai_health as health
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.integrations.http.ai import AiApiSettings, AiApiTestResult
+from tests.helpers.ai import configured_ai_config
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -22,14 +23,11 @@ class _StartupNoticeRecorder:
 
 
 def test_ai_model_configuration_deduplicates_fallbacks() -> None:
-    config = AiConfig(
-        model=" primary ",
-        fallback_models=["backup", "backup", "primary"],
+    config = configured_ai_config(
+        models=(" primary ", "backup", "backup", "primary"),
     )
 
-    assert config.model == "primary"
-    assert config.fallback_models == ["backup", "primary"]
-    assert config.models == ("primary", "backup")
+    assert config.providers["test"].models == ["primary", "backup"]
 
 
 def test_configured_ai_key_is_checked_on_startup(
@@ -42,10 +40,10 @@ def test_configured_ai_key_is_checked_on_startup(
         return AiApiTestResult(ok=True, elapsed_ms=42, status_code=200, reply="OK")
 
     monkeypatch.setattr(health, "check_ai_api", fake_check)
-    config = AiConfig(
+    config = configured_ai_config(
         api_key="test-key",
         base_url="https://example.test/v1",
-        model="test-model",
+        models=("test-model",),
         timeout=45,
     )
 
@@ -70,7 +68,9 @@ def test_configured_ai_key_is_checked_on_startup(
         (
             "startup_ai_api_check",
             "AI API startup check",
-            "AI API 检查通过。\n模型：test-model\nHTTP：200\n耗时：42 ms",
+            "AI API 检查通过。\n"
+            "提供商/模型：test/test-model\n"
+            "HTTP：200\n耗时：42 ms",
         )
     ]
 
@@ -91,7 +91,7 @@ def test_failed_ai_key_check_is_added_to_startup_notice(
 
     asyncio.run(
         health.check_configured_ai_api(
-            AiConfig(api_key="test-key"),
+            configured_ai_config(api_key="test-key"),
             cast("StartupNoticeService", recorder),
         )
     )
@@ -101,8 +101,8 @@ def test_failed_ai_key_check_is_added_to_startup_notice(
             "startup_ai_api_check",
             "AI API startup check",
             "AI API 检查失败。\n"
-            "已尝试模型：deepseek-v4-pro\n"
-            "详情：deepseek-v4-pro：认证失败：invalid API key",
+            "已尝试提供商/模型：test/test-model\n"
+            "详情：test/test-model：认证失败：invalid API key",
         )
     ]
 
@@ -123,17 +123,16 @@ def test_startup_check_uses_the_first_working_fallback_model(
 
     asyncio.run(
         health.check_configured_ai_api(
-            AiConfig(
+            configured_ai_config(
                 api_key="test-key",
-                model="primary",
-                fallback_models=["backup", "unused"],
+                models=("primary", "backup", "unused"),
             ),
             cast("StartupNoticeService", recorder),
         )
     )
 
     assert checked == ["primary", "backup"]
-    assert "模型：backup" in recorder.parts[0][2]
+    assert "提供商/模型：test/backup" in recorder.parts[0][2]
 
 
 def test_missing_ai_key_skips_startup_check(monkeypatch: MonkeyPatch) -> None:

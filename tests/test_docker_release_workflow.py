@@ -53,7 +53,7 @@ def test_docker_env_example_lists_all_deployment_credentials() -> None:
         "ONEBOT_ACCESS_TOKEN",
         "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT",
         "QQ_OFFICIAL_SECRET_EXAMPLE_BOT",
-        "AI_KEY",
+        "AI_KEY_DEEPSEEK",
         "SEER_PASSWORD_123456789",
         "SENDPIC_CNB_TOKEN",
         "GITHUB_WORKFLOW_TOKEN",
