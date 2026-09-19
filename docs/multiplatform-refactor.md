@@ -75,6 +75,24 @@ audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级�
 自定义键盘权限和腾讯实际重复重投。它们不得被单账号基础查询成功替代，也不阻塞继续
 完成可独立验证的本地与单账号生产项目。
 
+### 2026-09-19 三仓联合审计
+
+- IronsBot 本地候选 `14ba3ddd`：全量 `3804 passed, 7 skipped`；Ruff、生产与测试
+  BasedPyright、compileall、静态仓库检查和 diff check 通过。
+- SeerAPI 发布源为 `Murmansk-Seer/seerapi`，远端 main `dbd87b7`。本地 V5 代码提交
+  `a726adc` 与远端只差 3 个 `.build-state` 来源校验提交，生产代码和 schema 构建逻辑
+  没有差异。当前代码 `351 passed`、Ruff 通过；远端同一 main 的数据构建 workflow
+  `35439998503` 成功。
+- 本地已发布 `seerapi-data.sqlite` 由 IronsBot 消费端重新严格验证：schema contract
+  v2、149 张声明表、DDL 指纹匹配且存在构建时间。正常运行路径没有旧字段 fallback。
+- `ironsbot-private` main `9c3d61e` 与远端一致，发布 workflow `35439115557` 成功；
+  使用当前 IronsBot 公共扩展契约执行 `27 passed`，Ruff 与 BasedPyright 通过。仓库原有
+  未跟踪 `uv.lock` 保持未提交。
+- SeerAPI 仓库尚未把全仓 BasedPyright 设为绿门禁；用当前检查器审计 scripts/tests
+  得到 68 个既有类型问题。测试、发布构建与 consumer contract 均通过，但不得把这一
+  结果写成“三仓全量类型检查通过”。该类型债独立记录，不在 Phase 7 中用降低规则或
+  大规模无关重构掩盖。
+
 ## 历史验证记录（始于 2026-09-14）
 
 总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
