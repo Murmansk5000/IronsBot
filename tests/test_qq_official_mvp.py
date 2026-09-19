@@ -1660,6 +1660,48 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_portable_router_allows_superuser_command_without_group_feature() -> None:
+    features = _official_feature_service([], superuser=True)
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "disabled-group",
+        account_id="example-app",
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+
+    reply = await router.dispatch(_portable_input("关于", admin, conversation))
+
+    assert reply is not None
+    assert cast("TextPart", reply.message.parts[0]).text.startswith("🤖 IronsBot")
+    assert await router.dispatch(_portable_input("关于", member, conversation)) is None
+
+
 def test_portable_router_rejects_unimplemented_official_direct_command() -> None:
     catalog = CommandCatalog()
     catalog.load(
@@ -2582,7 +2624,7 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
     features = FeatureService(
         group_features={},
         actor_features={actor: frozenset({"blacklist"})},
-        superusers=frozenset(),
+        superusers=frozenset({actor}),
         platform_default_features={
             Platform.QQ_OFFICIAL: frozenset({"about", "ai_chat"})
         },

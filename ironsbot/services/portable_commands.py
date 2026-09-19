@@ -258,7 +258,7 @@ class PortableCommandRouter:
         }
         return tuple(
             contract
-            for contract in self._catalog.available_for_context(
+            for contract in self._catalog.executable_for_context(
                 context,
                 self._features,
             )
