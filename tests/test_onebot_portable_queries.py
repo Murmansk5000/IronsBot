@@ -239,7 +239,8 @@ async def test_onebot_adapter_routes_quoted_shared_menu_to_replying_member(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("text", ["收集", "巅峰", "群星牌", "档案"])
 async def test_registered_onebot_player_shortcut_runs_shared_delivery(
-    monkeypatch: pytest.MonkeyPatch, text: str,
+    monkeypatch: pytest.MonkeyPatch,
+    text: str,
 ) -> None:
     async def query(*_args: object, **_kwargs: object) -> QueryReply:
         await send_request_feedback(queued=False)
@@ -247,15 +248,22 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
 
     service = SimpleNamespace(shortcut=AsyncMock(side_effect=query))
     extensions = PlayerDetailExtensionRegistry()
-    extensions.register(PlayerDetailExtensionAction(
-        id="sample_detail", feature="seer_player", label="档案", aliases=("档案",),
-        command_help_id="sample.detail", query=service.shortcut,
-        action=ActionDefinition("sample_detail", "档案"),
-    ))
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="sample_detail",
+            feature="seer_player",
+            label="档案",
+            aliases=("档案",),
+            command_help_id="sample.detail",
+            query=service.shortcut,
+            action=ActionDefinition("sample_detail", "档案"),
+        )
+    )
     matcher = Mock()
     group = SimpleNamespace(
         resources=SimpleNamespace(
-            player=service, player_detail_extensions=extensions,
+            player=service,
+            player_detail_extensions=extensions,
         ),
         features=Mock(),
         player_id_resolver=PlayerIdResolver(lambda *_: None, lambda _: 700001),
@@ -268,13 +276,19 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
     send = AsyncMock(return_value=SendResult(delivered=True, message_id="sent-1"))
     monkeypatch.setattr(portable_queries, "send_portable_event_reply", send)
     monkeypatch.setattr(
-        portable_queries, "queued_conversation_is_cancelled", lambda _: False,
+        portable_queries,
+        "queued_conversation_is_cancelled",
+        lambda _: False,
     )
     await handler(Mock(), {}, group_message_event(text))
     service.shortcut.assert_awaited_once()
     expected_sends = ("progress", "result")
     assert send.await_count == len(expected_sends)
     assert send.await_args is not None
-    assert send.await_args.args[2] == QueryReply(
-        text="result", image=b"image-bytes",
-    ).to_outbound()
+    assert (
+        send.await_args.args[2]
+        == QueryReply(
+            text="result",
+            image=b"image-bytes",
+        ).to_outbound()
+    )

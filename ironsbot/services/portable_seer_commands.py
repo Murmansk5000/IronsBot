@@ -227,9 +227,7 @@ def _affix_argument(parser: AffixParser):
     return parse
 
 
-def _equipment_queries() -> tuple[
-    tuple[EquipmentKind, AffixParser, str, str], ...
-]:
+def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixParser, str, str], ...]:
     return (
         ("suit", SUIT_QUERY, "请问你想查询的套装是……", "未找到对应套装。"),
         (

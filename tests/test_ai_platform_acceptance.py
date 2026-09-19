@@ -310,6 +310,4 @@ async def test_ai_failure_notifies_only_official_admin_targets(
         OWNER_PRIVATE,
         ADMIN_GROUP,
     ]
-    assert GROUP not in {
-        conversation for conversation, _message in transport.attempts
-    }
+    assert GROUP not in {conversation for conversation, _message in transport.attempts}

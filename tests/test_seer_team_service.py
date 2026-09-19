@@ -218,7 +218,10 @@ async def test_team_command_resolves_player_references_and_structured_mentions(
     )
 
     operation = build_team_query_operation(
-        service, resolver, FeatureService({}, {}, frozenset()), PortableQuerySessions(),
+        service,
+        resolver,
+        FeatureService({}, {}, frozenset()),
+        PortableQuerySessions(),
     )
     reply = await operation(text, _context(text, mentions=mentions))
     assert isinstance(reply, OutboundMessage)
@@ -325,10 +328,13 @@ async def test_team_service_formats_timeout() -> None:
 async def test_player_team_service_formats_timeout_as_player_query() -> None:
     service, _headless, _resource = _service(TimeoutError())
 
-    assert await service.query_player_team(
-        148758762,
-        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
-    ) == "米米号 148758762 的所属战队查询超时，请稍后再试。"
+    assert (
+        await service.query_player_team(
+            148758762,
+            TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+        )
+        == "米米号 148758762 的所属战队查询超时，请稍后再试。"
+    )
 
 
 @pytest.mark.asyncio

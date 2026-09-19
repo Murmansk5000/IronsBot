@@ -495,16 +495,20 @@ async def test_player_query_holds_fast_numeric_reply_until_prompt_delivery(
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("selection", ["y", "n", "4", "5", "button", "0"])
 async def test_first_binding_confirmation_reuses_query_and_delivery(
-    platform: Platform, selection: str,
+    platform: Platform,
+    selection: str,
 ) -> None:
     service = _PlayerService()
     sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
-        cast("PlayerService", service), _resolver(), sessions,
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
     )
     context = _context("米米号700002", platform=platform)
     reply = cast(
-        "PortableReply", await operations["seer.player.query"](context.text, context),
+        "PortableReply",
+        await operations["seer.player.query"](context.text, context),
     )
     assert not service.bound
     reply.delivered()
@@ -512,12 +516,12 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
     assert prompt is not None
     action = prompt.action_data(prompt.choices[3])
     selected = await sessions.select(
-        action if selection == "button" else selection, context,
+        action if selection == "button" else selection,
+        context,
     )
     assert isinstance(selected, OutboundMessage)
     assert service.bound == (
-        [(context.message.actor, 700002)]
-        if selection in {"y", "4", "button"} else []
+        [(context.message.actor, 700002)] if selection in {"y", "4", "button"} else []
     )
     assert service.queried == [700002]
     assert service.returned == [(context.message.actor, 700002)]
@@ -639,9 +643,7 @@ async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
     allowed = False
 
     assert sessions.recognizes_shared_response("1", owner, responder)
-    result = await sessions.select_shared(
-        "1", owner, responder, allow_deferred=True
-    )
+    result = await sessions.select_shared("1", owner, responder, allow_deferred=True)
 
     assert isinstance(result, OutboundMessage)
     part = result.parts[0]
@@ -655,12 +657,15 @@ async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("inputs", [("收集", "巅峰", "群星牌"), ("1", "2", "3")])
 async def test_player_detail_template_supports_repeated_named_and_numeric_choices(
-    platform: Platform, inputs: tuple[str, str, str],
+    platform: Platform,
+    inputs: tuple[str, str, str],
 ) -> None:
     service = _PlayerService()
     sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
-        cast("PlayerService", service), _resolver(), sessions,
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
     )
     context = _context("米米号700002", platform=platform)
     initial = cast(
@@ -708,21 +713,31 @@ async def test_binding_does_not_copy_a_mentioned_members_binding() -> None:
 @pytest.mark.parametrize("reference", ["700001", "别名"])
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 async def test_superuser_binds_explicit_player_to_mentioned_member(
-    reference: str, platform: Platform,
+    reference: str,
+    platform: Platform,
 ) -> None:
     service = _PlayerService()
-    features = cast("Any", SimpleNamespace(
-        is_actor_superuser=lambda _actor: True,
-    ))
+    features = cast(
+        "Any",
+        SimpleNamespace(
+            is_actor_superuser=lambda _actor: True,
+        ),
+    )
     operations = build_portable_player_operations(
-        cast("PlayerService", service), _resolver(), PortableQuerySessions(), features,
+        cast("PlayerService", service),
+        _resolver(),
+        PortableQuerySessions(),
+        features,
     )
     target = ActorRef(platform, "target-openid", "member", "group-openid")
     context = _context(
-        f"绑定米米号{reference}", mentions=(target,), platform=platform,
+        f"绑定米米号{reference}",
+        mentions=(target,),
+        platform=platform,
     )
     reply = cast(
-        "PortableReply", await operations["seer.player.bind"](context.text, context),
+        "PortableReply",
+        await operations["seer.player.bind"](context.text, context),
     )
     assert "player:700001" in _text(reply)
     assert service.bound == [(target, 700001)]
@@ -734,7 +749,8 @@ async def test_superuser_binds_explicit_player_to_mentioned_member(
 @pytest.mark.parametrize("selection", ["1", "2", "0"])
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 async def test_existing_binding_waits_for_explicit_confirmation(
-    selection: str, platform: Platform,
+    selection: str,
+    platform: Platform,
 ) -> None:
     service = _PlayerService(replacement=True)
     sessions = PortableQuerySessions()
@@ -766,24 +782,33 @@ async def test_existing_binding_waits_for_explicit_confirmation(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("reference", "count", "expected"), [
-    ("", 1, "未找到该米米号"),
-    ("700001", 2, "请一次只 @ 一名成员"),
-])
+@pytest.mark.parametrize(
+    ("reference", "count", "expected"),
+    [
+        ("", 1, "未找到该米米号"),
+        ("700001", 2, "请一次只 @ 一名成员"),
+    ],
+)
 async def test_admin_binding_rejects_missing_account_or_multiple_recipients(
-    reference: str, count: int, expected: str,
+    reference: str,
+    count: int,
+    expected: str,
 ) -> None:
     service = _PlayerService()
     features = cast("Any", SimpleNamespace(is_actor_superuser=lambda _actor: True))
     operations = build_portable_player_operations(
-        cast("PlayerService", service), _resolver(), PortableQuerySessions(), features,
+        cast("PlayerService", service),
+        _resolver(),
+        PortableQuerySessions(),
+        features,
     )
     mentions = tuple(
         ActorRef(Platform.QQ_OFFICIAL, f"member-{i}") for i in range(count)
     )
     context = _context(f"绑定米米号{reference}", mentions=mentions)
     reply = cast(
-        "PortableReply", await operations["seer.player.bind"](context.text, context),
+        "PortableReply",
+        await operations["seer.player.bind"](context.text, context),
     )
     assert expected in _text(reply)
     assert service.bound == []
@@ -833,18 +858,22 @@ async def test_default_shortcut_uses_callers_openid_binding() -> None:
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("entry", ["direct", "menu"])
 @pytest.mark.parametrize("queued", [False, True])
-@pytest.mark.parametrize("result", [
-    QueryReply(text="result"),
-    QueryReply(leading_text="player", image_error="image failed", complete=False),
-    QueryReply(text="partial result", image_error="image failed", complete=False),
-    QueryReply(leading_text="player", image=b"image-bytes", text="result"),
-])
+@pytest.mark.parametrize(
+    "result",
+    [
+        QueryReply(text="result"),
+        QueryReply(leading_text="player", image_error="image failed", complete=False),
+        QueryReply(text="partial result", image_error="image failed", complete=False),
+        QueryReply(leading_text="player", image=b"image-bytes", text="result"),
+    ],
+)
 async def test_player_shortcut_feedback_uses_shared_delivery_template(
     monkeypatch: pytest.MonkeyPatch,
     platform: Platform,
     entry: str,
     result: QueryReply,
-    *, queued: bool,
+    *,
+    queued: bool,
 ) -> None:
     service = _PlayerService()
     completed: list[bool] = []
@@ -858,7 +887,9 @@ async def test_player_shortcut_feedback_uses_shared_delivery_template(
     monkeypatch.setattr(service, "shortcut", query)
     sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
-        cast("PlayerService", service), _resolver(), sessions,
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
     )
     context = _context("巅峰700002", platform=platform)
     if entry == "direct":
@@ -878,7 +909,9 @@ async def test_player_shortcut_feedback_uses_shared_delivery_template(
     assert query.await_args is not None
     command, actor = query.await_args.args
     assert (command.kind, command.player_id, actor) == (
-        "peak", 700002, context.message.actor,
+        "peak",
+        700002,
+        context.message.actor,
     )
     assert query.await_args.kwargs["conversation"] == context.message.conversation
     assert reply.follow_up is not None
@@ -898,7 +931,9 @@ async def test_shared_shortcut_without_binding_does_not_query(
     monkeypatch.setattr(service, "shortcut", query)
     resolver = PlayerIdResolver(lambda *_: None, lambda _: None)
     operation = build_portable_player_operations(
-        cast("PlayerService", service), resolver, PortableQuerySessions(),
+        cast("PlayerService", service),
+        resolver,
+        PortableQuerySessions(),
     )["seer.player.default"]
     context = _context("收集")
     reply = await operation(context.text, context)
@@ -910,7 +945,8 @@ async def test_shared_shortcut_without_binding_does_not_query(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ["direct", "menu"])
 async def test_failed_player_progress_delivery_cancels_pending_query(
-    monkeypatch: pytest.MonkeyPatch, entry: str,
+    monkeypatch: pytest.MonkeyPatch,
+    entry: str,
 ) -> None:
     service = _PlayerService()
     completed: list[bool] = []
@@ -923,7 +959,9 @@ async def test_failed_player_progress_delivery_cancels_pending_query(
     monkeypatch.setattr(service, "shortcut", AsyncMock(side_effect=shortcut))
     sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
-        cast("PlayerService", service), _resolver(), sessions,
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
     )
     context = _context("收集700002")
     if entry == "direct":

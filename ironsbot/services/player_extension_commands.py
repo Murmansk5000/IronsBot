@@ -72,11 +72,16 @@ def build_player_extension_operation(
             msg = "player extension operation received an unrecognized command"
             raise ValueError(msg)
         action, reference = parsed
+
         async def query(player_id: int, context: MessageInputContext) -> PortableReply:
             return await query_player_extension(action, player_id, context, features)
 
         return await select_player_target(
-            reference, context, resolver, sessions, query,
+            reference,
+            context,
+            resolver,
+            sessions,
+            query,
             title="请选择要查询的玩家：",
         )
 

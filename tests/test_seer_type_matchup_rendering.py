@@ -103,9 +103,7 @@ async def test_custom_type_presentation_preserves_order_and_separator_variants()
         combinations=(_combination(1, "草"), _combination(2, "水")),
         elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
         relations=tuple(
-            (source, target, 1.0)
-            for source in (1, 2)
-            for target in (1, 2)
+            (source, target, 1.0) for source in (1, 2) for target in (1, 2)
         ),
     )
     images = _Images()

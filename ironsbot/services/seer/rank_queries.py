@@ -233,17 +233,13 @@ class RankQueryService:
         except _PLAYER_REQUEST_ERRORS as error:
             return RankPlayerPreparedReply(player_request_protection_message(error))
         except TimeoutError:
-            return RankPlayerPreparedReply(
-                f"❌ {spec.title}玩家查询超时，请稍后再试。"
-            )
+            return RankPlayerPreparedReply(f"❌ {spec.title}玩家查询超时，请稍后再试。")
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             return RankPlayerPreparedReply(
                 self._policy.player_error(command.player_id, error)
             )
         except Exception as error:  # noqa: BLE001
-            return RankPlayerPreparedReply(
-                f"❌ {spec.title}玩家查询失败：{error}"
-            )
+            return RankPlayerPreparedReply(f"❌ {spec.title}玩家查询失败：{error}")
         if quota_message:
             return RankPlayerPreparedReply(
                 result.message

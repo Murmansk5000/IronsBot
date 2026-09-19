@@ -36,9 +36,7 @@ def _snapshot(*, partner: PetPartnerSnapshot | None = None) -> PetInfoSnapshot:
         id=100,
         name="激活道具",
         quantity=1,
-        prices=(
-            PetItemPriceSnapshot("商店", "激活道具", 1, 200, "赛尔豆", 20, None),
-        ),
+        prices=(PetItemPriceSnapshot("商店", "激活道具", 1, 200, "赛尔豆", 20, None),),
     )
     skill = PetSkillSnapshot(
         id=1,
@@ -184,8 +182,7 @@ def test_presenter_does_not_infer_partner_upgrade_from_descriptions() -> None:
         replace(
             snapshot,
             soulmarks=tuple(
-                replace(soulmark, intensified=False)
-                for soulmark in snapshot.soulmarks
+                replace(soulmark, intensified=False) for soulmark in snapshot.soulmarks
             ),
         ),
         _assets(),

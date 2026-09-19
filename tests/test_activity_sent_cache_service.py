@@ -62,9 +62,7 @@ def test_weekly_snapshot_reports_only_ids_missing_from_previous_week(
 ) -> None:
     store = ActivitySnapshotStore(tmp_path / "activity.sqlite")
 
-    first_ids, first_has_previous = store.newly_observed_ids(
-        {1, 2}, dt(2026, 6, 1, 0)
-    )
+    first_ids, first_has_previous = store.newly_observed_ids({1, 2}, dt(2026, 6, 1, 0))
     second_ids, second_has_previous = store.newly_observed_ids(
         {2, 3}, dt(2026, 6, 8, 0)
     )

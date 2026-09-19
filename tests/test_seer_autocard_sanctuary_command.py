@@ -84,9 +84,7 @@ def test_effect_selection_sends_detail_and_keeps_the_current_menu(
     monkeypatch.setattr(plugin, "send_event_reply", send_reply)
     monkeypatch.setattr(plugin, "enter_event_reply_conversation", enter)
     value = SanctuaryPromptValue("effect", 2, 9)
-    matcher = SimpleNamespace(
-        state={plugin.SANCTUARY_PROMPT_STATE_KEY: (value,)}
-    )
+    matcher = SimpleNamespace(state={plugin.SANCTUARY_PROMPT_STATE_KEY: (value,)})
     event = SimpleNamespace(get_plaintext=lambda: "1")
     result = SanctuarySearchResult(
         effect=SanctuaryEffectEntry(9, "潮涌", "完整祝印描述")

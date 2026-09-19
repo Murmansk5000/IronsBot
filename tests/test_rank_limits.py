@@ -921,8 +921,11 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
         items = []
         for rank_index in range(start, end + 1):
             score = (
-                200 if rank_index < SEGMENT_START_INDEX
-                else SEGMENT_SCORE if rank_index == SEGMENT_START_INDEX else 100
+                200
+                if rank_index < SEGMENT_START_INDEX
+                else SEGMENT_SCORE
+                if rank_index == SEGMENT_START_INDEX
+                else 100
             )
             items.append(
                 RankItem(

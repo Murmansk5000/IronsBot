@@ -80,9 +80,7 @@ def test_ai_completion_uses_fallback_models_in_order() -> None:
         )
 
     async def run() -> AiResponseResult:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(handler)
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             completion = HttpAiCompletionClient(
                 client,
                 configured_ai_config(

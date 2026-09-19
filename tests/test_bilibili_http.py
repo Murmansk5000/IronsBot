@@ -18,9 +18,7 @@ def test_dynamic_requests_opt_in_to_opus_style() -> None:
         return httpx.Response(200, json={"code": 0, "data": {}})
 
     async def fetch() -> None:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(handler)
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             await fetch_bili_feed(client, "test-cookie")
             await fetch_bili_dynamic_detail(client, "test-cookie", "123456")
 

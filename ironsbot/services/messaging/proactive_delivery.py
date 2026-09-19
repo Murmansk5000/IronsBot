@@ -145,9 +145,7 @@ class ProactiveMessageDelivery:
             if transport_unavailable:
                 break
             if attempt == self.policy.max_attempts:
-                state.failed.update(
-                    request.conversation for request in next_pending
-                )
+                state.failed.update(request.conversation for request in next_pending)
                 break
             pending = next_pending
         return ProactiveDeliverySummary(
@@ -238,9 +236,7 @@ class ProactiveMessageDelivery:
                 subscription_key,
             )
         )
-        return tuple(
-            request for request in requests if request.conversation in allowed
-        )
+        return tuple(request for request in requests if request.conversation in allowed)
 
     async def _send_one(  # noqa: PLR0913 - one request plus explicit policy controls
         self,
@@ -303,8 +299,7 @@ class ProactiveMessageDelivery:
         if result.delivered:
             return result
         _LOGGER.warning(
-            "%s failed: platform=%s kind=%s ref=%s code=%s "
-            "failure_kind=%s trace_id=%s",
+            "%s failed: platform=%s kind=%s ref=%s code=%s failure_kind=%s trace_id=%s",
             action_name,
             request.conversation.platform.value,
             request.conversation.kind,
