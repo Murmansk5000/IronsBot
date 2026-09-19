@@ -34,7 +34,7 @@ Official、普通成员、关闭 bypass、命令 audience 与黑名单优先级�
 直接报错，不能静默出现在帮助中但执行无响应。
 
 玩家与二级栏目、扩展入口、榜单参数、候选菜单、图片和新增内容、B站、配置消息、
-战队、AI 及 QQ 官方投递链的 520 项聚焦回归通过。最新全量结果为 3810 passed、7 skipped；
+战队、AI 及 QQ 官方投递链的 520 项聚焦回归通过。最新全量结果为 3813 passed、7 skipped；
 Ruff、生产与测试 BasedPyright、compileall、`scripts/check_repo.py --static` 和 diff check
 全部通过。公共仓库的共享功能实现与自动化守护已收口；阵容的实际封包解析和最终渲染
 仍按既定架构由私有扩展制品提供，公共端只负责稳定扩展契约与跨平台执行入口。
@@ -46,6 +46,15 @@ Ruff、生产与测试 BasedPyright、compileall、`scripts/check_repo.py --stat
 AI 意图或静默语义。提交 `6028b63b` 为 direct/mentioned 两种输入增加同一业务 operation
 断言，并要求 AI 意图与聊天调用次数均为零；扩大回归 120 项及上述全量门禁通过。
 该提交只修改测试和架构说明，不改变当前生产镜像或实机验收 digest。
+
+22:22 的同一生产 digest 实测补充了全量群消息模式的反例：直接发送“帮助”以
+`GROUP_MESSAGE_CREATE` 到达、被识别并成功回复；随后 `@机器人 + 帮助` 与
+`@机器人 + 非指令` 也以 `GROUP_MESSAGE_CREATE` 到达，却都被错误分类为 direct 且
+`recognized=False`。原因是适配器仅凭 `GROUP_AT_MESSAGE_CREATE` 事件名判断机器人
+提及，没有使用全量事件携带的结构化 `mentions[].is_you`，也没有从命令正文中移除该
+结构化提及。目标行为因此明确为：全量事件中的 `is_you=true` 与专用 @ 事件具有相同
+寻址语义；只移除对应机器人的提及，保留其他成员提及；普通全量群消息仍禁止自动 AI
+兜底。修复发布后，直接命令、@命令、@非命令的 AI/提示分支必须在新 digest 上重测。
 
 部署说明同时修正：`SEER_PASSWORD_<player_id>` 必须填写明文密码，IronsBot 只在内存中
 生成登录 MD5；`.env.example` 与 Unraid 中文模板已统一并增加守护测试。此项不改变 TOML

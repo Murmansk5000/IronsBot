@@ -1369,12 +1369,86 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
     assert incoming.reply_deadline.isoformat() == "2099-01-01T00:05:00+08:00"
 
 
-def test_only_group_at_event_is_classified_as_bot_mention() -> None:
+def test_group_at_or_structured_self_mention_is_classified_as_bot_mention() -> None:
     full_message = _sdk_event(event_type="GROUP_MESSAGE_CREATE")
+    mentioned_full_message = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        content="@babyQ help",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                    "username": "babyQ",
+                }
+            ]
+        },
+    )
     at_message = _sdk_event(event_type="GROUP_AT_MESSAGE_CREATE")
 
     assert not qq_official_event_mentions_bot(full_message)
+    assert qq_official_event_mentions_bot(mentioned_full_message)
     assert qq_official_event_mentions_bot(at_message)
+
+
+def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@babyQ @target 战队",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                    "username": "babyQ",
+                },
+                {
+                    "is_you": False,
+                    "member_openid": "target-openid",
+                    "username": "target",
+                },
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "@target 战队"
+    assert incoming.direct_mentions == (
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            event.chat_id,
+            account_id="example-app",
+        ),
+    )
+
+
+def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@another-bot help",
+        raw={
+            "mentions": [
+                {
+                    "bot": True,
+                    "is_you": False,
+                    "member_openid": "another-bot-openid",
+                    "username": "another-bot",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert not qq_official_event_mentions_bot(event)
+    assert incoming.text == "@another-bot help"
 
 
 def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> None:
