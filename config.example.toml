@@ -69,12 +69,6 @@ plugin_manifest = "full"
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
-# EN: Optional trusted identity observation is off by default; configure every enabled official account alias with its trusted OneBot bot identity before enabling it.
-# ZH: 可选的受信身份观察验证默认关闭；启用前须为每个已启用官方账号别名配置其受信 OneBot 机器人标识。
-# [bot.onebot]
-# identity_verification = false
-# trusted_official_bots = {}
-
 [bot.qq_official]
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
