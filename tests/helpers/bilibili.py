@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 from ironsbot.config.models.features import FeatureConfig
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import BiliConfig
@@ -79,7 +80,8 @@ def build_test_bilibili_service(
                 resolved,
                 build_platform_reference_resolver(
                     runtime.onebot_references,
-                    (),
+                    IdentityConfig(),
+                    {},
                 ),
             ),
             SqliteBiliPushPreferenceStore(state_path),

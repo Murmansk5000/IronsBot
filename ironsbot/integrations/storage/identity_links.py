@@ -414,6 +414,33 @@ class SqliteIdentityLinkStore:
     ) -> CrossPlatformIdentityLink | None:
         return await asyncio.to_thread(self._for_official_sync, official)
 
+    async def all_links(self) -> tuple[CrossPlatformIdentityLink, ...]:
+        return await asyncio.to_thread(self._all_links_sync)
+
+    def _all_links_sync(self) -> tuple[CrossPlatformIdentityLink, ...]:
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT onebot_qq_id, official_app_id, official_kind,
+                       official_openid, official_scope_id, linked_at
+                FROM cross_platform_identity_links
+                ORDER BY official_app_id, official_openid
+                """
+            ).fetchall()
+        return tuple(
+            CrossPlatformIdentityLink(
+                str(row[0]),
+                OfficialIdentity(
+                    str(row[1]),
+                    cast("ActorKind", str(row[2])),
+                    str(row[3]),
+                    str(row[4]),
+                ),
+                float(row[5]),
+            )
+            for row in rows
+        )
+
     def _for_official_sync(
         self,
         official: OfficialIdentity,

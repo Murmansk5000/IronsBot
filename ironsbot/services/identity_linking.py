@@ -110,6 +110,8 @@ class IdentityLinkingService:
     accounts: Mapping[str, OfficialAccount]
     challenge_ttl_seconds: float = 600.0
     clock: Callable[[], float] = time.time
+    on_link: Callable[[CrossPlatformIdentityLink], None] | None = None
+    on_unlink: Callable[[CrossPlatformIdentityLink], None] | None = None
 
     def __post_init__(self) -> None:
         if self.challenge_ttl_seconds <= 0:
@@ -158,7 +160,7 @@ class IdentityLinkingService:
         if len(normalized) != _TOKEN_LENGTH:
             raise IdentityLinkingTokenError.malformed()
         try:
-            return await self.store.consume(
+            link = await self.store.consume(
                 token_hash=_token_hash(normalized),
                 official=official,
                 now=self.clock(),
@@ -169,6 +171,9 @@ class IdentityLinkingService:
             raise IdentityLinkingTokenError.invalid() from exc
         except IdentityLinkConflictError as exc:
             raise IdentityLinkingConflictError.already_linked() from exc
+        if self.on_link is not None:
+            self.on_link(link)
+        return link
 
     async def links_for(self, actor: ActorRef) -> tuple[CrossPlatformIdentityLink, ...]:
         if actor.platform is Platform.ONEBOT:
@@ -191,8 +196,18 @@ class IdentityLinkingService:
     async def revoke(self, actor: ActorRef) -> int:
         now = self.clock()
         if actor.platform is Platform.ONEBOT:
-            return await self.store.revoke_onebot(_onebot_qq_id(actor), now=now)
-        return int(await self.store.revoke_official(_official_identity(actor), now=now))
+            qq_id = _onebot_qq_id(actor)
+            links = await self.store.for_onebot(qq_id)
+            count = await self.store.revoke_onebot(qq_id, now=now)
+        else:
+            official = _official_identity(actor)
+            link = await self.store.for_official(official)
+            links = () if link is None else (link,)
+            count = int(await self.store.revoke_official(official, now=now))
+        if self.on_unlink is not None:
+            for link in links:
+                self.on_unlink(link)
+        return count
 
     def _resolve_account(self, reference: str) -> OfficialAccount:
         normalized = reference.strip().casefold()

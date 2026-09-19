@@ -62,6 +62,7 @@ class SilentIdentityObservationService:
     confirmation_count: int = 2
     match_window_seconds: float = 10.0
     clock: Callable[[], float] = time.time
+    on_link: Callable[[str, OfficialIdentity], None] | None = None
     _pending: list[_PendingReply] = field(default_factory=list, init=False)
     _confirmations: dict[tuple[OfficialIdentity, str], set[str]] = field(
         default_factory=dict,
@@ -145,7 +146,7 @@ class SilentIdentityObservationService:
             if len(confirmations) < self.confirmation_count:
                 return False
             try:
-                await self.store.link_verified(
+                link = await self.store.link_verified(
                     onebot_qq_id=qq_id,
                     official=matched.official,
                     now=now,
@@ -157,6 +158,8 @@ class SilentIdentityObservationService:
                     reference_digest(matched.official.openid),
                 )
                 return False
+            if self.on_link is not None:
+                self.on_link(link.onebot_qq_id, link.official)
             self._confirmations.pop(key, None)
         _LOGGER.info(
             "silent identity link confirmed: app=%s member=%s qq=%s",

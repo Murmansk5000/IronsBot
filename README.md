@@ -83,8 +83,8 @@ owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-`group_a/group_b` 和 `owner/user_a` 分别引用 `[features.group_aliases]`、
-`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
+`group_a/group_b` 和 `owner/user_a` 统一引用 `[identities.groups]`、
+`[identities.users]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
 `default_bot`；若默认机器人也未连接或没有配置，主动发送会明确失败并记录 warning，
 不会选择任意在线 OneBot 机器人。第一版只控制主动发送，不过滤接收事件；同一个群
 放入多个机器人时，它们仍可能同时收到并响应。
@@ -190,16 +190,15 @@ superusers = []
 Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
-目标可填写当前官方账号下声明的别名或事件中的 OpenID，不能把 QQ 号当作 OpenID。开启
+目标必须填写 `[identities]` 中声明的别名，不再直接散写 OpenID。开启
 `proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
 
-跨平台使用同一个真实群或用户时，可以在 `features.group_aliases` / `user_aliases`
-声明 OneBot 端点，再在官方账号的 `group_aliases` / `user_aliases` 复用同一个别名。
-一条全局 `features.group_policy` / `user_policy` 会展开到该逻辑目标的所有显式端点，
-不需要再起 `official_admin` 之类的平台专用名字。群事件里的 `member_openid` 必须在
-`group_member_aliases.<群别名>` 下声明，它只在对应群内有效，不能用于私聊发送。
+跨平台使用同一个真实群或用户时，只在 `[identities.groups]` / `[identities.users]`
+声明一次 QQ 端点与各官方账号 OpenID。一条全局 `features.group_policy` /
+`user_policy` 会展开到该逻辑目标的所有显式端点，不需要再起 `official_admin`
+之类的平台专用名字，也不再维护账号内的第二套别名表。
 每个原生端点只能归属一个逻辑别名；同一群号、QQ 号或同一账号作用域内的 OpenID
 若被多个别名重复声明，严格配置加载会直接失败，而不是任意选择其中一个。
 
@@ -239,14 +238,14 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 本机配置后应立即移除这个 Feature。它默认关闭，也不会被 `all` 功能包隐式启用。
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
-不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID
-与群成员 OpenID 不会被擅自视为同一身份。日志中的 OpenID 可用于配置官方平台
-超级管理员。设置 `identity_verification = true` 后，NapCat 只观察
+不是普通 QQ 号。静态 owner 等身份在 `[identities.users]` 中统一声明；普通群成员
+不需要手工写入 TOML。设置 `identity_verification = true` 后，NapCat 只观察
 `trusted_official_bots` 中的官方机器人群消息。程序使用同一逻辑群、被 @ 的 QQ、
 规范化消息内容和短时间窗口建立候选；只有两次独立、唯一且一致的观察才关联
-`member_openid ↔ QQ号`。歧义、超时、非可信来源和已存在冲突都不会建立或覆盖映射。
-该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid` 不参与推断，
-继续使用 TOML `user_aliases` 明确配置。
+`member_openid ↔ QQ号`。同一官方账号中的相同 member_openid 跨群视为同一主体；
+群只用于验证消息来源，不进入身份主键。歧义、超时、非可信来源和已存在冲突都不会
+建立或覆盖映射。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
+不参与 NapCat 群消息推断；启动前必须已知的私聊目标仍在 `[identities.users]` 声明。
 
 依赖数字 QQ 账号配置的个人幸运橱窗也使用这条已验证关联。完成关联后，QQ 官方端可查询
 当天橱窗、查看皮肤详情以及管理关注列表；未关联身份不会尝试按昵称或其他资料猜测。
@@ -435,15 +434,15 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 示例 TOML：
 
 ```toml
-[features]
-superuser_bypass = true
-
-[features.group_aliases]
-admin = 123456789
+[identities.groups]
+admin = { qq = 123456789, official = { local_bot = "ADMIN_GROUP_OPENID" } }
 example = 987654321
 
-[features.user_aliases]
-owner = 1234567890
+[identities.users]
+owner = { qq = 1234567890, official = { local_bot = "OWNER_OPENID" } }
+
+[features]
+superuser_bypass = true
 
 [features.bundles]
 all = ["my_extension_feature"]
@@ -524,8 +523,8 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
 群或用户；超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于
 `[features.help]`。所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
-数字字符串或数字 ID；别名在 `[features.user_aliases]` 和
-`[features.group_aliases]` 中定义，纯数字别名不可用。
+数字字符串或数字 ID；别名在 `[identities.users]` 和
+`[identities.groups]` 中定义，纯数字别名不可用。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
 跨群、私聊和多个机器人账号共用多个精确滑动窗口，不同语义命令互不影响。
 默认关闭；显式设置 `enabled = true` 后，内置窗口是 `60 秒 3 次` 与 `300 秒 5 次`。

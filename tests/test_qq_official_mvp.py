@@ -15,9 +15,15 @@ from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
+)
+from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.platform_references import (
+    PlatformReferenceResolver,
+    build_platform_reference_resolver,
 )
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
@@ -736,16 +742,11 @@ def _portable_input(
     )
 
 
-def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
+def _qq_config(
     *,
     features: list[str] | None = None,
-    superusers: list[str] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
-    group_superusers: dict[str, list[str]] | None = None,
-    group_aliases: dict[str, str] | None = None,
-    user_aliases: dict[str, str] | None = None,
-    group_member_aliases: dict[str, dict[str, str]] | None = None,
     proactive_messages: bool = False,
 ) -> QQOfficialConfig:
     return QQOfficialConfig(
@@ -754,20 +755,61 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
                 app_id="example-app",
                 secret="example-secret",
                 features=[] if features is None else features,
-                superusers=[] if superusers is None else superusers,
                 group_policy={} if group_policy is None else group_policy,
                 user_policy={} if user_policy is None else user_policy,
-                group_superusers=(
-                    {} if group_superusers is None else group_superusers
-                ),
-                group_aliases={} if group_aliases is None else group_aliases,
-                user_aliases={} if user_aliases is None else user_aliases,
-                group_member_aliases=(
-                    {} if group_member_aliases is None else group_member_aliases
-                ),
                 proactive_messages=proactive_messages,
             )
         },
+    )
+
+
+def _official_references(
+    config: QQOfficialConfig,
+    *,
+    groups: dict[str, dict[str, object]] | None = None,
+    users: dict[str, dict[str, object]] | None = None,
+) -> PlatformReferenceResolver:
+    identities = IdentityConfig.model_validate(
+        {"groups": groups or {}, "users": users or {}}
+    )
+    onebot = OneBotReferenceResolver(
+        {
+            alias: target.qq
+            for alias, target in identities.groups.items()
+            if target.qq is not None
+        },
+        {
+            alias: target.qq
+            for alias, target in identities.users.items()
+            if target.qq is not None
+        },
+    )
+    return build_platform_reference_resolver(
+        onebot,
+        identities,
+        config.enabled_accounts,
+    )
+
+
+def _official_feature_service(
+    enabled: list[str],
+    *,
+    superuser: bool = False,
+) -> FeatureService:
+    config = _qq_config(features=enabled)
+    references = _official_references(
+        config,
+        users=(
+            {"admin": {"official": {"example_bot": "opaque-admin"}}}
+            if superuser
+            else None
+        ),
+    )
+    return build_feature_service(
+        FeatureConfig(),
+        ("admin",) if superuser else (),
+        qq_official=config,
+        references=references,
     )
 
 
@@ -785,7 +827,6 @@ startup_timeout_seconds = 20.0
 required = true
 custom_keyboards = true
 features = ["help", "about", "seer_data"]
-superusers = ["opaque-admin"]
 """.strip(),
         encoding="utf-8",
     )
@@ -804,7 +845,6 @@ superusers = ["opaque-admin"]
     assert account.secret == "example-secret"
     assert account.required
     assert account.custom_keyboards
-    assert account.superusers == ["opaque-admin"]
 
 
 def test_qq_official_config_loads_independent_accounts(
@@ -1081,13 +1121,26 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
 def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
     config = _qq_config(
         features=[],
-        group_policy={"opaque-group": ["seer_activity_push"]},
-        user_policy={"opaque-user": ["bili_push"]},
+        group_policy={"official_group": ["seer_activity_push"]},
+        user_policy={"official_user": ["bili_push"]},
     )
     features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=config,
+        references=_official_references(
+            config,
+            groups={
+                "official_group": {
+                    "official": {"example_bot": "opaque-group"}
+                }
+            },
+            users={
+                "official_user": {
+                    "official": {"example_bot": "opaque-user"}
+                }
+            },
+        ),
     )
 
     assert features.conversations_for_feature("seer_activity_push") == [
@@ -1110,15 +1163,22 @@ def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
 def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
     config = _qq_config(
         features=[],
-        superusers=["official_admin"],
-        group_aliases={"official_group": "opaque-group"},
-        user_aliases={"official_admin": "opaque-admin"},
         group_policy={"official_group": ["seer_rank"]},
+    )
+    references = _official_references(
+        config,
+        groups={
+            "official_group": {"official": {"example_bot": "opaque-group"}}
+        },
+        users={
+            "official_admin": {"official": {"example_bot": "opaque-admin"}}
+        },
     )
     features = build_feature_service(
         FeatureConfig(superuser_bypass=True),
-        (),
+        ("official_admin",),
         qq_official=config,
+        references=references,
     )
     admin = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -1136,18 +1196,17 @@ def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
     assert features.conversation_has_feature(group, "seer_rank")
 
 
-def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
+def test_qq_official_user_identity_applies_to_group_member() -> None:
+    config = _qq_config(features=[])
+    references = _official_references(
+        config,
+        users={"owner": {"official": {"example_bot": "opaque-member"}}},
+    )
     features = build_feature_service(
         FeatureConfig(superuser_bypass=True),
-        (),
-        qq_official=_qq_config(
-            features=[],
-            group_aliases={"official_group": "opaque-group"},
-            group_member_aliases={
-                "official_group": {"owner": "opaque-member"},
-            },
-            group_superusers={"official_group": ["owner"]},
-        ),
+        ("owner",),
+        qq_official=config,
+        references=references,
     )
     member = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -1159,7 +1218,7 @@ def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
 
     assert features.is_actor_superuser(member)
     assert features.is_actor_feature_allowed(member, "seer_rank")
-    assert not features.is_actor_superuser(
+    assert features.is_actor_superuser(
         ActorRef(
             Platform.QQ_OFFICIAL,
             "opaque-member",
@@ -1168,31 +1227,36 @@ def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
             "example-app",
         )
     )
-    assert all(actor.kind == "member" for actor in features.superuser_actors())
-    assert features.private_superuser_actors() == []
+    assert all(actor.kind == "user" for actor in features.superuser_actors())
+    assert features.private_superuser_actors()
 
 
 def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> None:
-    config = _qq_config(
-        features=[],
-        group_aliases={"admin": "opaque-group"},
-        user_aliases={"owner": "opaque-user"},
-        group_member_aliases={
-            "admin": {
-                "owner": "opaque-owner-member",
-                "pjx": "opaque-member",
-            }
+    config = _qq_config(features=[])
+    references = _official_references(
+        config,
+        groups={
+            "admin": {"qq": 1001, "official": {"example_bot": "opaque-group"}}
+        },
+        users={
+            "owner": {
+                "qq": 2002,
+                "official": {"example_bot": "opaque-user"},
+            },
+            "pjx": {
+                "qq": 3003,
+                "official": {"example_bot": "opaque-member"},
+            },
         },
     )
     features = build_feature_service(
         FeatureConfig(
-            group_aliases={"admin": 1001},
-            user_aliases={"owner": 2002, "pjx": 3003},
             group_policy={"admin": ["seer_rank"]},
             user_policy={"owner": ["ai_chat"], "pjx": ["seer_player"]},
         ),
         ("owner",),
         qq_official=config,
+        references=references,
     )
 
     assert set(features.conversations_for_feature("seer_rank")) == {
@@ -1210,13 +1274,6 @@ def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> Non
             Platform.QQ_OFFICIAL,
             "opaque-user",
             account_id="example-app",
-        ),
-        ActorRef(
-            Platform.QQ_OFFICIAL,
-            "opaque-owner-member",
-            "member",
-            "opaque-group",
-            "example-app",
         ),
     }
     assert set(features.private_actors_for_feature("ai_chat")) == {
@@ -1253,7 +1310,7 @@ def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> Non
     assert features.is_actor_superuser(
         ActorRef(
             Platform.QQ_OFFICIAL,
-            "opaque-owner-member",
+            "opaque-user",
             "member",
             "opaque-group",
             "example-app",
@@ -1522,14 +1579,7 @@ async def test_failed_initial_delivery_cancels_deferred_operation() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(
-            features=["help", "about"],
-            superusers=[],
-        ),
-    )
+    features = _official_feature_service(["help", "about"])
     query_sessions = PortableQuerySessions()
     router = build_portable_command_router(
         catalog=_portable_catalog(),
@@ -1609,13 +1659,9 @@ def test_portable_router_rejects_unimplemented_official_direct_command() -> None
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_activity_queries_with_catalog_access() -> None:
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(
-            features=["seer_activity_query"],
-            superusers=["opaque-admin"],
-        ),
+    features = _official_feature_service(
+        ["seer_activity_query"],
+        superuser=True,
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(activity=True),
@@ -1680,13 +1726,9 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
 
 @pytest.mark.asyncio
 async def test_portable_router_enforces_operational_query_access() -> None:
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(
-            features=["server_status_query", "meeting"],
-            superusers=["opaque-admin"],
-        ),
+    features = _official_feature_service(
+        ["server_status_query", "meeting"],
+        superuser=True,
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(operations=True),
@@ -1735,11 +1777,7 @@ async def test_portable_router_enforces_operational_query_access() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() -> None:
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(features=[], superusers=["opaque-admin"]),
-    )
+    features = _official_feature_service([], superuser=True)
     docker_update = _FakeDockerUpdateService()
     router = build_portable_command_router(
         catalog=_portable_catalog(maintenance=True),
@@ -1881,14 +1919,7 @@ async def test_portable_router_limits_rank_display_setting_to_group_managers() -
 
 @pytest.mark.asyncio
 async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(
-            features=["bili_push"],
-            superusers=["opaque-admin"],
-        ),
-    )
+    features = _official_feature_service(["bili_push"], superuser=True)
     refresh_calls = 0
 
     async def notify_auth_invalid(_reason: str) -> None:
@@ -1991,14 +2022,7 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_restricts_rank_status_to_account_superuser() -> None:
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(
-            features=["seer_rank"],
-            superusers=["opaque-admin"],
-        ),
-    )
+    features = _official_feature_service(["seer_rank"], superuser=True)
     router = build_portable_command_router(
         catalog=_portable_catalog(rank_status=True),
         about=AboutService("test"),
@@ -2679,14 +2703,7 @@ def test_qq_official_quoted_command_is_dispatched() -> None:
         message_type=MSG_TYPE_QUOTE,
         raw={"message_scene": {"ext": ["ref_msg_idx=quoted-sequence"]}},
     )
-    features = build_feature_service(
-        FeatureConfig(),
-        (),
-        qq_official=_qq_config(
-            features=["help", "about"],
-            superusers=[],
-        ),
-    )
+    features = _official_feature_service(["help", "about"])
     router = build_portable_command_router(
         catalog=_portable_catalog(),
         about=AboutService("test"),

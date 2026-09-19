@@ -72,6 +72,7 @@ def build_common_components(
             if settings.bot.qq_official.enabled_accounts
             else None
         ),
+        references=settings.platform_references,
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,

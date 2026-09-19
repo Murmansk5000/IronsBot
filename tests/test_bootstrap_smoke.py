@@ -97,6 +97,7 @@ assert os.environ["ENVIRONMENT"] == "outer"
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
 assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
+    "identity_links",
     "data_sync",
     "qq_official",
 ]

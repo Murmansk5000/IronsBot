@@ -159,8 +159,8 @@ OneBot 玩家主查询、绑定和解绑随后全部改为执行同一组 portab
 也不替代图片上传或多轮菜单验收。
 
 跨平台目标配置不再要求为同一个真实群创建 `admin` 与 `official_admin` 两套别名。
-群和用户别名成为显式逻辑目标：全局 Feature policy 同时覆盖其 OneBot 与官方端点；
-官方群成员通过群作用域 `group_member_aliases` 关联，不能作为 C2C 身份或私聊目标。
+群和用户别名统一位于 `[identities]`：全局 Feature policy 同时覆盖其 OneBot 与官方
+端点；普通群成员由静默 NapCat 观察自动关联，不再逐项写入 TOML。
 这属于权限与目标模型收口，不增加业务功能，也不替代任何客户端验收项。
 
 22:21 使用首版逻辑用户映射启动时，官方账号已取得 Access Token 并进入 READY，但
