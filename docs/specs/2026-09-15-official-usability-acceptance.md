@@ -370,16 +370,23 @@ OpenID、QQ 号或密钥。该证据证明当前配置按预期编译，不替�
 
 ## 2026-09-19 最新本地门禁
 
-- 最新本地候选 `14ba3ddd` 全量：`3804 passed, 7 skipped`。
-- 三种平台选择、静默 OneBot、不回退、Feature/黑名单、管理通知、主动投递、AI
-  未配置策略和生命周期专项：`131 passed`。
-- Ruff、生产与测试 BasedPyright、compileall、静态仓库检查和 diff check 全部通过。
+- 最新本地候选经过 `8b9ae9d0`，全量：`3807 passed, 7 skipped`；跳过项没有计入
+  通过。现有警告主要来自 NoneBot `ForwardRef` 弃用提示和两条既有 SQLAlchemy 关系警告。
+- 核心/完整 NoneBot 清单启动、OneBot 子进程、QQ Official 生命周期、两套状态迁移和
+  只读配置校验专项：`111 passed`。
+- 权限、官方投递、生命周期、会话、提示预处理、玩家 portable 命令、Feature、管理通知、
+  AI 平台行为、主动投递和退订专项：`320 passed`。
+- Ruff check、全仓 Ruff format check（`866 files already formatted`）、生产与测试
+  BasedPyright、compileall、静态仓库检查和 diff check 全部通过。
 - `uv.lock` 经 `uv export --frozen --all-extras --no-dev` 生成临时固定依赖清单后，
   `pip-audit` 在关闭 spinner、15 秒网络超时和 120 秒进程总上限下报告无已知漏洞。
 - 本地候选包含 AI provider 配置迁移：删除单一 `AI_KEY` 及顶层
   `ai.base_url/model/fallback_models/thinking`，改为 `[ai.providers.<alias>]`、
   `ai.provider_order` 与每个 provider 独立的 `AI_KEY_<ALIAS>`。该候选尚未 push、构建或
   部署，生产配置仍不得在发布前提前切换。
+- 新增 `python -m ironsbot.config_check` 作为只读发布前检查。它复用正式严格加载逻辑，
+  但不启动适配器、调度器、数据库或网络客户端；输出只含平台选择和别名摘要。生产迁移
+  仍必须先在配置副本上执行，不能把该工具当成自动改写器。
 
 ## 剩余实机验收执行矩阵
 
