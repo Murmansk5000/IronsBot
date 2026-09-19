@@ -1,5 +1,4 @@
 import asyncio
-from typing import TYPE_CHECKING, cast
 
 from pytest import MonkeyPatch
 
@@ -12,9 +11,6 @@ from ironsbot.services.messaging.admin_notice import (
 )
 from ironsbot.services.operations.startup import StartupNoticeService
 from tests.helpers.runtime import build_test_runtime
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
 
 
 def _startup_notice_service(
@@ -48,7 +44,6 @@ def test_startup_notice_appends_db_sync_notice(
 
     asyncio.run(
         startup_notice_runtime.send_startup_notice(
-            cast("Bot", object()),
             _startup_notice_service(
                 (
                     "startup_data_sync",
@@ -90,7 +85,6 @@ def test_startup_notice_appends_docker_update_before_db_sync(
 
     asyncio.run(
         startup_notice_runtime.send_startup_notice(
-            cast("Bot", object()),
             _startup_notice_service(
                 (
                     "startup_docker_update",
@@ -115,3 +109,37 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         ),
         ("启动数据同步已是最新，无需更新：seerapi", "startup_data_sync"),
     ]
+
+
+def test_official_startup_send_is_not_repeated_on_onebot_connect(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    sent_messages: list[str] = []
+
+    async def fake_send_broadcast_message(
+        _service: AdminNoticeService,
+        message: object,
+        **_kwargs: object,
+    ) -> AdminNoticeSendSummary:
+        sent_messages.append(str(message))
+        return AdminNoticeSendSummary((ActorRef(Platform.QQ_OFFICIAL, "user"),), ())
+
+    monkeypatch.setattr(
+        AdminNoticeService,
+        "send",
+        fake_send_broadcast_message,
+    )
+    service = _startup_notice_service()
+    config = StartupConfig(enabled=True, message="机器人已开启。", delay=0)
+
+    async def run() -> None:
+        await startup_notice_runtime.send_startup_notice(service, config)
+        await startup_notice_runtime.send_startup_notice_on_bot_connect(
+            object(),
+            service=service,
+            config=config,
+        )
+
+    asyncio.run(run())
+
+    assert sent_messages == ["机器人已开启。"]
