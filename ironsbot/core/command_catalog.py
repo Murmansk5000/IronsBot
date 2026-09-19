@@ -160,6 +160,7 @@ def command_context_from_input(context: MessageInputContext) -> CommandContext:
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]
+CommandFeatureCheck = Callable[[CommandFeaturePolicy, CommandContext, str], bool]
 _Parsed = TypeVar("_Parsed")
 
 
@@ -209,15 +210,29 @@ class CommandAccess:
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
+        return self._is_allowed(context, features, feature_is_visible_in_help)
+
+    def is_executable(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+    ) -> bool:
+        return self._is_allowed(context, features, _feature_is_executable)
+
+    def _is_allowed(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        feature_check: CommandFeatureCheck,
+    ) -> bool:
         if not _scope_matches(context, self.scope):
             return False
         if self.features_any and not any(
-            feature_is_visible_in_help(features, context, feature)
-            for feature in self.features_any
+            feature_check(features, context, feature) for feature in self.features_any
         ):
             return False
         if any(
-            not feature_is_visible_in_help(features, context, feature)
+            not feature_check(features, context, feature)
             for feature in self.features_all
         ):
             return False
@@ -282,17 +297,38 @@ class CommandContract:
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
+        return self._is_allowed(context, features, execution=False)
+
+    def is_executable(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+    ) -> bool:
+        return self._is_allowed(context, features, execution=True)
+
+    def _is_allowed(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        *,
+        execution: bool,
+    ) -> bool:
         if context.actor.platform not in self.platforms:
             return False
-        if not any(rule.is_available(context, features) for rule in self.access):
+        access_check = (
+            CommandAccess.is_executable if execution else CommandAccess.is_available
+        )
+        feature_check = (
+            _feature_is_executable if execution else feature_is_visible_in_help
+        )
+        if not any(access_check(rule, context, features) for rule in self.access):
             return False
         if self.features_any and not any(
-            feature_is_visible_in_help(features, context, feature)
-            for feature in self.features_any
+            feature_check(features, context, feature) for feature in self.features_any
         ):
             return False
         if any(
-            not feature_is_visible_in_help(features, context, feature)
+            not feature_check(features, context, feature)
             for feature in self.features_all
         ):
             return False
@@ -399,6 +435,14 @@ def feature_is_visible_in_help(
     return features.is_feature_allowed(context.actor, context.conversation, feature)
 
 
+def _feature_is_executable(
+    features: CommandFeaturePolicy,
+    context: CommandContext,
+    feature: str,
+) -> bool:
+    return features.is_feature_allowed(context.actor, context.conversation, feature)
+
+
 @dataclass(slots=True)
 class CommandCatalog:
     """Validated command descriptions for the active plugin registry."""
@@ -484,6 +528,25 @@ class CommandCatalog:
             if command.is_available(context, features)
         )
 
+    def executable_for_context(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        *,
+        plugin_id: str | None = None,
+        ignored_plugins: Iterable[str] = (),
+    ) -> tuple[CommandContract, ...]:
+        """Return commands the actor may execute, including policy bypasses."""
+
+        ignored = set(ignored_plugins)
+        return tuple(
+            command
+            for command in self._commands
+            if (plugin_id is None or command.plugin_id == plugin_id)
+            if command.plugin_id not in ignored
+            if command.is_executable(context, features)
+        )
+
     @property
     def command_ids(self) -> frozenset[str]:
         return frozenset(command.id for command in self._commands)
@@ -562,7 +625,7 @@ class CommandCatalog:
 
         return any(
             command.matches_direct_input(context, text)
-            for command in self.available_for_context(
+            for command in self.executable_for_context(
                 context,
                 features,
                 ignored_plugins=ignored_plugins,
