@@ -5,13 +5,13 @@ import httpx
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
-from ironsbot.config.models.ai import AiConfig
 from ironsbot.integrations.http.ai import (
     AiApiSettings,
     HttpAiCompletionClient,
     check_ai_api,
 )
 from ironsbot.services.ai.responses import AiResponseResult
+from tests.helpers.ai import configured_ai_config
 
 HTTP_OK = 200
 
@@ -20,7 +20,7 @@ def test_ai_api_fails_without_key() -> None:
     result = asyncio.run(check_ai_api(AiApiSettings(api_key="")))
 
     assert not result.ok
-    assert result.error == "未配置 AI_KEY"
+    assert result.error == "未配置 AI provider key"
 
 
 def test_ai_api_success(monkeypatch: MonkeyPatch) -> None:
@@ -85,10 +85,9 @@ def test_ai_completion_uses_fallback_models_in_order() -> None:
         ) as client:
             completion = HttpAiCompletionClient(
                 client,
-                AiConfig(
+                configured_ai_config(
                     api_key="test-key",
-                    model="primary",
-                    fallback_models=["backup", "unused"],
+                    models=("primary", "backup", "unused"),
                 ),
             )
             return await completion.complete([{"role": "user", "content": "hi"}])

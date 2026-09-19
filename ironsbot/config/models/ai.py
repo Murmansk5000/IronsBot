@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -71,13 +72,44 @@ def default_ai_actions() -> dict[str, AiIntentAction]:
     return {}
 
 
-class AiConfig(BaseModel):
+class AiProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_key: str = Field(default="", exclude=True, repr=False)
-    base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-v4-pro"
-    fallback_models: list[str] = Field(default_factory=list)
+    base_url: str
+    models: list[str]
+    thinking: bool = False
+
+    @field_validator("base_url")
+    @classmethod
+    def normalize_base_url(cls, value: str) -> str:
+        base_url = value.strip().rstrip("/")
+        if not base_url:
+            raise ValueError("AI provider base_url must not be empty")  # noqa: TRY003
+        return base_url
+
+    @field_validator("models")
+    @classmethod
+    def normalize_models(cls, value: list[str]) -> list[str]:
+        models: list[str] = []
+        for index, raw_model in enumerate(value):
+            model = raw_model.strip()
+            if not model:
+                raise ValueError(  # noqa: TRY003
+                    f"AI provider models[{index}] must not be empty"
+                )
+            if model not in models:
+                models.append(model)
+        if not models:
+            raise ValueError("AI provider models must not be empty")  # noqa: TRY003
+        return models
+
+
+class AiConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_order: list[str] = Field(default_factory=list)
+    providers: dict[str, AiProviderConfig] = Field(default_factory=dict)
     prompt: str = DEFAULT_AI_PROMPT
     history_turns: int = Field(default=6, ge=0, le=20)
     memory: bool = True
@@ -87,7 +119,6 @@ class AiConfig(BaseModel):
     timeout: float = Field(default=45.0, gt=0)
     max_tokens: int = Field(default=800, gt=0)
     temperature: float = Field(default=0.7, ge=0, le=2)
-    thinking: bool = False
     waiting_notice: bool = False
     max_reply_chars: int = Field(default=1500, gt=0)
     admin_notice_cooldown_seconds: float = Field(
@@ -99,36 +130,37 @@ class AiConfig(BaseModel):
         default_factory=default_ai_actions
     )
 
-    @field_validator("base_url")
-    @classmethod
-    def normalize_base_url(cls, value: str) -> str:
-        return value.strip().rstrip("/")
-
-    @field_validator("model")
-    @classmethod
-    def normalize_model(cls, value: str) -> str:
-        model = value.strip()
-        if not model:
-            raise ValueError("ai.model must not be empty")  # noqa: TRY003
-        return model
-
-    @field_validator("fallback_models")
-    @classmethod
-    def normalize_fallback_models(cls, value: list[str]) -> list[str]:
-        models: list[str] = []
-        for index, raw_model in enumerate(value):
-            model = raw_model.strip()
-            if not model:
+    @model_validator(mode="after")
+    def validate_providers(self) -> Self:
+        aliases = list(self.providers)
+        for alias in aliases:
+            if re.fullmatch(r"[a-z][a-z0-9_]*", alias) is None:
                 raise ValueError(  # noqa: TRY003
-                    f"ai.fallback_models[{index}] must not be empty"
+                    "ai.providers aliases must use lowercase letters, digits, "
+                    "and underscores, starting with a letter"
                 )
-            if model not in models:
-                models.append(model)
-        return models
+
+        if not self.provider_order:
+            self.provider_order = aliases
+        if len(self.provider_order) != len(set(self.provider_order)):
+            raise ValueError("ai.provider_order contains duplicates")  # noqa: TRY003
+        if set(self.provider_order) != set(aliases):
+            raise ValueError(  # noqa: TRY003
+                "ai.provider_order must contain every declared provider exactly once"
+            )
+        return self
 
     @property
-    def models(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys((self.model, *self.fallback_models)))
+    def configured_providers(self) -> tuple[tuple[str, AiProviderConfig], ...]:
+        return tuple(
+            (alias, self.providers[alias])
+            for alias in self.provider_order
+            if self.providers[alias].api_key.strip()
+        )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.configured_providers)
 
     @field_validator("intent_actions", mode="before")
     @classmethod
