@@ -36,13 +36,13 @@ async def find_rank_by_cached_position(  # noqa: PLR0913
     if cached_item is None:
         return None
 
-    result.cost.anchor_page_start = (
-        cached_item.rank_index // page_size * page_size
-    )
-    for index, start in enumerate(rank_window_page_starts(
-        center_index=cached_item.rank_index,
-        page_size=page_size,
-    )):
+    result.cost.anchor_page_start = cached_item.rank_index // page_size * page_size
+    for index, start in enumerate(
+        rank_window_page_starts(
+            center_index=cached_item.rank_index,
+            page_size=page_size,
+        )
+    ):
         page = await fetch_rank_page(
             game,
             key=key,

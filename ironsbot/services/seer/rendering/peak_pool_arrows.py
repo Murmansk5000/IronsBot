@@ -79,12 +79,12 @@ def pool_transition_arrows(
                 continue
             row, column = divmod(slot_index, layout.columns)
             top = section_top + POOL_GRID_TOP + row * CELL_STEP
-            endpoints.setdefault(placement.transition_id, {})[
-                placement.historical
-            ] = _PlacementGeometry(
-                x=POOL_GRID_LEFT + column * CELL_STEP + CELL_WIDTH // 2,
-                top=top,
-                bottom=top + CELL_WIDTH,
+            endpoints.setdefault(placement.transition_id, {})[placement.historical] = (
+                _PlacementGeometry(
+                    x=POOL_GRID_LEFT + column * CELL_STEP + CELL_WIDTH // 2,
+                    top=top,
+                    bottom=top + CELL_WIDTH,
+                )
             )
         section_top += POOL_SECTION_FIXED_HEIGHT + grid_height + POOL_SECTION_MARGIN
 

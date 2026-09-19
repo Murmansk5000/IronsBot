@@ -62,18 +62,14 @@ class HeadlessOperationTracker:
             background=background,
             conversation=conversation,
             started_at=time.monotonic(),
-            semantic_action_id=(
-                "" if semantic is None else semantic.request.action.id
-            ),
+            semantic_action_id=("" if semantic is None else semantic.request.action.id),
             semantic_action_label=(
                 "" if semantic is None else semantic.request.action.label
             ),
             semantic_target=(
                 "" if semantic is None else semantic.request.target.display
             ),
-            semantic_source=(
-                "" if semantic is None else semantic.request.source.value
-            ),
+            semantic_source=("" if semantic is None else semantic.request.source.value),
             semantic_actor=(None if semantic is None else semantic.actor),
         )
         token = self._current.set(operation)
@@ -131,8 +127,7 @@ class HeadlessOperationTracker:
         if operation.conversation is not None:
             ref = operation.conversation
             conversation = (
-                f"，会话：{ref.platform.value}/{ref.kind}/"
-                f"{reference_digest(ref.id)}"
+                f"，会话：{ref.platform.value}/{ref.kind}/{reference_digest(ref.id)}"
             )
         return f"{operation.label}{detail}（{kind}操作{conversation}）"
 

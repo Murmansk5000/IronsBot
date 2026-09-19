@@ -106,9 +106,7 @@ def test_explicit_preview_is_bounded_and_keeps_corrections_folded() -> None:
         weekly_cycle="2026-09-11",
         items=items,
         category_states=(
-            NewContentCategoryState(
-                "pet", comparison_ready=True, reason="comparable"
-            ),
+            NewContentCategoryState("pet", comparison_ready=True, reason="comparable"),
         ),
     )
 

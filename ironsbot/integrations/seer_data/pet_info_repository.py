@@ -304,9 +304,7 @@ def _load_item_exchange_prices(
                 item_name=str(row["item_name"] or "").strip(),
                 item_quantity=int(row["item_quantity"] or 1),
                 currency_item_id=currency_id,
-                currency_name=(
-                    currency_name or f"未收录道具（{currency_id}）"
-                ),
+                currency_name=(currency_name or f"未收录道具（{currency_id}）"),
                 amount=int(row["amount"]),
                 purchase_limit=(
                     int(row["purchase_limit"])

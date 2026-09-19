@@ -125,6 +125,8 @@ def test_lucky_skin_schedule_preserves_configured_seconds() -> None:
 
     assert jobs[1]["id"] == "lucky_skin_window:daily"
     assert (jobs[1]["hour"], jobs[1]["minute"], jobs[1]["second"]) == (0, 2, 19)
+
+
 WATCH_SKIN_ID = 103
 
 
@@ -269,16 +271,12 @@ class _NotificationSender:
         return True
 
 
-
-
 class _PluginPet:
     async def select_image(
         self,
         selection: PetImageSelection,
     ) -> QueryResult[object]:
         return QueryResult(reply=QueryReply(text=f"皮肤详情：{selection.skin_id}"))
-
-
 
 
 def _service(
@@ -406,9 +404,7 @@ def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
 
     async def check() -> None:
         result = await service.query(_request(1001))
-        assert (
-            await service.result_message(result, actor=_actor(1001))
-        ).parts == (
+        assert (await service.result_message(result, actor=_actor(1001))).parts == (
             BinaryImagePart(b"lucky-window-card", "image/png"),
         )
 
@@ -447,8 +443,7 @@ def test_watch_defaults_accept_resource_ids_and_seed_only_once(
     reset = service.watch_reset_message(_actor(1001))
     assert "已恢复 TOML 初始关注列表。" in reset
     assert [
-        (item.skin_id, item.resource_id)
-        for item in service.watched_skins(_actor(1001))
+        (item.skin_id, item.resource_id) for item in service.watched_skins(_actor(1001))
     ] == [(101, 1_400_101)]
 
 
@@ -479,9 +474,9 @@ def test_watch_preferences_are_isolated_by_actor(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
     item = service.resolve_watch_candidates(_actor(1001), "104")[0]
-    assert service.watch_change_message(
-        _actor(1001), item, watched=True
-    ).startswith("已关注：")
+    assert service.watch_change_message(_actor(1001), item, watched=True).startswith(
+        "已关注："
+    )
     assert [item.skin_id for item in service.watched_skins(_actor(1001))] == [101, 104]
     assert [item.skin_id for item in service.watched_skins(_actor(1002))] == [102]
 
@@ -580,11 +575,18 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     event = private_message_event("订阅橱窗", user_id=1001)
     operations = build_portable_lucky_skin_operations(
-        service, cast("Any", _PluginPet()),
-        cast("Any", SimpleNamespace(linked_onebot_actor=AsyncMock(
-            return_value=_actor(1001),
-        ))),
-        PortableQuerySessions(), cast("Any", object()),
+        service,
+        cast("Any", _PluginPet()),
+        cast(
+            "Any",
+            SimpleNamespace(
+                linked_onebot_actor=AsyncMock(
+                    return_value=_actor(1001),
+                )
+            ),
+        ),
+        PortableQuerySessions(),
+        cast("Any", object()),
     )
 
     async def check() -> None:
@@ -595,15 +597,15 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
             features=cast("FeatureService", _Features()),
         )
         reply = await operations["seer.lucky_skin_window.watch.list"](
-            event.get_plaintext(), message_input_context(event),
+            event.get_plaintext(),
+            message_input_context(event),
         )
         assert isinstance(reply, OutboundMessage)
-        assert reply.parts == (TextPart(
-            "❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"
-        ),)
+        assert reply.parts == (
+            TextPart("❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"),
+        )
 
     asyncio.run(check())
-
 
 
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
@@ -665,7 +667,8 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 def test_admin_queries_configured_account_without_own_subscription(
-    tmp_path: Path, platform: Platform,
+    tmp_path: Path,
+    platform: Platform,
 ) -> None:
     service, _game, _delivery, _bindings, sessions = _service(tmp_path)
     request = LuckySkinQuery(ActorRef(platform, "9999"), None, 90002)
@@ -680,7 +683,8 @@ def test_admin_queries_configured_account_without_own_subscription(
 
 @pytest.mark.parametrize("player_id", [90002, 999999])
 def test_nonadmin_cannot_query_another_account(
-    tmp_path: Path, player_id: int,
+    tmp_path: Path,
+    player_id: int,
 ) -> None:
     service, _game, _delivery, _bindings, sessions = _service(tmp_path)
     request = LuckySkinQuery(_actor(1001), _actor(1001), player_id)
@@ -744,8 +748,6 @@ def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     assert cached is not None
     assert cached.from_cache
     assert len(sessions.opens) == 1
-
-
 
 
 def test_cache_deletes_previous_days_at_the_first_new_day_lookup(

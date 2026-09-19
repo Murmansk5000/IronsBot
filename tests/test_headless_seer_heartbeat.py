@@ -112,13 +112,9 @@ def test_socket_requests_wait_for_the_previous_response() -> None:
         first_command_id = CommandID[Any](2051)
         second_command_id = CommandID[Any](2052)
 
-        first = asyncio.create_task(
-            client.send_and_wait(first_command_id, timeout=1)
-        )
+        first = asyncio.create_task(client.send_and_wait(first_command_id, timeout=1))
         await asyncio.sleep(0)
-        second = asyncio.create_task(
-            client.send_and_wait(second_command_id, timeout=1)
-        )
+        second = asyncio.create_task(client.send_and_wait(second_command_id, timeout=1))
         await asyncio.sleep(0)
 
         assert client.sent_commands == [first_command_id]

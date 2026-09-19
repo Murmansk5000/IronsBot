@@ -488,8 +488,7 @@ def _copy_player_bindings(
     for row in _rows(source, "player_bindings"):
         actor = _onebot_actor(row["qq_user_id"], "player_bindings")
         target.execute(
-            "INSERT INTO player_bindings VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ActorIdentityColumns.from_actor(actor).values(),
                 row["player_id"],
@@ -509,8 +508,7 @@ def _copy_player_query_usage(
     for row in _rows(source, "player_query_usage"):
         actor = _onebot_actor(row["qq_user_id"], "player_query_usage")
         target.execute(
-            "INSERT INTO player_query_usage VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO player_query_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 row["local_date"],
                 *ActorIdentityColumns.from_actor(actor).values(),
@@ -530,8 +528,7 @@ def _copy_lucky_skin_preferences(
     for row in _rows(source, "lucky_skin_watch_preferences"):
         actor = _onebot_actor(row["qq_user_id"], "lucky_skin_watch_preferences")
         target.execute(
-            "INSERT INTO lucky_skin_watch_preferences VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO lucky_skin_watch_preferences VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ActorIdentityColumns.from_actor(actor).values(),
                 row["skin_ids_json"],

@@ -187,9 +187,7 @@ def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
     )
 
 
-def is_supported_message_actor(
-    actor: ActorRef, conversation: ConversationRef
-) -> bool:
+def is_supported_message_actor(actor: ActorRef, conversation: ConversationRef) -> bool:
     """Validate group/private identity shape, not actual platform membership."""
 
     if actor.platform is not conversation.platform:

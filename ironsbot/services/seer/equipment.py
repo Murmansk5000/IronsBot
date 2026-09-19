@@ -30,6 +30,8 @@ EQUIP_PART_TYPE_MAP = {
     5: "背景",
     MOUNT_PART_TYPE_ID: "星际座驾",
 }
+
+
 @dataclass(frozen=True, slots=True)
 class _EquipmentReplyData:
     kind: EquipmentKind
@@ -90,9 +92,7 @@ class EquipmentQueryService:
                     )
                 )
             reply_data = self._reply_data(kind, item)
-        return QueryResult(
-            reply=await self._build_reply(reply_data)
-        )
+        return QueryResult(reply=await self._build_reply(reply_data))
 
     def _getter(self, kind: EquipmentKind) -> DataGetter[Any]:
         return cast(
@@ -136,16 +136,9 @@ class EquipmentQueryService:
             "mount" if reply_data.is_mount else reply_data.kind,
             str(reply_data.item_id),
         )
-        if (
-            reply_data.is_mount
-            and image.data is None
-            and "原因：404" in image.error
-        ):
+        if reply_data.is_mount and image.data is None and "原因：404" in image.error:
             return QueryReply(
-                text=(
-                    f"{reply_data.text}\n"
-                    "图片：官方图片暂未上线，暂无法展示。"
-                )
+                text=(f"{reply_data.text}\n图片：官方图片暂未上线，暂无法展示。")
             )
         return QueryReply(
             text=reply_data.text,
@@ -158,8 +151,7 @@ class EquipmentQueryService:
         equips = []
         for equip in suit.equips:
             text = (
-                f"{EQUIP_PART_TYPE_MAP[equip.part_type.id]}："
-                f"{equip.name}（{equip.id}）"
+                f"{EQUIP_PART_TYPE_MAP[equip.part_type.id]}：{equip.name}（{equip.id}）"
             )
             if equip.bonus:
                 text += f"\n    效果：{equip.bonus.desc}"

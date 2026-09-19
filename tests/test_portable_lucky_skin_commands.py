@@ -38,7 +38,9 @@ _Operation = Callable[[str, MessageInputContext], Awaitable[OutboundMessage]]
 
 
 def _context(
-    text: str = "橱窗", *, platform: Platform = Platform.QQ_OFFICIAL,
+    text: str = "橱窗",
+    *,
+    platform: Platform = Platform.QQ_OFFICIAL,
 ) -> MessageInputContext:
     actor = ActorRef(
         platform,
@@ -171,9 +173,7 @@ async def test_uncached_query_runs_only_after_confirmation(platform: Platform) -
     operations = _operations(service, pet, identity, sessions)
     context = _context(platform=platform)
 
-    confirmation = await operations["seer.lucky_skin_window.query"](
-        "橱窗", context
-    )
+    confirmation = await operations["seer.lucky_skin_window.query"]("橱窗", context)
     service.query.assert_not_awaited()
     result_message = await sessions.select("1", context)
 
@@ -197,9 +197,9 @@ async def test_cancelled_query_never_logs_in(platform: Platform) -> None:
     service.cached_query.return_value = None
     service.query = AsyncMock()
     context = _context(platform=platform)
-    await _operations(service, pet, identity, sessions)[
-        "seer.lucky_skin_window.query"
-    ](context.text, context)
+    await _operations(service, pet, identity, sessions)["seer.lucky_skin_window.query"](
+        context.text, context
+    )
     cancelled = await sessions.select("2", context)
     assert cancelled is not None
     assert "已取消" in _text(cancelled)
@@ -210,23 +210,27 @@ async def test_cancelled_query_never_logs_in(platform: Platform) -> None:
 @pytest.mark.parametrize("reference", ["90002", "示例账号", ""])
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 async def test_target_query_preserves_account_through_confirmation(
-    reference: str, platform: Platform,
+    reference: str,
+    platform: Platform,
 ) -> None:
     service, pet, identity, sessions, onebot = _dependencies()
     context = _context(f"橱窗{reference}", platform=platform)
     if not reference:
-        context = replace(context, message=replace(
-            context.message,
-            direct_mentions=(replace(context.message.actor, id="member-target"),),
-        ))
+        context = replace(
+            context,
+            message=replace(
+                context.message,
+                direct_mentions=(replace(context.message.actor, id="member-target"),),
+            ),
+        )
     result = LuckySkinWindowResult("2026-09-15", 90002, (), from_cache=False)
     service.cached_query.return_value = None
     service.query = AsyncMock(return_value=result)
     service.detail_choices.return_value = ()
     service.result_message = AsyncMock(return_value=OutboundMessage.from_text("result"))
-    await _operations(service, pet, identity, sessions)[
-        "seer.lucky_skin_window.query"
-    ](context.text, context)
+    await _operations(service, pet, identity, sessions)["seer.lucky_skin_window.query"](
+        context.text, context
+    )
     expected = LuckySkinQuery(context.message.actor, onebot, 90002)
     service.cached_query.assert_called_once_with(expected)
     service.query.assert_not_awaited()
@@ -238,7 +242,8 @@ async def test_target_query_preserves_account_through_confirmation(
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("selection", ["2", "0"])
 async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
-    platform: Platform, selection: str,
+    platform: Platform,
+    selection: str,
 ) -> None:
     service, pet, identity, sessions, onebot = _dependencies()
     service.cached_query.return_value = None
@@ -258,7 +263,9 @@ async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     operations = build_portable_lucky_skin_operations(
         cast("LuckySkinWindowService", service),
         cast("PetQueryService", pet),
-        cast("IdentityLinkingService", identity), sessions, resolver,
+        cast("IdentityLinkingService", identity),
+        sessions,
+        resolver,
     )
     context = _context("橱窗示例", platform=platform)
     menu = await operations["seer.lucky_skin_window.query"](context.text, context)
@@ -287,10 +294,8 @@ async def test_watch_operations_reuse_linked_onebot_preferences(
     item = LuckySkinWatchItem(101, 1400101, "测试皮肤")
     service.watch_list_message.return_value = "关注列表"
     service.resolve_watch_candidates.return_value = (item,)
-    service.watch_change_message.side_effect = (
-        lambda _actor, selected, *, watched: (
-            f"{'已关注' if watched else '已取消关注'}：{selected.name}"
-        )
+    service.watch_change_message.side_effect = lambda _actor, selected, *, watched: (
+        f"{'已关注' if watched else '已取消关注'}：{selected.name}"
     )
     service.watch_clear_message.return_value = "已清空关注皮肤。"
     service.watch_reset_message.return_value = "已恢复 TOML 初始关注列表。"
@@ -342,9 +347,7 @@ async def test_ambiguous_watch_change_uses_named_selection_buttons(
     operations = _operations(service, pet, identity, sessions)
     context = _context("关注橱窗皮肤", platform=platform)
 
-    menu = await operations["seer.lucky_skin_window.watch.add"](
-        "关注橱窗皮肤", context
-    )
+    menu = await operations["seer.lucky_skin_window.watch.add"]("关注橱窗皮肤", context)
     selected = await sessions.select("2", context)
 
     assert menu.prompt is not None
@@ -363,15 +366,19 @@ async def test_ambiguous_watch_change_uses_named_selection_buttons(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("action", "text"), [
-    ("list", "关注橱窗"),
-    ("add", "关注橱窗测试"),
-    ("remove", "取消关注橱窗测试"),
-    ("clear", "清空关注橱窗"),
-    ("reset", "重置关注橱窗"),
-])
+@pytest.mark.parametrize(
+    ("action", "text"),
+    [
+        ("list", "关注橱窗"),
+        ("add", "关注橱窗测试"),
+        ("remove", "取消关注橱窗测试"),
+        ("clear", "清空关注橱窗"),
+        ("reset", "重置关注橱窗"),
+    ],
+)
 async def test_unlinked_identity_cannot_read_or_change_watch_preferences(
-    action: str, text: str,
+    action: str,
+    text: str,
 ) -> None:
     service, pet, identity, sessions, _ = _dependencies(linked=False)
     reply = await _operations(service, pet, identity, sessions)[

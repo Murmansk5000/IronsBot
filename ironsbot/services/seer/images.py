@@ -126,6 +126,7 @@ class SeerImageSource(Protocol):
         fallback: bool = True,
     ) -> bytes: ...
 
+
 @dataclass(frozen=True, slots=True)
 class PreparedImageRequest:
     """One immutable source identity paired with its exact download operation."""
@@ -144,6 +145,7 @@ class SeerImageRequestSource(Protocol):
         *,
         fallback: bool,
     ) -> PreparedImageRequest: ...
+
 
 @dataclass(frozen=True, slots=True)
 class ImageFetchResult:

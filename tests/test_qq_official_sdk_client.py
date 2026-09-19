@@ -65,13 +65,12 @@ class _FakeApi:
         self.keyboards.append(keyboard)
         return {"id": f"message-{len(self.messages)}"}
 
+
 @dataclass(slots=True)
 class _FakeMedia:
     result: str = "file-info"
     error: Exception | None = None
-    uploads: list[tuple[str, str, QQOfficialImagePayload]] = field(
-        default_factory=list
-    )
+    uploads: list[tuple[str, str, QQOfficialImagePayload]] = field(default_factory=list)
 
     async def upload_image(
         self,
@@ -301,12 +300,10 @@ async def test_sdk_client_logs_sequence_without_delivery_identifiers(
     )
 
     assert (
-        "scope=c2c mode=passive sequence=2 payload=QQOfficialTextPayload"
-        in caplog.text
+        "scope=c2c mode=passive sequence=2 payload=QQOfficialTextPayload" in caplog.text
     )
     assert (
-        "scope=c2c mode=passive sequence=3 payload=QQOfficialTextPayload"
-        in caplog.text
+        "scope=c2c mode=passive sequence=3 payload=QQOfficialTextPayload" in caplog.text
     )
     assert "private-openid" not in caplog.text
     assert "incoming-message-id" not in caplog.text

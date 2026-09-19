@@ -286,9 +286,7 @@ def test_group_menu_reply_normalizes_textual_bot_mention() -> None:
         group_id=4,
         self_id=1,
         message_id=100,
-        message=Message(
-            [MessageSegment.reply(99), MessageSegment.text("@babyQ  2")]
-        ),
+        message=Message([MessageSegment.reply(99), MessageSegment.text("@babyQ  2")]),
         raw_message="[reply:id=99]@babyQ  2",
         reply_sender_user_id=1,
         reply_message_id=99,
@@ -314,9 +312,7 @@ def test_group_menu_reply_accepts_current_napcat_reply_segment() -> None:
                 MessageSegment.text(" 2"),
             ]
         ),
-        original_message=Message(
-            [MessageSegment.at(1), MessageSegment.text(" 2")]
-        ),
+        original_message=Message([MessageSegment.at(1), MessageSegment.text(" 2")]),
         raw_message="[reply:id=99][at:qq=1] 2",
     )
     event.reply = None

@@ -176,9 +176,7 @@ def _resolver(*, target_binding: int | None = 800001) -> PlayerIdResolver:
 
     return PlayerIdResolver(
         lookup,
-        lambda actor: (
-            target_binding if actor.id == "target-openid" else 600001
-        ),
+        lambda actor: target_binding if actor.id == "target-openid" else 600001,
     )
 
 
@@ -323,9 +321,7 @@ async def test_rank_reports_an_unbound_mentioned_openid() -> None:
 @pytest.mark.asyncio
 async def test_portable_rank_admin_operations_include_deferred_refresh() -> None:
     service = _RankAdminService()
-    operations = build_portable_rank_admin_operations(
-        cast("RankAdminService", service)
-    )
+    operations = build_portable_rank_admin_operations(cast("RankAdminService", service))
     context = _context("/榜单情况")
 
     samples = await operations["rank.sample_status"]("样本情况", context)
@@ -402,9 +398,9 @@ async def test_portable_rank_page_maintenance_uses_deferred_reply(
     final_text: str,
 ) -> None:
     service = _RankAdminService()
-    operation = build_portable_rank_admin_operations(
-        cast("RankAdminService", service)
-    )[command_id]
+    operation = build_portable_rank_admin_operations(cast("RankAdminService", service))[
+        command_id
+    ]
 
     reply = cast("PortableReply", await operation(text, _context(text)))
 

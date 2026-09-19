@@ -32,9 +32,7 @@ RANK_PAGE_CACHE_STATUS_PREFIXES = (
     "榜单情况",
     "榜单状态",
 )
-RANK_PAGE_CACHE_REFRESH_PREFIXES = (
-    "刷新榜单",
-)
+RANK_PAGE_CACHE_REFRESH_PREFIXES = ("刷新榜单",)
 RANK_SAMPLE_STATUS_COMMANDS = ("/样本情况", "/样本状态")
 RANK_SAMPLE_REFRESH_COMMANDS = ("/刷新样本",)
 RANK_PAGE_OVERVIEW_COMMANDS = tuple(
@@ -180,9 +178,7 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
     "群星牌": LocalRankSpec("样本群星牌积分榜", "autocard_score"),
     "已解锁图鉴": LocalRankSpec("样本已解锁图鉴榜", "unlocked_book_entries"),
     "成就数量": LocalRankSpec("样本成就数量榜", "achievement_count"),
-    "竞技段位": LocalRankSpec(
-        "样本竞技段位榜", "peak_standard", season_limited=True
-    ),
+    "竞技段位": LocalRankSpec("样本竞技段位榜", "peak_standard", season_limited=True),
     "竞技胜率": LocalRankSpec(
         "样本竞技胜率榜", "peak_standard_win_rate", season_limited=True
     ),

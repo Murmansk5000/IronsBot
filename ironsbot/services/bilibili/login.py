@@ -25,13 +25,11 @@ LOGIN_QR_EXPIRE_SECONDS = 180
 LOGIN_QR_POLL_SUCCESS_CODE = 0
 LOGIN_QR_POLL_EXPIRED_CODE = 86038
 COOKIE_INCOMPLETE_NOTICE = (
-    "B站扫码已确认，但没有取得完整登录Cookie。"
-    "下次检测到登录失效时会重新发送二维码。"
+    "B站扫码已确认，但没有取得完整登录Cookie。下次检测到登录失效时会重新发送二维码。"
 )
 LOGIN_SUCCESS_NOTICE = "B站登录成功，Cookie已刷新。"
 LOGIN_POLL_ERROR_NOTICE = (
-    "B站扫码登录过程中发生错误。"
-    "下次检测到登录失效时会重新发送二维码。"
+    "B站扫码登录过程中发生错误。下次检测到登录失效时会重新发送二维码。"
 )
 
 
@@ -74,10 +72,7 @@ class BilibiliLoginService:
     ) -> None:
         self.state.required = True
         now = time.time()
-        if (
-            not force
-            and now - self.state.last_notice_at < self.cooldown_seconds
-        ):
+        if not force and now - self.state.last_notice_at < self.cooldown_seconds:
             return
         try:
             qrcode = await self._request_qrcode(send_notice)
@@ -132,9 +127,7 @@ class BilibiliLoginService:
                         poll.login_url,
                     )
                     if "SESSDATA=" not in cookie:
-                        await send_notice(
-                            BiliLoginNotice(COOKIE_INCOMPLETE_NOTICE)
-                        )
+                        await send_notice(BiliLoginNotice(COOKIE_INCOMPLETE_NOTICE))
                         return
                     self.cookie_store.save(cookie)
                     self.state.required = False

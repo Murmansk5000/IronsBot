@@ -560,8 +560,11 @@ def test_platform_scoped_command_is_routed_only_on_its_transport() -> None:
 
 def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> None:
     command = CommandContract(
-        id="parsed", plugin_id="example", section="query",
-        examples=("reserved",), routing_aliases=("also reserved",),
+        id="parsed",
+        plugin_id="example",
+        section="query",
+        examples=("reserved",),
+        routing_aliases=("also reserved",),
         description="A parser owns admission, not its illustrative examples",
         routing_matcher=lambda text, _context: text == "accepted",
     )
@@ -573,8 +576,12 @@ def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> Non
 @pytest.mark.parametrize("text", ["hELP", "help", " Help", "Help ", "H elp", "/Help"])
 def test_exact_contract_does_not_infer_normalized_spellings(text: str) -> None:
     command = CommandContract(
-        id="literal", plugin_id="example", section="query", examples=("Help",),
-        routing_aliases=("two words",), description="Literal commands",
+        id="literal",
+        plugin_id="example",
+        section="query",
+        examples=("Help",),
+        routing_aliases=("two words",),
+        description="Literal commands",
     )
     assert command.matches_direct_input(_context(1), "Help")
     assert command.matches_direct_input(_context(1), "two words")

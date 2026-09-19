@@ -158,9 +158,7 @@ def test_parse_countermark_stat_rank_command_reads_composite_stats() -> None:
 def test_parse_countermark_stat_rank_command_reads_stat_combinations() -> None:
     shield_hp_command = parse_countermark_stat_rank_command("刻印盾体榜")
     attack_hp_command = parse_countermark_stat_rank_command("物攻体刻印榜")
-    special_attack_shield_command = parse_countermark_stat_rank_command(
-        "特攻盾刻印榜"
-    )
+    special_attack_shield_command = parse_countermark_stat_rank_command("特攻盾刻印榜")
 
     assert shield_hp_command is not None
     assert shield_hp_command.stat == StatSpec(
@@ -201,8 +199,7 @@ def test_build_countermark_message_prompts_when_stat_is_missing() -> None:
     assert "刻印数值榜需要指定属性" in message
     assert (
         "可用属性：攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / "
-        "双防 / 双攻 / 盾 / 双刀 / 总和"
-        in message
+        "双防 / 双攻 / 盾 / 双刀 / 总和" in message
     )
 
 
@@ -288,9 +285,7 @@ def test_build_countermark_message_renders_stat_combinations() -> None:
 
 
 def test_countermark_service_owns_query_and_formatting() -> None:
-    service = CountermarkStatRankService(
-        cast("SeerDataAccess", FakeRankData())
-    )
+    service = CountermarkStatRankService(cast("SeerDataAccess", FakeRankData()))
 
     assert "刻印数值榜需要指定属性" in service.query(
         CountermarkStatRankCommand(stat=None, scope="all")

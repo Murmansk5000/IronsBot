@@ -71,8 +71,11 @@ async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> No
     menu = sessions.offer_menu(
         context,
         PortableMenuSpec(
-            choices=("one",), select=select, prompt=OutboundMessage.from_text("choose"),
-            labels=("display label",), text_inputs=(frozenset({"accept", "是"}),),
+            choices=("one",),
+            select=select,
+            prompt=OutboundMessage.from_text("choose"),
+            labels=("display label",),
+            text_inputs=(frozenset({"accept", "是"}),),
             keep_open=True,
         ),
     )
@@ -85,8 +88,11 @@ async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> No
     for call in select.await_args_list:
         assert call.args == ("one", context)
     empty = sessions.offer_menu(
-        context, PortableMenuSpec(
-            choices=(), select=select, prompt=OutboundMessage.from_text("no choices"),
+        context,
+        PortableMenuSpec(
+            choices=(),
+            select=select,
+            prompt=OutboundMessage.from_text("no choices"),
         ),
     )
     assert empty.prompt is None
@@ -265,9 +271,7 @@ async def test_shareable_group_choice_clones_session_for_quoted_responder() -> N
 
     assert sessions.recognizes_shared_response("1", owner, responder)
     assert not sessions.recognizes_shared_response("2", owner, responder)
-    assert not sessions.recognizes_shared_response(
-        "1", owner, _context("responder")
-    )
+    assert not sessions.recognizes_shared_response("1", owner, _context("responder"))
     assert not sessions.recognizes_shared_response(
         "1", owner, _context("responder", group_id="other", reply_to_id="menu")
     )

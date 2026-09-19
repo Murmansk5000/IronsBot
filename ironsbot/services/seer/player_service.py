@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 import asyncio
@@ -117,12 +117,14 @@ class PlayerService(PlayerAccountPolicyMixin):
     ) -> PlayerQueryResult:
         if not is_valid_player_id(player_id):
             return PlayerQueryResult(message=PLAYER_ID_ERROR_MESSAGE)
+
         def fallback() -> PlayerQueryResult | None:
             binding = self._bindings.get(actor)
             return self._query_cache.result(
                 player_id,
                 offer_binding=explicit and not binding.choice_completed,
             )
+
         quota_message = self._check_quota(
             actor=actor,
             player_id=player_id,
@@ -183,9 +185,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         binding = self._bindings.get(recipient)
         if binding.player_id == player_id:
             nick = f"（{binding.player_nick}）" if binding.player_nick else ""
-            return PlayerQueryResult(
-                message=f"当前已绑定该米米号：{player_id}{nick}。"
-            )
+            return PlayerQueryResult(message=f"当前已绑定该米米号：{player_id}{nick}。")
         if binding.player_id is not None and target is None:
             change_error = self._binding_change_error(actor)
             if change_error:
@@ -321,9 +321,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             return QueryReply(text=self.format_error(player_id, error))
         except Exception as error:  # noqa: BLE001
-            return QueryReply(
-                text=player_query_failure_message(player_id, error)
-            )
+            return QueryReply(text=player_query_failure_message(player_id, error))
         if quota_message:
             if not message.rank_lookup_is_lightweight:
                 return QueryReply(text=quota_message)
@@ -396,9 +394,7 @@ class PlayerService(PlayerAccountPolicyMixin):
             )
             return PlayerQueryResult(pending=pending)
         except (TimeoutError, asyncio.TimeoutError):
-            return PlayerQueryResult(
-                message=player_query_timeout_message(player_id)
-            )
+            return PlayerQueryResult(message=player_query_timeout_message(player_id))
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             if isinstance(error, (NotLoggedInError, DisconnectedError)):
                 await self._headless.mark_unavailable(
@@ -438,6 +434,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                 if quota_message and not allow_quota_exhausted:
                     raise PlayerQueryQuotaExceededError(quota_message)
             return await operation()
+
         if self._requests is None:
             await send_request_feedback(queued=False)
             return await guarded_operation()

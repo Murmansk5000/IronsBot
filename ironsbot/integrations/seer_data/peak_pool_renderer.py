@@ -119,9 +119,7 @@ def _dim_historical_head(data: bytes) -> bytes:
         alpha = rgba.getchannel("A")
         rgb = rgba.convert("RGB")
         grayscale = ImageOps.grayscale(rgb).convert("RGB")
-        dimmed = ImageEnhance.Brightness(Image.blend(rgb, grayscale, 0.75)).enhance(
-            0.5
-        )
+        dimmed = ImageEnhance.Brightness(Image.blend(rgb, grayscale, 0.75)).enhance(0.5)
         dimmed.putalpha(alpha)
         output = BytesIO()
         dimmed.save(output, format="PNG")

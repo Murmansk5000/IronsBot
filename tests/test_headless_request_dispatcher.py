@@ -104,10 +104,14 @@ def _pool(
         for index in range(count)
     ]
     dispatcher = HeadlessRequestDispatcher(workers, _spawn)
-    return PooledHeadlessGame(
-        dispatcher,
-        HeadlessOperationTracker(),
-    ), events, started
+    return (
+        PooledHeadlessGame(
+            dispatcher,
+            HeadlessOperationTracker(),
+        ),
+        events,
+        started,
+    )
 
 
 async def _wait_for_event_count(
@@ -168,8 +172,7 @@ async def test_background_fills_workers_then_yields_to_queued_foreground(
             await game.step("basic")
 
     background_tasks = [
-        asyncio.create_task(background(index))
-        for index in range(worker_count + 1)
+        asyncio.create_task(background(index)) for index in range(worker_count + 1)
     ]
     await _wait_for_event_count(events, expected_background)
     assert len(events) == expected_background

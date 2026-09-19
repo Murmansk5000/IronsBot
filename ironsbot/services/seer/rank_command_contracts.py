@@ -72,10 +72,7 @@ def _matches_rank_query(
 ) -> bool:
     player = parse_rank_player_target_command(text)
     if context.has_member_mentions and player is not None:
-        return (
-            kind == "global"
-            and GLOBAL_RANKS[player.rank_key].season_limited is peak
-        )
+        return kind == "global" and GLOBAL_RANKS[player.rank_key].season_limited is peak
     listed = parse_rank_list_command(text)
     if listed is not None:
         if listed.kind != kind:
@@ -160,7 +157,13 @@ def rank_help_command_contracts(
             ),
         )
         for (
-            command_id, section, examples, description, kind, peak, show_in_poke
+            command_id,
+            section,
+            examples,
+            description,
+            kind,
+            peak,
+            show_in_poke,
         ) in regular_rows
     )
     return (

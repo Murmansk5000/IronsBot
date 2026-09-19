@@ -78,6 +78,7 @@ QUEUED_CONVERSATION_EXIT_PRIORITY = -30
 QUEUED_CONVERSATION_INPUT_PRIORITY = -29
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 
+
 async def reject_with_rule(
     matcher: Matcher,
     rule: Rule,

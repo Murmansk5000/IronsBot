@@ -274,8 +274,7 @@ class LuckySkinWindowService:
         lines = ["【幸运橱窗关注】"]
         if items:
             lines.extend(
-                f"{index}. {item.label}"
-                for index, item in enumerate(items, start=1)
+                f"{index}. {item.label}" for index, item in enumerate(items, start=1)
             )
         else:
             lines.append("暂无关注皮肤。")
@@ -521,7 +520,10 @@ class LuckySkinWindowService:
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(
-        self, result: LuckySkinWindowResult, *, actor: ActorRef | None,
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        actor: ActorRef | None,
     ) -> str:
         offers = self._offers_for_actor(result, actor)
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
