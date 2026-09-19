@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 import asyncio
@@ -36,7 +36,6 @@ _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
 PlayerError = SocketRecvError | NotLoggedInError | DisconnectedError
 
 if TYPE_CHECKING:
-
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.platform import ConversationRef
     from ironsbot.core.tasks import TaskSpawner

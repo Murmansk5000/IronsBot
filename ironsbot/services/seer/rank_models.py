@@ -66,9 +66,7 @@ class RankLookupResult:
 
     def include_observation(self, fetched_at: float) -> None:
         self.fetched_at = (
-            fetched_at
-            if self.fetched_at is None
-            else min(self.fetched_at, fetched_at)
+            fetched_at if self.fetched_at is None else min(self.fetched_at, fetched_at)
         )
 
 

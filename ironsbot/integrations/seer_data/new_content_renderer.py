@@ -123,10 +123,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         *(_item_visuals(images, prepared) for prepared in prepared_items)
     )
 
-    cacheable = all(
-        prepared.details.complete
-        for prepared in prepared_items
-    )
+    cacheable = all(prepared.details.complete for prepared in prepared_items)
     prepared_by_key = {
         (prepared.item.category, prepared.item.entity_id): (prepared, visual)
         for prepared, visual in zip(prepared_items, visuals, strict=True)
@@ -217,7 +214,9 @@ def _initial_rows(
             NewContentMenuItem(
                 code=code,
                 name=CATEGORY_NAMES[category],
-                description=format_new_content_category_count(snapshot.items_for(category)),
+                description=format_new_content_category_count(
+                    snapshot.items_for(category)
+                ),
                 metadata="",
                 side_title="",
                 side_description="",

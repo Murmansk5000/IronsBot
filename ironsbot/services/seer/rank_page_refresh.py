@@ -176,8 +176,7 @@ class RankPageRefreshService:
                             )
                         )
                     logger.warning(
-                        "rank page cache refresh failed: target=%s %s-%s "
-                        "reason=%s",
+                        "rank page cache refresh failed: target=%s %s-%s reason=%s",
                         target.rank_key,
                         target.start_rank,
                         target.end_rank,

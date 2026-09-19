@@ -71,7 +71,10 @@ async def handle_message_command(
             event=event,
         )
     await finish_matcher_message(
-        matcher, action.messages[-1], at_user_ids=at_user_ids, event=event,
+        matcher,
+        action.messages[-1],
+        at_user_ids=at_user_ids,
+        event=event,
     )
 
 

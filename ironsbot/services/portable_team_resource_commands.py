@@ -97,9 +97,7 @@ def build_portable_team_resource_operations(
                 team_id=command.team_id,
             )
         elif (
-            command.has_manual_mention
-            and target.is_group
-            and not target.mention_actors
+            command.has_manual_mention and target.is_group and not target.mention_actors
         ):
             result = (
                 "提醒对象要使用平台的 @ 选人功能添加；"

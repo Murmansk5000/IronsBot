@@ -196,8 +196,7 @@ def _text(message: OutboundMessage) -> str:
 
 
 @pytest.mark.asyncio
-async def test_proactive_delivery_filters_subscriptions_and_applies_policy_per_target(
-) -> None:
+async def test_proactive_delivery_filters_and_applies_target_policy() -> None:
     features = FakeFeatures(enabled_groups={(GROUP, "fire_manual")})
     delivery, messenger, subscriptions = _delivery(
         features=features,
@@ -467,8 +466,7 @@ async def test_lucky_skin_sender_uses_typed_private_delivery() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_notice_sender_maps_delivery_summary_back_to_original_recipients(
-) -> None:
+async def test_admin_notice_sender_maps_summary_to_original_recipients() -> None:
     delivery, _messenger, _subscriptions = _delivery()
     sender = OutboundAdminNoticeSender(delivery)
 

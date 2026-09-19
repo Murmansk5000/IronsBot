@@ -108,9 +108,7 @@ async def test_stale_cache_uses_conditional_request(tmp_path: Path) -> None:
     assert refreshed.data == PNG
     assert refreshed.cached_at == clock.now
     assert requests[1].headers["if-none-match"] == '"preview-v1"'
-    assert requests[1].headers["if-modified-since"] == (
-        "Sun, 09 Aug 2026 03:00:00 GMT"
-    )
+    assert requests[1].headers["if-modified-since"] == ("Sun, 09 Aug 2026 03:00:00 GMT")
 
 
 @pytest.mark.asyncio

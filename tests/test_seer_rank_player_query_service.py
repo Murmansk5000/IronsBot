@@ -149,8 +149,7 @@ async def test_rank_player_query_fetches_only_achievement_source() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rank_player_query_writes_only_current_metric(
-) -> None:
+async def test_rank_player_query_writes_only_current_metric() -> None:
     async def fake_find_rank(_game: object, **_kwargs: Any) -> RankLookupResult:
         return RankLookupResult(
             title="成就点数",
@@ -164,9 +163,7 @@ async def test_rank_player_query_writes_only_current_metric(
     rank = build_rank_stub(fake_find_rank)
     local_rank, upsert = build_local_rank_stub(
         enabled=True,
-        summary=LocalRankSummary(
-            sample_ranks={"achievement_score": "样本前10%"}
-        ),
+        summary=LocalRankSummary(sample_ranks={"achievement_score": "样本前10%"}),
     )
 
     message = await rank_player_query.fetch_rank_player_message(

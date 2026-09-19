@@ -64,9 +64,7 @@ def _resolver(
 
 def test_platform_references_merge_cross_platform_group_identity() -> None:
     resolver = _resolver(
-        groups={
-            "same": {"qq": 123456, "official": {"main": "group-openid"}}
-        }
+        groups={"same": {"qq": 123456, "official": {"main": "group-openid"}}}
     )
 
     assert resolver.group_conversation_refs("same", location="test.group") == (
@@ -82,9 +80,7 @@ def test_platform_references_merge_cross_platform_group_identity() -> None:
 
 def test_platform_references_merge_cross_platform_user_identity() -> None:
     resolver = _resolver(
-        users={
-            "same": {"qq": 234567, "official": {"main": "user-openid"}}
-        }
+        users={"same": {"qq": 234567, "official": {"main": "user-openid"}}}
     )
 
     assert resolver.actor_refs("same", location="test.user") == (
@@ -95,11 +91,7 @@ def test_platform_references_merge_cross_platform_user_identity() -> None:
 
 def test_platform_references_merge_identity_across_official_accounts() -> None:
     resolver = _resolver(
-        groups={
-            "same": {
-                "official": {"first": "group-a", "second": "group-b"}
-            }
-        },
+        groups={"same": {"official": {"first": "group-a", "second": "group-b"}}},
         accounts={"first": _account("app-a"), "second": _account("app-b")},
     )
 
@@ -256,12 +248,15 @@ def test_settings_accept_shared_identity_in_feature_policy() -> None:
         }
     )
 
-    assert len(
-        settings.platform_references.group_conversation_refs(
-            "same",
-            location="test.group",
+    assert (
+        len(
+            settings.platform_references.group_conversation_refs(
+                "same",
+                location="test.group",
+            )
         )
-    ) == EXPECTED_CROSS_PLATFORM_ENDPOINTS
+        == EXPECTED_CROSS_PLATFORM_ENDPOINTS
+    )
 
 
 def test_settings_reject_identity_for_undeclared_official_account() -> None:
@@ -269,9 +264,7 @@ def test_settings_reject_identity_for_undeclared_official_account() -> None:
         Settings.model_validate(
             {
                 "identities": {
-                    "groups": {
-                        "same": {"official": {"missing": "group-openid"}}
-                    }
+                    "groups": {"same": {"official": {"missing": "group-openid"}}}
                 }
             }
         )
@@ -279,6 +272,4 @@ def test_settings_reject_identity_for_undeclared_official_account() -> None:
 
 def test_removed_alias_tables_are_strictly_rejected() -> None:
     with pytest.raises(ValueError, match="Extra inputs are not permitted"):
-        Settings.model_validate(
-            {"features": {"group_aliases": {"old": 123456}}}
-        )
+        Settings.model_validate({"features": {"group_aliases": {"old": 123456}}})

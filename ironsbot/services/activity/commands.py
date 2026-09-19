@@ -15,16 +15,13 @@ SOON_ENDING_ACTIVITY_COMMANDS = (
 )
 
 NORMALIZED_CURRENT_ACTIVITY_COMMANDS = {
-    normalize_command_text(command)
-    for command in CURRENT_ACTIVITY_COMMANDS
+    normalize_command_text(command) for command in CURRENT_ACTIVITY_COMMANDS
 }
 NORMALIZED_NEW_ACTIVITY_COMMANDS = {
-    normalize_command_text(command)
-    for command in NEW_ACTIVITY_COMMANDS
+    normalize_command_text(command) for command in NEW_ACTIVITY_COMMANDS
 }
 NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS = {
-    normalize_command_text(command)
-    for command in SOON_ENDING_ACTIVITY_COMMANDS
+    normalize_command_text(command) for command in SOON_ENDING_ACTIVITY_COMMANDS
 }
 
 

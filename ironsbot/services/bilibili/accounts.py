@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def configured_account_alias_lookup(
     config: BiliConfig,
     aliases: Iterable[str],
@@ -60,10 +61,7 @@ class BiliAccountNames:
                     normalized = str(name or "").strip()
                     if normalized:
                         self.names[uid] = normalized
-                if (
-                    self.request_interval_seconds > 0
-                    and index < len(missing) - 1
-                ):
+                if self.request_interval_seconds > 0 and index < len(missing) - 1:
                     await asyncio.sleep(self.request_interval_seconds)
         return all(self.name_for_uid(uid) for uid in requested)
 

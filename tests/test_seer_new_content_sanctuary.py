@@ -300,9 +300,7 @@ async def test_autocard_detail_uses_native_onebot_image_message() -> None:
     )
     matcher = Mock(
         state={
-            NEW_CONTENT_SERVICES_KEY: _NewContentServices(
-                details, AsyncMock(), media
-            ),
+            NEW_CONTENT_SERVICES_KEY: _NewContentServices(details, AsyncMock(), media),
             NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
         },
         send=AsyncMock(),

@@ -42,9 +42,7 @@ def test_registration_time_cache_expires_and_sample_can_be_upgraded(
         nick="profile only",
         reg_time=REG_TIME,
     )
-    stale_timestamp = (
-        datetime.now(timezone.utc) - timedelta(days=31)
-    ).isoformat()
+    stale_timestamp = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
     with sqlite3.connect(path) as conn:
         conn.execute(
             "UPDATE players SET reg_time_cached_at = ? WHERE user_id = ?",
@@ -61,9 +59,7 @@ def test_registration_time_cache_expires_and_sample_can_be_upgraded(
         standing_inputs={"achievement_score": (100, None)},
     )
     assert repository.stats(()).player_count == 1
-    assert repository.refresh_candidate_ids(limit=10, max_age_hours=0) == [
-        PLAYER_ID
-    ]
+    assert repository.refresh_candidate_ids(limit=10, max_age_hours=0) == [PLAYER_ID]
 
 
 def test_existing_v1_database_migrates_registration_time_columns(

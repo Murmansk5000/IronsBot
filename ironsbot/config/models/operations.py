@@ -108,8 +108,7 @@ class DataSyncConfig(BaseModel):
             "aliases": DataSourceConfig(
                 url=f"{IRONSBOT_RELEASE}/alias-db-latest/aliases-data.sqlite",
                 fingerprint_url=(
-                    f"{IRONSBOT_RELEASE}/alias-db-latest/"
-                    "aliases-data.sqlite.sha256"
+                    f"{IRONSBOT_RELEASE}/alias-db-latest/aliases-data.sqlite.sha256"
                 ),
                 interval_minutes=60,
                 local_path="data/aliases-data.sqlite",
@@ -233,10 +232,7 @@ class HeadlessNoticeConfig(BaseModel):
     )
     state_notice: bool = True
     state_offline_message: str = (
-        "无头米米号已掉线。\n"
-        "米米号：{user_id}\n"
-        "状态：{reason}\n"
-        "来源：{source}"
+        "无头米米号已掉线。\n米米号：{user_id}\n状态：{reason}\n来源：{source}"
     )
     state_online_message: str = (
         "无头米米号已恢复登录。\n"
@@ -272,6 +268,8 @@ class HeadlessConfig(BaseModel):
     reconnect_retries: int = -1
     reconnect_delay: float = 5.0
     reconnect_delay_max: float = 120.0
+
+
 class OperationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

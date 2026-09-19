@@ -597,12 +597,15 @@ def test_confirmed_rank_miss_invalidates_last_seen_rank_inside_search_limit(
         searched_limit=100,
     )
 
-    assert cache.last_seen_item(
-        key=1,
-        sub_key=2,
-        user_id=100,
-        max_age_seconds=24 * 60 * 60,
-    ) is None
+    assert (
+        cache.last_seen_item(
+            key=1,
+            sub_key=2,
+            user_id=100,
+            max_age_seconds=24 * 60 * 60,
+        )
+        is None
+    )
 
 
 def test_cached_rank_page_result_preserves_fetched_at(
@@ -679,12 +682,15 @@ def test_rank_miss_cache_requires_the_requested_search_coverage(
 
     assert cached is not None
     assert cached.searched_limit == MISS_SEARCH_LIMIT
-    assert cache.miss(
-        key=1,
-        sub_key=2,
-        user_id=100,
-        minimum_limit=MISS_SEARCH_LIMIT + 1,
-    ) is None
+    assert (
+        cache.miss(
+            key=1,
+            sub_key=2,
+            user_id=100,
+            minimum_limit=MISS_SEARCH_LIMIT + 1,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("miss_first", [True, False])

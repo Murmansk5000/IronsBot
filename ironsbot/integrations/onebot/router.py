@@ -38,13 +38,10 @@ class BotRouter:
             resolve = self.references.resolve_user
 
         for target_ref, bot_ref in routes.items():
-            if (
-                resolve(
-                    target_ref,
-                    location=f"messaging.bot_routing.{conversation.kind}s.{target_ref}",
-                )
-                == int(conversation.id)
-            ):
+            if resolve(
+                target_ref,
+                location=f"messaging.bot_routing.{conversation.kind}s.{target_ref}",
+            ) == int(conversation.id):
                 return self.config.resolve_bot_reference(bot_ref)
         return None
 

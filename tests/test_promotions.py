@@ -46,11 +46,7 @@ def test_settings_rejects_promotion_with_unknown_feature() -> None:
 
 def test_settings_requires_enabled_promotion_action_to_reference_promotion() -> None:
     with pytest.raises(ValueError, match="is not an enabled promotion"):
-        Settings(
-            ai=AiConfig(
-                intent_actions={"manual": _promotion_action()}
-            )
-        )
+        Settings(ai=AiConfig(intent_actions={"manual": _promotion_action()}))
 
 
 def test_settings_accepts_explicit_promotion_action() -> None:

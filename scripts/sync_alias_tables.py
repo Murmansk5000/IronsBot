@@ -22,8 +22,7 @@ SUPPORTED_ALIAS_TABLES = {
     "mintmark_series_members",
 }
 UPSTREAM_PET_ALIASES_URL = (
-    "https://raw.githubusercontent.com/Nattsu39/IronsBot/main/"
-    "tables/pet_aliases.csv"
+    "https://raw.githubusercontent.com/Nattsu39/IronsBot/main/tables/pet_aliases.csv"
 )
 
 

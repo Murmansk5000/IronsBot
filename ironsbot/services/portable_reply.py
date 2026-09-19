@@ -50,6 +50,7 @@ async def deliver_portable_reply(
     on_follow_up_error: Callable[[Exception], OutboundMessage] | None = None,
 ) -> bool:
     """Own ordered delivery and abort unfinished work on every interrupted path."""
+
     async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
         receipt = await send(message)
         if on_sent is not None:
@@ -140,6 +141,4 @@ class PortableOperation(Protocol):
         self,
         text: str,
         context: MessageInputContext,
-    ) -> Awaitable[
-        PortableReply | OutboundMessage | str | DataQueryImageReply
-    ]: ...
+    ) -> Awaitable[PortableReply | OutboundMessage | str | DataQueryImageReply]: ...

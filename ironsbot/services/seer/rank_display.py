@@ -45,11 +45,7 @@ class RankDisplayService:
             if conversation is not None
             else None
         )
-        return self._clamp(
-            stored
-            or configured
-            or self.config.display_limit
-        )
+        return self._clamp(stored or configured or self.config.display_limit)
 
     def set_conversation_limit(
         self,

@@ -104,7 +104,9 @@ async def test_workflow_uses_entry_feedback_context(*, enabled: bool) -> None:
 
     with request_feedback_scope("entry", send) as feedback:
         result = await service.run(
-            operation, actor=_actor(USER_ID), label="internal workflow",
+            operation,
+            actor=_actor(USER_ID),
+            label="internal workflow",
         )
         await send_request_feedback(queued=False)
 
