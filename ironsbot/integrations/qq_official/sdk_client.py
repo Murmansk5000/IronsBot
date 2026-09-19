@@ -181,7 +181,7 @@ class TencentQQClient:
         else:  # pragma: no cover - closed union guarded by renderer tests
             msg = f"Unsupported QQ Official payload: {type(payload).__name__}"
             raise TypeError(msg)
-        _attach_source_reference(message, payload, message_id=message_id)
+        _attach_message_reference(message, payload, message_id=message_id)
         if scope == "group":
             if keyboard is None:
                 return await self.api.post_group_message(target_id, message)
@@ -206,18 +206,18 @@ def _response_id(response: Mapping[str, object]) -> str:
     return value
 
 
-def _attach_source_reference(
+def _attach_message_reference(
     message: MessageToCreate,
     payload: QQOfficialPayload,
     *,
     message_id: str | None,
 ) -> None:
-    if not payload.reference_source:
+    if payload.reference_id is None:
         return
     if message_id is None:
         msg = "QQ Official source references require a passive reply"
         raise ValueError(msg)
-    message.message_reference = MessageReference(message_id=message_id)
+    message.message_reference = MessageReference(message_id=payload.reference_id)
 
 
 def _media_fallback_message(

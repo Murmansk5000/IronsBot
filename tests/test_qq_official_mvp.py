@@ -50,6 +50,7 @@ from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
+    QQOfficialOutboundMessageError,
     QQOfficialTextPayload,
     render_qq_official_outbound_message,
 )
@@ -1396,7 +1397,6 @@ def test_only_group_at_event_is_classified_as_bot_mention() -> None:
 
 
 def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> None:
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
     rendered = render_qq_official_outbound_message(
         OutboundMessage(
             (
@@ -1404,7 +1404,6 @@ def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> No
                 BinaryImagePart(b"image", "image/png", "preview.png"),
             )
         ),
-        conversation=conversation,
     )
 
     assert rendered[0] == QQOfficialTextPayload("result")
@@ -1415,8 +1414,6 @@ def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> No
 
 
 def test_qq_official_renderer_compacts_text_around_image() -> None:
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
-
     rendered = render_qq_official_outbound_message(
         OutboundMessage(
             (
@@ -1425,7 +1422,6 @@ def test_qq_official_renderer_compacts_text_around_image() -> None:
                 TextPart("details"),
             )
         ),
-        conversation=conversation,
     )
 
     assert rendered == (
@@ -1434,7 +1430,7 @@ def test_qq_official_renderer_compacts_text_around_image() -> None:
     )
 
 
-def test_qq_official_renderer_marks_member_target_as_source_reference() -> None:
+def test_qq_official_renderer_rejects_unreliable_visible_member_mentions() -> None:
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
         "group",
@@ -1449,17 +1445,13 @@ def test_qq_official_renderer_marks_member_target_as_source_reference() -> None:
         account_id="example-app",
     )
 
-    rendered = render_qq_official_outbound_message(
-        OutboundMessage((MentionPart(member), TextPart(" result"))),
-        conversation=conversation,
-    )
-
-    assert rendered == (
-        QQOfficialTextPayload(
-            " result",
-            reference_source=True,
-        ),
-    )
+    with pytest.raises(
+        QQOfficialOutboundMessageError,
+        match="does not provide reliable visible member mentions",
+    ):
+        render_qq_official_outbound_message(
+            OutboundMessage((MentionPart(member), TextPart(" result"))),
+        )
 
 
 @pytest.mark.asyncio
@@ -1528,6 +1520,7 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
         chat_scope="group",
         chat_id="opaque-group",
         user_id="member-openid",
+        raw={"msg_idx": "source-message-index"},
     )
     incoming = qq_official_incoming_message(event, account_id="example-app")
     bot = _FakeOfficialBot()
@@ -1551,7 +1544,7 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
     assert payloads == (
         QQOfficialTextPayload(
             "result",
-            reference_source=True,
+            reference_id="source-message-index",
         ),
     )
 

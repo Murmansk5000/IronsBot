@@ -145,7 +145,7 @@ async def test_sdk_client_references_source_message_for_member_target() -> None:
 
     await _client(api).send_to_group(
         "group-openid",
-        (QQOfficialTextPayload("result", reference_source=True),),
+        (QQOfficialTextPayload("result", reference_id="source-message-index"),),
         msg_id="incoming-id",
         msg_seq=PASSIVE_SEQUENCE,
     )
@@ -153,7 +153,7 @@ async def test_sdk_client_references_source_message_for_member_target() -> None:
     message = api.messages[0][2]
     assert message.content == "result"
     assert message.message_reference is not None
-    assert message.message_reference.message_id == "incoming-id"
+    assert message.message_reference.message_id == "source-message-index"
 
 
 @pytest.mark.asyncio
@@ -162,12 +162,10 @@ async def test_sdk_client_sends_opt_in_command_keyboard() -> None:
     prompt = _prompt()
     rendered = render_qq_official_outbound_message(
         OutboundMessage.from_text("choose"),
-        conversation=prompt.conversation,
     )
     assert rendered == (QQOfficialTextPayload("choose"),)
     rendered = render_qq_official_outbound_message(
         OutboundMessage(OutboundMessage.from_text("choose").parts, prompt=prompt),
-        conversation=prompt.conversation,
         supports_interactive_prompts=True,
     )
 
