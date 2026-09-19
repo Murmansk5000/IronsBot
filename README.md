@@ -270,9 +270,12 @@ uv run --no-sync python -m ironsbot
 官方机器人专用镜像或传入 build arg。只有自行构建纯 OneBot 镜像时，才显式传入空的
 `--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略腾讯 SDK。
 
-当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
-`GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
-腾讯平台开放相应事件并由 SDK 支持；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
+在目标群为机器人开启“接收所有消息”后，腾讯会下发
+[`GROUP_MESSAGE_CREATE`](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)。
+IronsBot 会处理其中明确匹配的命令和正在进行的选项会话，
+普通聊天不会触发 AI 意图、AI 聊天或帮助提示。带 `@` 的消息若同时收到
+`GROUP_MESSAGE_CREATE` 与 `GROUP_AT_MESSAGE_CREATE`，会按同一消息去重，只执行一次。
+未开启该群设置时，群聊仍需 `@` 机器人。
 
 ## 常用赛尔查询
 
