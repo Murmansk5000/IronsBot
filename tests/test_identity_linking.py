@@ -35,6 +35,8 @@ from ironsbot.services.identity_linking import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+_TEST_QQ_ID = "1" * 10
+
 
 def _store(path: Path) -> SqliteIdentityLinkStore:
     return SqliteIdentityLinkStore(path)
@@ -58,7 +60,7 @@ def _service(
     )
 
 
-def _onebot(qq_id: str = "1621582661") -> ActorRef:
+def _onebot(qq_id: str = _TEST_QQ_ID) -> ActorRef:
     return ActorRef(Platform.ONEBOT, qq_id)
 
 
@@ -132,7 +134,7 @@ async def test_service_links_explicit_onebot_and_official_identities(
     assert challenge.account.alias == "main"
     assert len(challenge.token) == 9
     assert challenge.token[4] == "-"
-    assert link.onebot_qq_id == "1621582661"
+    assert link.onebot_qq_id == _TEST_QQ_ID
     assert link.official == OfficialIdentity(
         "official-app",
         "member",
@@ -390,7 +392,7 @@ async def test_shared_commands_complete_status_and_revoke_flow(tmp_path: Path) -
         "账号关联成功。现在两个接入端会识别为同一位用户。"
     )
     official_status = await commands.portable_status("账号关联", official_context)
-    assert "******2661" in _outbound_text(official_status)
+    assert f"******{_TEST_QQ_ID[-4:]}" in _outbound_text(official_status)
 
     onebot_status = await commands.status_text(onebot_context)
     assert "official-app / 群成员 / memb...enid" in onebot_status

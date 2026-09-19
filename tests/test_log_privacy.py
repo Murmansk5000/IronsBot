@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -12,6 +14,29 @@ from ironsbot.config.models.settings import Settings
 
 if TYPE_CHECKING:
     from loguru import Record
+
+ROOT = Path(__file__).resolve().parents[1]
+_TEST_QQ_ID = "1" * 10
+_TEST_OPENID = "A1" * 16
+_RAW_OPENID = re.compile(r"(?<![A-Za-z0-9])[A-F0-9]{32}(?![A-Za-z0-9])")
+_TEXT_ROOTS = (
+    ROOT / ".github",
+    ROOT / "docker",
+    ROOT / "docs",
+    ROOT / "ironsbot",
+    ROOT / "scripts",
+    ROOT / "templates",
+    ROOT / "tests",
+)
+_TEXT_FILES = (
+    ROOT / ".env.example",
+    ROOT / "ARCHITECTURE.md",
+    ROOT / "Dockerfile",
+    ROOT / "README.md",
+    ROOT / "config.example.toml",
+    ROOT / "docker-compose.yml",
+)
+_TEXT_SUFFIXES = frozenset({".json", ".md", ".py", ".toml", ".xml", ".yaml", ".yml"})
 
 
 def _record(message: str, exception: BaseException | None = None) -> Record:
@@ -39,8 +64,8 @@ def test_log_privacy_redacts_secrets_and_transport_identifiers() -> None:
         }
     )
     record = _record(
-        f"secret={secret} qq=1621582661 "
-        "openid=DEE8BDBAFD1DF10A4A865AD6C4DB773F "
+        f"secret={secret} qq={_TEST_QQ_ID} "
+        f"openid={_TEST_OPENID} "
         "revision=7aa0be304ed6c2a0c9e2ebc669c40a5c639b66ae"
     )
 
@@ -48,8 +73,8 @@ def test_log_privacy_redacts_secrets_and_transport_identifiers() -> None:
 
     message = str(record["message"])
     assert secret not in message
-    assert "1621582661" not in message
-    assert "DEE8BDBAFD1DF10A4A865AD6C4DB773F" not in message
+    assert _TEST_QQ_ID not in message
+    assert _TEST_OPENID not in message
     assert "7aa0be304ed6c2a0c9e2ebc669c40a5c639b66ae" in message
     assert message.count("<secret:") == 1
     assert message.count("<id:") == 1
@@ -60,7 +85,7 @@ def test_log_privacy_redacts_exception_text_without_loguru_reformatting() -> Non
     secret = "exception-secret"
     redactor = LogPrivacyRedactor((secret,))
     exception = RuntimeError()
-    exception.args = (f"failed for {secret} and 1621582661",)
+    exception.args = (f"failed for {secret} and {_TEST_QQ_ID}",)
     record = _record("request failed", exception)
 
     redactor(record)
@@ -69,7 +94,7 @@ def test_log_privacy_redacts_exception_text_without_loguru_reformatting() -> Non
     message = str(record["message"])
     assert "RuntimeError" in message
     assert secret not in message
-    assert "1621582661" not in message
+    assert _TEST_QQ_ID not in message
     assert "<secret:" in message
     assert "<id:" in message
 
@@ -80,14 +105,14 @@ def test_configured_patcher_redacts_every_loguru_sink() -> None:
     sink_id = logger.add(messages.append, format="{message}")
     try:
         configure_log_privacy({"AI_KEY_DEEPSEEK": secret})
-        logger.info("key={} actor={}", secret, 1621582661)
+        logger.info("key={} actor={}", secret, _TEST_QQ_ID)
     finally:
         logger.remove(sink_id)
         logger.configure(patcher=None)
 
     rendered = "".join(messages)
     assert secret not in rendered
-    assert "1621582661" not in rendered
+    assert _TEST_QQ_ID not in rendered
     assert "<secret:" in rendered
     assert "<id:" in rendered
 
@@ -113,3 +138,25 @@ def test_settings_validation_never_renders_secret_input() -> None:
         )
 
     assert secret not in str(captured.value)
+
+
+def test_repository_does_not_embed_raw_openids() -> None:
+    paths = [
+        *(_TEXT_FILES),
+        *(
+            path
+            for root in _TEXT_ROOTS
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix.lower() in _TEXT_SUFFIXES
+        ),
+    ]
+    violations: list[str] = []
+    for path in sorted(set(paths)):
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8-sig").splitlines(),
+            start=1,
+        ):
+            if _RAW_OPENID.search(line):
+                violations.append(f"{path.relative_to(ROOT)}:{line_number}")
+
+    assert not violations, "raw OpenID literals: " + ", ".join(violations)
