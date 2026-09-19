@@ -72,7 +72,19 @@ def build_common_components(
             if settings.bot.qq_official.enabled_accounts
             else None
         ),
+        references=settings.platform_references,
     )
+    for target in settings.identities.users.values():
+        if target.qq is None:
+            continue
+        for alias, openid in target.official.items():
+            account = settings.bot.qq_official.enabled_accounts.get(alias)
+            if account is not None:
+                features.register_identity_link(
+                    official_app_id=account.app_id,
+                    official_openid=openid,
+                    onebot_qq_id=str(target.qq),
+                )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
         features,
@@ -84,8 +96,13 @@ def build_common_components(
         settings.onebot_references,
     )
     promotions = PromotionCatalog(settings.promotions)
+    platform_selection = settings.outbound_platform_selection
     platform_messengers: dict[Platform, OutboundMessenger] = {
-        Platform.ONEBOT: OneBotOutboundMessenger(bot_router, outbound),
+        Platform.ONEBOT: OneBotOutboundMessenger(
+            bot_router,
+            outbound,
+            enabled=platform_selection.onebot_outbound_enabled,
+        ),
     }
     qq_official = None
     if settings.bot.qq_official.enabled_accounts:

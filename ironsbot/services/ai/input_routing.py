@@ -47,10 +47,15 @@ class AiInputRoutingService:
         *,
         normalized_text: str | None = None,
     ) -> AiInputDecision:
-        if self._is_blocked(message) or message.kind in {
-            MessageInputKind.REPLY,
-            MessageInputKind.MEMBER_MENTION,
-        }:
+        if (
+            self._is_blocked(message)
+            or not message.automatic_fallback_allowed
+            or message.kind
+            in {
+                MessageInputKind.REPLY,
+                MessageInputKind.MEMBER_MENTION,
+            }
+        ):
             return AiInputDecision()
 
         if self._is_claimed_command(

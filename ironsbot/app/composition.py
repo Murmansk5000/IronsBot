@@ -45,6 +45,7 @@ from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
 )
+from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -61,13 +62,22 @@ from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.identity_link_commands import IdentityLinkCommands
 from ironsbot.services.identity_linking import IdentityLinkingService, OfficialAccount
+from ironsbot.services.identity_observation import (
+    IdentityObservationAccount,
+    SilentIdentityObservationService,
+)
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import NamedLifecycleHook
+    from ironsbot.services.identity_link_store import (
+        CrossPlatformIdentityLink,
+        OfficialIdentity,
+    )
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.startup import StartupNoticeService
 
@@ -82,6 +92,18 @@ async def _start_data_sync_resource(
         "startup data sync notice",
         await service.startup(scheduler),
     )
+
+
+async def _load_identity_links(
+    store: SqliteIdentityLinkStore,
+    features: FeatureService,
+) -> None:
+    for link in await store.all_links():
+        features.register_identity_link(
+            official_app_id=link.official.app_id,
+            official_openid=link.official.openid,
+            onebot_qq_id=link.onebot_qq_id,
+        )
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
@@ -107,7 +129,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     bot_router = common.bot_router
     proactive_delivery = common.proactive_delivery
     admin_notices = common.admin_notices
-    player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
+    player_bindings = SqlitePlayerBindingStore(
+        settings.paths.qq_state,
+        canonicalize_actor=features.canonical_actor,
+    )
     operations = build_operations_components(
         settings,
         databases,
@@ -231,14 +256,38 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
+    identity_store = SqliteIdentityLinkStore(settings.paths.qq_state)
+
+    def register_identity_link(link: CrossPlatformIdentityLink) -> None:
+        features.register_identity_link(
+            official_app_id=link.official.app_id,
+            official_openid=link.official.openid,
+            onebot_qq_id=link.onebot_qq_id,
+        )
+
+    def unregister_identity_link(link: CrossPlatformIdentityLink) -> None:
+        features.unregister_identity_link(
+            official_app_id=link.official.app_id,
+            official_openid=link.official.openid,
+        )
+
     identity_linking = IdentityLinkingService(
-        SqliteIdentityLinkStore(settings.paths.qq_state),
+        identity_store,
         {
             alias: OfficialAccount(alias, account.app_id)
             for alias, account in settings.bot.qq_official.enabled_accounts.items()
         },
+        on_link=register_identity_link,
+        on_unlink=unregister_identity_link,
     )
     identity_links = IdentityLinkCommands(identity_linking)
+    identity_observer = _build_identity_observer(settings, identity_store, features)
+    onebot_ingress = OneBotIngressPolicy(
+        messages_enabled=(
+            settings.outbound_platform_selection.onebot_message_handling_enabled
+        ),
+        identity_observer=identity_observer,
+    )
 
     def poke_hint_candidates(
         group_id: int | None,
@@ -313,6 +362,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         identity_links=identity_links,
         identity_linking=identity_linking,
+        identity_observer=identity_observer,
+        onebot_ingress=onebot_ingress,
         private_extensions=private_extensions,
     )
     matcher_factory = MatcherFactory(
@@ -325,6 +376,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
     )
     resource_startup_hooks: list[NamedLifecycleHook] = [
+        (
+            "identity_links",
+            partial(_load_identity_links, identity_store, features),
+        ),
         (
             "data_sync",
             partial(
@@ -368,6 +423,40 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             for feature in Feature
             if feature.value in features.configured_feature_keys
         ),
+        onebot_message_handling_enabled=(
+            settings.outbound_platform_selection.onebot_message_handling_enabled
+        ),
         resource_startup_hooks=tuple(resource_startup_hooks),
         resource_shutdown_hooks=tuple(resource_shutdown_hooks),
     )
+
+
+def _build_identity_observer(
+    settings: Settings,
+    store: SqliteIdentityLinkStore,
+    features: FeatureService,
+) -> SilentIdentityObservationService | None:
+    if not settings.bot.onebot.identity_verification:
+        return None
+    accounts: dict[str, IdentityObservationAccount] = {}
+    for alias, account in settings.bot.qq_official.enabled_accounts.items():
+        groups = {
+            target.official[alias]: target.qq
+            for target in settings.identities.groups.values()
+            if target.qq is not None and alias in target.official
+        }
+        accounts[account.app_id] = IdentityObservationAccount(
+            app_id=account.app_id,
+            trusted_onebot_sender_id=(
+                settings.bot.onebot.trusted_official_bots[alias]
+            ),
+            groups=groups,
+        )
+    def register_link(qq_id: str, official: OfficialIdentity) -> None:
+        features.register_identity_link(
+            official_app_id=official.app_id,
+            official_openid=official.openid,
+            onebot_qq_id=qq_id,
+        )
+
+    return SilentIdentityObservationService(store, accounts, on_link=register_link)
