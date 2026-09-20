@@ -59,7 +59,7 @@ def test_log_privacy_redacts_secrets_and_transport_identifiers() -> None:
     secret = "top-secret-value"
     redactor = LogPrivacyRedactor.from_environment(
         {
-            "QQ_OFFICIAL_SECRET_LOCAL_BOT": secret,
+            "APP_SECRET_10001": secret,
             "UNRELATED": "keep-this-value",
         }
     )
