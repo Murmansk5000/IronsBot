@@ -391,7 +391,7 @@ OpenID、QQ 号或密钥。该证据证明当前配置按预期编译，不替�
 
 ## 2026-09-20 最新本地门禁
 
-- 最新完成全量验证的本地代码候选为 `b4b34a33`，全量：`3826 passed, 7 skipped`；跳过项没有计入
+- 最新完成全量验证的本地代码候选为 `c25b4dc9`，全量：`3826 passed, 7 skipped`；跳过项没有计入
   通过。现有警告主要来自 NoneBot `ForwardRef` 弃用提示和两条既有 SQLAlchemy 关系警告。
 - 核心/完整 NoneBot 清单启动、OneBot 子进程、QQ Official 生命周期、两套状态迁移和
   只读配置校验专项：`111 passed`。
@@ -681,3 +681,9 @@ messenger，也不会调用它。该门禁防止跨平台回退回归，但 C9 �
 门禁：`3826 passed, 7 skipped`，全仓 Ruff lint 与 858 文件 format check、生产与测试
 BasedPyright、compileall、静态仓库检查和 diff check 全部通过。新修复仍须构建新 digest
 并在客户端复验“@机器人 + 战队订阅”；当前生产 `812d8bc2` 的错误行为不代表当前源码。
+
+提交 `c25b4dc9` 对照原版 OneBot `PromptSession.build_message()`，将 portable 查询候选从
+“名称与说明分两行”恢复为同一行的 `名称（说明）`，子候选仍保留 `↳` 层级。因此精灵、
+立绘/皮肤和刻印等共享查询统一显示为 `雷伊（70）`、`V8-01（41112 物速）`，没有为各
+查询类型增加专用格式分支。相关 115 项及全量 `3826 passed, 7 skipped`；全仓 Ruff
+lint/format、生产与测试 BasedPyright、compileall、静态仓库检查及 diff check 全部通过。
