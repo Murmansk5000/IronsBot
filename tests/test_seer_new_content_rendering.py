@@ -296,6 +296,49 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
 
 
 @pytest.mark.asyncio
+async def test_root_menu_materializes_peak_pool_preview_images() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        **_kwargs: object,
+    ) -> bytes:
+        del template_path, template_name
+        captured.update(templates)
+        return b"menu-image"
+
+    cache = _Cache()
+    images = _Images()
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260803",
+        weekly_cycle="2026-08-03",
+        items=(_item("peak_pool", 5000, previous_limit=0, current_limit=2),),
+    )
+
+    result = await render_new_content_menu(
+        cache,  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        images,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("peak_pool",),
+        None,
+        auto_expand_max_items=0,
+    )
+
+    assert result == b"menu-image"
+    preview = captured["items"][0].pool_preview
+    assert preview is not None
+    assert preview.matrix_rows[0].cells[1][0].image is not None
+    assert images.requests == [("pet_head", "5000")]
+    assert cache.saved == b"menu-image"
+
+
+@pytest.mark.asyncio
 async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
