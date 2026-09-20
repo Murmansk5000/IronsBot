@@ -8,7 +8,6 @@ from datetime import date
 from struct import pack
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -139,6 +138,9 @@ def _request(user_id: int) -> LuckySkinQuery:
 
 
 class _Features:
+    def canonical_actor(self, actor: ActorRef) -> ActorRef:
+        return actor
+
     def is_actor_superuser(self, actor: ActorRef) -> bool:
         return actor.id == "9999"
 
@@ -552,7 +554,6 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
         service=service,
         pet=cast("Any", _PluginPet()),
         features=cast("FeatureService", _Features()),
-        identity_links=cast("Any", object()),
         sessions=PortableQuerySessions(),
         resolver=cast("Any", object()),
     )
@@ -577,14 +578,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
     operations = build_portable_lucky_skin_operations(
         service,
         cast("Any", _PluginPet()),
-        cast(
-            "Any",
-            SimpleNamespace(
-                linked_onebot_actor=AsyncMock(
-                    return_value=_actor(1001),
-                )
-            ),
-        ),
+        cast("FeatureService", _Features()),
         PortableQuerySessions(),
         cast("Any", object()),
     )
