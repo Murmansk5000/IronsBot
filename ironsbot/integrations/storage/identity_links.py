@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.identity_link_store import (
+    CrossPlatformGroupLink,
     CrossPlatformIdentityLink,
+    GroupLinkConflictError,
     IdentityLinkChallengeExpiredError,
     IdentityLinkChallengeInvalidError,
     IdentityLinkConflictError,
@@ -79,6 +81,21 @@ _MIGRATIONS = (
     SqliteMigration(
         2,
         callback=lambda connection: _canonicalize_member_links(connection),  # noqa: PLW0108
+    ),
+    SqliteMigration(
+        3,
+        statements=(
+            """
+            CREATE TABLE cross_platform_group_links (
+                official_app_id TEXT NOT NULL,
+                official_group_openid TEXT NOT NULL,
+                onebot_group_id TEXT NOT NULL,
+                linked_at REAL NOT NULL,
+                PRIMARY KEY (official_app_id, official_group_openid),
+                UNIQUE (official_app_id, onebot_group_id)
+            )
+            """,
+        ),
     ),
 )
 
@@ -154,6 +171,87 @@ class SqliteIdentityLinkStore:
             self.path,
             migrations=_MIGRATIONS,
             migration_namespace="cross_platform_identity_links",
+        )
+
+    async def link_group_verified(
+        self,
+        *,
+        onebot_group_id: str,
+        official_app_id: str,
+        official_group_openid: str,
+        now: float,
+    ) -> CrossPlatformGroupLink:
+        async with self._write_lock:
+            return await asyncio.to_thread(
+                self._link_group_verified_sync,
+                onebot_group_id,
+                official_app_id,
+                official_group_openid,
+                now,
+            )
+
+    def _link_group_verified_sync(
+        self,
+        onebot_group_id: str,
+        official_app_id: str,
+        official_group_openid: str,
+        now: float,
+    ) -> CrossPlatformGroupLink:
+        with self._database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT official_group_openid, onebot_group_id
+                FROM cross_platform_group_links
+                WHERE official_app_id = ?
+                  AND (official_group_openid = ? OR onebot_group_id = ?)
+                """,
+                (official_app_id, official_group_openid, onebot_group_id),
+            ).fetchall()
+            if any(
+                str(row[0]) != official_group_openid or str(row[1]) != onebot_group_id
+                for row in rows
+            ):
+                raise GroupLinkConflictError
+            connection.execute(
+                """
+                INSERT INTO cross_platform_group_links (
+                    official_app_id, official_group_openid,
+                    onebot_group_id, linked_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT (official_app_id, official_group_openid)
+                DO UPDATE SET linked_at = excluded.linked_at
+                """,
+                (official_app_id, official_group_openid, onebot_group_id, now),
+            )
+        return CrossPlatformGroupLink(
+            onebot_group_id,
+            official_app_id,
+            official_group_openid,
+            now,
+        )
+
+    async def all_group_links(self) -> tuple[CrossPlatformGroupLink, ...]:
+        return await asyncio.to_thread(self._all_group_links_sync)
+
+    def _all_group_links_sync(self) -> tuple[CrossPlatformGroupLink, ...]:
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT onebot_group_id, official_app_id,
+                       official_group_openid, linked_at
+                FROM cross_platform_group_links
+                ORDER BY official_app_id, official_group_openid
+                """
+            ).fetchall()
+        return tuple(
+            CrossPlatformGroupLink(
+                str(row[0]),
+                str(row[1]),
+                str(row[2]),
+                float(row[3]),
+            )
+            for row in rows
         )
 
     async def issue(

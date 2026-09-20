@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import MentionPart, OutboundMessage, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -175,6 +175,52 @@ async def test_portable_meeting_reports_missing_configuration() -> None:
     result = await operations["meeting"]("会议", _context())
 
     assert "messaging.meeting.number" in _text(result)
+
+
+@pytest.mark.asyncio
+async def test_portable_meeting_addresses_explicit_member_target() -> None:
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "sender-openid",
+        kind="member",
+        scope_id="group-openid",
+        account_id="app-id",
+    )
+    target = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "target-openid",
+        kind="member",
+        scope_id="group-openid",
+        account_id="app-id",
+    )
+    context = MessageInputContext(
+        IncomingMessageRef(
+            platform=Platform.QQ_OFFICIAL,
+            actor=actor,
+            conversation=ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                "group-openid",
+                account_id="app-id",
+            ),
+            message_id="message-id",
+            text="会议",
+            direct_mentions=(target,),
+        ),
+        mentions_bot=False,
+    )
+
+    result = await build_portable_meeting_operations(
+        "6638682008",
+        "会议号：{meeting_number}",
+    )["meeting"]("会议", context)
+
+    assert isinstance(result, OutboundMessage)
+    assert result.parts == (
+        MentionPart(target),
+        TextPart(" "),
+        TextPart("会议号：663-868-2008"),
+    )
 
 
 @pytest.mark.asyncio
