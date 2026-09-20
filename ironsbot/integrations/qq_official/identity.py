@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
@@ -19,6 +21,12 @@ if TYPE_CHECKING:
     from qqbot_agent_sdk.event_parser import InboundEvent
 
 GROUP_AT_MESSAGE_CREATE = "GROUP_AT_MESSAGE_CREATE"
+GROUP_MESSAGE_CREATE = "GROUP_MESSAGE_CREATE"
+_LEADING_MENTION_RE = re.compile(r"^[\s]*[@＠]\S+[\s]*")
+_PASSIVE_REPLY_WINDOWS = {
+    "group": timedelta(minutes=5),
+    "private": timedelta(minutes=60),
+}
 
 
 def qq_official_incoming_message(
@@ -69,21 +77,46 @@ def qq_official_incoming_message(
         actor=actor,
         conversation=conversation,
         message_id=event.message_id,
-        text=event.content.strip(),
+        text=_message_text(event, raw),
         direct_mentions=direct_mentions,
         group_role=group_role,
         reply_to_id=_reply_reference(event, raw),
         sequence=_message_sequence(raw),
+        reply_deadline=_reply_deadline(event, conversation.kind),
     )
 
 
-def is_qq_official_reply_event(event: InboundEvent) -> bool:
-    raw = event.raw if isinstance(event.raw, Mapping) else {}
-    return _reply_reference(event, raw) is not None
-
-
 def qq_official_event_mentions_bot(event: InboundEvent) -> bool:
-    return event.event_type == GROUP_AT_MESSAGE_CREATE
+    if event.event_type == GROUP_AT_MESSAGE_CREATE:
+        return True
+    if event.event_type != GROUP_MESSAGE_CREATE:
+        return False
+    raw = event.raw if isinstance(event.raw, Mapping) else {}
+    return _bot_mention(raw) is not None
+
+
+def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
+    text = event.content.strip()
+    if event.event_type != GROUP_MESSAGE_CREATE:
+        return text
+    mention = _bot_mention(raw)
+    if mention is None:
+        return text
+    return _remove_leading_self_mention(text).strip()
+
+
+def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:
+    mentions = raw.get("mentions")
+    if not isinstance(mentions, Sequence) or isinstance(mentions, (str, bytes)):
+        return None
+    for mention in mentions:
+        if isinstance(mention, Mapping) and bool(mention.get("is_you")):
+            return mention
+    return None
+
+
+def _remove_leading_self_mention(text: str) -> str:
+    return _LEADING_MENTION_RE.sub("", text, count=1)
 
 
 def _direct_mentions(
@@ -101,7 +134,7 @@ def _direct_mentions(
             continue
         if bool(mention.get("is_you")) or bool(mention.get("bot")):
             continue
-        member_openid = _string_value(mention.get("member_openid"))
+        member_openid = str(mention.get("member_openid", "")).strip()
         if not member_openid:
             continue
         result.append(
@@ -120,7 +153,8 @@ def _author_value(raw: Mapping[str, object], key: str) -> str | None:
     author = raw.get("author")
     if not isinstance(author, Mapping):
         return None
-    return _string_value(author.get(key))
+    value = str(author.get(key, "")).strip()
+    return value or None
 
 
 def _reply_reference(
@@ -133,8 +167,25 @@ def _reply_reference(
 
 
 def _message_sequence(raw: Mapping[str, object]) -> str | None:
-    direct = _string_value(raw.get("msg_idx"))
+    direct = str(raw.get("msg_idx", "")).strip()
     return direct or _scene_value(raw, "msg_idx")
+
+
+def _reply_deadline(event: InboundEvent, conversation_kind: str) -> datetime | None:
+    value = getattr(event, "timestamp", None)
+    if isinstance(value, datetime):
+        timestamp = value
+    else:
+        normalized = str(value or "").strip().replace("Z", "+00:00")
+        if not normalized:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+    if timestamp.tzinfo is None:
+        return None
+    return timestamp + _PASSIVE_REPLY_WINDOWS[conversation_kind]
 
 
 def _scene_value(raw: Mapping[str, object], key: str) -> str | None:
@@ -146,12 +197,8 @@ def _scene_value(raw: Mapping[str, object], key: str) -> str | None:
         return None
     prefix = f"{key}="
     for item in ext:
-        value = _string_value(item)
-        if value is not None and value.startswith(prefix):
+        value = str(item)
+        if value.startswith(prefix):
             normalized = value.removeprefix(prefix).strip()
             return normalized or None
     return None
-
-
-def _string_value(value: object) -> str | None:
-    return value.strip() or None if isinstance(value, str) else None

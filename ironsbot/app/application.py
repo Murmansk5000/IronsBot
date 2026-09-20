@@ -45,6 +45,7 @@ class Application:
     task_owner: TaskOwner
     known_features: tuple[str, ...]
     required_plugin_features: frozenset[Feature]
+    onebot_message_handling_enabled: bool = True
     contributions: tuple[PluginContribution, ...] = ()
     resource_startup_hooks: tuple[tuple[str, Any], ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
@@ -86,10 +87,14 @@ class Application:
             msg = "application must be configured before installation"
             raise RuntimeError(msg)
         for contribution in self.contributions:
-            if contribution.install is not None:
+            if contribution.install is not None and (
+                self.onebot_message_handling_enabled
+                or contribution.install_without_onebot_messages
+            ):
                 contribution.install(self.matcher_factory)
-        self.matcher_factory.install_queued_conversation_router()
-        self.matcher_factory.validate_command_catalog(self.resources.commands)
-        self.matcher_factory.install_postprocessor()
+        if self.onebot_message_handling_enabled:
+            self.matcher_factory.install_queued_conversation_router()
+            self.matcher_factory.validate_command_catalog(self.resources.commands)
+            self.matcher_factory.install_postprocessor()
         self.lifecycle.install()
         self._installed = True

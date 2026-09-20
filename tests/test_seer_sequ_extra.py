@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.seer.sequ_extra import fetch_unity_peak_partial
 
 if TYPE_CHECKING:
@@ -63,6 +65,8 @@ _EXPECTED_EXPERT_MATCHES = 10
 
 
 class _PeakGame:
+    user_id = 654321
+
     def __init__(self, timeout_param: int = _WILD_FIRST_PARAM) -> None:
         self.params: list[int] = []
         self._timeout_param = timeout_param
@@ -167,3 +171,19 @@ async def test_peak_partial_keeps_later_modes_aligned_after_standard_timeout() -
     assert result.info.history_z_score == _EXPECTED_EXPERT_HISTORY_SCORE
     assert result.info.current_z_win == _EXPECTED_EXPERT_WINS
     assert result.info.current_z_all == _EXPECTED_EXPERT_MATCHES
+
+
+@pytest.mark.asyncio
+async def test_peak_failure_log_redacts_worker_account(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING)
+
+    await fetch_unity_peak_partial(
+        _PeakGame(timeout_param=_STANDARD_FIRST_PARAM),
+        712_345_678,
+        timeout_seconds=0.1,
+    )
+
+    assert str(_PeakGame.user_id) not in caplog.text
+    assert reference_digest(str(_PeakGame.user_id)) in caplog.text

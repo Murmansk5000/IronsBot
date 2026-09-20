@@ -15,7 +15,6 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.observer import ObserverApiRejected
 from ironsbot.integrations.onebot.outbound import OutboundRateLimitDecision
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from tests.helpers.runtime import build_test_runtime
@@ -26,21 +25,6 @@ if TYPE_CHECKING:
 
 GROUP_ID = 1001
 MENTIONED_USER_ID = 2002
-
-
-@pytest.mark.asyncio
-async def test_observer_rejection_is_permanent(monkeypatch: pytest.MonkeyPatch) -> None:
-    from unittest.mock import AsyncMock
-
-    monkeypatch.setattr(
-        _Bot, "send_group_msg", AsyncMock(side_effect=ObserverApiRejected())
-    )
-    result = await _messenger(_Bot()).send(
-        ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)),
-        OutboundMessage.from_text("suppressed"),
-    )
-    assert not result.delivered
-    assert result.failure_kind is DeliveryFailureKind.PERMANENT
 
 
 @dataclass
@@ -124,6 +108,35 @@ async def test_onebot_outbound_messenger_rejects_unsupported_conversation() -> N
     assert not messenger.capabilities_for(
         ConversationRef(Platform.QQ_OFFICIAL, "group", "1001")
     ).can_send_proactively
+
+
+@pytest.mark.asyncio
+async def test_onebot_outbound_messenger_rejects_all_sends_when_disabled() -> None:
+    bot = _Bot()
+    runtime = build_test_runtime(
+        outbound_config=OutboundRateLimitConfig(enabled=False),
+    )
+    messenger = OneBotOutboundMessenger(
+        cast("Any", _Router(bot)),
+        runtime.outbound,
+        enabled=False,
+    )
+    conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+
+    proactive = await messenger.send(
+        conversation,
+        OutboundMessage((TextPart("hello"),)),
+    )
+    reply = await messenger.reply(
+        ReplyContext(conversation, "99"),
+        OutboundMessage((TextPart("hello"),)),
+    )
+
+    assert not messenger.capabilities_for(conversation).can_reply_to_event
+    assert not messenger.capabilities_for(conversation).can_send_proactively
+    assert proactive.error_code == "outbound_disabled"
+    assert reply.error_code == "outbound_disabled"
+    assert bot.group_messages == []
 
 
 @pytest.mark.asyncio

@@ -41,7 +41,7 @@ async def send_private_schedule(
 ) -> None:
     eligible = tuple(
         private_conversation_for_actor(actor)
-        for actor in messaging._features.actors_with_superusers(task.feature)
+        for actor in messaging._features.private_actors_with_superusers(task.feature)
     )
     if target_conversations is None:
         overrides = cron_override_conversations(
@@ -60,17 +60,16 @@ async def send_private_schedule(
             if conversation in allowed
         )
 
-    for message in task.messages:
-        await messaging._schedule_sender.send(
-            ScheduledMessageDelivery(
-                message=message,
-                private_conversations=recipients,
-                group_conversations=(),
-                group_mentions=(),
-                action_name=f"private scheduled message {task.id or '<unnamed>'}",
-                subscription_key=schedule_key(index, task),
-            )
+    await messaging._schedule_sender.send(
+        ScheduledMessageDelivery(
+            messages=tuple(task.messages),
+            private_conversations=recipients,
+            group_conversations=(),
+            group_mentions=(),
+            action_name=f"private scheduled message {task.id or '<unnamed>'}",
+            subscription_key=schedule_key(index, task),
         )
+    )
 
 
 async def send_group_schedule(
@@ -98,17 +97,16 @@ async def send_group_schedule(
             if conversation in allowed
         )
 
-    for message in task.messages:
-        await messaging._schedule_sender.send(
-            ScheduledMessageDelivery(
-                message=message,
-                private_conversations=(),
-                group_conversations=recipients,
-                group_mentions=messaging.schedule_mentions(index),
-                action_name=f"group scheduled message {task.id or '<unnamed>'}",
-                subscription_key=schedule_key(index, task),
-            )
+    await messaging._schedule_sender.send(
+        ScheduledMessageDelivery(
+            messages=tuple(task.messages),
+            private_conversations=(),
+            group_conversations=recipients,
+            group_mentions=messaging.schedule_mentions(index),
+            action_name=f"group scheduled message {task.id or '<unnamed>'}",
+            subscription_key=schedule_key(index, task),
         )
+    )
 
 
 async def send_schedule(
@@ -169,7 +167,7 @@ def _register_private_schedule_overrides(
     key = schedule_key(index, task)
     eligible = {
         private_conversation_for_actor(actor)
-        for actor in messaging._features.actors_with_superusers(task.feature)
+        for actor in messaging._features.private_actors_with_superusers(task.feature)
     }
     for preference in messaging._store.all_time_preferences(
         conversation_kind="private",

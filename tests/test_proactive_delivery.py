@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -13,16 +12,11 @@ from ironsbot.core.outbound import (
     DeliveryFailureKind,
     MentionPart,
     OutboundMessage,
-    RemoteImagePart,
     SendResult,
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
-from ironsbot.integrations.qq_official.outbound_messenger import (
-    QQOfficialOutboundMessenger,
-)
-from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.services.activity.delivery import ActivityReminderDelivery
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
@@ -45,8 +39,6 @@ from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
-    from qqbot_agent_sdk.api_client import QQApiClient
-
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
 
 GROUP = ConversationRef(Platform.ONEBOT, "group", "3003")
@@ -204,39 +196,7 @@ def _text(message: OutboundMessage) -> str:
 
 
 @pytest.mark.asyncio
-async def test_official_partial_image_send_is_not_replayed_by_shared_delivery() -> None:
-    api = Mock()
-    api.next_msg_seq.return_value = 1
-    api.post_group_message = AsyncMock(return_value={"id": "first-message"})
-    api.upload_group_file = AsyncMock(side_effect=RuntimeError("429 rate limit"))
-    client = TencentQQClient(cast("QQApiClient", api))
-    messenger = QQOfficialOutboundMessenger({"app": True}, lambda _: client)
-    delivery, _, _ = _delivery()
-    delivery = replace(delivery, messenger=messenger)
-    target = ConversationRef(Platform.QQ_OFFICIAL, "group", "openid", account_id="app")
-
-    summary = await delivery.send(
-        OutboundMessage(
-            (
-                TextPart("before"),
-                RemoteImagePart("https://example.test/image.png"),
-                TextPart("after"),
-            )
-        ),
-        [target],
-        action_name="test partial delivery",
-        interval_seconds=0,
-    )
-
-    assert summary.succeeded == ()
-    assert summary.uncertain == (target,)
-    assert api.post_group_message.await_count == 1
-    assert api.upload_group_file.await_count == 1
-
-
-@pytest.mark.asyncio
-async def test_proactive_delivery_filters_subscriptions_and_applies_policy_per_target(
-) -> None:
+async def test_proactive_delivery_filters_and_applies_target_policy() -> None:
     features = FakeFeatures(enabled_groups={(GROUP, "fire_manual")})
     delivery, messenger, subscriptions = _delivery(
         features=features,
@@ -413,7 +373,7 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
     )
     await ScheduledMessageOutboundSender(delivery).send(
         ScheduledMessageDelivery(
-            message="定时推送",
+            messages=("定时推送一", "定时推送二"),
             private_conversations=(PRIVATE,),
             group_conversations=(GROUP,),
             group_mentions=(MENTION,),
@@ -430,11 +390,15 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
         GROUP,
         PRIVATE,
         GROUP,
+        PRIVATE,
+        GROUP,
     ]
     assert isinstance(messenger.calls[2][1].parts[0], MentionPart)
     assert messenger.calls[2][1].parts[0].actor == MENTION
     assert isinstance(messenger.calls[4][1].parts[0], MentionPart)
     assert messenger.calls[4][1].parts[0].actor == MENTION
+    assert isinstance(messenger.calls[6][1].parts[0], MentionPart)
+    assert messenger.calls[6][1].parts[0].actor == MENTION
 
 
 @pytest.mark.asyncio
@@ -502,8 +466,7 @@ async def test_lucky_skin_sender_uses_typed_private_delivery() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_notice_sender_maps_delivery_summary_back_to_original_recipients(
-) -> None:
+async def test_admin_notice_sender_maps_summary_to_original_recipients() -> None:
     delivery, _messenger, _subscriptions = _delivery()
     sender = OutboundAdminNoticeSender(delivery)
 

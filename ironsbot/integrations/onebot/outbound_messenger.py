@@ -14,7 +14,7 @@ from ironsbot.core.outbound import (
     ReplyContext,
     SendResult,
 )
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     render_onebot_outbound_message,
@@ -63,9 +63,12 @@ class OneBotOutboundMessenger:
         self,
         router: BotRouter,
         outbound: GroupOutboundRateLimitService,
+        *,
+        enabled: bool = True,
     ) -> None:
         self._router = router
         self._outbound = outbound
+        self._enabled = enabled
 
     def capabilities_for(
         self,
@@ -73,7 +76,7 @@ class OneBotOutboundMessenger:
     ) -> DeliveryCapabilities:
         return (
             _ONEBOT_CAPABILITIES
-            if _supports_conversation(conversation)
+            if self._enabled and _supports_conversation(conversation)
             else _UNSUPPORTED_CAPABILITIES
         )
 
@@ -104,6 +107,13 @@ class OneBotOutboundMessenger:
         reply_to_id: str | None = None,
         proactive: bool,
     ) -> SendResult:
+        if not self._enabled:
+            return SendResult(
+                delivered=False,
+                error_code="outbound_disabled",
+                error_message="OneBot outbound messaging is disabled",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
         if not _supports_conversation(conversation):
             return SendResult(
                 delivered=False,
@@ -170,9 +180,9 @@ class OneBotOutboundMessenger:
             if decision is not None:
                 self._outbound.rollback(decision.permit)
             logger.warning(
-                "OneBot outbound delivery failed: kind={} id={} error={}",
+                "OneBot outbound delivery failed: kind={} ref={} error={}",
                 conversation.kind,
-                conversation.id,
+                reference_digest(conversation.id),
                 error,
             )
             return SendResult(
@@ -217,8 +227,6 @@ async def _send_onebot_message(
 
 
 def onebot_result_message_id(result: object) -> str | None:
-    """Read the message identifier from a OneBot send response."""
-
     if isinstance(result, dict):
         value: Any = result.get("message_id")
     else:
@@ -230,10 +238,6 @@ def onebot_result_message_id(result: object) -> str | None:
 def _onebot_failure_kind(error: Exception) -> DeliveryFailureKind:
     """Classify OneBot-specific failures at the adapter boundary."""
 
-    from ironsbot.integrations.onebot.observer import ObserverApiRejected
-
-    if isinstance(error, ObserverApiRejected):
-        return DeliveryFailureKind.PERMANENT
     text = " ".join((type(error).__name__, str(error), repr(error))).casefold()
     if any(
         marker in text

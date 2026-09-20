@@ -479,6 +479,29 @@ def test_rank_page_cache_migration_backfills_last_seen_from_existing_facts(
     assert migrated.score == CROSS_PAGE_LAST_SCORE
 
 
+def test_rank_page_cache_accepts_version_four_and_clears_legacy_misses(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "rank_page_cache.sqlite"
+    cache = build_cache(cache_path)
+    cache.save_miss(key=1, sub_key=2, user_id=100, searched_limit=100)
+    with sqlite3.connect(cache_path) as conn:
+        conn.execute("PRAGMA user_version = 3")
+
+    migrated = build_cache(cache_path)
+    miss = migrated.miss(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        minimum_limit=100,
+        allow_stale=True,
+    )
+
+    with sqlite3.connect(cache_path) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone() == (4,)
+    assert miss is None
+
+
 def test_save_rank_page_replaces_overlapping_ranges(
     tmp_path: Path,
 ) -> None:
@@ -574,12 +597,15 @@ def test_confirmed_rank_miss_invalidates_last_seen_rank_inside_search_limit(
         searched_limit=100,
     )
 
-    assert cache.last_seen_item(
-        key=1,
-        sub_key=2,
-        user_id=100,
-        max_age_seconds=24 * 60 * 60,
-    ) is None
+    assert (
+        cache.last_seen_item(
+            key=1,
+            sub_key=2,
+            user_id=100,
+            max_age_seconds=24 * 60 * 60,
+        )
+        is None
+    )
 
 
 def test_cached_rank_page_result_preserves_fetched_at(
@@ -656,12 +682,15 @@ def test_rank_miss_cache_requires_the_requested_search_coverage(
 
     assert cached is not None
     assert cached.searched_limit == MISS_SEARCH_LIMIT
-    assert cache.miss(
-        key=1,
-        sub_key=2,
-        user_id=100,
-        minimum_limit=MISS_SEARCH_LIMIT + 1,
-    ) is None
+    assert (
+        cache.miss(
+            key=1,
+            sub_key=2,
+            user_id=100,
+            minimum_limit=MISS_SEARCH_LIMIT + 1,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("miss_first", [True, False])

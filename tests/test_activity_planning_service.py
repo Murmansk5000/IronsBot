@@ -51,21 +51,30 @@ def test_first_week_offer_deadline_uses_full_week_floor() -> None:
 def test_first_week_offer_stays_visible_until_full_week_end() -> None:
     activity = _first_week_offer_activity()
 
-    assert activity_deadline(
-        activity,
-        dt(2026, 6, 8, 9),
-        soon_ending_threshold=timedelta(days=7),
-    ) is not None
-    assert activity_deadline(
-        activity,
-        dt(2026, 6, 8, 10),
-        soon_ending_threshold=timedelta(days=7),
-    ) is not None
-    assert activity_deadline(
-        activity,
-        dt(2026, 6, 8, 10, 1),
-        soon_ending_threshold=timedelta(days=7),
-    ) is None
+    assert (
+        activity_deadline(
+            activity,
+            dt(2026, 6, 8, 9),
+            soon_ending_threshold=timedelta(days=7),
+        )
+        is not None
+    )
+    assert (
+        activity_deadline(
+            activity,
+            dt(2026, 6, 8, 10),
+            soon_ending_threshold=timedelta(days=7),
+        )
+        is not None
+    )
+    assert (
+        activity_deadline(
+            activity,
+            dt(2026, 6, 8, 10, 1),
+            soon_ending_threshold=timedelta(days=7),
+        )
+        is None
+    )
 
 
 def test_first_week_offer_schedules_late_night_and_morning_reminders() -> None:

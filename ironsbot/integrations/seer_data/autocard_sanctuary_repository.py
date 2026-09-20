@@ -19,9 +19,7 @@ if TYPE_CHECKING:
 
 _MISSING_TABLE_MESSAGE = "数据库缺少群星牌场地效果表，请先更新 IronsBot 数据库。"
 _EMPTY_DATA_MESSAGE = "数据库没有群星牌场地效果数据，请先更新 IronsBot 数据库。"
-_INVALID_DATA_MESSAGE = (
-    "数据库中的群星牌场地效果数据格式无效，请更新 IronsBot 数据库。"
-)
+_INVALID_DATA_MESSAGE = "数据库中的群星牌场地效果数据格式无效，请更新 IronsBot 数据库。"
 _EFFECT_QUERY = text(
     """
     SELECT

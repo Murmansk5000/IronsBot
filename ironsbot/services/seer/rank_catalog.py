@@ -26,6 +26,7 @@ def build_rank_command_map() -> dict[str, tuple[str, str]]:
         "竞技段位": ("竞技段位榜", "竞技榜"),
         "狂野段位": ("狂野段位榜", "狂野榜"),
         "专家段位": ("专家段位榜", "专家榜"),
+        "大师段位": ("大师段位榜", "大师榜"),
     }
     for key, names in aliases.items():
         for name in names:

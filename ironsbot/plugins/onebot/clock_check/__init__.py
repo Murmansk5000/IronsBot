@@ -33,9 +33,7 @@ def plugin_contribution(
     return PluginContribution(
         id="clock_startup_check",
         hooks=PluginHooks(
-            first_bot_connect=(
-                ("clock_startup_check", lambda _bot: startup_check()),
-            ),
+            first_bot_connect=(("clock_startup_check", lambda _bot: startup_check()),),
         ),
     )
 

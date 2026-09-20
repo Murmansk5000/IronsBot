@@ -7,6 +7,7 @@ Business services must not assume an ID is a QQ number.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Literal
@@ -23,6 +24,12 @@ class Platform(str, Enum):
 
 ConversationKind = Literal["private", "group", "channel", "guild"]
 ActorKind = Literal["user", "member"]
+
+
+def reference_digest(value: str) -> str:
+    """Return a stable diagnostic label without exposing a transport ID."""
+
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
 
 class PlatformReferenceError(ValueError):
@@ -180,9 +187,7 @@ def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
     )
 
 
-def is_supported_message_actor(
-    actor: ActorRef, conversation: ConversationRef
-) -> bool:
+def is_supported_message_actor(actor: ActorRef, conversation: ConversationRef) -> bool:
     """Validate group/private identity shape, not actual platform membership."""
 
     if actor.platform is not conversation.platform:

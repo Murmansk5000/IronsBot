@@ -145,8 +145,7 @@ def test_selection_returns_full_effect_description() -> None:
 
 def test_unknown_sanctuary_returns_a_clear_message() -> None:
     assert (
-        _service().search("场地不存在").message
-        == "❌ 未找到群星牌场地或祝印：不存在"
+        _service().search("场地不存在").message == "❌ 未找到群星牌场地或祝印：不存在"
     )
 
 

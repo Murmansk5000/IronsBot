@@ -58,7 +58,7 @@ def _subprocess_env() -> dict[str, str]:
     env = {key: value for key in env_keys if (value := os.environ.get(key))}
     env.update(
         {
-            "AI_KEY": "",
+            "AI_KEY_DEEPSEEK": "",
             "APP_CONFIG_PATH": str(ROOT / "config.example.toml"),
             "GITHUB_WORKFLOW_TOKEN": "",
             "ONEBOT_ACCESS_TOKEN": "",

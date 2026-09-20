@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import tomllib
 
-from ironsbot.config.models.ai import AI_ENDPOINT_NAME_PATTERN
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.seer_ids import is_valid_player_id
@@ -21,10 +20,22 @@ TOMLDecodeError = tomllib.TOMLDecodeError
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
+QQ_OFFICIAL_APP_ID_ENV_PREFIX = "QQ_OFFICIAL_APP_ID_"
 QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
-AI_ENDPOINT_KEY_SECRET_ERROR = (
-    "ai.endpoints[{index}].api_key is secret and must be set with "
-    "AI_KEY_<ENDPOINT_NAME>"
+ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX = "ONEBOT_TRUSTED_OFFICIAL_BOT_"
+AI_KEY_ENV_PREFIX = "AI_KEY_"
+LEGACY_AI_KEY_ERROR = (
+    "AI_KEY is retired; use AI_KEY_<PROVIDER> for a provider declared under "
+    "ai.providers"
+)
+AI_PROVIDER_ENV_COLLISION_ERROR = "AI provider aliases collide as environment names"
+_ONEBOT_ENV_PATHS = (
+    ("ONEBOT_ENABLED", ("bot", "onebot", "enabled")),
+    ("ONEBOT_SEND_MESSAGES", ("bot", "onebot", "send_messages")),
+    (
+        "ONEBOT_IDENTITY_VERIFICATION",
+        ("bot", "onebot", "identity_verification"),
+    ),
 )
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
@@ -41,56 +52,182 @@ _SECRET_ENV_PATHS = (
 )
 
 
-def _inject_ai_endpoint_keys(
+def _inject_ai_provider_credentials(
     data: dict[str, Any],
     *,
     env: Mapping[str, str],
 ) -> None:
+    legacy_key = str(env.get("AI_KEY", "")).strip()
+    if legacy_key:
+        raise ValueError(LEGACY_AI_KEY_ERROR)
+
     ai = data.get("ai")
-    if not isinstance(ai, dict):
-        return
-    endpoints = ai.get("endpoints", [])
-    if not isinstance(endpoints, list):
-        return
+    providers = ai.get("providers") if isinstance(ai, dict) else None
+    if not isinstance(providers, dict):
+        providers = {}
 
-    for index, endpoint in enumerate(endpoints):
-        if not isinstance(endpoint, dict):
+    declared_names = {str(name).upper(): str(name) for name in providers}
+    if len(declared_names) != len(providers):
+        raise ValueError(AI_PROVIDER_ENV_COLLISION_ERROR)
+    for alias, provider in providers.items():
+        if isinstance(provider, dict) and "api_key" in provider:
+            environment_name = str(alias).upper()
+            raise ValueError(  # noqa: TRY003
+                f"ai.providers.{alias}.api_key is a deployment credential and "
+                f"must be set with {AI_KEY_ENV_PREFIX}{environment_name}"
+            )
+
+    environment_names = {
+        key[len(AI_KEY_ENV_PREFIX) :].upper()
+        for key, value in env.items()
+        if key.startswith(AI_KEY_ENV_PREFIX) and str(value).strip()
+    }
+    unknown_names = sorted(environment_names - declared_names.keys())
+    if unknown_names:
+        raise ValueError(
+            "AI environment keys reference undeclared providers: "
+            + ", ".join(unknown_names)
+        )
+
+    for environment_name in environment_names:
+        alias = declared_names[environment_name]
+        provider = providers[alias]
+        if not isinstance(provider, dict):
             continue
-        if "api_key" in endpoint:
-            raise ValueError(AI_ENDPOINT_KEY_SECRET_ERROR.format(index=index))
-        name = str(endpoint.get("name") or "").strip()
-        if not AI_ENDPOINT_NAME_PATTERN.fullmatch(name):
-            continue
-        env_name = f"AI_KEY_{name.upper()}"
-        if (value := env.get(env_name)) is not None:
-            endpoint["api_key"] = value
+        provider["api_key"] = str(env[AI_KEY_ENV_PREFIX + environment_name]).strip()
 
 
-def _inject_qq_official_secrets(
+def _inject_qq_official_credentials(
     data: dict[str, Any],
     *,
     env: Mapping[str, str],
 ) -> None:
     bot = data.get("bot")
     qq_official = bot.get("qq_official") if isinstance(bot, dict) else None
-    accounts = (
-        qq_official.get("accounts") if isinstance(qq_official, dict) else None
-    )
+    if not isinstance(qq_official, dict):
+        return
+    accounts = qq_official.get("accounts")
     if not isinstance(accounts, dict):
         return
+    declared_names = {str(name).upper(): str(name) for name in accounts}
+    credential_names = {
+        key[len(prefix) :].upper()
+        for key in env
+        for prefix in (
+            QQ_OFFICIAL_APP_ID_ENV_PREFIX,
+            QQ_OFFICIAL_SECRET_ENV_PREFIX,
+        )
+        if key.startswith(prefix)
+    }
+    unknown_names = sorted(credential_names - declared_names.keys())
+    if unknown_names:
+        names = ", ".join(unknown_names)
+        msg = (
+            "QQ Official environment credentials reference undeclared accounts: "
+            f"{names}"
+        )
+        raise ValueError(msg)
     for raw_name, raw_account in accounts.items():
         if not isinstance(raw_account, dict):
             continue
         name = str(raw_name)
-        env_name = QQ_OFFICIAL_SECRET_ENV_PREFIX + name.upper()
-        if "secret" in raw_account:
+        credentials: dict[str, str | None] = {}
+        for field, prefix in (
+            ("app_id", QQ_OFFICIAL_APP_ID_ENV_PREFIX),
+            ("secret", QQ_OFFICIAL_SECRET_ENV_PREFIX),
+        ):
+            env_name = prefix + name.upper()
+            if field in raw_account:
+                msg = (
+                    f"bot.qq_official.accounts.{name}.{field} is a deployment "
+                    f"credential and must be set with {env_name}"
+                )
+                raise ValueError(msg)
+            value = env.get(env_name)
+            credentials[field] = None if value is None else str(value).strip()
+        present = {field for field, value in credentials.items() if value}
+        if present and len(present) != len(credentials):
+            missing = "secret" if "secret" not in present else "app_id"
+            env_name = (
+                QQ_OFFICIAL_SECRET_ENV_PREFIX
+                if missing == "secret"
+                else QQ_OFFICIAL_APP_ID_ENV_PREFIX
+            ) + name.upper()
             msg = (
-                f"bot.qq_official.accounts.{name}.secret is secret and must "
-                f"be set with {env_name}"
+                f"bot.qq_official.accounts.{name} has incomplete credentials; "
+                f"missing environment variable {env_name}"
             )
             raise ValueError(msg)
+        if present:
+            raw_account.update(credentials)
+
+
+def _inject_onebot_deployment_settings(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    for env_name, path in _ONEBOT_ENV_PATHS:
         if (value := env.get(env_name)) is not None:
-            raw_account["secret"] = value
+            _set_environment_override(data, path=path, value=value)
+
+    bot = data.setdefault("bot", {})
+    if not isinstance(bot, dict):
+        msg = "configuration table bot must be a TOML table"
+        raise TypeError(msg)
+    onebot = bot.setdefault("onebot", {})
+    if not isinstance(onebot, dict):
+        msg = "configuration table bot.onebot must be a TOML table"
+        raise TypeError(msg)
+    trusted = onebot.setdefault("trusted_official_bots", {})
+    if not isinstance(trusted, dict):
+        msg = (
+            "configuration table bot.onebot.trusted_official_bots must be a TOML table"
+        )
+        raise TypeError(msg)
+
+    accounts = (
+        bot.get("qq_official", {}).get("accounts", {})
+        if isinstance(bot.get("qq_official"), dict)
+        else {}
+    )
+    declared_names = (
+        {str(name).upper(): str(name) for name in accounts}
+        if isinstance(accounts, dict)
+        else {}
+    )
+    environment_names = {
+        key[len(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX) :].upper()
+        for key, value in env.items()
+        if key.startswith(ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX) and str(value).strip()
+    }
+    unknown_names = sorted(environment_names - declared_names.keys())
+    if unknown_names:
+        raise ValueError(
+            "trusted OneBot official bot IDs reference undeclared accounts: "
+            + ", ".join(unknown_names)
+        )
+    for environment_name in environment_names:
+        alias = declared_names[environment_name]
+        trusted[alias] = env[ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX + environment_name]
+
+
+def _set_environment_override(
+    data: dict[str, Any],
+    *,
+    path: Sequence[str],
+    value: str,
+) -> None:
+    table = data
+    for part in path[:-1]:
+        child = table.setdefault(part, {})
+        if not isinstance(child, dict):
+            msg = f"configuration table {'.'.join(path[:-1])} must be a TOML table"
+            raise TypeError(msg)
+        table = child
+    table[path[-1]] = value
+
+
 class ConfigFileNotFoundError(FileNotFoundError):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -114,10 +251,7 @@ def _inject_secret(
     for part in path[:-1]:
         child = table.setdefault(part, {})
         if not isinstance(child, dict):
-            msg = (
-                f"configuration table {'.'.join(path[:-1])} "
-                "must be a TOML table"
-            )
+            msg = f"configuration table {'.'.join(path[:-1])} must be a TOML table"
             raise TypeError(msg)
         table = child
 
@@ -158,9 +292,7 @@ def _inject_player_account_passwords(  # noqa: C901, PLR0912
         accounts_by_reference[str(player_id)] = (player_id, entry, path)
         for field in ("name", "aliases"):
             raw_values = (
-                (entry.get(field),)
-                if field == "name"
-                else entry.get(field, [])
+                (entry.get(field),) if field == "name" else entry.get(field, [])
             )
             if not isinstance(raw_values, (list, tuple)):
                 continue
@@ -241,9 +373,7 @@ def _environment_secret(
 ) -> str:
     value = env.get(env_name)
     if value is None or not str(value).strip():
-        message = (
-            f"{path} references missing environment variable {env_name}"
-        )
+        message = f"{path} references missing environment variable {env_name}"
         raise ValueError(message)
     return str(value)
 
@@ -255,9 +385,7 @@ def load_settings(
 ) -> Settings:
     values = env if env is not None else os.environ
     resolved_path = Path(
-        path
-        if path is not None
-        else values.get(CONFIG_ENV, DEFAULT_CONFIG_PATH)
+        path if path is not None else values.get(CONFIG_ENV, DEFAULT_CONFIG_PATH)
     )
     if not resolved_path.exists():
         raise ConfigFileNotFoundError(resolved_path)
@@ -271,7 +399,8 @@ def load_settings(
             path=field_path,
             env=values,
         )
-    _inject_ai_endpoint_keys(data, env=values)
-    _inject_qq_official_secrets(data, env=values)
+    _inject_ai_provider_credentials(data, env=values)
+    _inject_onebot_deployment_settings(data, env=values)
+    _inject_qq_official_credentials(data, env=values)
     _inject_player_account_passwords(data, env=values)
     return Settings.model_validate(data)

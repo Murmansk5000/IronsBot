@@ -4,24 +4,23 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
-from ironsbot.core.outbound import (
-    DeliveryFailureKind,
-    OutboundMessage,
-    OutboundMessageError,
-    ReplyContext,
-)
+from ironsbot.core.outbound import OutboundMessage, SendResult
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.core.outbound import SendResult
-    from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.services.seer.data_queries import DataQueryImageReply
 
-logger = logging.getLogger(__name__)
+PortableFollowUp = Callable[[], Awaitable[OutboundMessage]]
+ProgressReporter = Callable[[str], Awaitable[None]]
+ProgressOperation = Callable[
+    [ProgressReporter],
+    Awaitable[OutboundMessage | str],
+]
+DeliveryStage = Literal["initial", "additional", "follow_up"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,11 +28,10 @@ class PortableReply:
     """One prepared reply with work committed only after transport success."""
 
     message: OutboundMessage
+    additional_messages: tuple[OutboundMessage, ...] = ()
     on_delivered: Callable[[], None] | None = None
     on_delivery_failed: Callable[[], None] | None = None
-    after_delivered: DeliveryCommit | None = None
     follow_up: PortableFollowUp | None = None
-    fallback_message: OutboundMessage | None = None
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -43,54 +41,44 @@ class PortableReply:
         if self.on_delivery_failed is not None:
             self.on_delivery_failed()
 
-    async def commit_delivery(self) -> None:
-        """Commit local state and then run any delivery-dependent side effect."""
 
-        self.delivered()
-        if self.after_delivered is not None:
-            await self.after_delivered()
+async def deliver_portable_reply(
+    reply: PortableReply,
+    send: Callable[[OutboundMessage], Awaitable[SendResult]],
+    *,
+    on_sent: Callable[[DeliveryStage, SendResult], None] | None = None,
+    on_follow_up_error: Callable[[Exception], OutboundMessage] | None = None,
+) -> bool:
+    """Own ordered delivery and abort unfinished work on every interrupted path."""
 
+    async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
+        receipt = await send(message)
+        if on_sent is not None:
+            on_sent(stage, receipt)
+        return receipt.delivered
 
-DeliveryCommit = Callable[[], Awaitable[None]]
-PortableFollowUp = Callable[[], Awaitable[PortableReply | OutboundMessage]]
-ProgressReporter = Callable[[str], Awaitable[None]]
-ProgressOperation = Callable[
-    [ProgressReporter],
-    Awaitable[PortableReply | OutboundMessage | str],
-]
-
-
-def message_sequence_reply(messages: tuple[OutboundMessage, ...]) -> PortableReply:
-    """Preserve message boundaries using receipt-gated reply stages."""
-    if not messages:
-        raise OutboundMessageError.empty_reply_sequence()
-
-    def stage(index: int) -> PortableReply:
-        async def next_stage() -> PortableReply:
-            return stage(index + 1)
-
-        return PortableReply(
-            messages[index],
-            follow_up=next_stage if index + 1 < len(messages) else None,
-        )
-
-    return stage(0)
-
-
-class ReplyMessenger(Protocol):
-    """Smallest transport surface required by passive reply delivery."""
-
-    def reply(
-        self,
-        context: ReplyContext,
-        message: OutboundMessage,
-    ) -> Awaitable[SendResult]: ...
-
-
-class ReplySender(Protocol):
-    """Send one stage of a passive reply and return its transport receipt."""
-
-    def __call__(self, message: OutboundMessage) -> Awaitable[SendResult]: ...
+    completed = False
+    try:
+        if not await transmit(reply.message, "initial"):
+            return False
+        reply.delivered()
+        for message in reply.additional_messages:
+            if not await transmit(message, "additional"):
+                return False
+        if reply.follow_up is not None:
+            try:
+                message = await reply.follow_up()
+            except Exception as error:
+                if on_follow_up_error is None:
+                    raise
+                message = on_follow_up_error(error)
+            completed = await transmit(message, "follow_up")
+        else:
+            completed = True
+        return completed
+    finally:
+        if not completed:
+            reply.delivery_failed()
 
 
 async def progress_operation_reply(
@@ -109,14 +97,20 @@ async def progress_operation_reply(
         await delivery_gate.wait()
 
     task = asyncio.ensure_future(operation(report))
-    done, _pending = await asyncio.wait(
-        (task, first_progress),
-        return_when=asyncio.FIRST_COMPLETED,
-    )
+    try:
+        done, _pending = await asyncio.wait(
+            (task, first_progress),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    except BaseException:
+        task.cancel()
+        first_progress.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
     if task in done:
         if not first_progress.done():
             first_progress.cancel()
-        return as_portable_reply(await task)
+        return PortableReply(_outbound(await task))
 
     def release() -> None:
         delivery_gate.set()
@@ -125,9 +119,8 @@ async def progress_operation_reply(
         task.cancel()
         delivery_gate.set()
 
-    async def finish() -> PortableReply | OutboundMessage:
-        result = await task
-        return result if isinstance(result, PortableReply) else _outbound(result)
+    async def finish() -> OutboundMessage:
+        return _outbound(await task)
 
     return PortableReply(
         first_progress.result(),
@@ -137,125 +130,10 @@ async def progress_operation_reply(
     )
 
 
-async def deliver_portable_reply(
-    messenger: ReplyMessenger,
-    incoming: IncomingMessageRef,
-    reply: PortableReply,
-) -> None:
-    """Deliver a portable reply through an outbound messenger."""
-    context = ReplyContext.from_message(incoming)
-
-    async def send(message: OutboundMessage) -> SendResult:
-        return await messenger.reply(context, message)
-
-    await deliver_reply_stages(send, incoming, reply)
-
-
-async def deliver_reply_stages(
-    send: ReplySender,
-    incoming: IncomingMessageRef,
-    reply: PortableReply,
-) -> None:
-    """Commit each reply stage only after its transport receipt succeeds."""
-
-    current = reply
-    stage = 0
-    while True:
-        result = await send(current.message)
-        stage_name = "initial" if stage == 0 else f"follow_up_{stage}"
-        # A missing or uncertain receipt must not cause another visible message.
-        if (
-            not result.delivered
-            and current.fallback_message is not None
-            and result.failure_kind in {
-                DeliveryFailureKind.PERMANENT,
-                DeliveryFailureKind.RETRYABLE,
-            }
-        ):
-            _log_delivery_failure(
-                incoming,
-                result,
-                stage=f"{stage_name}_primary",
-            )
-            result = await send(current.fallback_message)
-            stage_name = f"{stage_name}_fallback"
-        if not result.delivered:
-            current.delivery_failed()
-            _log_delivery_failure(incoming, result, stage=stage_name)
-            return
-        try:
-            await current.commit_delivery()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception(
-                "Portable delivery commit failed: platform=%s account=%s kind=%s id=%s",
-                incoming.platform.value,
-                incoming.conversation.account_id,
-                incoming.conversation.kind,
-                incoming.conversation.id,
-            )
-            return
-        if current.follow_up is None:
-            return
-        try:
-            follow_up = await current.follow_up()
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            logger.exception(
-                "Portable deferred operation failed: platform=%s account=%s "
-                "kind=%s id=%s",
-                incoming.platform.value,
-                incoming.conversation.account_id,
-                incoming.conversation.kind,
-                incoming.conversation.id,
-            )
-            follow_up = OutboundMessage.from_text(
-                f"❌ 操作执行失败：{type(error).__name__}"
-            )
-        current = (
-            follow_up
-            if isinstance(follow_up, PortableReply)
-            else PortableReply(follow_up)
-        )
-        stage += 1
-
-
-def _log_delivery_failure(
-    incoming: IncomingMessageRef,
-    result: SendResult,
-    *,
-    stage: str,
-) -> None:
-    logger.warning(
-        "Portable reply failed: platform=%s stage=%s account=%s kind=%s id=%s "
-        "code=%s message=%s trace_id=%s",
-        incoming.platform.value,
-        stage,
-        incoming.conversation.account_id,
-        incoming.conversation.kind,
-        incoming.conversation.id,
-        result.error_code,
-        result.error_message,
-        result.trace_id,
-    )
-
-
 def _outbound(message: OutboundMessage | str) -> OutboundMessage:
     if isinstance(message, str):
         return OutboundMessage.from_text(message)
     return message
-
-
-def as_portable_reply(
-    message: PortableReply | OutboundMessage | str,
-) -> PortableReply:
-    """Normalize a portable operation result before platform delivery."""
-
-    if isinstance(message, PortableReply):
-        return message
-    return PortableReply(_outbound(message))
 
 
 class PortableOperation(Protocol):
@@ -263,4 +141,4 @@ class PortableOperation(Protocol):
         self,
         text: str,
         context: MessageInputContext,
-    ) -> Awaitable[PortableReply | OutboundMessage | str]: ...
+    ) -> Awaitable[PortableReply | OutboundMessage | str | DataQueryImageReply]: ...
