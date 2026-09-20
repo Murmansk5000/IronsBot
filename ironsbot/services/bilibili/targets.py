@@ -9,6 +9,7 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
+    Platform,
     private_conversation_for_actor,
 )
 from ironsbot.services.bilibili.accounts import (
@@ -52,9 +53,36 @@ class BiliTargetService:
     preferences: BiliPushPreferenceStore
     unsubscribe_store: PushSubscriptionRepository
     account_names: BiliAccountNames = field(default_factory=BiliAccountNames)
+    linked_group_rules: dict[ConversationRef, BiliTargetRule] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
+
+    def register_group_link(
+        self,
+        *,
+        official_app_id: str,
+        official_group_openid: str,
+        onebot_group_id: str,
+    ) -> None:
+        source = ConversationRef(Platform.ONEBOT, "group", onebot_group_id)
+        rule = self.configured_targets.group_rules.get(source)
+        if rule is None:
+            return
+        target = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            official_group_openid,
+            account_id=official_app_id,
+        )
+        self.linked_group_rules[target] = rule
 
     def configured_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        return dict(self.configured_targets.group_rules)
+        return {
+            **self.configured_targets.group_rules,
+            **self.linked_group_rules,
+        }
 
     def configured_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         return dict(self.configured_targets.private_rules)
