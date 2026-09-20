@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -175,8 +176,7 @@ class RankPageRefreshService:
                             )
                         )
                     logger.warning(
-                        "rank page cache refresh failed: target=%s %s-%s "
-                        "reason=%s",
+                        "rank page cache refresh failed: target=%s %s-%s reason=%s",
                         target.rank_key,
                         target.start_rank,
                         target.end_rank,
@@ -198,11 +198,15 @@ class RankPageRefreshService:
                             result.worker_page_counts.get(worker_id, 0) + 1
                         )
                 logger.info(
-                    "rank page cache refreshed: target=%s %s-%s worker=%s",
+                    "rank page cache refreshed: target=%s %s-%s worker_ref=%s",
                     target.rank_key,
                     target.start_rank,
                     target.end_rank,
-                    worker_id if worker_id is not None else "unknown",
+                    (
+                        reference_digest(str(worker_id))
+                        if worker_id is not None
+                        else "unknown"
+                    ),
                 )
 
         await asyncio.gather(

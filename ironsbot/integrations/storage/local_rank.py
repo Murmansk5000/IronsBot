@@ -156,9 +156,7 @@ class SqliteLocalRankRepository:
         max_age_hours: int,
     ) -> list[int]:
         cutoff = (
-            (
-                datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-            ).isoformat()
+            (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
             if max_age_hours > 0
             else None
         )
@@ -186,8 +184,7 @@ class SqliteLocalRankRepository:
                 """
             ).fetchone()
             metric_counts = {
-                spec.title: self._metric_count(conn, spec)
-                for spec in metrics
+                spec.title: self._metric_count(conn, spec) for spec in metrics
             }
         return LocalRankCacheStats(
             player_count=int(counts["sampled"]),
@@ -207,9 +204,7 @@ class SqliteLocalRankRepository:
         *,
         max_age_days: int = 30,
     ) -> int | None:
-        cutoff = datetime.now(timezone.utc) - timedelta(
-            days=max(1, max_age_days)
-        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, max_age_days))
         with self._database.connect() as conn:
             row = conn.execute(
                 """

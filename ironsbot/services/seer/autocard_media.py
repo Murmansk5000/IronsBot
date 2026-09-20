@@ -41,8 +41,6 @@ class AutocardMediaService:
             return_exceptions=True,
         )
         contents = tuple(
-            result
-            for result in results
-            if isinstance(result, bytes) and result
+            result for result in results if isinstance(result, bytes) and result
         )
         return entry.to_outbound(image_contents=contents)

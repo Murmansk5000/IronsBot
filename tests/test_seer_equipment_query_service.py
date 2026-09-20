@@ -130,12 +130,7 @@ async def test_title_query_returns_rendered_reply() -> None:
     result = await _service(data).search("title", "星际英雄")
 
     assert result.reply is not None
-    assert result.reply.text == (
-        "【星际英雄】\n"
-        "🆔：7\n"
-        "成就点数：10点\n"
-        "效果：体力 + 20"
-    )
+    assert result.reply.text == ("【星际英雄】\n🆔：7\n成就点数：10点\n效果：体力 + 20")
     assert result.reply.image == b"image:7"
 
 
@@ -212,9 +207,7 @@ async def test_equipment_formats_relationships_before_session_closes() -> None:
 async def test_equipment_selection_reports_missing_item() -> None:
     result = await _service(FakeData()).select("equip", 99)
 
-    assert result.message == (
-        "❌未找到装备部件 99（这是一个bug，请反馈给开发者）"
-    )
+    assert result.message == ("❌未找到装备部件 99（这是一个bug，请反馈给开发者）")
 
 
 @pytest.mark.asyncio

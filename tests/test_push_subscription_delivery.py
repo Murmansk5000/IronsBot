@@ -80,10 +80,7 @@ def _text(message: OutboundMessage) -> str:
 def _sent_texts(
     messenger: _Messenger,
 ) -> list[tuple[ConversationRef, str]]:
-    return [
-        (conversation, _text(message))
-        for conversation, message in messenger.calls
-    ]
+    return [(conversation, _text(message)) for conversation, message in messenger.calls]
 
 
 def test_proactive_delivery_filters_unsubscribed_push_targets(

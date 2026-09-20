@@ -678,7 +678,12 @@ class SeerEncryptConnect(SeerConnect):
         length = len(body_bytes) + 4
         length_bytes = AS3ByteArray()
         length_bytes.write_uint32(length)
-        logger.debug(f"pack: head={head!r}, length={length}")
+        logger.debug(
+            "pack: cmd_id=%s result=%s length=%s",
+            head.cmd_id,
+            head.result,
+            length,
+        )
         return length_bytes + body_bytes
 
     def unpack(self, data: bytes) -> tuple[HeadInfo, SocketRecvPacketBody]:
@@ -692,7 +697,11 @@ class SeerEncryptConnect(SeerConnect):
             self._result = headinfo.result
 
         if headinfo.result >= 1000:
-            raise SocketRecvError(headinfo, f"请求失败：{headinfo.result}")
+            raise SocketRecvError(
+                headinfo.result,
+                command_id=int(headinfo.cmd_id),
+                message=f"请求失败：{headinfo.result}",
+            )
 
         body_bytes = data[self.HEAD_LENGTH :]
         if body_type := PACKET_BODY_TYPES.get(headinfo.cmd_id):

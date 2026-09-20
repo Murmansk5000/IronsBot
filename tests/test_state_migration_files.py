@@ -24,9 +24,10 @@ def _original(tmp_path: Path, name: str) -> tuple[Path, Path]:
 
 def _assert_restored(target: Path, backup: Path) -> None:
     for suffix in SUFFIXES:
-        assert Path(f"{target}{suffix}").read_bytes() == Path(
-            f"{backup}{suffix}"
-        ).read_bytes()
+        assert (
+            Path(f"{target}{suffix}").read_bytes()
+            == Path(f"{backup}{suffix}").read_bytes()
+        )
 
 
 def test_replace_removes_old_sidecars_and_keeps_backup(tmp_path: Path) -> None:
@@ -63,17 +64,20 @@ def test_second_replace_failure_restores_all_originals(
 
     monkeypatch.setattr(Path, "replace", fail_second)
     with pytest.raises(failure):
-        apply_sqlite_bundle_changes((
-            SqliteBundleChange(first, first_new, backup_first),
-            SqliteBundleChange(second, second_new, backup_second),
-        ))
+        apply_sqlite_bundle_changes(
+            (
+                SqliteBundleChange(first, first_new, backup_first),
+                SqliteBundleChange(second, second_new, backup_second),
+            )
+        )
 
     _assert_restored(first, backup_first)
     _assert_restored(second, backup_second)
 
 
 def test_sidecar_cleanup_failure_restores_partly_modified_bundle(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     target, backup = _original(tmp_path, "state.sqlite")
     replacement = tmp_path / "new.sqlite"
@@ -96,7 +100,8 @@ def test_sidecar_cleanup_failure_restores_partly_modified_bundle(
 
 
 def test_failed_rollback_continues_other_restores_and_reports_backup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first, backup_first = _original(tmp_path, "first.sqlite")
     second, backup_second = _original(tmp_path, "second.sqlite")
@@ -118,10 +123,12 @@ def test_failed_rollback_continues_other_restores_and_reports_backup(
     monkeypatch.setattr(Path, "unlink", fail_delete)
     monkeypatch.setattr(files, "copy_sqlite_bundle", fail_restore)
     with pytest.raises(SqliteBundleInstallError, match="rollback incomplete") as caught:
-        apply_sqlite_bundle_changes((
-            SqliteBundleChange(first, first_new, backup_first),
-            SqliteBundleChange(second, backup=backup_second),
-        ))
+        apply_sqlite_bundle_changes(
+            (
+                SqliteBundleChange(first, first_new, backup_first),
+                SqliteBundleChange(second, backup=backup_second),
+            )
+        )
 
     _assert_restored(first, backup_first)
     assert str(second) in str(caught.value)

@@ -40,6 +40,7 @@ class NewContentChoice:
     name: str
     description: str
     action: NewContentAction
+    key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,22 +120,27 @@ def build_new_content_menu(
             choices=tuple(_item_choice(item) for item in snapshot.items_for(category)),
         )
     choices: list[NewContentChoice] = []
-    for category in layout.display_categories:
+    for index, category in enumerate(layout.display_categories):
+        code = chr(ord("a") + index)
         items = snapshot.items_for(category)
         choices.append(
             NewContentChoice(
                 name=f"▶ {CATEGORY_NAMES[category]}",
                 description=f"{len(items)} 项",
                 action=NewContentAction("category", category),
+                key=code,
             )
         )
         if category in layout.expanded_categories:
             choices.extend(
-                _item_choice(item)
-                for item in new_content_category_preview_items(
-                    snapshot,
-                    category,
-                    layout.preview_max_items,
+                _item_choice(item, key=f"{code}{item_index}")
+                for item_index, item in enumerate(
+                    new_content_category_preview_items(
+                        snapshot,
+                        category,
+                        layout.preview_max_items,
+                    ),
+                    start=1,
                 )
             )
     return NewContentMenu(
@@ -142,11 +148,12 @@ def build_new_content_menu(
     )
 
 
-def _item_choice(item: NewContentItem) -> NewContentChoice:
+def _item_choice(item: NewContentItem, *, key: str | None = None) -> NewContentChoice:
     return NewContentChoice(
         name=item.name,
         description=format_new_content_item_description(item),
         action=NewContentAction("item", item.category, item),
+        key=key,
     )
 
 

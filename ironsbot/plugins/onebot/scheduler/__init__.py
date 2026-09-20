@@ -39,6 +39,7 @@ def plugin_contribution(*, scheduler: SchedulerLifecycle) -> PluginContribution:
     return PluginContribution(
         id="scheduler",
         install=partial(_install, scheduler=scheduler),
+        install_without_onebot_messages=True,
         hooks=PluginHooks(
             startup=(("scheduler", scheduler.start),),
             shutdown=(("scheduler", scheduler.shutdown),),

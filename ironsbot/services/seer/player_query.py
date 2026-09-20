@@ -218,9 +218,7 @@ def validate_player_peak_season(
         # its match data unless the rank lookup positively returns a different
         # current score.
         scores[mode] = (
-            confirmed_score
-            if confirmed_score is not None
-            else candidate_score
+            confirmed_score if confirmed_score is not None else candidate_score
         )
         if confirmed_score is None or confirmed_score == candidate_score:
             continue
@@ -383,10 +381,7 @@ def plan_player_detail_prompt(
     )
     extension_selections = tuple(
         (str(index), action.id)
-        for index, action in enumerate(
-            extensions,
-            start=len(builtin_selections) + 1,
-        )
+        for index, action in enumerate(extensions, start=len(builtin_selections) + 1)
     )
     has_actions = bool(builtin_selections or extension_selections)
     accepted_commands = _unique_commands(

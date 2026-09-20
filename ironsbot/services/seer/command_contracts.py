@@ -6,11 +6,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import (
+    CommandAccess,
     CommandContract,
     commands_from_rows,
     parsed_command_input_matcher,
 )
+from ironsbot.core.platform import Platform
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
+from ironsbot.services.identity_link_commands import (
+    IDENTITY_LINK_BEGIN,
+    IDENTITY_LINK_CONFIRM,
+)
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
@@ -41,6 +47,7 @@ from ironsbot.services.seer.query_commands import (
     SUIT_QUERY,
     TITLE_QUERY,
     TYPE_QUERY,
+    pet_avatar_input,
     pet_image_input,
     pet_query_input,
     team_query_input_matcher,
@@ -57,15 +64,15 @@ def seer_command_contracts(
 ) -> tuple[CommandContract, ...]:
     player_query_input = player_reference_input_matcher(
         ("米米号", "查询玩家信息"),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     player_shortcut_input = player_reference_input_matcher(
         ("收集", "巅峰", "群星牌"),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     player_binding_input = player_reference_input_matcher(
         ("绑定米米号",),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     return (
         *commands_from_rows(
@@ -91,13 +98,49 @@ def seer_command_contracts(
                 (
                     "seer.player.bind",
                     ("绑定米米号123456",),
-                    "查询并绑定默认米米号，之后可使用快捷查询",
+                    "查询并绑定默认米米号；超级管理员可在群聊附带 @成员为其绑定",
                     {"routing_matcher": player_binding_input},
                 ),
                 (
                     "seer.player.unbind",
                     ("解绑米米号",),
                     "解除当前账号绑定的默认米米号",
+                    {},
+                ),
+                (
+                    "seer.player.identity.begin",
+                    ("关联官方账号", "关联官方账号 main"),
+                    "生成跨平台账号关联令牌",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            IDENTITY_LINK_BEGIN
+                        ),
+                        "access": (CommandAccess("private"),),
+                        "platforms": frozenset({Platform.ONEBOT}),
+                    },
+                ),
+                (
+                    "seer.player.identity.confirm",
+                    ("关联账号 ABCD-EFGH",),
+                    "确认关联当前官方机器人身份",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            IDENTITY_LINK_CONFIRM,
+                            accepts=lambda parsed: bool(parsed.argument.strip()),
+                        ),
+                        "platforms": frozenset({Platform.QQ_OFFICIAL}),
+                    },
+                ),
+                (
+                    "seer.player.identity.status",
+                    ("账号关联",),
+                    "查看当前跨平台账号关联",
+                    {},
+                ),
+                (
+                    "seer.player.identity.revoke",
+                    ("解除账号关联",),
+                    "解除当前跨平台账号关联",
                     {},
                 ),
             ),
@@ -109,13 +152,17 @@ def seer_command_contracts(
             (
                 (
                     "seer.team.query",
-                    ("战队123456", "战队123456 654321", "战队米米号123456"),
-                    "查询战队号（最多 3 个），或用米米号、玩家别名、"
-                    "直接 @ 成员查询所属战队",
+                    (
+                        "战队123456",
+                        "战队玩家别名",
+                        "战队米米号123456",
+                        "战队@成员",
+                    ),
+                    "按战队号、玩家或已绑定成员查询战队信息",
                     {
                         "show_in_poke": True,
                         "routing_matcher": team_query_input_matcher(
-                            player_id_resolver.has_known_reference
+                            player_id_resolver.has_reference_choices
                         ),
                     },
                 ),
@@ -135,6 +182,16 @@ def seer_command_contracts(
                         "routing_matcher": parsed_command_input_matcher(
                             pet_query_input(image_commands)
                         ),
+                    },
+                ),
+                (
+                    "seer.pet.avatar",
+                    ("头像雷伊", "谱尼头像", "头像70"),
+                    "查询精灵头像",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            pet_avatar_input(image_commands)
+                        )
                     },
                 ),
                 (

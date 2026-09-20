@@ -24,18 +24,16 @@ from .daemon import (
     ensure_watchtower_image,
     inspect_container_image_id,
     inspect_image_info,
+    inspect_image_info_if_present,
     inspect_remote_image_digest,
     pull_docker_image,
     read_container_archive,
     remove_container_quietly,
+    remove_image_if_unused,
 )
 from .http import raise_for_docker_status
-from .metadata import (
-    github_repo_from_image_labels,
-    resolve_github_branch_revision,
-    resolve_image_commit_summary,
-)
-from .registry import inspect_remote_image_info, split_docker_image
+from .metadata import resolve_image_commit_summary
+from .registry import inspect_remote_image_info
 
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 logger = logging.getLogger(__name__)
@@ -111,6 +109,24 @@ class DockerClient:
                 params={"force": "true"},
             )
             raise_for_docker_status(response)
+
+    async def remove_image_if_unused(
+        self,
+        *,
+        image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> bool:
+        if not await self.socket_exists(socket_path):
+            message = f"Docker socket not found: {socket_path}"
+            raise RuntimeError(message)
+        transport = httpx.AsyncHTTPTransport(uds=socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            return await remove_image_if_unused(client, image_id)
 
     async def start_update(self, request: DockerUpdateRequest) -> DockerUpdateResult:
         logger.warning(
@@ -234,9 +250,8 @@ class DockerClient:
                     current_image,
                 )
             try:
-                image_repository, _reference = split_docker_image(request.image)
                 remote_image = await inspect_remote_image_info(
-                    f"{image_repository}@{remote_digest}",
+                    request.image,
                     registry_credentials=request.registry_credentials,
                 )
                 remote_commit = await resolve_image_commit_summary(
@@ -254,27 +269,6 @@ class DockerClient:
             logger.exception("docker image check failed")
             return DockerImageCheckResult(ok=False, message=str(error))
 
-        repository = github_repo_from_image_labels(
-            remote_image.labels
-        ) or github_repo_from_image_labels(current_image.labels)
-        github_main_revision = ""
-        github_main_error = "镜像未声明可识别的 GitHub 源码仓库，已跳过。"
-        if repository is not None:
-            try:
-                github_main_revision = await resolve_github_branch_revision(repository)
-                github_main_error = ""
-            except Exception as error:  # noqa: BLE001 - optional diagnostics
-                github_main_error = (
-                    f"HTTP {error.response.status_code}"
-                    if isinstance(error, httpx.HTTPStatusError)
-                    else type(error).__name__
-                )
-                logger.warning(
-                    "GitHub main check failed: repo=%s/%s reason=%s",
-                    *repository,
-                    github_main_error,
-                )
-
         return DockerImageCheckResult(
             ok=True,
             up_to_date=remote_digest
@@ -286,21 +280,10 @@ class DockerClient:
             current_image_id=current_image.image_id,
             current_image_created=current_image.created,
             current_image_commit=current_commit,
-            current_image_revision=current_image.labels.get(
-                "org.opencontainers.image.revision",
-                "",
-            ).strip(),
             remote_digest=remote_digest,
             remote_image_id=remote_image.image_id,
             remote_image_created=remote_image.created,
             remote_image_commit=remote_commit,
-            remote_image_revision=remote_image.labels.get(
-                "org.opencontainers.image.revision",
-                "",
-            ).strip(),
-            github_main_repository="/".join(repository) if repository else "",
-            github_main_revision=github_main_revision,
-            github_main_error=github_main_error,
         )
 
     async def fetch_image_archive(
@@ -319,6 +302,7 @@ class DockerClient:
             base_url="http://docker",
             timeout=httpx.Timeout(request.timeout_seconds),
         ) as client:
+            previous_image = await inspect_image_info_if_present(client, request.image)
             image = await pull_docker_image(
                 client,
                 request.image,
@@ -333,4 +317,23 @@ class DockerClient:
                 )
             finally:
                 await remove_container_quietly(client, container_id)
+            if previous_image is not None and previous_image.image_id != image.image_id:
+                try:
+                    removed = await remove_image_if_unused(
+                        client,
+                        previous_image.image_id,
+                    )
+                    if not removed:
+                        logger.info(
+                            "previous private extension image is still referenced; "
+                            "retaining it: image_id=%s",
+                            previous_image.image_id[:19],
+                        )
+                except Exception:  # noqa: BLE001 - archive remains valid
+                    logger.warning(
+                        "could not remove previous private extension image: "
+                        "image_id=%s",
+                        previous_image.image_id[:19],
+                        exc_info=True,
+                    )
         return DockerImageArchive(image=image, content=content)

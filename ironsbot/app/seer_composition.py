@@ -16,6 +16,9 @@ from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
+from ironsbot.integrations.onebot.lucky_skin_window import (
+    build_onebot_lucky_skin_window_accounts,
+)
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
@@ -79,10 +82,7 @@ from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.external_references import SeerInfoReferences
 from ironsbot.services.seer.local_rank import LocalRankService
-from ironsbot.services.seer.lucky_skin_window import (
-    LuckySkinWindowAccount,
-    LuckySkinWindowService,
-)
+from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 from ironsbot.services.seer.lucky_skin_window_delivery import (
     LuckySkinWindowOutboundSender,
 )
@@ -107,7 +107,10 @@ from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_queries import RankQueryPolicy, RankQueryService
 from ironsbot.services.seer.resources import SeerQueryResources
-from ironsbot.services.seer.team import SeerTeamQueryService
+from ironsbot.services.seer.team import (
+    SeerTeamQueryService,
+    player_team_detail_action,
+)
 from ironsbot.services.seer.type_query import TypeQueryService, TypeRenderSession
 from ironsbot.services.team.resource import TeamResourceService
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
@@ -209,16 +212,15 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             allow_stale=settings.seer.rank.allow_stale_cache,
         ),
         seer_database.peak_season_start,
+        seer_database.master_season_start,
         fetch_rank_page,
     )
-    images, render_coordinator, render_sessions = (
-        build_seer_rendering_components(
-            http_clients,
-            cache_paths,
-            settings.seer.render,
-            seer_database,
-            spawn=task_owner.create,
-        )
+    images, render_coordinator, render_sessions = build_seer_rendering_components(
+        http_clients,
+        cache_paths,
+        settings.seer.render,
+        seer_database,
+        spawn=task_owner.create,
     )
 
     async def render_pet(pet_id: int) -> bytes:
@@ -267,6 +269,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                     inputs.images,
                     render_coordinator.render,
                 ),
+                NewContentService(PublishedNewContentRepository(inputs.data)),
             )
 
     async def render_window(
@@ -337,25 +340,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
-        tuple(
-            LuckySkinWindowAccount(
-                actor=settings.platform_references.user_actor_ref(
-                    configured.user,
-                    location=(
-                        f"seer.lucky_skin_window.accounts[{index}].user"
-                    ),
-                ),
-                player_account=player_accounts.resolve(
-                    configured.account,
-                    location=(
-                        f"seer.lucky_skin_window.accounts[{index}].account"
-                    ),
-                ),
-                watched_skin_ids=tuple(configured.watched_skin_ids),
-            )
-            for index, configured in enumerate(
-                settings.seer.lucky_skin_window.accounts
-            )
+        build_onebot_lucky_skin_window_accounts(
+            settings.seer.lucky_skin_window,
+            settings.onebot_references,
+            player_accounts,
         ),
         features,
         headless_sessions,
@@ -364,6 +352,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
+        player_accounts=player_accounts,
         renderer=render_window,
     )
     player_query_quotas = PlayerQueryQuotaService(
@@ -436,8 +425,22 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player.default_player_id,
         privileged_reference_lookup=resolve_privileged_player_reference,
         is_privileged_actor=features.is_actor_superuser,
+        reference_search=lambda reference, actor, conversation: (
+            player_accounts.find_references(
+                reference,
+                conversation=conversation,
+                include_private=features.is_actor_superuser(actor),
+            )
+        ),
     )
     player_detail_extensions = PlayerDetailExtensionRegistry()
+    team_query = SeerTeamQueryService(
+        settings.seer.team,
+        headless,
+        seer_database.error_message,
+        team_resource,
+    )
+    player_detail_extensions.register(player_team_detail_action(team_query))
     rank_queries = RankQueryService(
         rank,
         local_rank,
@@ -490,12 +493,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             autocard,
             autocard_media,
             autocard_sanctuary,
-            SeerTeamQueryService(
-                settings.seer.team,
-                headless,
-                seer_database.error_message,
-                team_resource,
-            ),
+            team_query,
             equipment,
             TypeQueryService(
                 type_render_session,

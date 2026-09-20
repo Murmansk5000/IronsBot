@@ -4,8 +4,9 @@ import asyncio
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.app import ai_health as health
-from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.integrations.http.ai import AiApiSettings, AiApiTestResult
+from tests.helpers.ai import configured_ai_config
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -21,17 +22,12 @@ class _StartupNoticeRecorder:
         self.parts.append((subscription_key, action_name, message))
 
 
-def test_ai_endpoint_configuration_normalizes_name_and_models() -> None:
-    endpoint = AiEndpointConfig(
-        name=" Primary ",
-        base_url="https://example.test/v1/",
-        models=[" primary ", "backup", "backup"],
+def test_ai_model_configuration_deduplicates_fallbacks() -> None:
+    config = configured_ai_config(
+        models=(" primary ", "backup", "backup", "primary"),
     )
 
-    assert endpoint.name == "primary"
-    assert endpoint.base_url == "https://example.test/v1"
-    assert endpoint.models == ["primary", "backup"]
-    assert endpoint.key_environment_name == "AI_KEY_PRIMARY"
+    assert config.providers["test"].models == ["primary", "backup"]
 
 
 def test_configured_ai_key_is_checked_on_startup(
@@ -44,15 +40,10 @@ def test_configured_ai_key_is_checked_on_startup(
         return AiApiTestResult(ok=True, elapsed_ms=42, status_code=200, reply="OK")
 
     monkeypatch.setattr(health, "check_ai_api", fake_check)
-    config = AiConfig(
-        endpoints=[
-            AiEndpointConfig(
-                name="test",
-                api_key="test-key",
-                base_url="https://example.test/v1",
-                models=["test-model"],
-            )
-        ],
+    config = configured_ai_config(
+        api_key="test-key",
+        base_url="https://example.test/v1",
+        models=("test-model",),
         timeout=45,
     )
 
@@ -73,7 +64,13 @@ def test_configured_ai_key_is_checked_on_startup(
             thinking=False,
         )
     ]
-    assert "可用：test/test-model（HTTP 200，42 ms）" in recorder.parts[0][2]
+    assert recorder.parts == [
+        (
+            "startup_ai_api_check",
+            "AI API startup check",
+            "AI API 检查通过。\n提供商/模型：test/test-model\nHTTP：200\n耗时：42 ms",
+        )
+    ]
 
 
 def test_failed_ai_key_check_is_added_to_startup_notice(
@@ -92,16 +89,7 @@ def test_failed_ai_key_check_is_added_to_startup_notice(
 
     asyncio.run(
         health.check_configured_ai_api(
-            AiConfig(
-                endpoints=[
-                    AiEndpointConfig(
-                        name="test",
-                        api_key="test-key",
-                        base_url="https://example.test/v1",
-                        models=["test-model"],
-                    )
-                ]
-            ),
+            configured_ai_config(api_key="test-key"),
             cast("StartupNoticeService", recorder),
         )
     )
@@ -111,7 +99,7 @@ def test_failed_ai_key_check_is_added_to_startup_notice(
             "startup_ai_api_check",
             "AI API startup check",
             "AI API 检查失败。\n"
-            "已配置端点：test\n"
+            "已尝试提供商/模型：test/test-model\n"
             "详情：test/test-model：认证失败：invalid API key",
         )
     ]
@@ -133,43 +121,27 @@ def test_startup_check_uses_the_first_working_fallback_model(
 
     asyncio.run(
         health.check_configured_ai_api(
-            AiConfig(
-                endpoints=[
-                    AiEndpointConfig(
-                        name="test",
-                        api_key="test-key",
-                        base_url="https://example.test/v1",
-                        models=["primary", "backup", "unused"],
-                    )
-                ]
+            configured_ai_config(
+                api_key="test-key",
+                models=("primary", "backup", "unused"),
             ),
             cast("StartupNoticeService", recorder),
         )
     )
 
     assert checked == ["primary", "backup"]
-    assert "可用：test/backup" in recorder.parts[0][2]
+    assert "提供商/模型：test/backup" in recorder.parts[0][2]
 
 
-def test_missing_ai_key_is_reported_without_request(monkeypatch: MonkeyPatch) -> None:
+def test_missing_ai_key_skips_startup_check(monkeypatch: MonkeyPatch) -> None:
     async def unexpected_check(_settings: AiApiSettings) -> AiApiTestResult:
         raise AssertionError
 
     monkeypatch.setattr(health, "check_ai_api", unexpected_check)
 
-    recorder = _StartupNoticeRecorder()
     asyncio.run(
         health.check_configured_ai_api(
-            AiConfig(
-                endpoints=[
-                    AiEndpointConfig(
-                        name="test",
-                        base_url="https://example.test/v1",
-                        models=["test-model"],
-                    )
-                ]
-            ),
-            cast("StartupNoticeService", recorder),
+            AiConfig(),
+            cast("StartupNoticeService", _StartupNoticeRecorder()),
         )
     )
-    assert "AI_KEY_TEST" in recorder.parts[0][2]

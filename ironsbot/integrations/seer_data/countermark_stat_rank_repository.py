@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from sqlmodel import Session
 
 MINTMARK_QUALITY_QUERY = text("SELECT mintmark_id, quality FROM mintmark_quality")
+
+
 def load_mintmark_quality_session(session: Session) -> dict[int, int]:
     try:
         rows = session.execute(MINTMARK_QUALITY_QUERY).all()

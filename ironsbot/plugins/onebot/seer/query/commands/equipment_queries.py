@@ -3,18 +3,16 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy
-from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import affix_command, explicit_command
-from ironsbot.services.portable_seer_commands import (
-    build_portable_equipment_query_operations,
-)
 from ironsbot.services.seer.query_commands import EQUIP_QUERY, SUIT_QUERY, TITLE_QUERY
 
 from ..group import SeerMatcherGroup, seer_feature_rule
+from ..query_conversation import make_query_handler
 
 if TYPE_CHECKING:
     from ironsbot.core.affix_commands import AffixParser
@@ -23,28 +21,30 @@ if TYPE_CHECKING:
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.equipment
-    operation = build_portable_equipment_query_operations(
-        service,
-        group.query_sessions,
-    )["seer.equipment.query"]
-    commands: tuple[tuple[EquipmentKind, str, AffixParser], ...] = (
+    commands: tuple[
+        tuple[EquipmentKind, str, AffixParser, str],
+        ...,
+    ] = (
         (
             "suit",
             "seer_suit_query",
             SUIT_QUERY,
+            "请问你想查询的套装是……",
         ),
         (
             "equip",
             "seer_equipment_query",
             EQUIP_QUERY,
+            "请问你想查询的装备部件是……",
         ),
         (
             "title",
             "seer_title_query",
             TITLE_QUERY,
+            "请问你想查询的称号是……",
         ),
     )
-    for kind, command_id, parser in commands:
+    for kind, command_id, parser, prompt_title in commands:
         matcher = group.on_message(
             policy=CommandPolicy.command(
                 command_id,
@@ -56,9 +56,10 @@ def install(group: SeerMatcherGroup) -> None:
             priority=group.matcher_priority("seer_equipment"),
         )
         matcher.append_handler(
-            make_portable_query_handler(
-                operation,
-                group.query_sessions,
+            make_query_handler(
+                partial(service.search, kind),
+                partial(service.select, kind),
+                prompt_title,
                 ActionDefinition(command_id, f"{kind}查询"),
             )
         )

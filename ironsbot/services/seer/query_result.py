@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 
 if TYPE_CHECKING:
-    from ironsbot.core.semantic_requests import ActionDefinition, SemanticTarget
+    from ironsbot.core.semantic_requests import SemanticTarget
     from ironsbot.services.seer.query_work import QueryWorkResult
     from ironsbot.services.seer.rank_models import RankLookupResult
 
@@ -68,7 +68,6 @@ class QueryChoice(Generic[T]):
     value: T
     is_sub_choice: bool = False
     semantic_target: SemanticTarget | None = None
-    semantic_action: ActionDefinition | None = None
 
 
 @dataclass(frozen=True, slots=True)

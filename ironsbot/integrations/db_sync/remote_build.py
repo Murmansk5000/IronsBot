@@ -17,8 +17,7 @@ TriggerWorkflowFn = Callable[
 
 def workflow_page(config: RemoteBuildConfig | RemoteBuildStepConfig) -> str:
     return (
-        f"https://github.com/{config.repository}/actions/workflows/"
-        f"{config.workflow_id}"
+        f"https://github.com/{config.repository}/actions/workflows/{config.workflow_id}"
     )
 
 
@@ -32,9 +31,7 @@ def remote_build_failure(
         status="error",
         conclusion=None,
         html_url=(
-            workflow_page(config)
-            if config.repository and config.workflow_id
-            else ""
+            workflow_page(config) if config.repository and config.workflow_id else ""
         ),
         message=message,
     )
@@ -100,8 +97,7 @@ async def run_remote_build(  # noqa: PLR0913
             results[name] = remote_build_failure(
                 config=step,
                 message=(
-                    f"远程构建步骤 {step.display_name} "
-                    "缺少 repository 或 workflow_id"
+                    f"远程构建步骤 {step.display_name} 缺少 repository 或 workflow_id"
                 ),
             )
             logger.warning(

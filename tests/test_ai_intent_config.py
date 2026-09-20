@@ -50,8 +50,7 @@ def test_admin_notice_defaults_live_in_ai_config() -> None:
     config = AiConfig()
 
     assert (
-        config.admin_notice_cooldown_seconds
-        == DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS
+        config.admin_notice_cooldown_seconds == DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS
     )
 
 
@@ -96,9 +95,7 @@ def test_promotion_action_requires_a_promotion_id() -> None:
 def test_team_recommend_rejects_legacy_single_message() -> None:
     with pytest.raises(ValueError) as exc_info:
         AiConfig(
-            intent_actions={
-                "team_recommend": AiIntentAction(message="旧单条回复")
-            }
+            intent_actions={"team_recommend": AiIntentAction(message="旧单条回复")}
         )
 
     assert TEAM_RECOMMEND_LEGACY_MESSAGE_ERROR in str(exc_info.value)

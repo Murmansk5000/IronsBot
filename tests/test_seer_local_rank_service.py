@@ -131,9 +131,7 @@ async def test_local_samples_only_exclude_taomee_internal_accounts(
         exclusions=RankExclusionPolicy.from_config(),
     )
     taomee_user = DEFAULT_TAOMEE_INTERNAL_USER_IDS[0]
-    pet_kind_only_anomaly = DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK[
-        "精灵图鉴"
-    ][0]
+    pet_kind_only_anomaly = DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK["精灵图鉴"][0]
 
     assert not service.can_cache(taomee_user)
     assert service.can_cache(pet_kind_only_anomaly)

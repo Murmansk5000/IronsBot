@@ -34,15 +34,9 @@ def test_headless_operation_context_keeps_recent_operation() -> None:
         source="后台刷榜缓存",
         background=True,
     ):
-        assert (
-            operations.format_recent()
-            == "后台刷榜缓存：群星牌 1-100名（后台操作）"
-        )
+        assert operations.format_recent() == "后台刷榜缓存：群星牌 1-100名（后台操作）"
 
-    assert (
-        operations.format_recent()
-        == "后台刷榜缓存：群星牌 1-100名（后台操作）"
-    )
+    assert operations.format_recent() == "后台刷榜缓存：群星牌 1-100名（后台操作）"
     assert operations.format_recent(now=float("inf")) == ""
 
 
@@ -55,10 +49,11 @@ def test_headless_operation_context_includes_conversation() -> None:
         source="米米号查询",
         conversation=ConversationRef(Platform.ONEBOT, "group", "987654321"),
     ):
-        assert operations.format_current() == (
-            "基础资料：米米号 123456"
-            "（用户操作，会话：onebot/group/987654321）"
+        description = operations.format_current()
+        assert description == (
+            "基础资料：米米号 123456（用户操作，会话：onebot/group/8a9bcf1e51e8）"
         )
+        assert "987654321" not in description
 
 
 def test_headless_operation_context_captures_semantic_request() -> None:
@@ -76,10 +71,12 @@ def test_headless_operation_context_captures_semantic_request() -> None:
         ),
         operations.track("收集查询", "米米号 712345678"),
     ):
-        assert operations.format_recent_semantic() == (
+        description = operations.format_recent_semantic()
+        assert description == (
             "收集与排行（seer.player.collection）：米米号 712345678"
-            "（来源：menu，用户：onebot/123456）"
+            "（来源：menu，用户：onebot/8d969eef6eca）"
         )
+        assert "用户：onebot/123456" not in description
 
 
 def test_headless_disconnect_notice_includes_recent_operation() -> None:

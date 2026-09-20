@@ -78,11 +78,7 @@ class ActivityService:
             self.load_notice_text(now),
         )
         new_activity_ids, has_previous_week_snapshot = self.newly_observed_activity_ids(
-            {
-                int(row["id"])
-                for row in rows
-                if row.get("id") is not None
-            },
+            {int(row["id"]) for row in rows if row.get("id") is not None},
             now,
         )
         activities = build_active_activity_infos(

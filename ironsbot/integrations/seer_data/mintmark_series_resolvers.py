@@ -80,17 +80,11 @@ def _mintmark_type_description(mintmark: MintmarkORM) -> str:
     elif attr.atk and attr.sp_atk:
         strings.append("双攻")
 
-    if (
-        attr.atk >= _ATTACK_MARK_THRESHOLD
-        or attr.sp_atk >= _ATTACK_MARK_THRESHOLD
-    ):
+    if attr.atk >= _ATTACK_MARK_THRESHOLD or attr.sp_atk >= _ATTACK_MARK_THRESHOLD:
         strings.append("攻")
     if attr.spd >= _SPEED_MARK_THRESHOLD:
         strings.append("速")
-    if (
-        attr.def_ >= _DEFENSE_MARK_THRESHOLD
-        or attr.sp_def >= _DEFENSE_MARK_THRESHOLD
-    ):
+    if attr.def_ >= _DEFENSE_MARK_THRESHOLD or attr.sp_def >= _DEFENSE_MARK_THRESHOLD:
         strings.append("盾")
     if attr.hp >= _HP_MARK_THRESHOLD:
         strings.append("体")
@@ -166,8 +160,7 @@ def _select_highest_metric(
     metric: str,
 ) -> tuple[MintmarkORM, ...]:
     values = [
-        (mintmark, _mintmark_metric_value(mintmark, metric))
-        for mintmark in mintmarks
+        (mintmark, _mintmark_metric_value(mintmark, metric)) for mintmark in mintmarks
     ]
     values = [(mintmark, value) for mintmark, value in values if value > 0]
     if not values:
@@ -232,14 +225,9 @@ def _mintmark_type_matches(description: str, query: str) -> bool:
     if query == "盾":
         return "盾" in description
 
-    required = {
-        char
-        for char in ("物", "特", "攻", "速", "盾", "体")
-        if char in query
-    }
+    required = {char for char in ("物", "特", "攻", "速", "盾", "体") if char in query}
     return bool(required) and all(
-        _mintmark_type_part_matches(description, char)
-        for char in required
+        _mintmark_type_part_matches(description, char) for char in required
     )
 
 
@@ -401,9 +389,7 @@ class MintmarkSeriesResolver:
         if not self.merge_connected:
             return mintmarks
         return [
-            mintmark
-            for mintmark in mintmarks
-            if not mintmark.connected_universal_parts
+            mintmark for mintmark in mintmarks if not mintmark.connected_universal_parts
         ]
 
     def _resolve_class_ids(

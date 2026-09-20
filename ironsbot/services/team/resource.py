@@ -17,6 +17,7 @@ from ironsbot.services.operations.headless_errors import (
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 from ironsbot.services.seer.team import format_team_info
+from ironsbot.services.team.overview import TeamOverviewItem
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourceManageCommand,
     TeamResourcePrivateSubscription,
@@ -50,13 +51,6 @@ class TeamResourceResult(NamedTuple):
     message: str
     resource: int
     member_count: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TeamOverviewItem:
-    team_id: int
-    name: str
-    description: str
 
 
 class TeamResourceQueryError(RuntimeError):
@@ -192,8 +186,7 @@ class TeamResourceService:
             line = f"{index}. {label}｜阈值 {subscription.threshold}"
             if isinstance(subscription, TeamResourceSubscription):
                 line += (
-                    "｜提醒 "
-                    f"{format_subscription_actors(subscription.mention_actors)}"
+                    f"｜提醒 {format_subscription_actors(subscription.mention_actors)}"
                 )
             lines.append(line)
         lines.extend(("", *self._manage_usage_lines(target)))
@@ -244,9 +237,7 @@ class TeamResourceService:
         )
         prefix = "已订阅本群战队" if target.is_group else "已订阅战队"
         reminder = (
-            format_subscription_actors(mention_actors)
-            if target.is_group
-            else "你"
+            format_subscription_actors(mention_actors) if target.is_group else "你"
         )
         return (
             f"{prefix}：{result.team_name}（{result.team_id}）。\n"
@@ -301,30 +292,30 @@ class TeamResourceService:
         *,
         first_team_id: int | None = None,
     ) -> tuple[TeamOverviewItem, ...]:
-        names = {
-            item.team_id: item.team_name
-            for item in self._subscriptions_for_target(target)
-        }
-        team_ids = dict.fromkeys((*((first_team_id,) if first_team_id else ()), *names))
-        items = []
-        for team_id in team_ids:
-            try:
-                result = await self.query(team_id)
-            except TeamResourceQueryError as error:  # noqa: PERF203 - preserve each failed team
-                items.append(
-                    TeamOverviewItem(team_id, names.get(team_id, ""), str(error))
-                )
-            else:
-                members = result.member_count
-                items.append(
-                    TeamOverviewItem(
-                        team_id,
-                        result.team_name,
-                        f"人数：{members if members is not None else '暂未获取'}"
-                        f"｜资源：{result.resource}",
-                    )
-                )
-        return tuple(items)
+        subscriptions = self._subscriptions_for_target(target)
+        names = {item.team_id: item.team_name for item in subscriptions}
+        team_ids = list(names)
+        if first_team_id is not None:
+            team_ids = [
+                first_team_id,
+                *(team_id for team_id in team_ids if team_id != first_team_id),
+            ]
+        return tuple(
+            [
+                await self._overview_item(team_id, names.get(team_id, ""))
+                for team_id in team_ids
+            ]
+        )
+
+    async def _overview_item(
+        self,
+        team_id: int,
+        fallback_name: str,
+    ) -> TeamOverviewItem:
+        try:
+            return TeamOverviewItem.from_result(await self.query(team_id))
+        except TeamResourceQueryError as error:
+            return TeamOverviewItem(team_id, fallback_name, error=str(error))
 
     async def query_messages(
         self,

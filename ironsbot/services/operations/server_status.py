@@ -95,26 +95,23 @@ class ServerStatusService:
         queued = _format_public_pool_queue(pending)
         if queued:
             lines.append(f"公共查询等待：{queued}")
-        active = getattr(self._headless, "active_request_summaries", ())
-        if active:
-            lines.append(f"公共查询执行中：{'；'.join(active)}")
         if self._dedicated_sessions is not None:
             labels = self._dedicated_sessions.active_sessions_by_label
             if labels:
                 details = "、".join(
-                    f"{label} {count}"
-                    for label, count in sorted(labels.items())
+                    f"{label} {count}" for label, count in sorted(labels.items())
                 )
                 lines.append(f"专用会话明细：{details}")
         lines.append("临时专用会话会在对应查询完成后立即下线。")
         return ServerStatusResult(message="\n".join(lines))
+
     async def query_normal(self) -> ServerStatusResult:
         now = datetime.now(LOCAL_TZ)
         status = self._headless_status()
         await self._record_status(status, source="开服了吗")
-        return ServerStatusResult(message=self._with_reference(
-            await self._notice_reply(status, now)
-        ))
+        return ServerStatusResult(
+            message=self._with_reference(await self._notice_reply(status, now))
+        )
 
     async def query_admin(self) -> ServerStatusResult:
         now = datetime.now(LOCAL_TZ)

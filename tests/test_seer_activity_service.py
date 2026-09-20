@@ -157,6 +157,5 @@ def test_newly_added_activity_message_handles_empty_difference() -> None:
     )
 
     assert (
-        asyncio.run(service.build_newly_added_message())
-        == EMPTY_NEW_ACTIVITY_MESSAGE
+        asyncio.run(service.build_newly_added_message()) == EMPTY_NEW_ACTIVITY_MESSAGE
     )

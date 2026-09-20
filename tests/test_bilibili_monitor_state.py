@@ -11,8 +11,9 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
 
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
@@ -80,7 +81,7 @@ def _features(
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
 ) -> FeatureService:
-    return build_onebot_feature_service(
+    return build_feature_service(
         FeatureConfig(
             group_policy=group_policy or {},
             user_policy=user_policy or {},
@@ -118,7 +119,8 @@ def _target_service(
             config,
             build_platform_reference_resolver(
                 OneBotReferenceResolver({}, {}),
-                (),
+                IdentityConfig(),
+                {},
             ),
         ),
         SqliteBiliPushPreferenceStore(data_dir / "preferences.sqlite"),
@@ -240,11 +242,15 @@ def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
     assert not is_bili_push_mode_command(
         _features(),
         group_message_event(command, group_id=987654321),
+        {},
     )
+    state: dict[str, object] = {}
     assert is_bili_push_mode_command(
         _features(user_policy={"123": ["bili_push"]}),
         private_message_event(command, user_id=123),
+        state,
     )
+    assert state
 
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:

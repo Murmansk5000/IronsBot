@@ -15,11 +15,7 @@ from ironsbot.integrations.onebot.rules import (
     member_targets_command,
     natural_language,
 )
-from tests.helpers.onebot_events import (
-    group_admin_message_event,
-    group_message_event,
-    private_message_event,
-)
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 
 def _matches(rule: Rule, event: Event) -> bool:
@@ -56,9 +52,7 @@ def test_message_input_context_uses_fixed_routing_precedence() -> None:
 
 def test_message_input_context_reads_reply_segment_without_reply_metadata() -> None:
     event = group_message_event(
-        message=Message(
-            [MessageSegment.reply(99), MessageSegment.text("帮助")]
-        ),
+        message=Message([MessageSegment.reply(99), MessageSegment.text("帮助")]),
         original_message=Message(MessageSegment.text("帮助")),
     )
     event.reply = None
@@ -78,19 +72,15 @@ def test_private_to_me_is_direct_input_not_a_bot_mention() -> None:
     assert not _matches(bot_mention(), event)
 
 
-def test_message_input_context_preserves_onebot_group_role() -> None:
-    context = message_input_context(group_admin_message_event("战队1234567"))
-
-    assert context.message.group_role == "admin"
-    assert message_input_context(private_message_event()).message.group_role is None
-
-
 def test_explicit_commands_accept_replies_but_not_current_member_mentions() -> None:
     plain = group_message_event("帮助")
     direct_member = group_message_event(
         message=Message([MessageSegment.at(456), MessageSegment.text("帮助")])
     )
-    direct_bot = group_message_event(message=_mentioned_message())
+    direct_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("帮助")])
+    )
+    direct_bot_and_member = group_message_event(message=_mentioned_message())
     reply_with_bot = group_message_event(
         message=Message([MessageSegment.at(1), MessageSegment.text("帮助")]),
         reply_sender_user_id=789,
@@ -102,7 +92,8 @@ def test_explicit_commands_accept_replies_but_not_current_member_mentions() -> N
 
     assert _matches(explicit_command(), plain)
     assert not _matches(explicit_command(), direct_member)
-    assert not _matches(explicit_command(), direct_bot)
+    assert _matches(explicit_command(), direct_bot)
+    assert not _matches(explicit_command(), direct_bot_and_member)
     assert _matches(explicit_command(), reply_with_bot)
     assert not _matches(explicit_command(), reply_with_member)
 
@@ -129,8 +120,8 @@ def test_member_target_strategies_are_the_only_member_mention_opt_in() -> None:
     assert _matches(member_target_command(), direct_member)
     assert _matches(member_targets_command(), two_members)
     assert _matches(member_target_command(), reply_member)
-    assert not _matches(member_target_command(), direct_bot_and_member)
-    assert not _matches(member_targets_command(), direct_bot_and_member)
+    assert _matches(member_target_command(), direct_bot_and_member)
+    assert _matches(member_targets_command(), direct_bot_and_member)
 
 
 def test_bot_mentions_and_natural_language_have_disjoint_routes() -> None:

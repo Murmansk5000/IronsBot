@@ -10,7 +10,12 @@ from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.command_catalog import CommandAccess, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage, TextPart
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    reference_digest,
+)
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
@@ -78,6 +83,24 @@ def test_supported_context_keeps_group_and_private_access(platform: Platform) ->
     )
 
 
+def test_feature_service_exposes_linked_onebot_principal() -> None:
+    policy = FeatureService({}, {}, frozenset())
+    official = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "group-openid",
+        account_id="app-id",
+    )
+    policy.register_identity_link(
+        official_app_id="app-id",
+        official_openid="member-openid",
+        onebot_qq_id="10001",
+    )
+
+    assert policy.canonical_actor(official) == ActorRef(Platform.ONEBOT, "10001")
+
+
 @pytest.mark.asyncio
 async def test_scoped_notice_recipient_does_not_abort_other_destinations(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -105,4 +128,5 @@ async def test_scoped_notice_recipient_does_not_abort_other_destinations(
     assert summary.failed == (MEMBER,)
     assert [conversation for conversation, _ in transport.attempts] == [PRIVATE, GROUP]
     assert "scoped" in caplog.text
-    assert MEMBER.id in caplog.text
+    assert reference_digest(MEMBER.id) in caplog.text
+    assert MEMBER.id not in caplog.text

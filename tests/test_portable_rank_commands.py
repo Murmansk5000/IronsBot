@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.core.command_catalog import CommandContext
-from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
@@ -93,7 +92,6 @@ class _RankAdminService:
 class _RankQueryService:
     def __init__(self) -> None:
         self.delivered: list[tuple[str, int]] = []
-        self.display_permissions: list[bool] = []
 
     def default_limit(self, _conversation: ConversationRef | None) -> int:
         return 17
@@ -107,7 +105,7 @@ class _RankQueryService:
         limit: int,
     ) -> str:
         assert conversation is not None
-        self.display_permissions.append(can_manage)
+        assert can_manage
         return f"display:{conversation.account_id}:{conversation.id}:{actor.id}:{limit}"
 
     async def list(
@@ -179,9 +177,7 @@ def _resolver(*, target_binding: int | None = 800001) -> PlayerIdResolver:
 
     return PlayerIdResolver(
         lookup,
-        lambda actor: (
-            target_binding if actor.id == "target-openid" else 600001
-        ),
+        lambda actor: target_binding if actor.id == "target-openid" else 600001,
     )
 
 
@@ -189,7 +185,6 @@ def _context(
     text: str,
     *,
     mentions: tuple[ActorRef, ...] = (),
-    group_role: str | None = None,
 ) -> MessageInputContext:
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-openid")
     actor = ActorRef(
@@ -206,7 +201,6 @@ def _context(
             message_id=f"message-{text}",
             text=text,
             direct_mentions=mentions,
-            group_role=group_role,
         ),
         mentions_bot=True,
     )
@@ -232,8 +226,7 @@ async def test_portable_rank_dispatches_list_score_and_alias_player_queries() ->
     service = _RankQueryService()
     operations = build_portable_rank_operations(
         cast("RankQueryService", service),
-        _resolver(),
-        FeatureService({}, {}, frozenset()), player_shortcut=AsyncMock())
+        _resolver(), player_shortcut=AsyncMock())
     operation = operations["rank.global_collection"]
 
     listed = cast(
@@ -262,9 +255,8 @@ async def test_portable_rank_display_limit_uses_full_platform_identity() -> None
     service = _RankQueryService()
     operations = build_portable_rank_operations(
         cast("RankQueryService", service),
-        _resolver(),
-        FeatureService({}, {}, frozenset()), player_shortcut=AsyncMock())
-    context = _context("/榜单显示 20", group_role="owner")
+        _resolver(), player_shortcut=AsyncMock())
+    context = _context("/榜单显示 20")
 
     result = cast(
         "OutboundMessage",
@@ -272,29 +264,13 @@ async def test_portable_rank_display_limit_uses_full_platform_identity() -> None
     )
 
     assert _text(result) == "display:None:group-openid:caller-openid:20"
-    assert service.display_permissions == [True]
-
-
-@pytest.mark.asyncio
-async def test_portable_rank_display_limit_rechecks_group_management() -> None:
-    service = _RankQueryService()
-    operations = build_portable_rank_operations(
-        cast("RankQueryService", service),
-        _resolver(),
-        FeatureService({}, {}, frozenset()), player_shortcut=AsyncMock())
-    context = _context("/榜单显示 20")
-
-    await operations["rank.display_limit"]("榜单显示 20", context)
-
-    assert service.display_permissions == [False]
 
 
 @pytest.mark.asyncio
 async def test_rank_with_direct_mention_uses_member_openid_binding() -> None:
     operations = build_portable_rank_operations(
         cast("RankQueryService", _RankQueryService()),
-        _resolver(),
-        FeatureService({}, {}, frozenset()), player_shortcut=AsyncMock())
+        _resolver(), player_shortcut=AsyncMock())
     context = _context("成就榜", mentions=(_target(),))
 
     result = cast(
@@ -328,8 +304,7 @@ def test_rank_catalog_claims_a_direct_member_mention_as_player_query() -> None:
 async def test_rank_reports_an_unbound_mentioned_openid() -> None:
     operations = build_portable_rank_operations(
         cast("RankQueryService", _RankQueryService()),
-        _resolver(target_binding=None),
-        FeatureService({}, {}, frozenset()), player_shortcut=AsyncMock())
+        _resolver(target_binding=None), player_shortcut=AsyncMock())
     context = _context("成就榜", mentions=(_target(),))
 
     result = cast(
@@ -341,29 +316,9 @@ async def test_rank_reports_an_unbound_mentioned_openid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rank_rejects_mixed_alias_and_member_mention() -> None:
-    operations = build_portable_rank_operations(
-        cast("RankQueryService", _RankQueryService()),
-        _resolver(),
-        FeatureService({}, {}, frozenset()), player_shortcut=AsyncMock())
-    context = _context("成就榜别名", mentions=(_target(),))
-
-    result = cast(
-        "PortableReply",
-        await operations["rank.global_collection"](context.text, context),
-    )
-
-    assert _text(result.message) == (
-        "米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。"
-    )
-
-
-@pytest.mark.asyncio
 async def test_portable_rank_admin_operations_include_deferred_refresh() -> None:
     service = _RankAdminService()
-    operations = build_portable_rank_admin_operations(
-        cast("RankAdminService", service)
-    )
+    operations = build_portable_rank_admin_operations(cast("RankAdminService", service))
     context = _context("/榜单情况")
 
     samples = await operations["rank.sample_status"]("样本情况", context)
@@ -387,7 +342,6 @@ async def test_portable_rank_admin_operations_include_deferred_refresh() -> None
     assert refresh.follow_up is not None
     final = await refresh.follow_up()
 
-    assert isinstance(final, OutboundMessage)
     assert _text(final) == "refreshed"
     assert service.refresh_events == ["prepare:caller-openid", "execute"]
 
@@ -441,9 +395,9 @@ async def test_portable_rank_page_maintenance_uses_deferred_reply(
     final_text: str,
 ) -> None:
     service = _RankAdminService()
-    operation = build_portable_rank_admin_operations(
-        cast("RankAdminService", service)
-    )[command_id]
+    operation = build_portable_rank_admin_operations(cast("RankAdminService", service))[
+        command_id
+    ]
 
     reply = cast("PortableReply", await operation(text, _context(text)))
 
@@ -454,6 +408,5 @@ async def test_portable_rank_page_maintenance_uses_deferred_reply(
     assert reply.follow_up is not None
     final = await reply.follow_up()
 
-    assert isinstance(final, OutboundMessage)
     assert _text(final) == final_text
     assert service.refresh_events == list(events)
