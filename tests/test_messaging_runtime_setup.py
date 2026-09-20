@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 import nonebot
 import pytest
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
@@ -684,6 +685,42 @@ async def test_onebot_configured_reply_sends_messages_in_order(
         references=OneBotReferenceResolver(group_aliases={}, user_aliases={}),
     )
     assert sent == action.messages
+
+
+@pytest.mark.asyncio
+async def test_onebot_configured_reply_addresses_explicit_member_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent_targets: list[tuple[int, ...]] = []
+
+    async def record(
+        _matcher: object,
+        _message: str,
+        *,
+        at_user_ids: tuple[int, ...] | list[int],
+        **_kwargs: object,
+    ) -> None:
+        sent_targets.append(tuple(at_user_ids))
+
+    monkeypatch.setattr(messaging_matchers, "finish_matcher_message", record)
+    action = MessageCommandAction(
+        id="targeted",
+        commands=["加群"],
+        messages=["加群信息"],
+        at_user_ids=[790],
+    )
+    event = group_message_event(
+        message=Message("加群 ") + MessageSegment.at(789) + MessageSegment.at(789),
+    )
+
+    await messaging_matchers.handle_message_command(
+        cast("Matcher", object()),
+        event,
+        {matcher_rules.MESSAGE_ACTION_KEY: action},
+        references=OneBotReferenceResolver(group_aliases={}, user_aliases={}),
+    )
+
+    assert sent_targets == [(789, 790)]
 
 
 def test_unified_command_action_uses_feature_policy_for_each_message_scope(

@@ -376,7 +376,7 @@ async def test_group_reply_references_inbound_message_index() -> None:
 
 
 @pytest.mark.asyncio
-async def test_group_markdown_reply_does_not_combine_mention_with_reference() -> None:
+async def test_group_member_mention_reply_uses_plain_text_and_reference() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
         {"app": False},

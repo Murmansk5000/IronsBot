@@ -106,10 +106,9 @@ services:
       ONEBOT_SEND_MESSAGES: "true"
       ONEBOT_IDENTITY_VERIFICATION: "false"
       # ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT: "123456789"
-      # Optional QQ Official Bot credentials. The suffix is the uppercase
-      # account alias under [bot.qq_official.accounts.<alias>].
-      # QQ_OFFICIAL_APP_ID_EXAMPLE_BOT: "change-me"
-      # QQ_OFFICIAL_SECRET_EXAMPLE_BOT: "change-me"
+      # Optional QQ Official AppSecret. The numeric suffix is the public app_id
+      # declared under [bot.qq_official.accounts.<alias>].
+      # APP_SECRET_10001: "change-me"
     restart: always
 
   napcat:
@@ -276,8 +275,7 @@ ONEBOT_ENABLED=true
 ONEBOT_SEND_MESSAGES=true
 ONEBOT_IDENTITY_VERIFICATION=false
 ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
-QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
-QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
+APP_SECRET_10001=
 AI_KEY_DEEPSEEK=
 # Add one variable for each additional [ai.providers.<alias>].
 # AI_KEY_FUMIN=
@@ -300,8 +298,7 @@ DOCKER_REGISTRY_TOKEN=
 | `ONEBOT_SEND_MESSAGES` | Optional deployment override for OneBot outbound. It is ignored when official credentials are active because NapCat is then forced silent. |
 | `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation through official source-message references seen by NapCat. |
 | `ONEBOT_TRUSTED_OFFICIAL_BOT_<ACCOUNT_ALIAS>` | Numeric QQ of the declared official account as seen by NapCat. Required for each active account when identity observation is enabled. |
-| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one declared `[bot.qq_official.accounts.<alias>]`; a complete AppID/Secret pair activates the account and makes QQ Official the only outbound platform. |
-| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret paired with the AppID. Each account obtains and refreshes its own AccessToken. |
+| `APP_SECRET_<AppID>` | AppSecret for the public `app_id` declared in one `[bot.qq_official.accounts.<alias>]`; its presence activates that account and makes QQ Official the only outbound platform. Each account obtains and refreshes its own AccessToken. |
 | `AI_KEY_<PROVIDER_ALIAS>` | API key for one declared `[ai.providers.<alias>]`. Providers and their models are tried in TOML order. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |

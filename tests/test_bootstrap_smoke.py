@@ -100,7 +100,7 @@ actor_id = "1" * 10
 try:
     logger.info(
         "secret={} actor={}",
-        os.environ["QQ_OFFICIAL_SECRET_EXAMPLE_BOT"],
+        os.environ["APP_SECRET_10001"],
         actor_id,
     )
 finally:
@@ -158,8 +158,7 @@ print("BOOTSTRAP_OK")
             **dict(os.environ),
             "ENVIRONMENT": "outer",
             "APP_CONFIG_PATH": str(config_path),
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "test-secret",
+            "APP_SECRET_10001": "test-secret",
         },
     )
 

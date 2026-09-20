@@ -824,6 +824,7 @@ def test_qq_official_config_loads_credentials_from_environment(
 startup_timeout_seconds = 20.0
 
 [bot.qq_official.accounts.example_bot]
+app_id = "10001"
 required = true
 custom_keyboards = true
 features = ["help", "about", "seer_data"]
@@ -834,14 +835,13 @@ features = ["help", "about", "seer_data"]
     settings = load_settings(
         path,
         env={
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+            "APP_SECRET_10001": "example-secret",
         },
     )
 
     assert settings.bot.qq_official.startup_timeout_seconds == startup_timeout_seconds
     account = settings.bot.qq_official.accounts["example_bot"]
-    assert account.app_id == "example-app"
+    assert account.app_id == "10001"
     assert account.secret == "example-secret"
     assert account.required
     assert account.custom_keyboards
@@ -856,9 +856,11 @@ def test_qq_official_config_loads_independent_accounts(
 [bot.qq_official]
 
 [bot.qq_official.accounts.example_a]
+app_id = "10001"
 features = ["help"]
 
 [bot.qq_official.accounts.example_b]
+app_id = "10002"
 features = ["about"]
 """.strip(),
         encoding="utf-8",
@@ -867,10 +869,8 @@ features = ["about"]
     settings = load_settings(
         path,
         env={
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_A": "app-a",
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_B": "app-b",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_A": "secret-a",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_B": "secret-b",
+            "APP_SECRET_10001": "secret-a",
+            "APP_SECRET_10002": "secret-b",
         },
     )
 
@@ -879,8 +879,8 @@ features = ["about"]
         (name, account.app_id, account.secret) for name, account in accounts.items()
     ]
     assert actual == [
-        ("example_a", "app-a", "secret-a"),
-        ("example_b", "app-b", "secret-b"),
+        ("example_a", "10001", "secret-a"),
+        ("example_b", "10002", "secret-b"),
     ]
 
 
@@ -894,6 +894,7 @@ send_messages = true
 identity_verification = false
 
 [bot.qq_official.accounts.example_bot]
+app_id = "10001"
 """.strip(),
         encoding="utf-8",
     )
@@ -905,8 +906,7 @@ identity_verification = false
             "ONEBOT_SEND_MESSAGES": "false",
             "ONEBOT_IDENTITY_VERIFICATION": "true",
             "ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT": "123456789",
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+            "APP_SECRET_10001": "example-secret",
         },
     )
 
@@ -931,50 +931,8 @@ def test_onebot_trusted_bot_environment_rejects_undeclared_account(
         )
 
 
-@pytest.mark.parametrize(
-    ("field", "value", "environment_name"),
-    [
-        ("app_id", "example-app", "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT"),
-        ("secret", "example-secret", "QQ_OFFICIAL_SECRET_EXAMPLE_BOT"),
-    ],
-)
-def test_qq_official_config_rejects_credentials_in_toml(
+def test_qq_official_config_rejects_secret_in_toml(
     tmp_path: Path,
-    field: str,
-    value: str,
-    environment_name: str,
-) -> None:
-    path = tmp_path / "ironsbot.toml"
-    path.write_text(
-        f"""
-[bot.qq_official]
-
-[bot.qq_official.accounts.example_bot]
-{field} = "{value}"
-""".strip(),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match=environment_name):
-        load_settings(
-            path,
-            env={
-                "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-                "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
-            },
-        )
-
-
-@pytest.mark.parametrize(
-    "missing_environment_name",
-    [
-        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT",
-        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT",
-    ],
-)
-def test_enabled_qq_official_account_requires_both_environment_credentials(
-    tmp_path: Path,
-    missing_environment_name: str,
 ) -> None:
     path = tmp_path / "ironsbot.toml"
     path.write_text(
@@ -982,17 +940,65 @@ def test_enabled_qq_official_account_requires_both_environment_credentials(
 [bot.qq_official]
 
 [bot.qq_official.accounts.example_bot]
+app_id = "10001"
+secret = "example-secret"
 """.strip(),
         encoding="utf-8",
     )
-    environment = {
-        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
-    }
-    environment.pop(missing_environment_name)
 
-    with pytest.raises(ValueError, match=missing_environment_name):
-        load_settings(path, env=environment)
+    with pytest.raises(ValueError, match="APP_SECRET_10001"):
+        load_settings(
+            path,
+            env={"APP_SECRET_10001": "example-secret"},
+        )
+
+
+def test_qq_official_account_without_secret_remains_disabled(tmp_path: Path) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.qq_official]
+
+[bot.qq_official.accounts.example_bot]
+app_id = "10001"
+""".strip(),
+        encoding="utf-8",
+    )
+    settings = load_settings(path, env={})
+
+    assert settings.bot.qq_official.enabled_accounts == {}
+
+
+def test_qq_official_secret_rejects_undeclared_app_id(tmp_path: Path) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        '[bot.qq_official.accounts.example_bot]\napp_id = "10001"',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="10002"):
+        load_settings(path, env={"APP_SECRET_10002": "example-secret"})
+
+
+@pytest.mark.parametrize(
+    "retired_name",
+    [
+        "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT",
+        "QQ_OFFICIAL_SECRET_EXAMPLE_BOT",
+    ],
+)
+def test_qq_official_config_rejects_retired_credential_variables(
+    tmp_path: Path,
+    retired_name: str,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        '[bot.qq_official.accounts.example_bot]\napp_id = "10001"',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="retired QQ Official"):
+        load_settings(path, env={retired_name: "retired-value"})
 
 
 def test_qq_official_account_features_are_isolated_by_app_id() -> None:
@@ -1063,16 +1069,6 @@ def test_qq_official_config_rejects_duplicate_app_ids() -> None:
                     secret="secret-b",
                 ),
             },
-        )
-
-
-def test_qq_official_config_rejects_secret_environment_alias_collision() -> None:
-    with pytest.raises(ValueError, match="unique ignoring case"):
-        QQOfficialConfig(
-            accounts={
-                "example": QQOfficialAccountConfig(),
-                "EXAMPLE": QQOfficialAccountConfig(),
-            }
         )
 
 
@@ -1681,17 +1677,47 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
                 '<qqbot-at-user id="opaque-user" /> first', markdown=True
             ),
         ),
-        (
-            QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" /> second', markdown=True
-            ),
-        ),
-        (
-            QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" /> third', markdown=True
-            ),
-        ),
+        (QQOfficialTextPayload("second"),),
+        (QQOfficialTextPayload("third"),),
     ]
+
+
+@pytest.mark.asyncio
+async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="sender-openid",
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    target = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "target-openid",
+        kind="member",
+        scope_id="opaque-group",
+        account_id="example-app",
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(
+        messenger,
+        incoming,
+        PortableReply(
+            OutboundMessage((MentionPart(target), TextPart(" result"))),
+        ),
+    )
+
+    assert bot.calls[0][2] == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="target-openid" /> result',
+            markdown=True,
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -2959,6 +2985,7 @@ plugin_manifest = "core"
 [bot.qq_official]
 
 [bot.qq_official.accounts.example_bot]
+app_id = "10001"
 custom_keyboards = true
 
 [operations.data_sync]
@@ -2980,8 +3007,7 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+            "APP_SECRET_10001": "example-secret",
         }
     )
     result = subprocess.run(
@@ -2992,8 +3018,8 @@ check_on_startup = false
                 "from ironsbot.app.bootstrap import bootstrap; "
                 "app = bootstrap(); "
                 "assert set(app.driver._adapters) == {'OneBot V11'}; "
-                "assert app.resources.qq_official.account_ids == ('example-app',); "
-                "sender = app.resources.qq_official.sender('example-app'); "
+                "assert app.resources.qq_official.account_ids == ('10001',); "
+                "sender = app.resources.qq_official.sender('10001'); "
                 "assert sender is not None and sender.custom_keyboards; "
                 "print('QQ_OFFICIAL_BOOTSTRAP_OK')"
             ),

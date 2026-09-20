@@ -168,6 +168,7 @@ sandbox = false
 startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.example_bot]
+app_id = "10001"
 required = false
 proactive_messages = false
 custom_keyboards = false
@@ -188,8 +189,8 @@ superusers = []
 `features = []`，再通过账号策略或 `[features]` 下基于逻辑身份的策略只开放特殊目标。
 被动回复始终由收到事件的同一 AppID 发出，不能把一个官方账号收到的消息转给另一个
 账号回复；因此同一群若同时加入两个开放了相同功能的机器人，仍会产生两份独立回复。
-账号不再使用 TOML `enabled`；同名 AppID 和 Secret 环境变量同时存在即激活。
-只填其中一个、为未声明账号提供凭据，都会阻止启动。
+账号不再使用 TOML `enabled`；TOML 声明公开 AppID，并由同后缀的
+`APP_SECRET_<AppID>` 激活。为未声明 AppID 提供 Secret 会阻止启动。
 账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
 `startup_timeout_seconds` 控制启动等待时间；`required = true` 的账号未能及时就绪会
 阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
@@ -219,18 +220,17 @@ Resume、平台重投或进程重启导致同一条指令执行两次；该状�
 SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不猜测并缓存有效期；平台
 拒绝超大图片或当日上传额度耗尽时，机器人会返回明确文字说明。
 
-凭据只放环境变量：
+公开 AppID 写入 TOML，只有 AppSecret 放入环境变量：
 
 ```text
-QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=你的 AppID
-QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
+APP_SECRET_10001=你的 AppSecret
 ```
 
 腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
-AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
-大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_APP_ID_EXAMPLE_BOT_2` 和
-`QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。TOML 中的旧 `app_id` 和 `secret` 字段会被
-严格拒绝。
+AppSecret 获取短期 AccessToken，并在内存中自动刷新。每个账号在 TOML 中声明
+`app_id`，例如 `app_id = "10001"` 对应 `APP_SECRET_10001`。新增机器人时只需
+再声明一个账号及其公开 AppID，并增加一个同后缀的 Secret 变量。Secret 写进
+TOML 会被严格拒绝。
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
@@ -255,14 +255,13 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 建立或覆盖映射。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
 不参与 NapCat 群消息推断；启动前必须已知的私聊目标仍在 `[identities.users]` 声明。
 
-QQ 官方群回复同时引用用户的原始消息，并按腾讯当前文本交互协议使用
-`<qqbot-at-user id="..." />` 提及发令成员。提及在发送边界由平台身份生成，并严格校验
-AppID、群作用域和成员类型；私聊不会附加提及。2026-09-20 实机确认群接口的普通
-TEXT payload 会原样显示该标签，而自定义 MARKDOWN payload 会产生原生 @，因此只有
-含 `MentionPart` 的文本会使用 Markdown DTO，其他文本继续使用 TEXT。NapCat 对较短
-Markdown 可能拆出独立 `at` 段，对长消息则可能保留腾讯原生
-`mqqapi://markdown/mention` 链接；两种表示都指向同一发令 QQ，不应按是否存在独立段判断
-提及失败。群回复仍使用被动 `msg_id` 和 `message_reference`，不会为 @ 消耗主动消息额度。
+QQ 官方群回复同时引用用户的原始消息，并提及发令成员。腾讯群接口的普通 TEXT
+payload 不会解析成员 OpenID 提及，而自定义 MARKDOWN 会同时产生富文本正文和平台生成的
+纯文本回退。为避免长正文在客户端显示两遍，发送边界会严格校验 AppID、群作用域和成员
+类型，然后只在每个请求的首条回复中发送一个最小 Markdown 提及，再以普通 TEXT 发送一份
+正文；后续进度、结果和图片沿同一被动回复上下文继续发送，不重复 @。私聊不会附加提及。
+群回复仍使用被动 `msg_id`、递增 `msg_seq` 和首条 `message_reference`，不会为 @ 消耗主动
+消息额度。2026-09-20 的精确生产镜像实测得到一次 `at`、一次正文且没有泄漏 OpenID 标签。
 
 依赖数字 QQ 账号配置的个人幸运橱窗也使用这条已验证关联。完成关联后，QQ 官方端可查询
 当天橱窗、查看皮肤详情以及管理关注列表；未关联身份不会尝试按昵称或其他资料猜测。
@@ -330,8 +329,7 @@ IronsBot 会处理其中明确匹配的命令和正在进行的选项会话，
 行为与部署配置默认写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量包含：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
-  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、
+- 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的 `APP_SECRET_<AppID>`、
   每个 AI 提供商的 `AI_KEY_<提供商别名>`、
   按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
   `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
@@ -351,8 +349,7 @@ ONEBOT_ENABLED=true
 ONEBOT_SEND_MESSAGES=true
 ONEBOT_IDENTITY_VERIFICATION=false
 ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
-QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
-QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
+APP_SECRET_10001=
 AI_KEY_DEEPSEEK=
 # 若 TOML 声明了 fumin、nomiss，还可分别设置：
 AI_KEY_FUMIN=

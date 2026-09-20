@@ -16,6 +16,10 @@ from ironsbot.services.seer.rendering.lucky_skin_window import (
     render_lucky_skin_window_document,
 )
 
+_FASHION_TICKET_ID = "1727935"
+_DIAMOND_ICON_KEY = "icon_diamond"
+_CACHE_CATEGORY = "lucky_skin_window_v3"
+
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import SeerImageSource
@@ -37,9 +41,9 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
 ) -> bytes:
     """Render one result while isolating missing skin art to its own card."""
     content_key = render_request_cache_key(
-        "lucky_skin_window_v1", (result.day, result.player_id, offers)
+        _CACHE_CATEGORY, (result.day, result.player_id, offers)
     )
-    cache_entry = cache.entry("lucky_skin_window_v1", content_key)
+    cache_entry = cache.entry(_CACHE_CATEGORY, content_key)
     if cached := cache_entry.get():
         return cached
 
@@ -60,19 +64,30 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
     }
     distinct_ids = sorted({id_ for id_ in requested_ids.values() if id_ > 0})
     results = await asyncio.gather(
-        *(fetch_optional_image(images, "pet_body", str(id_)) for id_ in distinct_ids)
+        *(fetch_optional_image(images, "pet_body", str(id_)) for id_ in distinct_ids),
+        fetch_optional_image(images, "item", _FASHION_TICKET_ID),
+        fetch_optional_image(images, "common", _DIAMOND_ICON_KEY),
     )
+    body_results = results[: len(distinct_ids)]
+    ticket_result, diamond_result = results[-2:]
     images_by_resource = {
         id_: to_data_uri(result.data)
-        for id_, result in zip(distinct_ids, results, strict=True)
+        for id_, result in zip(distinct_ids, body_results, strict=True)
         if result.data
     }
     images_by_skin_id = {
         skin_id: images_by_resource.get(resource_id, "")
         for skin_id, resource_id in requested_ids.items()
     }
-    document = present_lucky_skin_window(offers, images_by_skin_id)
+    ticket_icon = to_data_uri(ticket_result.data) if ticket_result.data else None
+    diamond_icon = to_data_uri(diamond_result.data) if diamond_result.data else None
+    document = present_lucky_skin_window(
+        offers,
+        images_by_skin_id,
+        ticket_icon=ticket_icon,
+        diamond_icon=diamond_icon,
+    )
     rendered = await render_lucky_skin_window_document(render_html, document)
-    if all(images_by_skin_id.values()):
+    if all(images_by_skin_id.values()) and ticket_icon and diamond_icon:
         cache_entry.put(rendered)
     return rendered

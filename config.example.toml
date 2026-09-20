@@ -103,12 +103,15 @@ startup_timeout_seconds = 15.0
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
-#     A complete AppID and AppSecret environment pair activates the account and
+#     A TOML AppID plus APP_SECRET_<AppID> activates the account and
 #     makes QQ Official the only outbound platform. No TOML enabled flag exists.
 # ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
-#     OpenID 命名空间、权限和发送路由。完整的 AppID 与 AppSecret 环境变量
+#     OpenID 命名空间、权限和发送路由。TOML AppID 与 APP_SECRET_<AppID>
 #     会激活该账号，并使 QQ 官方成为唯一出站平台；TOML 不再使用 enabled。
 [bot.qq_official.accounts.example_bot]
+# EN: Public AppID. The matching Secret comes from APP_SECRET_<AppID>.
+# ZH: 公开的 AppID；对应密钥从 APP_SECRET_<AppID> 环境变量读取。
+app_id = "10001"
 # EN: A required account prevents application startup when it cannot become ready.
 #     Optional accounts remain observable as degraded and may recover later.
 # ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。

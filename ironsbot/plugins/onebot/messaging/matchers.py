@@ -16,12 +16,13 @@ from ironsbot.integrations.onebot.matchers import (
     bind,
     bind_async,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
     send_matcher_message,
 )
-from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
@@ -54,7 +55,13 @@ async def handle_message_command(
     action = state[MESSAGE_ACTION_KEY]
     at_user_ids = (
         [
-            *event_sender_at_user_ids(event),
+            *(
+                tuple(
+                    int(actor.id)
+                    for actor in message_input_context(event).member_mentions
+                )
+                or event_sender_at_user_ids(event)
+            ),
             *references.resolve_users(
                 action.at_user_ids,
                 location=f"messaging.commands.{action.id}.at_user_ids",
@@ -103,6 +110,9 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
     for interaction, prefix, help_ids in routes:
         if not help_ids:
             continue
+        input_rule = (
+            member_targets_command() if interaction == "direct" else explicit_command()
+        )
         command_matcher = registry.on_message(
             policy=CommandPolicy.command(
                 _action_command_id(prefix),
@@ -114,7 +124,7 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
                     match_message_command, messaging=messaging, interaction=interaction
                 )
             )
-            & explicit_command(),
+            & input_rule,
             priority=registry.priority("message_commands"),
             block=True,
         )

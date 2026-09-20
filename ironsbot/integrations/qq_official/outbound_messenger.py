@@ -266,14 +266,12 @@ def _reference_group_reply(
         or not payloads
     ):
         return payloads
-    first_payload = payloads[0]
-    if isinstance(first_payload, QQOfficialTextPayload) and first_payload.markdown:
-        # QQ mobile can render the same Markdown body twice when a native member
-        # mention and message_reference are combined. msg_id/msg_seq still keep
-        # this operation inside the passive-reply contract.
+    if isinstance(payloads[0], QQOfficialTextPayload) and payloads[0].markdown:
+        # QQ clients duplicate combined Markdown when a native source reference is
+        # attached. msg_id/msg_seq still keep this inside the passive reply contract.
         return payloads
     return (
-        replace(first_payload, reference_id=context.sequence),
+        replace(payloads[0], reference_id=context.sequence),
         *payloads[1:],
     )
 

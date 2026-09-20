@@ -58,38 +58,31 @@ def render_qq_official_outbound_message(
     """Compact text around media into the fewest supported QQ messages."""
 
     images: list[QQOfficialImagePayload] = []
+    mentions: list[str] = []
     text: list[str] = []
     saw_image = False
     text_after_image = False
-    saw_mention = False
     for part in message.parts:
         if isinstance(part, TextPart):
             text.append(part.text)
             if saw_image:
                 text_after_image = True
         elif isinstance(part, MentionPart):
-            if not _supports_group_mention(conversation, part):
-                raise QQOfficialOutboundMessageError.unsupported_mention()
-            saw_mention = True
-            text.append(f'<qqbot-at-user id="{escape(part.actor.id, quote=True)}" />')
+            mentions.append(_render_mention(conversation, part))
             if saw_image:
                 text_after_image = True
-        elif isinstance(part, BinaryImagePart):
+        elif isinstance(part, (BinaryImagePart, RemoteImagePart)):
             saw_image = True
-            images.append(
-                QQOfficialImagePayload(
-                    content=part.content,
-                    filename=part.filename or _image_filename(part.content_type),
-                )
-            )
-        elif isinstance(part, RemoteImagePart):
-            saw_image = True
-            images.append(QQOfficialImagePayload(url=part.url))
+            images.append(_render_image(part))
         else:
             raise QQOfficialOutboundMessageError.unsupported_part(part)
-    text_payloads: list[QQOfficialPayload] = (
-        [QQOfficialTextPayload("".join(text), markdown=saw_mention)] if text else []
-    )
+    text_payloads: list[QQOfficialPayload] = []
+    if mentions:
+        text_payloads.append(
+            QQOfficialTextPayload("".join((*mentions, *text)), markdown=True)
+        )
+    elif text:
+        text_payloads.append(QQOfficialTextPayload("".join(text)))
     rendered = (
         [*images, *text_payloads] if text_after_image else [*text_payloads, *images]
     )
@@ -104,6 +97,15 @@ def _attach_prompt(
 ) -> None:
     if prompt is None:
         return
+    for index, payload in enumerate(rendered):
+        if isinstance(payload, QQOfficialTextPayload) and not payload.markdown:
+            rendered[index] = QQOfficialTextPayload(
+                payload.content,
+                prompt=prompt,
+                reference_id=payload.reference_id,
+                markdown=payload.markdown,
+            )
+            return
     for index, payload in enumerate(rendered):
         if isinstance(payload, QQOfficialTextPayload):
             rendered[index] = QQOfficialTextPayload(
@@ -133,6 +135,26 @@ def _supports_group_mention(
         and part.actor.kind == "member"
         and part.actor.scope_id == conversation.id
         and part.actor.account_id == conversation.account_id
+    )
+
+
+def _render_mention(
+    conversation: ConversationRef | None,
+    part: MentionPart,
+) -> str:
+    if not _supports_group_mention(conversation, part):
+        raise QQOfficialOutboundMessageError.unsupported_mention()
+    return f'<qqbot-at-user id="{escape(part.actor.id, quote=True)}" />'
+
+
+def _render_image(
+    part: BinaryImagePart | RemoteImagePart,
+) -> QQOfficialImagePayload:
+    if isinstance(part, RemoteImagePart):
+        return QQOfficialImagePayload(url=part.url)
+    return QQOfficialImagePayload(
+        content=part.content,
+        filename=part.filename or _image_filename(part.content_type),
     )
 
 

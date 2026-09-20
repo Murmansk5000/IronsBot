@@ -52,32 +52,38 @@ Task     [██████████] completed only after code, tests, and 
 ## 当前权威状态（2026-09-20）
 
 Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。唯一公开开发与发布源是
-`Murmansk5000/IronsBot` 的 `main`。当前用于生产复验的最后一个包含运行时代码变更的
-公开修订为 `64058429`，Docker Hub/GHCR 清单 digest 为
-`sha256:2aba0e2a9d9f2ab818fc4f7c6d9b2299b5f55dbafd49d970cd1982d0ea8a828b`，
-CI 记录的展开大小为 260,019,690 bytes；`/app` 为 4,788 KiB、site-packages 为
-106,000 KiB、字体为 19,452 KiB，相对上一公开基线增长 0 bytes。较早生产 digest 已记录
-Unraid、QQ Official READY、无头 worker 和“阵容”进度、文字、图片送达；当前公开精确
-digest 已通过构建、离线 smoke、依赖审计和体积门禁，但仍须部署到 Unraid 并复验受后续
-修复影响的路径。群内请求者定位保留 source `message_reference`，同时按腾讯当前文本交互
-协议发送经过 AppID、群作用域和成员类型校验的 `<qqbot-at-user>`。2026-09-20 的同目标
-实机对照确认 TEXT payload 会原样显示标签，而 MARKDOWN payload 会转成腾讯原生提及。
-NapCat 对短消息拆出独立 `at` 段，对长帮助消息保留指向同一发令 QQ 的
-`mqqapi://markdown/mention`；因此验收同时接受这两种客户端表示。正式路径只把含
-`MentionPart` 的文本编码为 Markdown，并继续使用被动 `msg_id` 与 source
-`message_reference`；其他文本不变，也不为提及消耗主动消息额度。
+`Murmansk5000/IronsBot` 的 `main`。当前生产运行时修订为 `667177ea`，Docker Hub 清单
+digest 为 `sha256:bae99232f7c816349f9e1505bbc27579591ba3ef76963f2426d2eaf3cf3dec15`，
+Unraid 展开大小为 260,026,385 bytes。发布流水线 `35497786091` 的构建、离线 smoke、
+依赖审计、目录与增长门禁均通过；QQ Official、OneBot observer、三无头 worker 和共享
+Docker 网络健康。2026-09-20 实机对照确认 TEXT 不解析 OpenID 提及，而 Markdown 与
+source `message_reference` 组合会导致部分 QQ 客户端重复正文。正式路径因此将首条群回复
+的成员提及和正文合并为一个 Markdown payload，并只使用被动 `msg_id`/`msg_seq`，不再为
+该 payload 附加 native source reference。NapCat 群历史恰好一条消息，同时包含原生 `at`
+段和完整 TD 菜单正文；单独 `at` 消息为零、正文只出现一次、字面 OpenID 标签为零。
 
 `docs/` 不进入 Docker 构建上下文。后续纯文档提交可能因 OCI revision 标签生成不同
 manifest digest，但不会改变运行时文件；Phase 7 可继续使用上述行为候选，除非实际生产
 部署选择了另一个精确 digest，届时必须在验收记录中固定所部署的值。
+
+主要查询矩阵已在当前生产 runtime tree 上完成 A1-A12：最后缺失的幸运橱窗使用受控
+OneBot 身份完成账号绑定、登录确认、隔离查询、四皮肤持久缓存和最终图片送达。生产专用
+密码只存在于 Unraid 加密环境变量，不进入 TOML 或仓库。Phase 7 实机里程碑因此为 7/8；
+剩余一项仍是权限、故障和实际配置功能的完整负向与主动投递证据。
+
+同一 `667177ea` 生产镜像重新生成幸运橱窗 v2 卡片，客户端收到一张 1040×559 PNG；四个
+皮肤、风尚券图标、钻石图标和中文均正常。字体稳定的 `★` 关注标记另由本地真实 HTML
+渲染检查覆盖。v2 缓存键隔离旧版无图标卡片，资源加载仍在 integration 层，纯
+Presenter/Renderer 边界未回退。
 
 已发布提交 `9aa4ee79` 将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
 `superuser_bypass` 执行未对群开启的 Feature，普通成员仍受群策略限制，黑名单和命令
 audience 不被绕过。真实客户端已经覆盖超级管理员绕过、普通成员隔离和黑名单优先级；
 管理异常已验证超级管理员私聊通知链，但普通群零泄露的真实负向观察仍是 Phase 7 门槛。
 
-本地 `main` 与公开 `origin/main` 均指向 `64058429`，ahead/behind 为 0/0。完整私有重构
-历史已作为第一父线并入公开主线，公开后续完善历史作为第二父线保留，最终代码 tree 为
+公开 `main` 已包含运行时修订 `851bf5a9` 及其后续验收文档；每轮仍须以实际
+`git rev-list --left-right --count origin/main...HEAD` 结果核对同步状态。完整私有重构
+历史已作为第一父线并入公开主线，公开后续完善历史作为第二父线保留，合并时代码 tree 为
 `e548fa049c2bbf4c4d93e0ef424c024cd5e162e0`。私有 Preview 的全部 refs 均可由公开仓库
 到达，Release 资产哈希一致，仓库已设置为 Archived；活动工作树已移除 `preview` remote。
 后续不得再把私有 Preview 当作开发、同步或发布源。
@@ -2411,7 +2417,7 @@ feature；裸 OpenID 不再作为策略 key；
 对 `tencent-connect/openclaw-qqbot` 多账号实现的审计确认：OpenID 属于具体 AppID，
 多账号不能只扩展凭据列表。目标 `ActorRef` / `ConversationRef` 必须增加账户命名空间，
 并同步覆盖持久化主键、会话键、feature policy、Token/网关、回复序号和出站路由。
-账号别名只用于配置与环境变量命名，运行时以 AppID 作为账户命名空间，避免用字符串
+账号别名只用于配置引用，Secret 环境变量直接以 AppID 为后缀；运行时以 AppID 作为账户命名空间，避免用字符串
 拼接或默认账号回退制造不可逆的身份串号。
 
 账户感知的基础已经实现：核心 `ActorRef` / `ConversationRef` 可携带 `account_id`，

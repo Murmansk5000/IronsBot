@@ -5,7 +5,7 @@ fails over between QQ Official and OneBot at runtime.
 
 ## NapCat-only deployment
 
-Do not define any `QQ_OFFICIAL_APP_ID_*` or `QQ_OFFICIAL_SECRET_*` variables.
+Do not define any `APP_SECRET_*` variables.
 
 ```toml
 [bot.onebot]
@@ -27,37 +27,39 @@ sandbox = false
 startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.local_bot]
+app_id = "10001"
 required = true
 proactive_messages = true
 custom_keyboards = false
 features = ["help", "about", "seer_data"]
 ```
 
-Activate it with a complete environment pair:
+Activate it with the Secret variable whose suffix is the public AppID:
 
 ```env
-QQ_OFFICIAL_APP_ID_LOCAL_BOT=
-QQ_OFFICIAL_SECRET_LOCAL_BOT=
+APP_SECRET_10001=
 ```
 
-Once the pair is present, QQ Official is the sole outbound platform. OneBot is
-silent even when `send_messages = true`. Missing one half of the pair, or using
-an environment suffix not declared in TOML, prevents startup. An official
+Once the Secret is present, QQ Official is the sole outbound platform. OneBot is
+silent even when `send_messages = true`. A Secret suffix whose AppID is not
+declared in TOML prevents startup. An official
 connection or delivery failure never enables OneBot fallback.
 
 ### Multiple official accounts
 
-Declare every account alias in TOML, then provide one complete environment pair
-for each alias. Do not reuse one alias for two applications:
+Declare every account alias and public AppID in TOML, then provide one Secret
+variable for each AppID. Do not reuse one AppID for two accounts:
 
 ```toml
 [bot.qq_official.accounts.group_bot]
+app_id = "10001"
 required = false
 proactive_messages = true
 custom_keyboards = false
 features = ["help", "about", "seer_data"]
 
 [bot.qq_official.accounts.private_bot]
+app_id = "10002"
 required = true
 proactive_messages = false
 custom_keyboards = false
@@ -65,13 +67,11 @@ features = ["help", "about", "seer_data"]
 ```
 
 ```env
-QQ_OFFICIAL_APP_ID_GROUP_BOT=
-QQ_OFFICIAL_SECRET_GROUP_BOT=
-QQ_OFFICIAL_APP_ID_PRIVATE_BOT=
-QQ_OFFICIAL_SECRET_PRIVATE_BOT=
+APP_SECRET_10001=
+APP_SECRET_10002=
 ```
 
-All accounts with complete credentials connect independently. `required` only
+All accounts with a configured Secret connect independently. `required` only
 controls whether that account's startup failure aborts the application; it does
 not select a fallback sender. A group feature policy authorizes the logical
 group and does not require two official bots to reply there. C2C and group

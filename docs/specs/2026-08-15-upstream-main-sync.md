@@ -119,9 +119,9 @@ semantic owner、真实的用户契约和针对性验证。
 | Bilibili 正文补全与历史摘要 | 缺正文与截断 Opus 使用详情补全；推送和历史详情复用同一压缩服务，摘要持久化且按需生成 | 无 | completed |
 | 开服别名与竞技池变动入口 | 命令由 V5 service contract 提供，数据由 repository 提供 | 无 | completed |
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
-| 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实和官方有效期；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
+| 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实和官方有效期；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed：直接查询与新增内容根图均保留变化图；2026-09-20 审计补回曾在 renderer 拆分时丢失的根图矩阵 |
 | 巅峰投票展示增强 | service 提供投票级别与周期；纯 presenter 计算总票数和占比；renderer 只消费不可变 document | 无 | completed |
-| 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 无 | completed：价格批量读取发布库，数字菜单复用皮肤详情服务 |
+| 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 无 | completed：价格批量读取发布库，数字菜单复用皮肤详情服务；2026-09-20 审计恢复原版最终布局和价格展示契约 |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 目标平台管理员身份最终验收 | completed：动作与菜单已收口；跨平台身份延期 |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 | Bilibili 抽奖/中奖拆分 | 复用配置驱动分类，不增加硬编码枚举或旧配置迁移器 | 无 | completed |

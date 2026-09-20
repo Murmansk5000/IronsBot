@@ -36,6 +36,7 @@ _PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]
             "newseer/assets/art/ui/assets/battleeffect/abnormal/{}.png",
         ),
     ),
+    "common": (("default", "newseer/assets/art/ui/common/{}.png"),),
     "element_type": (("element_type", "newseer/assets/art/ui/assets/pettype/{}.png"),),
     "equip": (("equip", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),),
     "item": (
