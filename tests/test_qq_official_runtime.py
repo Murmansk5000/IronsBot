@@ -338,7 +338,6 @@ def test_runtime_treats_full_group_self_mention_as_addressed_input(
                     {
                         "is_you": True,
                         "member_openid": "bot-openid",
-                        "username": "babyQ",
                     }
                 ],
             }

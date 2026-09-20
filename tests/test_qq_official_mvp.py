@@ -1427,6 +1427,27 @@ def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -
     )
 
 
+def test_full_group_self_mention_does_not_require_username_metadata() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@无极圣武 战队订阅",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "战队订阅"
+
+
 def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
@@ -2235,7 +2256,7 @@ async def test_portable_router_runs_scoped_query_selection(
 
     choices = await router.dispatch(_portable_input("精灵雷伊", actor, conversation))
     assert choices is not None
-    assert "1. 雷伊" in cast("TextPart", choices.message.parts[0]).text
+    assert "1. 雷伊（70）" in cast("TextPart", choices.message.parts[0]).text
     prompt = choices.message.prompt
     assert prompt is not None
     action = prompt.action_data(prompt.choices[1])
@@ -2277,7 +2298,7 @@ async def test_portable_router_runs_mintmark_query_and_selection() -> None:
 
     choices = await router.dispatch(_portable_input("刻印V8", actor, conversation))
     assert choices is not None
-    assert "1. V8-1" in cast("TextPart", choices.message.parts[0]).text
+    assert "1. V8-1（40001）" in cast("TextPart", choices.message.parts[0]).text
     prompt = choices.message.prompt
     assert prompt is not None
 

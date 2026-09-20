@@ -291,8 +291,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
     player_message = pending.player_message
     if result.offer_binding:
         player_message += (
-            "\n\n是否将其设为默认米米号？"
-            "回复“是”或“y”确认，回复“否”或“n”跳过。"
+            "\n\n是否将其设为默认米米号？回复“是”或“y”确认，回复“否”或“n”跳过。"
         )
     requests = available_player_detail_requests(
         has_collection=pending.section_plan.has_collection,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 GROUP_AT_MESSAGE_CREATE = "GROUP_AT_MESSAGE_CREATE"
 GROUP_MESSAGE_CREATE = "GROUP_MESSAGE_CREATE"
+_LEADING_MENTION_RE = re.compile(r"^[\s]*[@＠]\S+[\s]*")
 _PASSIVE_REPLY_WINDOWS = {
     "group": timedelta(minutes=5),
     "private": timedelta(minutes=60),
@@ -100,7 +102,7 @@ def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
     mention = _bot_mention(raw)
     if mention is None:
         return text
-    return _remove_structured_mention(text, mention).strip()
+    return _remove_leading_self_mention(text).strip()
 
 
 def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:
@@ -113,16 +115,8 @@ def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:
     return None
 
 
-def _remove_structured_mention(
-    text: str,
-    mention: Mapping[str, object],
-) -> str:
-    username = str(mention.get("username", "")).strip()
-    if username:
-        for marker in (f"@{username}", f"＠{username}"):
-            if marker in text:
-                return text.replace(marker, "", 1)
-    return text
+def _remove_leading_self_mention(text: str) -> str:
+    return _LEADING_MENTION_RE.sub("", text, count=1)
 
 
 def _direct_mentions(

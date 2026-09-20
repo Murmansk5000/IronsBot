@@ -89,7 +89,7 @@ async def test_portable_pet_config_reuses_numeric_selection_session() -> None:
 
     assert isinstance(prompt, OutboundMessage)
     assert isinstance(prompt.parts[0], TextPart)
-    assert "1. 雷伊\n   70" in prompt.parts[0].text
+    assert "1. 雷伊（70）" in prompt.parts[0].text
     assert selected is not None
     assert selected.parts == (
         TextPart("精灵 71\n"),
