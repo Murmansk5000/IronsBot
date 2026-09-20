@@ -444,6 +444,7 @@ def _service(tmp_path: Path) -> RankService:
         RankQueryConfig(limit=LIMIT, online_limit=LIMIT, page_size=PAGE_SIZE),
         cache,
         lambda: None,
+        lambda: None,
         AsyncMock(side_effect=AssertionError("unexpected transport")),
         exclusions=RankExclusionPolicy(frozenset(), {}),
     )

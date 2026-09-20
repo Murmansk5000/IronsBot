@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable
     from datetime import datetime
 
+    from ironsbot.core.interactive_prompts import PromptSession
     from ironsbot.core.platform import ActorRef, ConversationRef, IncomingMessageRef
 
 
@@ -101,6 +102,7 @@ MessagePart: TypeAlias = TextPart | BinaryImagePart | RemoteImagePart | MentionP
 @dataclass(frozen=True, slots=True)
 class OutboundMessage:
     parts: tuple[MessagePart, ...]
+    prompt: PromptSession | None = None
 
     def __post_init__(self) -> None:
         if not self.parts:
@@ -184,6 +186,7 @@ class DeliveryCapabilities:
     supports_group_context: bool
     supports_private_context: bool
     supports_images: bool
+    supports_interactive_prompts: bool = False
 
 
 class DeliveryFailureKind(str, Enum):

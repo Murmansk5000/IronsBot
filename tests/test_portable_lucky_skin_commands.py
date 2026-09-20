@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
@@ -13,143 +16,55 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
-from ironsbot.services.portable_reply import PortableReply
-from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.lucky_skin_window import (
+    LuckySkinQuery,
     LuckySkinWatchItem,
-    LuckySkinWindowOffer,
+    LuckySkinWindowAccessError,
     LuckySkinWindowResult,
 )
 from ironsbot.services.seer.pet_query import PetImageSelection
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
 
-
-@dataclass
-class _FakeLuckySkinWindow:
-    cached: bool = False
-
-    def __post_init__(self) -> None:
-        self.events: list[str] = []
-        self.result = LuckySkinWindowResult(
-            "2026-09-14",
-            712345678,
-            (
-                LuckySkinWindowOffer(101, 1400101, "皮肤甲", watched=False),
-                LuckySkinWindowOffer(102, 1400102, "皮肤乙", watched=False),
-            ),
-            self.cached,
-        )
-
-    def cached_for_actor(self, actor: ActorRef) -> LuckySkinWindowResult | None:
-        self.events.append(f"cache:{actor.id}")
-        return self.result if self.cached else None
-
-    async def check_for_actor(self, actor: ActorRef) -> LuckySkinWindowResult:
-        self.events.append(f"check:{actor.id}")
-        return self.result
-
-    async def result_message(
-        self,
-        result: LuckySkinWindowResult,
-        *,
-        actor: ActorRef,
-    ) -> OutboundMessage:
-        self.events.append(f"render:{actor.id}:{result.day}")
-        return OutboundMessage.from_text("window result")
-
-    @staticmethod
-    def detail_choices(
-        result: LuckySkinWindowResult,
-    ) -> tuple[QueryChoice[PetImageSelection], ...]:
-        return tuple(
-            QueryChoice(
-                offer.name,
-                str(offer.skin_id),
-                PetImageSelection(
-                    offer.resource_id,
-                    offer.name,
-                    skin_id=offer.skin_id,
-                ),
-            )
-            for offer in result.offers
-        )
-
-    def watch_list_message(self, actor: ActorRef) -> str:
-        return f"watch list:{actor.id}"
-
-    def resolve_watch_candidates(
-        self,
-        actor: ActorRef,
-        argument: str,
-    ) -> tuple[LuckySkinWatchItem, ...]:
-        self.events.append(f"resolve:{actor.id}:{argument}")
-        first = LuckySkinWatchItem(101, 1400101, "皮肤甲")
-        if argument == "many":
-            return (first, LuckySkinWatchItem(102, 1400102, "皮肤乙"))
-        return (first,) if argument == "101" else ()
-
-    def watch_change_message(
-        self,
-        actor: ActorRef,
-        item: LuckySkinWatchItem,
-        *,
-        watched: bool,
-    ) -> str:
-        action = "add" if watched else "remove"
-        return f"{action}:{actor.id}:{item.skin_id}"
-
-    def watch_clear_message(self, actor: ActorRef) -> str:
-        return f"clear:{actor.id}"
-
-    def watch_reset_message(self, actor: ActorRef) -> str:
-        return f"reset:{actor.id}"
+_Operation = Callable[[str, MessageInputContext], Awaitable[OutboundMessage]]
 
 
-class _FakePet:
-    async def select_image(
-        self,
-        selection: PetImageSelection,
-    ) -> QueryResult[object]:
-        return QueryResult(reply=QueryReply(text=f"skin:{selection.skin_id}"))
-
-
-class _UnavailablePet:
-    async def select_image(
-        self,
-        _selection: PetImageSelection,
-    ) -> QueryResult[object]:
-        raise DataUnavailableError
-
-
-def _context(text: str = "") -> MessageInputContext:
+def _context(
+    text: str = "橱窗",
+    *,
+    platform: Platform = Platform.QQ_OFFICIAL,
+) -> MessageInputContext:
     actor = ActorRef(
-        Platform.QQ_OFFICIAL,
-        "user-openid",
-        account_id="app-id",
+        platform,
+        "1001" if platform is Platform.ONEBOT else "member-openid",
+        "member",
+        "group-openid",
+        "official-app",
+    )
+    conversation = ConversationRef(
+        platform,
+        "group",
+        "group-openid",
+        "official-app",
     )
     return MessageInputContext(
         IncomingMessageRef(
-            platform=Platform.QQ_OFFICIAL,
-            actor=actor,
-            conversation=ConversationRef(
-                Platform.QQ_OFFICIAL,
-                "private",
-                actor.id,
-                account_id=actor.account_id,
-            ),
-            message_id="message-id",
-            text=text,
+            platform,
+            actor,
+            conversation,
+            f"message-{text}",
+            text,
         ),
-        mentions_bot=False,
+        mentions_bot=True,
     )
 
 
@@ -159,122 +74,376 @@ def _text(message: OutboundMessage) -> str:
     return part.text
 
 
+def _dependencies(
+    *, linked: bool = True
+) -> tuple[
+    Mock,
+    Mock,
+    Mock,
+    PortableQuerySessions,
+    ActorRef,
+]:
+    onebot = ActorRef(Platform.ONEBOT, "1001")
+    service = Mock()
+    pet = Mock()
+    identity = Mock()
+    identity.canonical_actor.return_value = (
+        onebot if linked else _context().message.actor
+    )
+    return service, pet, identity, PortableQuerySessions(), onebot
+
+
 def _operations(
-    service: _FakeLuckySkinWindow,
+    service: Mock,
+    pet: Mock,
+    identity: Mock,
     sessions: PortableQuerySessions,
-    pet: object | None = None,
-):
-    return build_portable_lucky_skin_operations(
-        cast("LuckySkinWindowService", service),
-        cast("PetQueryService", pet or _FakePet()),
-        sessions,
+    *,
+    bound_player_id: int | None = 90002,
+) -> dict[str, _Operation]:
+    return cast(
+        "dict[str, _Operation]",
+        build_portable_lucky_skin_operations(
+            cast("LuckySkinWindowService", service),
+            cast("PetQueryService", pet),
+            cast("FeatureService", identity),
+            sessions,
+            PlayerIdResolver(
+                lambda value, _conversation: (
+                    int(value) if value.isdecimal() else {"示例账号": 90002}.get(value)
+                ),
+                lambda _actor: bound_player_id,
+            ),
+        ),
     )
 
 
 @pytest.mark.asyncio
-async def test_portable_lucky_window_uses_confirmation_delivery_gate() -> None:
-    service = _FakeLuckySkinWindow()
-    sessions = PortableQuerySessions()
-    context = _context("橱窗")
-    query = _operations(service, sessions)["seer.lucky_skin_window.query"]
-
-    confirmation = await query("橱窗", context)
-
-    assert isinstance(confirmation, OutboundMessage)
-    assert "是否继续" in _text(confirmation)
-    assert not sessions.recognizes_response("普通聊天", context)
-    assert sessions.recognizes_response("是", context)
-    selected = await sessions.select("是", context, allow_deferred=True)
-    assert isinstance(selected, PortableReply)
-    assert "正在查询" in _text(selected.message)
-    assert service.events == ["cache:user-openid"]
-
-    await selected.commit_delivery()
-    assert selected.follow_up is not None
-    final = await selected.follow_up()
-
-    assert isinstance(final, OutboundMessage)
-    assert _text(final) == "window result"
-    assert service.events[-2:] == [
-        "check:user-openid",
-        "render:user-openid:2026-09-14",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_portable_lucky_window_cached_result_opens_detail_menu() -> None:
-    service = _FakeLuckySkinWindow(cached=True)
-    sessions = PortableQuerySessions()
-    context = _context("橱窗")
-    query = _operations(service, sessions)["seer.lucky_skin_window.query"]
-
-    result = await query("橱窗", context)
-    selected = await sessions.select("1", context)
-
-    assert isinstance(result, OutboundMessage)
-    assert _text(result) == "window result"
-    assert isinstance(selected, OutboundMessage)
-    assert _text(selected) == "skin:101"
-
-
-@pytest.mark.asyncio
-async def test_lucky_window_detail_reports_unavailable_database() -> None:
-    service = _FakeLuckySkinWindow(cached=True)
-    sessions = PortableQuerySessions()
-    context = _context("橱窗")
-    query = _operations(service, sessions, _UnavailablePet())[
-        "seer.lucky_skin_window.query"
-    ]
-
-    await query("橱窗", context)
-    selected = await sessions.select("1", context)
-
-    assert isinstance(selected, OutboundMessage)
-    assert _text(selected) == DATABASE_UNAVAILABLE_MESSAGE
-
-
-@pytest.mark.asyncio
-async def test_portable_lucky_watch_commands_share_service_and_menu() -> None:
-    service = _FakeLuckySkinWindow()
-    sessions = PortableQuerySessions()
+async def test_unlinked_official_identity_uses_its_player_binding_for_query() -> None:
+    service, pet, identity, sessions, _ = _dependencies(linked=False)
+    service.cached_query.side_effect = LuckySkinWindowAccessError(
+        "只能查询你本人已配置的幸运橱窗账号。"
+    )
+    operations = _operations(service, pet, identity, sessions)
     context = _context()
-    operations = _operations(service, sessions)
 
-    assert set(operations) == {
-        "seer.lucky_skin_window.query",
-        "seer.lucky_skin_window.watch.list",
-        "seer.lucky_skin_window.watch.add",
-        "seer.lucky_skin_window.watch.remove",
-        "seer.lucky_skin_window.watch.clear",
-        "seer.lucky_skin_window.watch.reset",
-    }
+    reply = await operations["seer.lucky_skin_window.query"]("橱窗", context)
 
-    watch_list = await operations["seer.lucky_skin_window.watch.list"](
-        "关注橱窗",
-        context,
-    )
-    added = await operations["seer.lucky_skin_window.watch.add"](
-        "关注橱窗101",
-        context,
-    )
-    menu = await operations["seer.lucky_skin_window.watch.remove"](
-        "退订橱窗many",
-        context,
-    )
-    removed = await sessions.select("2", context)
-    cleared = await operations["seer.lucky_skin_window.watch.clear"](
-        "清空关注橱窗",
-        context,
-    )
-    reset = await operations["seer.lucky_skin_window.watch.reset"](
-        "重置关注橱窗",
-        context,
+    assert "只能查询你本人" in _text(reply)
+    service.cached_query.assert_called_once_with(
+        LuckySkinQuery(context.message.actor, None, 90002)
     )
 
-    assert _text(cast("OutboundMessage", watch_list)) == "watch list:user-openid"
-    assert _text(cast("OutboundMessage", added)) == "add:user-openid:101"
-    assert "皮肤甲" in _text(cast("OutboundMessage", menu))
-    assert isinstance(removed, OutboundMessage)
-    assert _text(removed) == "remove:user-openid:102"
-    assert _text(cast("OutboundMessage", cleared)) == "clear:user-openid"
-    assert _text(cast("OutboundMessage", reset)) == "reset:user-openid"
+
+@pytest.mark.asyncio
+async def test_unlinked_unbound_official_identity_still_requires_link() -> None:
+    service, pet, identity, sessions, _ = _dependencies(linked=False)
+    operations = _operations(
+        service,
+        pet,
+        identity,
+        sessions,
+        bound_player_id=None,
+    )
+
+    reply = await operations["seer.lucky_skin_window.query"]("橱窗", _context())
+
+    assert "关联官方账号" in _text(reply)
+    service.cached_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_configured_official_identity_uses_canonical_onebot_account() -> None:
+    service, pet, _features, sessions, onebot = _dependencies()
+    features = FeatureService({}, {}, frozenset())
+    features.register_identity_link(
+        official_app_id="official-app",
+        official_openid="member-openid",
+        onebot_qq_id=onebot.id,
+    )
+    result = LuckySkinWindowResult("2026-09-15", 90001, (), from_cache=True)
+    service.cached_query.return_value = result
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(
+        return_value=OutboundMessage.from_text("【幸运橱窗】")
+    )
+    operations = build_portable_lucky_skin_operations(
+        cast("LuckySkinWindowService", service),
+        cast("PetQueryService", pet),
+        features,
+        sessions,
+        PlayerIdResolver(lambda *_: None, lambda _actor: 90002),
+    )
+    context = _context()
+
+    reply = await operations["seer.lucky_skin_window.query"]("橱窗", context)
+
+    service.cached_query.assert_called_once_with(
+        LuckySkinQuery(context.message.actor, onebot)
+    )
+    assert isinstance(reply, OutboundMessage)
+    assert _text(reply) == "【幸运橱窗】"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_cached_query_uses_linked_account_and_skin_buttons(
+    platform: Platform,
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    result = LuckySkinWindowResult("2026-09-15", 90001, (), from_cache=True)
+    choice = QueryChoice(
+        "测试皮肤",
+        "101 / 1400101",
+        PetImageSelection(1400101, "测试皮肤", skin_id=101),
+    )
+    service.cached_query.return_value = result
+    service.detail_choices.return_value = (choice,)
+    service.result_message = AsyncMock(
+        return_value=OutboundMessage.from_text("【幸运橱窗】")
+    )
+    pet.select_image = AsyncMock(
+        return_value=QueryResult(reply=QueryReply(text="皮肤详情"))
+    )
+    operations = _operations(service, pet, identity, sessions)
+    context = _context(platform=platform)
+
+    menu = await operations["seer.lucky_skin_window.query"]("橱窗", context)
+    selected = await sessions.select("1", context)
+
+    service.cached_query.assert_called_once_with(
+        LuckySkinQuery(context.message.actor, onebot),
+    )
+    assert menu.prompt is not None
+    assert menu.prompt.choices[0].label == "测试皮肤"
+    assert selected is not None
+    assert _text(selected) == "皮肤详情"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_uncached_query_runs_only_after_confirmation(platform: Platform) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    result = LuckySkinWindowResult("2026-09-15", 90001, (), from_cache=False)
+    service.cached_query.return_value = None
+    service.query = AsyncMock(return_value=result)
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(
+        return_value=OutboundMessage.from_text("【幸运橱窗】")
+    )
+    operations = _operations(service, pet, identity, sessions)
+    context = _context(platform=platform)
+
+    confirmation = await operations["seer.lucky_skin_window.query"]("橱窗", context)
+    service.query.assert_not_awaited()
+    result_message = await sessions.select("1", context)
+
+    assert confirmation.prompt is not None
+    assert tuple(choice.label for choice in confirmation.prompt.choices) == (
+        "确认查询",
+        "取消查询",
+        "退出",
+    )
+    service.query.assert_awaited_once_with(
+        LuckySkinQuery(context.message.actor, onebot),
+    )
+    assert result_message is not None
+    assert _text(result_message) == "【幸运橱窗】"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_cancelled_query_never_logs_in(platform: Platform) -> None:
+    service, pet, identity, sessions, _ = _dependencies()
+    service.cached_query.return_value = None
+    service.query = AsyncMock()
+    context = _context(platform=platform)
+    await _operations(service, pet, identity, sessions)["seer.lucky_skin_window.query"](
+        context.text, context
+    )
+    cancelled = await sessions.select("2", context)
+    assert cancelled is not None
+    assert "已取消" in _text(cancelled)
+    service.query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reference", ["90002", "示例账号", ""])
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_target_query_preserves_account_through_confirmation(
+    reference: str,
+    platform: Platform,
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    context = _context(f"橱窗{reference}", platform=platform)
+    if not reference:
+        context = replace(
+            context,
+            message=replace(
+                context.message,
+                direct_mentions=(replace(context.message.actor, id="member-target"),),
+            ),
+        )
+    result = LuckySkinWindowResult("2026-09-15", 90002, (), from_cache=False)
+    service.cached_query.return_value = None
+    service.query = AsyncMock(return_value=result)
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(return_value=OutboundMessage.from_text("result"))
+    await _operations(service, pet, identity, sessions)["seer.lucky_skin_window.query"](
+        context.text, context
+    )
+    expected = LuckySkinQuery(context.message.actor, onebot, 90002)
+    service.cached_query.assert_called_once_with(expected)
+    service.query.assert_not_awaited()
+    await sessions.select("1", context)
+    service.query.assert_awaited_once_with(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("selection", ["2", "0"])
+async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
+    platform: Platform,
+    selection: str,
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    service.cached_query.return_value = None
+    service.query = AsyncMock(
+        return_value=LuckySkinWindowResult("2026-09-15", 90002, (), from_cache=False),
+    )
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(return_value=OutboundMessage.from_text("result"))
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: (
+            PlayerReferenceChoice(90001, "示例甲"),
+            PlayerReferenceChoice(90002, "示例乙"),
+        ),
+    )
+    operations = build_portable_lucky_skin_operations(
+        cast("LuckySkinWindowService", service),
+        cast("PetQueryService", pet),
+        cast("FeatureService", identity),
+        sessions,
+        resolver,
+    )
+    context = _context("橱窗示例", platform=platform)
+    menu = await operations["seer.lucky_skin_window.query"](context.text, context)
+    assert isinstance(menu, OutboundMessage)
+    assert "示例甲" in _text(menu) and "示例乙" in _text(menu)
+    service.cached_query.assert_not_called()
+    service.query.assert_not_awaited()
+    await sessions.select(selection, context)
+    if selection == "0":
+        service.cached_query.assert_not_called()
+        assert sessions.active_prompt(context) is None
+    else:
+        expected = LuckySkinQuery(context.message.actor, onebot, 90002)
+        service.cached_query.assert_called_once_with(expected)
+        service.query.assert_not_awaited()
+        await sessions.select("1", context)
+        service.query.assert_awaited_once_with(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_watch_operations_reuse_linked_onebot_preferences(
+    platform: Platform,
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    item = LuckySkinWatchItem(101, 1400101, "测试皮肤")
+    service.watch_list_message.return_value = "关注列表"
+    service.resolve_watch_candidates.return_value = (item,)
+    service.watch_change_message.side_effect = lambda _actor, selected, *, watched: (
+        f"{'已关注' if watched else '已取消关注'}：{selected.name}"
+    )
+    service.watch_clear_message.return_value = "已清空关注皮肤。"
+    service.watch_reset_message.return_value = "已恢复 TOML 初始关注列表。"
+    operations = _operations(service, pet, identity, sessions)
+
+    replies = (
+        await operations["seer.lucky_skin_window.watch.list"](
+            "关注橱窗", _context("关注橱窗", platform=platform)
+        ),
+        await operations["seer.lucky_skin_window.watch.add"](
+            "关注橱窗测试", _context("关注橱窗测试", platform=platform)
+        ),
+        await operations["seer.lucky_skin_window.watch.remove"](
+            "取消关注橱窗测试", _context("取消关注橱窗测试", platform=platform)
+        ),
+        await operations["seer.lucky_skin_window.watch.clear"](
+            "清空关注橱窗", _context("清空关注橱窗", platform=platform)
+        ),
+        await operations["seer.lucky_skin_window.watch.reset"](
+            "重置关注橱窗", _context("重置关注橱窗", platform=platform)
+        ),
+    )
+
+    assert tuple(_text(reply) for reply in replies) == (
+        "关注列表",
+        "已关注：测试皮肤",
+        "已取消关注：测试皮肤",
+        "已清空关注皮肤。",
+        "已恢复 TOML 初始关注列表。",
+    )
+    assert service.resolve_watch_candidates.call_args_list[0].args == (
+        onebot,
+        "测试",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_ambiguous_watch_change_uses_named_selection_buttons(
+    platform: Platform,
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    candidates = (
+        LuckySkinWatchItem(101, 1400101, "皮肤甲"),
+        LuckySkinWatchItem(102, 1400102, "皮肤乙"),
+    )
+    service.resolve_watch_candidates.return_value = candidates
+    service.watch_change_message.return_value = "已关注：皮肤乙"
+    operations = _operations(service, pet, identity, sessions)
+    context = _context("关注橱窗皮肤", platform=platform)
+
+    menu = await operations["seer.lucky_skin_window.watch.add"]("关注橱窗皮肤", context)
+    selected = await sessions.select("2", context)
+
+    assert menu.prompt is not None
+    assert tuple(choice.label for choice in menu.prompt.choices) == (
+        "皮肤甲",
+        "皮肤乙",
+        "退出",
+    )
+    service.watch_change_message.assert_called_once_with(
+        onebot,
+        candidates[1],
+        watched=True,
+    )
+    assert selected is not None
+    assert _text(selected) == "已关注：皮肤乙"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "text"),
+    [
+        ("list", "关注橱窗"),
+        ("add", "关注橱窗测试"),
+        ("remove", "取消关注橱窗测试"),
+        ("clear", "清空关注橱窗"),
+        ("reset", "重置关注橱窗"),
+    ],
+)
+async def test_unlinked_identity_cannot_read_or_change_watch_preferences(
+    action: str,
+    text: str,
+) -> None:
+    service, pet, identity, sessions, _ = _dependencies(linked=False)
+    reply = await _operations(service, pet, identity, sessions)[
+        f"seer.lucky_skin_window.watch.{action}"
+    ](text, _context(text))
+    assert "关联官方账号" in _text(reply)
+    assert service.mock_calls == []

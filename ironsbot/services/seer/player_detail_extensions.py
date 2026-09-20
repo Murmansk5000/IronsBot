@@ -22,6 +22,7 @@ class PlayerDetailActionRequest:
     player_id: int
     actor: ActorRef
     conversation: ConversationRef
+    can_manage: bool = False
 
 
 PlayerDetailActionQuery = Callable[[PlayerDetailActionRequest], Awaitable[QueryReply]]

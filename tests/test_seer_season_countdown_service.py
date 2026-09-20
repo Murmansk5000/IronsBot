@@ -68,12 +68,8 @@ def test_format_season_countdown_uses_configured_autocard_time(
 ) -> None:
     config = SeasonCountdownConfig(
         autocard_name="群星牌S1赛季",
-        autocard_start_time=datetime(
-            2026, 6, 20, 10, 0, 0, tzinfo=CHINA_TZ
-        ),
-        autocard_end_time=datetime(
-            2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ
-        ),
+        autocard_start_time=datetime(2026, 6, 20, 10, 0, 0, tzinfo=CHINA_TZ),
+        autocard_end_time=datetime(2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ),
     )
     monkeypatch.setattr(
         season_countdown,

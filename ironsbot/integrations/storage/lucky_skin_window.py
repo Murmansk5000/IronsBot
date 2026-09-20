@@ -69,8 +69,7 @@ class SqliteLuckySkinWindowCache:
     def get(self, *, player_id: int) -> tuple[int, ...] | None:
         with self._database.connect() as connection:
             row = connection.execute(
-                "SELECT skin_ids_json FROM lucky_skin_window_cache "
-                "WHERE player_id = ?",
+                "SELECT skin_ids_json FROM lucky_skin_window_cache WHERE player_id = ?",
                 (player_id,),
             ).fetchone()
         if row is not None and (skin_ids := _parse_skin_ids(row[0])) is not None:
@@ -80,8 +79,7 @@ class SqliteLuckySkinWindowCache:
     def _get_current(self, *, player_id: int) -> tuple[int, ...] | None:
         with self._database.connect() as connection:
             row = connection.execute(
-                "SELECT skin_ids_json FROM lucky_skin_window_cache "
-                "WHERE player_id = ?",
+                "SELECT skin_ids_json FROM lucky_skin_window_cache WHERE player_id = ?",
                 (player_id,),
             ).fetchone()
         return None if row is None else _parse_skin_ids(row[0])

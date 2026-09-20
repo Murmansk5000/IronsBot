@@ -43,7 +43,7 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 - Semantic owner: SeerAPI 负责发布 asset repository revision 与 manifest；
   IronsBot 的 Seer-data database adapter 负责读取并验证发布元数据；
   `HttpSeerImageSource` 只按已验证 revision 构造 URL。
-- Reused contracts: `render_asset_manifest`、`ironsbot_metadata`、
+- Reused contracts: `render_asset_manifest`、`seerapi_metadata`、
   `SeerDatabase` 的发布版本/可用范围、`SeerImageSource`、`SeerAssetStore` 和
   `FileRenderCache`。
 - Adapter boundary: 服务与 presenter 继续只接收 `SeerImageSource`；HTTP URL

@@ -41,6 +41,7 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 PLAYER_ID = 813_824_069
+MASTER_FOUND_RANK = 8
 _TEST_STAGE_TIMEOUT_SECONDS = 0.01
 _CACHED_AT = 1234567890
 
@@ -64,6 +65,19 @@ async def test_season_database_failure_preserves_peak_base_data(
             side_effect=DataUnavailableError("巅峰赛季数据读取失败")
         ),
         fetch_peak_summary=AsyncMock(),
+        fetch_master_peak_summary=AsyncMock(
+            return_value=PeakSeasonRankSummary.from_results(
+                {
+                    "master_peak": RankLookupResult(
+                        title="大师赛季榜",
+                        score_name="段位分",
+                        rank=MASTER_FOUND_RANK,
+                        score=300_020,
+                        queried=True,
+                    )
+                }
+            )
+        ),
     )
     local = SimpleNamespace(
         config=SimpleNamespace(enabled=True), upsert_metrics=AsyncMock()
@@ -80,7 +94,8 @@ async def test_season_database_failure_preserves_peak_base_data(
     assert "巅峰赛季数据读取失败" in reply.text
     assert "未上榜" not in reply.text
     assert not reply.complete
-    assert all(result.failure for result in reply.rank_lookups)
+    assert all(result.failure for result in reply.rank_lookups[:3])
+    assert reply.rank_lookups[3].rank == MASTER_FOUND_RANK
     rank.fetch_peak_summary.assert_not_awaited()
     local.upsert_metrics.assert_not_awaited()
 
@@ -96,6 +111,7 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
     rank = SimpleNamespace(
         fetch_player_summary=AsyncMock(),
         fetch_peak_summary=AsyncMock(),
+        fetch_master_peak_summary=AsyncMock(),
         fetch_autocard_summary=AsyncMock(),
         current_peak_sub_key=lambda: 7,
     )
@@ -114,6 +130,7 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
         game.send_and_wait,
         rank.fetch_player_summary,
         rank.fetch_peak_summary,
+        rank.fetch_master_peak_summary,
         rank.fetch_autocard_summary,
         local.upsert_metrics,
     ):
@@ -121,6 +138,72 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
     assert reply.rank_lookups
     assert all(result.failure == "查询超时" for result in reply.rank_lookups)
     assert not reply.complete
+
+
+@pytest.mark.asyncio
+async def test_master_rank_starts_while_personal_peak_packet_is_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packet_started = asyncio.Event()
+    release_packet = asyncio.Event()
+    master_started = asyncio.Event()
+
+    async def peak_packet(*_args: Any, **_kwargs: Any) -> UnityPeakFetchResult:
+        packet_started.set()
+        await release_packet.wait()
+        return UnityPeakFetchResult(
+            UnityPeakInfo(),
+            frozenset(),
+            mode_errors=(
+                ("standard", "查询超时"),
+                ("wild", "查询超时"),
+                ("expert", "查询超时"),
+            ),
+        )
+
+    master_result = RankLookupResult(
+        title="大师赛季榜",
+        score_name="段位分",
+        rank=MASTER_FOUND_RANK,
+        score=300_020,
+        queried=True,
+    )
+
+    async def master_summary(*_args: Any, **_kwargs: Any) -> PeakSeasonRankSummary:
+        master_started.set()
+        return PeakSeasonRankSummary.from_results({"master_peak": master_result})
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_peak_partial",
+        peak_packet,
+    )
+    rank = SimpleNamespace(
+        current_peak_sub_key=lambda: 7,
+        fetch_peak_summary=AsyncMock(return_value=PeakSeasonRankSummary.empty()),
+        fetch_master_peak_summary=master_summary,
+    )
+    local = SimpleNamespace(
+        config=SimpleNamespace(enabled=False),
+        upsert_metrics=AsyncMock(return_value=LocalRankSummary()),
+    )
+    task = asyncio.create_task(
+        fetch_player_shortcut_reply(
+            _dependencies(rank, local),
+            SimpleNamespace(
+                get_user_info=AsyncMock(return_value=SimpleNamespace(nick="tester"))
+            ),
+            command=PlayerShortcutCommand(kind="peak", player_id=PLAYER_ID),
+            player_id=PLAYER_ID,
+        )
+    )
+
+    await asyncio.wait_for(packet_started.wait(), timeout=1)
+    await asyncio.wait_for(master_started.wait(), timeout=1)
+    release_packet.set()
+    reply = await task
+
+    assert reply.rank_lookups[3] is master_result
+    assert reply.rank_lookups[3].rank == MASTER_FOUND_RANK
 
 
 def _dependencies(
@@ -211,6 +294,24 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
                 current_peak_sub_key=7,
                 run_lookup_jobs=runner,
                 **kwargs,
+            )
+
+        async def fetch_master_peak_summary(
+            self,
+            _game: object,
+            _player_id: int,
+            **_kwargs: Any,
+        ) -> PeakSeasonRankSummary:
+            return PeakSeasonRankSummary.from_results(
+                {
+                    "master_peak": RankLookupResult(
+                        title="大师赛季榜",
+                        score_name="段位分",
+                        rank=5,
+                        score=300_010,
+                        queried=True,
+                    )
+                }
             )
 
     async def collection_base(*_args: Any) -> UnityPartOneInfo:
@@ -520,7 +621,10 @@ async def test_detail_completeness_uses_all_requested_stages(
             )
         ),
         fetch_peak_summary=AsyncMock(
-            return_value=PeakSeasonRankSummary(result, result, result)
+            return_value=PeakSeasonRankSummary(result, result, result, result)
+        ),
+        fetch_master_peak_summary=AsyncMock(
+            return_value=PeakSeasonRankSummary.from_results({"master_peak": result})
         ),
         fetch_autocard_summary=AsyncMock(return_value=result),
         current_peak_sub_key=lambda: 7,

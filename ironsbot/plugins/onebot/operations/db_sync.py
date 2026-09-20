@@ -5,6 +5,10 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -12,12 +16,15 @@ from nonebot.rule import Rule
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
-    PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
+from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
+)
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.help_visibility import superuser_help_visible
 from ironsbot.services.operations.data_sync_commands import (
@@ -25,18 +32,12 @@ from ironsbot.services.operations.data_sync_commands import (
     is_force_data_sync_command,
     is_manual_data_sync_command,
 )
-from ironsbot.services.portable_operational_commands import (
-    build_portable_data_sync_operations,
-)
-from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
+    from nonebot.typing import T_State
+
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.operations.data_sync import DataSyncService
-    from ironsbot.services.operations.scheduler import Scheduler
-    from ironsbot.services.operations.startup import StartupNoticeService
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="数据更新",
@@ -47,44 +48,69 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
 )
 
-async def _start_data_sync(
-    *,
-    service: DataSyncService,
-    startup_notice: StartupNoticeService,
-    scheduler: Scheduler,
-) -> None:
-    startup_notice.add(
-        "startup_data_sync",
-        "startup data sync notice",
-        await service.startup(scheduler),
-    )
+DATA_SYNC_FORCE_STATE_KEY = "data_sync_force"
+DATA_SYNC_ACTION_NAMESPACE = "data_sync_action"
 
 
 async def _is_manual_sync_command(event: Event) -> bool:
     return is_manual_data_sync_command(event.get_plaintext())
 
 
-def _install(
-    registry: MatcherFactory,
-    service: DataSyncService,
-    query_sessions: PortableQuerySessions,
-) -> None:
-    operations = build_portable_data_sync_operations(service, query_sessions)
+def _is_force_manual_sync_event(event: Event) -> bool:
+    return is_force_data_sync_command(event.get_plaintext())
 
-    async def operation(
-        text: str,
-        context: MessageInputContext,
-    ) -> PortableReply:
-        operation_id = (
-            "db_sync.force_update"
-            if is_force_data_sync_command(text)
-            else "db_sync.update"
+
+def _install(registry: MatcherFactory, service: DataSyncService) -> None:
+    async def handle_sync(matcher: Matcher, event: MessageEvent) -> None:
+        force = _is_force_manual_sync_event(event)
+        message, should_run = await service.prepare_manual(
+            force=force,
+            progress=partial(send_event_reply, matcher, event),
         )
-        result = await operations[operation_id](text, context)
-        if not isinstance(result, PortableReply):
-            msg = "data sync operation must use delivery-aware replies"
-            raise TypeError(msg)
-        return result
+        if not should_run:
+            await finish_event_reply(
+                matcher,
+                event,
+                message,
+            )
+            return
+        matcher.state[DATA_SYNC_FORCE_STATE_KEY] = force
+        await enter_event_reply_conversation(
+            matcher,
+            event,
+            namespace=DATA_SYNC_ACTION_NAMESPACE,
+            handlers=[bind_async(handle_sync_action)],
+            reply_check=lambda reply: _is_manual_action_reply(reply, service),
+            prompt=message,
+        )
+
+    async def handle_sync_action(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        choice = event.get_plaintext().strip()
+        if choice == "0":
+            await finish_event_reply(matcher, event, "已取消更新。")
+            return
+        force = bool(state.get(DATA_SYNC_FORCE_STATE_KEY, False))
+        action = service.manual_action_for_choice(choice, force=force)
+        if action is None:
+            await finish_event_reply(
+                matcher,
+                event,
+                "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
+            )
+            return
+        await finish_event_reply(
+            matcher,
+            event,
+            await service.run_manual(
+                action=action,
+                force=force,
+                progress=partial(send_event_reply, matcher, event),
+            ),
+        )
 
     matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -96,12 +122,13 @@ def _install(
         priority=registry.priority("db_sync"),
         block=True,
     )
-    matcher.append_handler(
-        make_portable_query_handler(
-            operation,
-            query_sessions,
-            ActionDefinition("data_sync", "数据更新"),
-        )
+    matcher.append_handler(handle_sync)
+
+
+def _is_manual_action_reply(event: MessageEvent, service: DataSyncService) -> bool:
+    choice = event.get_plaintext().strip()
+    return choice == "0" or (
+        service.manual_action_for_choice(choice, force=False) is not None
     )
 
 
@@ -109,11 +136,8 @@ def plugin_contribution(
     *,
     service: DataSyncService,
     features: FeatureService,
-    startup_notice: StartupNoticeService,
-    scheduler: Scheduler,
-    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
-    """Declare admin data-sync commands and the configured startup sync."""
+    """Declare the OneBot administrator commands for application-owned sync."""
 
     return PluginContribution(
         id="db_sync",
@@ -125,24 +149,7 @@ def plugin_contribution(
             visible=partial(superuser_help_visible, features=features),
         ),
         commands=data_sync_command_contracts(),
-        install=partial(
-            _install,
-            service=service,
-            query_sessions=query_sessions,
-        ),
-        hooks=PluginHooks(
-            startup=(
-                (
-                    "db_sync",
-                    partial(
-                        _start_data_sync,
-                        service=service,
-                        startup_notice=startup_notice,
-                        scheduler=scheduler,
-                    ),
-                ),
-            ),
-        ),
+        install=partial(_install, service=service),
     )
 
 
@@ -152,8 +159,5 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             service=context.resources.data_sync,
             features=context.resources.features,
-            startup_notice=context.resources.startup_notice,
-            scheduler=context.scheduler,
-            query_sessions=context.resources.query_sessions,
         ),
     )

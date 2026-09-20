@@ -27,8 +27,11 @@ from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService, _chat_
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
-from tests.helpers.ai import FakeAiCompletionClient, ai_config
-from tests.helpers.fake_official_platform import FakeOfficialPlatform
+from tests.helpers.ai import FakeAiCompletionClient, configured_ai_config
+from tests.helpers.fake_official_platform import (
+    RESTRICTED_CAPABILITIES,
+    FakeOfficialPlatform,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,6 +43,9 @@ NOW = datetime(2026, 9, 5, tzinfo=timezone.utc)
 OFFICIAL = Platform.QQ_OFFICIAL
 GROUP = ConversationRef(OFFICIAL, "group", "group:opaque")
 ACTOR = ActorRef(OFFICIAL, "member:opaque", "member", GROUP.id)
+ADMIN_GROUP = ConversationRef(OFFICIAL, "group", "admin:opaque")
+OWNER = ActorRef(OFFICIAL, "owner:opaque")
+OWNER_PRIVATE = ConversationRef(OFFICIAL, "private", OWNER.id)
 
 
 def _service(
@@ -50,7 +56,11 @@ def _service(
     features: FeatureService | None = None,
     result: AiResponseResult | None = None,
 ) -> AiService:
-    config = ai_config(memory=True, history_turns=3)
+    config = configured_ai_config(
+        api_key="test-only",
+        memory=True,
+        history_turns=3,
+    )
     policy = features or FeatureService({}, {}, frozenset())
     delivery = ProactiveMessageDelivery(
         transport or FakeOfficialPlatform(NOW),
@@ -258,3 +268,46 @@ async def test_ai_error_visibility_and_restricted_admin_notice(
     assert reply == (REQUEST_FAILED_REPLY if admin else None)
     assert transport.attempts == []
     assert "skipped unsupported conversation: platform=qq_official" in caplog.text
+    assert "owner:opaque" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ai_failure_notifies_only_official_admin_targets(
+    tmp_path: Path,
+) -> None:
+    transport = FakeOfficialPlatform(
+        NOW,
+        capabilities=replace(
+            RESTRICTED_CAPABILITIES,
+            can_send_proactively=True,
+        ),
+    )
+    features = FeatureService(
+        {ADMIN_GROUP: frozenset({"admin_notice"})},
+        {},
+        frozenset({OWNER}),
+    )
+    service = _service(
+        tmp_path,
+        [],
+        transport=transport,
+        features=features,
+        result=AiResponseResult(
+            status_code=500,
+            error_kind="http",
+            error_detail="test failure",
+        ),
+    )
+
+    reply = await service.chat_reply(
+        actor=ACTOR,
+        conversation=GROUP,
+        prompt="ordinary group query",
+    )
+
+    assert reply is None
+    assert [conversation for conversation, _message in transport.attempts] == [
+        OWNER_PRIVATE,
+        ADMIN_GROUP,
+    ]
+    assert GROUP not in {conversation for conversation, _message in transport.attempts}

@@ -8,7 +8,7 @@ from nonebot import get_bots
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import BotRoutingConfig
@@ -38,13 +38,10 @@ class BotRouter:
             resolve = self.references.resolve_user
 
         for target_ref, bot_ref in routes.items():
-            if (
-                resolve(
-                    target_ref,
-                    location=f"messaging.bot_routing.{conversation.kind}s.{target_ref}",
-                )
-                == int(conversation.id)
-            ):
+            if resolve(
+                target_ref,
+                location=f"messaging.bot_routing.{conversation.kind}s.{target_ref}",
+            ) == int(conversation.id):
                 return self.config.resolve_bot_reference(bot_ref)
         return None
 
@@ -59,8 +56,8 @@ class BotRouter:
             if bot := connected.get(bot_id):
                 return bot
             logger.warning(
-                "configured default bot is not connected: bot_self_id={}",
-                bot_id,
+                "configured default bot is not connected: bot_ref={}",
+                reference_digest(str(bot_id)),
             )
         return None
 
@@ -82,11 +79,11 @@ class BotRouter:
             if bot := connected.get(routed_bot_id):
                 return bot
             logger.warning(
-                "routed bot is not connected: target_type={} target_id={} "
-                "bot_self_id={}; falling back to default bot",
+                "routed bot is not connected: target_type={} target_ref={} "
+                "bot_ref={}; falling back to default bot",
                 conversation.kind,
-                conversation.id,
-                routed_bot_id,
+                reference_digest(conversation.id),
+                reference_digest(str(routed_bot_id)),
             )
 
         default_bot_id = (
@@ -98,15 +95,15 @@ class BotRouter:
             if bot := connected.get(default_bot_id):
                 return bot
             logger.warning(
-                "default bot fallback is not connected: target_type={} target_id={} "
-                "bot_self_id={}; delivery will fail",
+                "default bot fallback is not connected: target_type={} target_ref={} "
+                "bot_ref={}; delivery will fail",
                 conversation.kind,
-                conversation.id,
-                default_bot_id,
+                reference_digest(conversation.id),
+                reference_digest(str(default_bot_id)),
             )
         logger.warning(
-            "no configured OneBot bot is available: target_type={} target_id={}",
+            "no configured OneBot bot is available: target_type={} target_ref={}",
             conversation.kind,
-            conversation.id,
+            reference_digest(conversation.id),
         )
         return None

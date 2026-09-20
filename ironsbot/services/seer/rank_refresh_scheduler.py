@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import scheduled_clock_time, second_of_day
 from ironsbot.services.operations.scheduler import JobRegistry
 
@@ -24,9 +25,7 @@ def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) 
         return True
 
     current_time = now or datetime.now(timezone.utc).astimezone()
-    current = (
-        (current_time.hour * 60 + current_time.minute) * 60 + current_time.second
-    )
+    current = (current_time.hour * 60 + current_time.minute) * 60 + current_time.second
     start = second_of_day(
         rank_config.active_start,
         error_message="invalid active start",
@@ -91,10 +90,13 @@ async def _scheduled_rank_page_refresh(
         background=True,
         max_parallelism=parallelism,
     )
-    workers = ",".join(
-        f"{user_id}:{count}"
-        for user_id, count in sorted(result.worker_page_counts.items())
-    ) or "none"
+    workers = (
+        ",".join(
+            f"{reference_digest(str(user_id))}:{count}"
+            for user_id, count in sorted(result.worker_page_counts.items())
+        )
+        or "none"
+    )
     logger.info(
         "rank page cache auto refresh finished: "
         f"total={result.total}, success={result.success}, failed={result.failed}, "

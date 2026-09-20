@@ -104,6 +104,7 @@ DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "竞技段位",
     "狂野段位",
     "专家段位",
+    "大师段位",
 )
 MAX_RANK_DISPLAY_LIMIT = 100
 RANK_EXCLUSION_USER_ID_ERROR = "seer.rank.exclusions user IDs must be positive"
@@ -678,7 +679,6 @@ class ExternalReferencesConfig(BaseModel):
     weekly_preview: StrictBool = True
     bilibili_history: StrictBool = True
     peak_pool: StrictBool = True
-    peak_master_pool: StrictBool = True
     peak_vote: StrictBool = True
     peak_player_rank: StrictBool = True
     peak_suit_rank: StrictBool = True

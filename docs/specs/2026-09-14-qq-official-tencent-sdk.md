@@ -34,76 +34,10 @@ ordinary application resources.
 
 ## Known Platform Boundary
 
-Optional inbound identity metadata must remain typed at the integration boundary.
-Member mentions, role metadata and message sequence strings accept only nonblank
-strings; nulls, numbers and containers must not become fabricated values such as
-`"None"`. Invalid direct sequence metadata may fall back to a valid SDK scene
-sequence. Ignore malformed scene elements and retain AppID/group scope for valid
-mentions. This does not replace the SDK parser or reinterpret numeric QQ IDs.
-
-Metadata regression evidence: 83 focused tests and 3552 full-suite tests passed,
-with 7 skips and 2889 existing dependency warnings. Ruff, BasedPyright,
-compileall and diff checks passed. The source change adds 3 net production lines
-without another module or dependency; real candidate delivery remains unverified.
-
-The SDK release supports C2C and `GROUP_AT_MESSAGE_CREATE`. Tencent's Node SDK
-classifies `GROUP_MESSAGE_CREATE` as a private-domain bot event while
-public-domain bots receive only `GROUP_AT_MESSAGE_CREATE`. Receiving ordinary
-group messages therefore requires both private-domain platform authorization
-and explicit support in the Python SDK; it is not inferred from group
-configuration. Real AppID, group permission, passive reply, image upload, and
-proactive quota behavior remain external gates.
-
-## Tencent Reference Decision
-
-The transport design was checked against Tencent Connect's maintained reference
-projects rather than inferred from the retired static-token configuration:
-
-- [`qqbot-agent-sdk`](https://github.com/tencent-connect/qqbot-agent-sdk) is the
-  selected Python protocol dependency. IronsBot uses its `QQApiClient`,
-  `QQWebSocket`, `EventParser`, media upload DTOs, and persisted resume session.
-- [`qqbot-nodejs`](https://github.com/tencent-connect/qqbot-nodejs) is a design
-  reference for connection readiness, per-AppID token ownership, transport
-  middleware, Webhook support, richer media delivery, and the distinction
-  between public-domain `GROUP_AT_MESSAGE_CREATE` and private-domain
-  `GROUP_MESSAGE_CREATE`. It is not embedded as a Node sidecar because that
-  would duplicate the gateway, token, event, and send paths and enlarge the
-  runtime image.
-- [`openclaw-qqbot`](https://github.com/tencent-connect/openclaw-qqbot) is a
-  deployment reference for multi-account isolation, group mention policy, and
-  proactive-message diagnostics. Its AI-agent business layer is not copied into
-  IronsBot.
-
-The deprecated `token` field means a deployment-provided static token is no
-longer the credential contract. Each enabled account supplies an AppID and an
-AppSecret; the SDK obtains and refreshes the short-lived AccessToken internally.
-An AccessToken remains part of the wire protocol and must never be persisted in
-TOML.
-
-Features demonstrated by the Node references are adopted only when the Python
-transport and the bot application's platform permissions can support them:
-
-| Reference capability | IronsBot decision |
-| --- | --- |
-| WebSocket heartbeat, reconnect, and Resume | Implemented through the Python SDK. |
-| Independent token and session state per AppID | Implemented; cross-account fallback is forbidden. |
-| C2C and group-at passive replies | Implemented; real AppID acceptance remains required. |
-| Text and image/media delivery | Implemented through the shared outbound port. |
-| Ordinary non-at group messages | Private-domain permission-gated and unsupported by the pinned Python event surface; do not claim support from `requireMention=false` or configuration alone. |
-| Webhook transport | Deferred until a deployment needs public callback or horizontal scaling. |
-| C2C streaming, voice, video, and large files | Deferred; they are not required by the current IronsBot command contract. |
-| Proactive messages | Implemented behind an explicit account capability flag and still subject to platform quota. |
-
-Do not replace this transport with a Node subprocess merely to obtain a feature
-shown by a reference project. First add the missing protocol surface upstream or
-behind the existing Python integration boundary, then prove it with the live
-acceptance matrix.
-
-Do not monkey-patch `qqbot_agent_sdk.websocket.MESSAGE_EVENT_TYPES` or its
-`EventParser`. When the deployment receives private-domain permission, add
-`GROUP_MESSAGE_CREATE` in an audited SDK release, upgrade the pinned dependency,
-and keep IronsBot's integration limited to converting the resulting
-`InboundEvent`.
+The SDK release supports C2C and `GROUP_AT_MESSAGE_CREATE`. Receiving ordinary
+`GROUP_MESSAGE_CREATE` depends on both platform authorization and SDK support;
+it is not inferred from group configuration. Real AppID, group permission,
+passive reply, image upload, and proactive quota behavior remain external gates.
 
 ## Acceptance
 
@@ -129,5 +63,6 @@ commit `c66eec1b`; published digest:
 
 ## Rollback
 
-Revert the implementation commit and restore the previous optional adapter
-dependency. No TOML or SQLite migration is involved.
+Revert the implementation commit and its configuration/documentation changes as
+one unit. The removed NoneBot adapter is not a supported fallback and must not be
+restored as a second runtime path. No TOML or SQLite data migration is involved.

@@ -230,12 +230,10 @@ class MessagingService:
         if current is None:
             return "订阅选项已调整，请重新打开 TD。"
         option = current
+        if rejection := self._subscription_actor_rejection(conversation, option, actor):
+            return rejection
         if option.submenu_key is not None:
             return "请进入该账号的推送设置后选择订阅项。"
-        if option.requires_superuser(conversation.kind) and (
-            actor is None or not self._features.is_actor_superuser(actor)
-        ):
-            return "仅超级管理员可以修改动态提醒订阅。"
         for provider in self._subscription_submenu_providers:
             if message := provider.toggle_subscription(conversation, option):
                 return message
@@ -354,7 +352,7 @@ class MessagingService:
             return {
                 feature: {
                     private_conversation_for_actor(actor)
-                    for actor in self._features.actors_with_superusers(feature)
+                    for actor in self._features.private_actors_with_superusers(feature)
                 }
                 for feature in feature_keys
             }
@@ -414,6 +412,30 @@ class MessagingService:
             valid_unsubscription_keys=valid_unsubscriptions,
             valid_time_preferences=valid_times,
         )
+
+    def _subscription_actor_rejection(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        actor: ActorRef | None,
+    ) -> str | None:
+        if conversation.kind == "private" and (
+            actor is None or private_conversation_for_actor(actor) != conversation
+        ):
+            return "只能管理自己的私聊推送订阅。"
+        if actor is not None and not self._features.is_feature_allowed(
+            actor, conversation, option.feature
+        ):
+            return "当前没有管理该推送订阅的权限。"
+        if option.requires_superuser(conversation.kind) and (
+            actor is None or not self._features.is_actor_superuser(actor)
+        ):
+            return (
+                "仅超级管理员可以修改动态提醒订阅。"
+                if option.group_superuser_only and not option.superuser_only
+                else "仅超级管理员可以修改该推送订阅。"
+            )
+        return None
 
     def _all_subscription_options(
         self, conversation: ConversationRef

@@ -3,6 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
+import pytest
 from nonebot.adapters import Bot
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.internal.driver import Driver
@@ -43,6 +44,10 @@ class FakeDriver:
 @dataclass(frozen=True, slots=True)
 class FakeBot:
     self_id: int
+
+
+class _ResourceUnavailableError(RuntimeError):
+    pass
 
 
 def fake_driver() -> Driver:
@@ -102,6 +107,25 @@ def test_lifecycle_starts_resources_before_contributions() -> None:
     asyncio.run(lifecycle.startup())
 
     assert calls == ["resource", "plugin"]
+
+
+def test_resource_startup_failure_prevents_application_startup() -> None:
+    calls: list[str] = []
+
+    async def failing_resource() -> None:
+        calls.append("resource")
+        raise _ResourceUnavailableError
+
+    lifecycle = ApplicationLifecycle(
+        fake_driver(),
+        resource_startup_hooks=(("resource", failing_resource),),
+        startup_hooks=(("plugin", lambda: calls.append("plugin")),),
+    )
+
+    with pytest.raises(_ResourceUnavailableError):
+        asyncio.run(lifecycle.startup())
+
+    assert calls == ["resource"]
 
 
 def test_lifecycle_cancels_tasks_before_resources() -> None:

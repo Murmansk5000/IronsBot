@@ -1,24 +1,9 @@
 # Runtime Image Inventory
 
-Status: `verified` (published Linux candidate measured; live QQ acceptance pending)
+Status: `verified` (local Linux candidate included; published CI artifact pending)
 
 Target: bounded runtime packaging with verifiable size evidence. Owner:
 Dockerfile/build context and the existing release measurement step.
-
-## Current Evidence (2026-09-14)
-
-Workflow `34852716528` succeeded for `e0aaeb12`, including dependency audit,
-Linux build, offline entrypoint smoke, directory budgets and publication.
-The published image measures 259748177 bytes expanded on the CI engine;
-the fixed baseline measures 259738853 bytes on that engine (+9324 bytes).
-Runtime directories: `/app` 4480 KiB, site-packages 105948 KiB, fonts 19452 KiB.
-The exact digest and remaining connection/message gates are recorded in
-[QQ Official Live Acceptance](2026-09-14-qq-official-live-acceptance.md).
-This is not a compressed download-size measurement or a real QQ delivery test.
-
-The dated findings below retain their original evidence boundaries. Statements
-that publication was pending describe those earlier checkpoints, not the current
-candidate. Do not compare sizes from different Docker engines as a growth delta.
 
 ## Findings And Changes
 

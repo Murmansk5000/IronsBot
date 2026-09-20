@@ -30,9 +30,7 @@ def build_portable_pet_config_operation(
         sessions,
         QueryOperationSpec(
             parser=lambda text: (
-                None
-                if (parsed := parser(text)) is None
-                else parsed.argument
+                None if (parsed := parser(text)) is None else parsed.argument
             ),
             search=service.search,
             select=service.select,

@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.content import (
     CompactedDynamicContent,
@@ -18,7 +19,9 @@ from ironsbot.services.bilibili.hydration import (
 )
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_MENU_DEFAULT_LIMIT,
+    DynamicDetailSelection,
     DynamicMenuResult,
+    build_dynamic_detail_for_selection,
     build_dynamic_menu_text,
     dynamic_record_ids,
 )
@@ -39,7 +42,6 @@ if TYPE_CHECKING:
         DynamicHistoryRecord,
     )
     from ironsbot.services.bilibili.targets import BiliTargetService
-    from ironsbot.services.messaging.image_collage import ImageCollageService
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,6 @@ class BilibiliService:
     fetch_detail: DynamicDetailFetcher
     spawn: Callable[..., asyncio.Task[Any]]
     content_compactor: DynamicContentCompactor | None = None
-    image_collage: ImageCollageService | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)
@@ -197,9 +198,13 @@ class BilibiliService:
     ) -> DynamicMenuResult:
         query_uids = self.targets.query_uids(actor, conversation)
         logger.info(
-            "Bilibili dynamic menu query: actor=%s conversation=%s uids=%s",
-            actor,
-            conversation,
+            "Bilibili dynamic menu query: platform=%s actor_kind=%s actor_ref=%s "
+            "conversation_kind=%s conversation_ref=%s uids=%s",
+            actor.platform.value,
+            actor.kind,
+            reference_digest(actor.id),
+            conversation.kind,
+            reference_digest(conversation.id),
             query_uids,
         )
         if not query_uids:
@@ -228,21 +233,22 @@ class BilibiliService:
         if not records:
             return DynamicMenuResult(status="no_history")
 
-        logger.info(
-            "actor %s fetched Bilibili dynamic menu for %s",
-            actor,
-            query_uids,
-        )
         return DynamicMenuResult(
             status="ok",
             dynamic_ids=tuple(dynamic_record_ids(records)),
             prompt=build_dynamic_menu_text(records),
         )
 
-    def get_dynamic(self, dynamic_id: str) -> DynamicHistoryRecord | None:
-        """Return one persisted dynamic selected by its stable platform ID."""
-
-        return self.history.get(dynamic_id)
+    def select_dynamic(
+        self,
+        cached_ids: list[object],
+        raw_text: str,
+    ) -> DynamicDetailSelection:
+        return build_dynamic_detail_for_selection(
+            self.history,
+            cached_ids,
+            raw_text,
+        )
 
     async def prepare_dynamic_detail(
         self,

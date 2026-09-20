@@ -53,11 +53,7 @@ def extract_bili_login_cookie(
     response_cookies: Mapping[str, str],
     login_url: str = "",
 ) -> str:
-    cookies = {
-        key: value
-        for key, value in response_cookies.items()
-        if value
-    }
+    cookies = {key: value for key, value in response_cookies.items() if value}
     if login_url:
         cookies.update(
             {

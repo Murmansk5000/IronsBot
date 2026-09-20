@@ -306,8 +306,7 @@ def select_rank_page_refresh_targets(
         (candidate, group.coverage_deficit)
         for group in candidate_groups
         for candidate in group.candidates
-        if (candidate.target.rank_key, candidate.target.raw_start)
-        not in selected_keys
+        if (candidate.target.rank_key, candidate.target.raw_start) not in selected_keys
     ]
     remaining.sort(
         key=lambda item: _candidate_sort_key(
@@ -345,15 +344,9 @@ def filter_standard_rank_page_summaries(
         )
     }
     filtered = [
-        page
-        for page in pages
-        if (page.start_index, page.end_index) in standard_ranges
+        page for page in pages if (page.start_index, page.end_index) in standard_ranges
     ]
-    score_cutoff = (
-        rank_score_cutoff(config, rank_key)
-        if rank_key is not None
-        else None
-    )
+    score_cutoff = rank_score_cutoff(config, rank_key) if rank_key is not None else None
     if score_cutoff is None:
         return filtered
 

@@ -79,9 +79,7 @@ def headless_request_priority_scope(
 
 def current_headless_request_priority() -> HeadlessRequestPriorityState:
     current = _request_priority.get()
-    return current or HeadlessRequestPriorityState(
-        HeadlessRequestPriority.INTERACTIVE
-    )
+    return current or HeadlessRequestPriorityState(HeadlessRequestPriority.INTERACTIVE)
 
 
 @dataclass(slots=True)
@@ -142,7 +140,6 @@ class HeadlessWorkerSlot:
     user_id: int
     client: HeadlessPoolClient
     active: bool = False
-    active_label: str | None = None
     assignments: int = 0
     available_since: float = field(default_factory=monotonic)
 
@@ -200,18 +197,7 @@ class HeadlessRequestDispatcher:
     @property
     def idle_worker_count(self) -> int:
         return sum(
-            not worker.active and worker.game() is not None
-            for worker in self._workers
-        )
-
-    @property
-    def active_request_summaries(self) -> tuple[str, ...]:
-        """Human-readable active packet labels for administrator diagnostics."""
-
-        return tuple(
-            f"{worker.name}: {worker.active_label}"
-            for worker in self._workers
-            if worker.active and worker.active_label
+            not worker.active and worker.game() is not None for worker in self._workers
         )
 
     @property
@@ -285,7 +271,6 @@ class HeadlessRequestDispatcher:
                 self._pending.appendleft(request)
                 return
             worker.active = True
-            worker.active_label = request.label
             worker.assignments += 1
             request.active_worker = worker.name
             request.attempts += 1
@@ -315,10 +300,7 @@ class HeadlessRequestDispatcher:
         retained: deque[_PacketRequest] = deque()
         while self._pending:
             request = self._pending.popleft()
-            if (
-                request.priority_state.priority
-                is HeadlessRequestPriority.BACKGROUND
-            ):
+            if request.priority_state.priority is HeadlessRequestPriority.BACKGROUND:
                 if not request.future.done():
                     request.future.set_result(
                         _PacketOutcome(worker_user_id=None, error=error)
@@ -356,8 +338,7 @@ class HeadlessRequestDispatcher:
         candidates = [
             item
             for item in self._pending
-            if not item.future.cancelled()
-            and self._has_worker_for(item)
+            if not item.future.cancelled() and self._has_worker_for(item)
         ]
         if not candidates:
             return None
@@ -365,9 +346,7 @@ class HeadlessRequestDispatcher:
             candidates,
             key=lambda item: (
                 item.priority_state.priority,
-                item.workflow.sequence
-                if item.workflow is not None
-                else item.sequence,
+                item.workflow.sequence if item.workflow is not None else item.sequence,
                 item.sequence,
             ),
         )
@@ -420,7 +399,6 @@ class HeadlessRequestDispatcher:
                 )
         finally:
             worker.active = False
-            worker.active_label = None
             worker.available_since = monotonic()
             request.active_worker = None
             if retry and not request.future.done():
@@ -445,8 +423,7 @@ class HeadlessRequestDispatcher:
 
     def _has_healthy_alternative(self, request: _PacketRequest) -> bool:
         return any(
-            worker.name not in request.excluded_workers
-            and worker.game() is not None
+            worker.name not in request.excluded_workers and worker.game() is not None
             for worker in self._workers
         )
 
@@ -470,12 +447,6 @@ class PooledHeadlessGame:
     @property
     def is_logged_in(self) -> bool:
         return self._dispatcher.healthy_worker_count > 0
-
-    @property
-    def idle_worker_count(self) -> int:
-        """Current spare packet capacity, used to size one rank probe batch."""
-
-        return self._dispatcher.idle_worker_count
 
     @property
     def user_id(self) -> int:
