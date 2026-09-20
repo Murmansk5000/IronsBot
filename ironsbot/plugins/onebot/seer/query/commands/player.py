@@ -1,25 +1,27 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""OneBot transport boundary for player profiles and bindings."""
-
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves at runtime
+from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
-from ironsbot.integrations.onebot.rules import explicit_command, member_target_command
-from ironsbot.services.portable_player_commands import build_portable_player_operations
-from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailExtensionRegistry,
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import (
+    affix_command,
+    explicit_command,
+    member_target_command,
 )
+from ironsbot.services.identity_link_commands import (
+    IDENTITY_LINK_BEGIN,
+    IdentityLinkCommands,
+)
+from ironsbot.services.portable_player_commands import build_portable_player_operations
 from ironsbot.services.seer.player_query import (
     extract_player_binding_arg,
     extract_player_query_arg,
@@ -28,122 +30,158 @@ from ironsbot.services.seer.player_query import (
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-    from ironsbot.services.seer.player_service import PlayerService
+    from ironsbot.services.portable_reply import PortableOperation
 
 
-@dataclass(frozen=True, slots=True)
-class PlayerCommandDependencies:
-    player: PlayerService
-    features: FeatureService
-    detail_extensions: PlayerDetailExtensionRegistry = field(
-        default_factory=PlayerDetailExtensionRegistry
+async def _is_player_query_command(event: Event) -> bool:
+    return isinstance(event, MessageEvent) and (
+        extract_player_query_arg(event.get_plaintext()) is not None
     )
-    player_id_resolver: PlayerIdResolver | None = None
 
 
-async def _is_player_id_query(
-    dependencies: PlayerCommandDependencies,
-    event: Event,
-    _state: T_State,
-) -> bool:
-    if not isinstance(event, MessageEvent):
-        return False
-    argument = extract_player_query_arg(event.get_plaintext())
-    if argument is None:
-        return False
-    if not argument or argument.isdecimal():
-        return True
-    resolver = dependencies.player_id_resolver
+async def _is_binding_command(event: Event) -> bool:
+    return isinstance(event, MessageEvent) and (
+        extract_player_binding_arg(event.get_plaintext()) is not None
+    )
+
+
+async def _is_private_message(event: Event) -> bool:
+    return isinstance(event, PrivateMessageEvent)
+
+
+async def handle_identity_link_begin(
+    identity_links: IdentityLinkCommands,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
     context = message_input_context(event)
-    return resolver is not None and resolver.has_known_reference(
-        argument,
-        context.message.actor,
-        context.message.conversation,
+    await finish_event_reply(
+        matcher,
+        event,
+        await identity_links.begin_text(event.get_plaintext(), context),
     )
 
 
-async def _is_binding_command(event: Event, _state: T_State) -> bool:
-    return (
-        isinstance(event, MessageEvent)
-        and extract_player_binding_arg(event.get_plaintext()) is not None
+async def handle_identity_link_status(
+    identity_links: IdentityLinkCommands,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await finish_event_reply(
+        matcher,
+        event,
+        await identity_links.status_text(message_input_context(event)),
     )
+
+
+async def handle_identity_link_revoke(
+    identity_links: IdentityLinkCommands,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await finish_event_reply(
+        matcher,
+        event,
+        await identity_links.revoke_text(message_input_context(event)),
+    )
+
+
+def _install_portable_matcher(
+    group: SeerMatcherGroup,
+    *,
+    operation: PortableOperation,
+    command_id: str,
+    help_id: str,
+    rule: Rule,
+) -> None:
+    matcher = group.on_message(
+        policy=CommandPolicy.command(command_id, help_ids=(help_id,)),
+        rule=seer_feature_rule(group.features, "seer_player") & rule,
+        priority=group.matcher_priority("seer_player"),
+        block=True,
+    )
+    matcher.append_handler(make_portable_query_handler(operation, group.query_sessions))
 
 
 def install(group: SeerMatcherGroup) -> None:
-    dependencies = PlayerCommandDependencies(
-        group.resources.player,
-        group.features,
-        group.resources.player_detail_extensions,
-        group.player_id_resolver,
-    )
     operations = build_portable_player_operations(
-        dependencies.player,
+        group.resources.player,
         group.player_id_resolver,
         group.query_sessions,
         group.features,
-        dependencies.detail_extensions,
-        team_query=group.resources.team_query,
+        group.resources.player_detail_extensions,
     )
-    feature_rule = seer_feature_rule(group.features, "seer_player")
-    priority = group.matcher_priority("seer_player")
-
-    binding = group.on_message(
+    identity_begin_matcher = group.on_message(
         policy=CommandPolicy.command(
-            "seer_player_binding",
-            help_ids=("seer.player.bind",),
+            "identity_link_begin",
+            help_ids=("seer.player.identity.begin",),
         ),
-        rule=feature_rule & Rule(_is_binding_command) & member_target_command(),
-        priority=priority,
+        rule=seer_feature_rule(group.features, "seer_player")
+        & affix_command(IDENTITY_LINK_BEGIN)
+        & Rule(_is_private_message)
+        & explicit_command(),
+        priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    binding.append_handler(
-        make_portable_query_handler(
-            operations["seer.player.bind"],
-            group.query_sessions,
-            ActionDefinition("seer.player.bind", "绑定米米号"),
-        )
+    identity_begin_matcher.append_handler(
+        bind_async(handle_identity_link_begin, group.identity_links)
     )
 
-    unbind = group.on_fullmatch(
+    identity_status_matcher = group.on_fullmatch(
+        ("账号关联",),
+        policy=CommandPolicy.command(
+            "identity_link_status",
+            help_ids=("seer.player.identity.status",),
+        ),
+        rule=seer_feature_rule(group.features, "seer_player") & explicit_command(),
+        priority=group.matcher_priority("seer_player"),
+        block=True,
+    )
+    identity_status_matcher.append_handler(
+        bind_async(handle_identity_link_status, group.identity_links)
+    )
+
+    identity_revoke_matcher = group.on_fullmatch(
+        ("解除账号关联",),
+        policy=CommandPolicy.command(
+            "identity_link_revoke",
+            help_ids=("seer.player.identity.revoke",),
+        ),
+        rule=seer_feature_rule(group.features, "seer_player") & explicit_command(),
+        priority=group.matcher_priority("seer_player"),
+        block=True,
+    )
+    identity_revoke_matcher.append_handler(
+        bind_async(handle_identity_link_revoke, group.identity_links)
+    )
+
+    _install_portable_matcher(
+        group,
+        operation=operations["seer.player.bind"],
+        command_id="seer_player_binding",
+        help_id="seer.player.bind",
+        rule=Rule(_is_binding_command) & member_target_command(),
+    )
+    unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
         policy=CommandPolicy.command(
             "seer_player_binding",
             help_ids=("seer.player.unbind",),
         ),
-        rule=feature_rule & explicit_command(),
-        priority=priority,
+        rule=seer_feature_rule(group.features, "seer_player") & explicit_command(),
+        priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    unbind.append_handler(
+    unbind_matcher.append_handler(
         make_portable_query_handler(
             operations["seer.player.unbind"],
             group.query_sessions,
-            ActionDefinition("seer.player.unbind", "解绑米米号"),
-            reserve_session=False,
         )
     )
-
-    query = group.on_message(
-        policy=CommandPolicy.command(
-            "seer_player",
-            help_ids=("seer.player.query",),
-        ),
-        rule=feature_rule
-        & Rule(bind_async(_is_player_id_query, dependencies=dependencies))
-        & member_target_command(),
-        priority=priority,
-        block=True,
-    )
-    query.append_handler(
-        make_portable_query_handler(
-            operations["seer.player.query"],
-            group.query_sessions,
-            ActionDefinition(
-                "seer.player.info",
-                "米米号基础资料",
-                cooldown_key="seer_player",
-            ),
-        )
+    _install_portable_matcher(
+        group,
+        operation=operations["seer.player.query"],
+        command_id="seer_player",
+        help_id="seer.player.query",
+        rule=Rule(_is_player_query_command) & member_target_command(),
     )

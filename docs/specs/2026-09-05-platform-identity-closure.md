@@ -76,7 +76,7 @@ Inspected on 2026-09-05, including declarations, call sites and SQL ownership:
 | Phase 1 requirement | Authoritative code and verification |
 | --- | --- |
 | Feature/command identity | `core.feature_policy`, `core.command_catalog`, `core.platform`; the new invalid-context tests failed in seven cases before the fix and pass afterwards |
-| Cooldown and rate limits | `CommandCooldownService` keys by `(ActorRef, command_id)`; `BotMentionBlockService` keys by ActorRef; OneBot help hints now pass ConversationRef; AI error throttling intentionally keys by error class, not a user identity |
+| Cooldown and rate limits | `CommandCooldownService` keys by `(ActorRef, command_id)`; addressed-input hints key by `(ActorRef, ConversationRef)`; OneBot help hints pass `ConversationRef`; AI error throttling intentionally keys by error class, not a user identity |
 | Actor state | `player_bindings`, `player_query_limits`, `lucky_skin_watch`, and `ai_memory` repositories use ActorIdentityColumns, retaining platform/kind/id/scope in predicates and keys |
 | Conversation/mixed state | `push_subscriptions`, `bilibili_preferences`, `rank_display`, `team_resources`, `team_audit` repositories use typed public parameters and independent actor/conversation columns; no old integer-identity read path remains in these repositories |
 | Identity-free stores | Activity reminder/snapshot and lucky-skin daily cache records use activity/date/Seer-account keys; rank/player sample/lineup caches use Seer IDs; file/image caches use content keys. These are not missing QQ migrations |

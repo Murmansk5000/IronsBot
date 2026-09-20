@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.ai.client import AiRequestTimeoutError
 from ironsbot.services.ai.history import (
     HistoryMessage,
@@ -31,12 +32,11 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.ai.client import AiCompletionClient
     from ironsbot.services.ai.memory import AiMemoryStore
-    from ironsbot.services.ai.responses import AiResponseResult
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
 REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
 EMPTY_REPLY = "AI没有返回有效内容，请稍后再试。"
-MISSING_KEY_REPLY = "AI聊天还没有配置可用的 API Key。"
+MISSING_KEY_REPLY = "AI聊天还没有配置可用的提供商密钥。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 BILIBILI_SUMMARY_PROMPT_TEMPLATE = (
@@ -76,7 +76,7 @@ class AiService:
 
     @property
     def waiting_notice(self) -> bool:
-        return self._config.waiting_notice and self._config.ai_enabled
+        return self._config.waiting_notice and self._config.enabled
 
     def _can_show_admin_notice(
         self,
@@ -138,7 +138,7 @@ class AiService:
     ) -> AiIntentAction | None:
         if (
             not self._config.intent_actions_enabled
-            or not self._config.ai_enabled
+            or not self._config.enabled
             or not is_ai_intent_allowed(self._features, actor, conversation)
         ):
             return None
@@ -161,9 +161,9 @@ class AiService:
                 return None
 
             logger.info(
-                "AI intent action %s classified %s: %r",
+                "AI intent action %s classified actor_ref=%s: %r",
                 action.id or "<unnamed>",
-                actor,
+                reference_digest(actor.id),
                 completion.reply,
             )
             if reply_is_yes(completion.reply):
@@ -193,9 +193,9 @@ class AiService:
         max_chars: int,
     ) -> str | None:
         """Summarize a push without chat history, memory, or feature checks."""
-        if not self._config.ai_enabled:
+        if not self._config.enabled:
             logger.warning(
-                "Bilibili dynamic summary skipped: no AI endpoint key is configured"
+                "Bilibili dynamic summary skipped: no AI provider is configured"
             )
             return None
 
@@ -243,20 +243,20 @@ class AiService:
             )
         )
 
-    async def _complete(  # noqa: PLR0911
+    async def _complete(
         self,
         prompt: str,
         history: list[HistoryMessage],
         memory: list[HistoryMessage],
         source_context: str | None,
     ) -> _Completion:
-        if not self._config.ai_enabled:
+        if not self._config.enabled:
             await self._notify_admin_once(
                 "missing_api_key",
                 _append_notice_source(
-                    "AI聊天还没有配置可用的 API Key。\n"
-                    "请在 Unraid 容器变量或 .env.prod 中设置 "
-                    "AI_KEY_<端点名称大写>。",
+                    "AI聊天还没有配置 API Key。\n"
+                    "请在 Unraid 容器变量或 .env.prod 中设置至少一个 "
+                    "AI_KEY_<PROVIDER>。",
                     source_context,
                 ),
             )
@@ -277,6 +277,7 @@ class AiService:
                 "timeout",
                 _append_notice_source(
                     "AI聊天接口响应超时。\n"
+                    f"已配置提供商：{_configured_provider_summary(self._config)}\n"
                     f"超时时间：{self._config.timeout} 秒\n"
                     "请检查网络或适当调大 ai.timeout。",
                     source_context,
@@ -302,27 +303,12 @@ class AiService:
                 )
             )
 
-        if result.error_kind == "timeout":
-            await self._notify_admin_once(
-                "timeout",
-                _append_notice_source(
-                    "AI聊天接口响应超时。\n"
-                    f"端点：{result.endpoint or '未知'}\n"
-                    f"模型：{result.model or '未知'}\n"
-                    f"超时时间：{self._config.timeout} 秒\n"
-                    f"已尝试：{_format_attempts(result)}\n"
-                    "请检查网络或适当调大 ai.timeout。",
-                    source_context,
-                ),
-            )
-            return _Completion(error_reply=TIMEOUT_REPLY)
-
         if result.error_kind == "empty_reply":
             await self._notify_admin_once(
                 "empty_reply",
                 _append_notice_source(
                     "AI聊天接口返回了空内容。\n"
-                    f"端点：{result.endpoint or '未知'}\n"
+                    f"提供商：{result.provider or '未知'}\n"
                     f"模型：{result.model or '未知'}\n"
                     "请检查模型配置或稍后重试。",
                     source_context,
@@ -331,9 +317,7 @@ class AiService:
             return _Completion(error_reply=EMPTY_REPLY)
 
         logger.warning(
-            "AI chat API failed: endpoint=%s model=%s HTTP=%s detail=%s",
-            result.endpoint,
-            result.model,
+            "AI chat API failed: HTTP %s, %s",
             result.status_code,
             result.error_detail,
         )
@@ -346,12 +330,11 @@ class AiService:
             _append_notice_source(
                 "AI聊天接口异常。\n"
                 f"类型：{result.error_title}\n"
-                f"HTTP：{result.status_code or '无'}\n"
-                f"端点：{result.endpoint or '未知'}\n"
+                f"HTTP：{result.status_code}\n"
+                f"提供商：{result.provider or '未知'}\n"
                 f"模型：{result.model or '未知'}\n"
                 f"详情：{result.error_detail}\n"
-                f"已尝试：{_format_attempts(result)}\n"
-                "请检查 AI_KEY、账户额度、模型名和网络连接。",
+                "请检查对应 AI_KEY_<PROVIDER>、账户额度、模型名和网络连接。",
                 source_context,
             ),
         )
@@ -438,6 +421,10 @@ def _append_notice_source(message: str, source_context: str | None) -> str:
     return f"{message.rstrip()}\n\n触发来源：\n{source}" if source else message
 
 
+def _configured_provider_summary(config: AiConfig) -> str:
+    return "、".join(name for name, _provider in config.configured_providers)
+
+
 def _truncate_reply(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
@@ -446,13 +433,3 @@ def _truncate_reply(text: str, max_chars: int) -> str:
 
 def _truncate_plain_text(text: str, max_chars: int) -> str:
     return text.strip()[:max_chars].rstrip()
-
-
-def _format_attempts(result: "AiResponseResult") -> str:
-    if not result.attempts:
-        return "无"
-    return "；".join(
-        f"{attempt.endpoint}/{attempt.model}："
-        f"{attempt.error_title or attempt.error_detail or '失败'}"
-        for attempt in result.attempts
-    )

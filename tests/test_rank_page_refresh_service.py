@@ -178,9 +178,7 @@ def test_select_rank_page_refresh_targets_uses_partial_missing_ratio() -> None:
     )
 
     actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
-    assert actual == [
-        (REFRESH_REASON_STALE, 101, 200)
-    ]
+    assert actual == [(REFRESH_REASON_STALE, 101, 200)]
 
 
 def test_select_rank_page_refresh_targets_uses_stale_after_complete_pages() -> None:
@@ -217,9 +215,7 @@ def test_select_rank_page_refresh_targets_uses_stale_after_complete_pages() -> N
     )
 
     actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
-    assert actual == [
-        (REFRESH_REASON_STALE, 1, 100)
-    ]
+    assert actual == [(REFRESH_REASON_STALE, 1, 100)]
 
 
 def test_select_rank_page_refresh_targets_prioritizes_front_pages_by_index() -> None:
@@ -330,9 +326,7 @@ def test_select_rank_page_refresh_targets_scores_partial_by_missing_ratio() -> N
     )
 
     actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
-    assert actual == [
-        (REFRESH_REASON_PARTIAL, 1, 100)
-    ]
+    assert actual == [(REFRESH_REASON_PARTIAL, 1, 100)]
 
 
 def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> None:
@@ -379,9 +373,7 @@ def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> N
     )
 
     actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
-    assert actual == [
-        (REFRESH_REASON_STALE, 201, 300)
-    ]
+    assert actual == [(REFRESH_REASON_STALE, 201, 300)]
 
 
 def test_select_rank_page_refresh_targets_caps_stale_age_score() -> None:
@@ -420,9 +412,7 @@ def test_select_rank_page_refresh_targets_caps_stale_age_score() -> None:
     )
 
     actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
-    assert actual == [
-        (REFRESH_REASON_STALE, 1, 100)
-    ]
+    assert actual == [(REFRESH_REASON_STALE, 1, 100)]
 
 
 def test_rank_page_refresh_uses_per_rank_target_limit() -> None:

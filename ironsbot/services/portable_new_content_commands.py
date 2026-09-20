@@ -3,12 +3,10 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
-from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.seer.autocard import AutocardEntry
 from ironsbot.services.seer.data import (
@@ -49,8 +47,6 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.resources import SeerQueryResources
 
-logger = logging.getLogger(__name__)
-
 
 def build_portable_new_content_operations(
     resources: SeerQueryResources,
@@ -72,10 +68,7 @@ def build_portable_new_content_operations(
     )
     return {
         "seer.data.new_content": owner.root,
-        **{
-            spec.command_id: owner.focused
-            for spec in NEW_CONTENT_COMMAND_SPECS
-        },
+        **{spec.command_id: owner.focused for spec in NEW_CONTENT_COMMAND_SPECS},
     }
 
 
@@ -152,26 +145,24 @@ class _PortableNewContentOperations:
         layout: NewContentMenuLayout,
     ) -> OutboundMessage:
         menu = build_new_content_menu(snapshot, layout)
-
-        text_prompt = OutboundMessage.from_text(
-            format_selection_menu(
-                title=menu.title,
-                items=tuple(
-                    SelectionMenuItem(
-                        label=choice.name,
-                        detail_lines=(choice.description,)
-                        if choice.description
-                        else (),
-                        is_sub_item=choice.action.kind == "item"
-                        and layout.focused_category is None,
-                    )
-                    for choice in menu.choices
-                ),
+        try:
+            image = await self.resources.new_content_menu(
+                snapshot,
+                layout.display_categories,
+                layout.focused_category,
+                "新增内容",
+                layout.expanded_categories,
+                layout.preview_max_items,
             )
-        )
-        prompt = await self._render_menu(snapshot, layout, text_prompt)
+        except (NewContentSnapshotChangedError, DataPublicationChangedError):
+            return OutboundMessage.from_text(
+                "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
+            )
 
-        async def select(action: NewContentAction) -> OutboundMessage:
+        async def select(
+            action: NewContentAction,
+            context: MessageInputContext,
+        ) -> OutboundMessage:
             if action.kind == "category":
                 return await self._offer(
                     context,
@@ -186,36 +177,13 @@ class _PortableNewContentOperations:
             context,
             PortableMenuSpec(
                 choices=tuple(choice.action for choice in menu.choices),
+                labels=tuple(choice.name for choice in menu.choices),
                 select=select,
-                prompt=prompt,
+                prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),
                 keep_open=True,
                 exit_message="已退出新增内容查询。",
             ),
         )
-
-    async def _render_menu(
-        self,
-        snapshot: NewContentSnapshot,
-        layout: NewContentMenuLayout,
-        fallback: OutboundMessage,
-    ) -> OutboundMessage:
-        try:
-            image = await self.resources.new_content_menu(
-                snapshot,
-                layout.display_categories,
-                layout.focused_category,
-                "新增内容",
-                layout.expanded_categories,
-                layout.preview_max_items,
-            )
-            return OutboundMessage(
-                (BinaryImagePart(image, "image/png", "new-content.png"),)
-            )
-        except NewContentSnapshotChangedError:
-            return fallback
-        except Exception:
-            logger.exception("new content menu rendering failed; falling back to text")
-            return fallback
 
     async def _detail(
         self,

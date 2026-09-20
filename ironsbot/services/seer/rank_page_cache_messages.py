@@ -210,10 +210,10 @@ def build_rank_page_cache_status_message(  # noqa: PLR0913 - message inputs are 
     )
     numeric_target_limit = target_limit if isinstance(target_limit, int) else None
     resolved_target = max(numeric_target_limit or inferred_target, 0)
-    target_text = target_label or (
-        target_limit if isinstance(target_limit, str) else None
-    ) or (
-        f"前 {resolved_target} 名" if resolved_target else None
+    target_text = (
+        target_label
+        or (target_limit if isinstance(target_limit, str) else None)
+        or (f"前 {resolved_target} 名" if resolved_target else None)
     )
     coverage = _rank_page_coverage(pages, target_count=resolved_target)
 
@@ -319,8 +319,7 @@ def build_rank_page_cache_overview_message(
         if targets:
             next_target = targets[0]
             next_text = (
-                f"{next_target.reason}:"
-                f"{next_target.start_rank}-{next_target.end_rank}"
+                f"{next_target.reason}:{next_target.start_rank}-{next_target.end_rank}"
             )
         title = spec.title if spec.title.endswith("榜") else f"{spec.title}榜"
         lines.append(

@@ -86,16 +86,12 @@ def test_namespaced_migrations_share_one_database(tmp_path: Path) -> None:
     path = tmp_path / "state.sqlite"
     first = SqliteDatabase(
         path,
-        migrations=(
-            SqliteMigration(1, ("CREATE TABLE first_state (id INTEGER)",)),
-        ),
+        migrations=(SqliteMigration(1, ("CREATE TABLE first_state (id INTEGER)",)),),
         migration_namespace="first_state",
     )
     second = SqliteDatabase(
         path,
-        migrations=(
-            SqliteMigration(1, ("CREATE TABLE second_state (id INTEGER)",)),
-        ),
+        migrations=(SqliteMigration(1, ("CREATE TABLE second_state (id INTEGER)",)),),
         migration_namespace="second_state",
     )
 
@@ -173,9 +169,7 @@ def test_unversioned_database_is_migrated_without_losing_rows(
         migrations=(SqliteMigration(1, callback=add_columns),),
     )
     with database.connect() as connection:
-        assert connection.execute(
-            "SELECT id, name FROM sample"
-        ).fetchall() == [(7, "")]
+        assert connection.execute("SELECT id, name FROM sample").fetchall() == [(7, "")]
         assert connection.execute("PRAGMA user_version").fetchone() == (1,)
 
 
@@ -203,9 +197,12 @@ def test_pending_migrations_are_atomic(tmp_path: Path, namespace: str | None) ->
 
     with sqlite3.connect(path) as connection:
         assert connection.execute("PRAGMA user_version").fetchone() == (0,)
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        ).fetchall() == []
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+            == []
+        )
 
 
 def test_newer_database_version_is_rejected(tmp_path: Path) -> None:
@@ -215,9 +212,7 @@ def test_newer_database_version_is_rejected(tmp_path: Path) -> None:
 
     database = SqliteDatabase(
         path,
-        migrations=(
-            SqliteMigration(1, ("CREATE TABLE sample (id INTEGER)",)),
-        ),
+        migrations=(SqliteMigration(1, ("CREATE TABLE sample (id INTEGER)",)),),
     )
 
     with pytest.raises(SqliteMigrationError, match="2 > 1"), database.connect():
@@ -228,9 +223,7 @@ def test_migration_versions_must_be_contiguous(tmp_path: Path) -> None:
     with pytest.raises(SqliteMigrationError, match="contiguous"):
         SqliteDatabase(
             tmp_path / "cache.sqlite",
-            migrations=(
-                SqliteMigration(2, ("CREATE TABLE sample (id INTEGER)",)),
-            ),
+            migrations=(SqliteMigration(2, ("CREATE TABLE sample (id INTEGER)",)),),
         )
 
 
@@ -273,14 +266,20 @@ def test_quote_sqlite_identifier_rejects_unsafe_names() -> None:
 
 @pytest.mark.parametrize("namespace", [None, "sample"])
 def test_current_schema_reader_does_not_wait_for_wal_writer(
-    tmp_path: Path, namespace: str | None,
+    tmp_path: Path,
+    namespace: str | None,
 ) -> None:
     database = SqliteDatabase(
         tmp_path / "state.sqlite",
-        migrations=(SqliteMigration(1, (
-            "CREATE TABLE sample (id INTEGER)",
-            "INSERT INTO sample VALUES (7)",
-        )),),
+        migrations=(
+            SqliteMigration(
+                1,
+                (
+                    "CREATE TABLE sample (id INTEGER)",
+                    "INSERT INTO sample VALUES (7)",
+                ),
+            ),
+        ),
         migration_namespace=namespace,
     )
     with database.connect() as writer:
@@ -293,7 +292,9 @@ def test_current_schema_reader_does_not_wait_for_wal_writer(
 
 @pytest.mark.parametrize("namespace", [None, "sample"])
 def test_current_schema_check_has_no_write_transaction(
-    tmp_path: Path, namespace: str | None, monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    namespace: str | None,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     database = SqliteDatabase(
         tmp_path / "state.sqlite",
@@ -317,22 +318,40 @@ def test_current_schema_check_has_no_write_transaction(
     assert any(
         "SELECT" in statement or "user_version" in statement for statement in trace
     )
-    assert not any(statement.startswith((
-        "BEGIN", "CREATE", "INSERT", "UPDATE", "DELETE", "ALTER", "DROP",
-    )) for statement in trace)
+    assert not any(
+        statement.startswith(
+            (
+                "BEGIN",
+                "CREATE",
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "ALTER",
+                "DROP",
+            )
+        )
+        for statement in trace
+    )
 
 
 @pytest.mark.parametrize("namespace", [None, "sample"])
 def test_parallel_initialization_rechecks_version_under_write_lock(
-    tmp_path: Path, namespace: str | None, monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    namespace: str | None,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     path = tmp_path / "state.sqlite"
     with SqliteDatabase(path).connect():
         pass
-    migrations = (SqliteMigration(1, (
-        "CREATE TABLE sample (id INTEGER)",
-        "INSERT INTO sample VALUES (7)",
-    )),)
+    migrations = (
+        SqliteMigration(
+            1,
+            (
+                "CREATE TABLE sample (id INTEGER)",
+                "INSERT INTO sample VALUES (7)",
+            ),
+        ),
+    )
     barrier = Barrier(2)
     lock = Lock()
     seen: set[int] = set()
@@ -362,7 +381,9 @@ def test_parallel_initialization_rechecks_version_under_write_lock(
 
 @pytest.mark.parametrize("namespace", [None, "sample"])
 def test_newer_version_won_by_other_initializer_is_rejected(
-    tmp_path: Path, namespace: str | None, monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    namespace: str | None,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     path = tmp_path / "state.sqlite"
     with SqliteDatabase(path).connect():
@@ -378,7 +399,8 @@ def test_newer_version_won_by_other_initializer_is_rejected(
     original_version = SqliteDatabase._current_migration_version
 
     def pause_old_reader(
-        database: SqliteDatabase, connection: sqlite3.Connection,
+        database: SqliteDatabase,
+        connection: sqlite3.Connection,
     ) -> int:
         version = original_version(database, connection)
         if database is older and not read.is_set():
@@ -405,7 +427,8 @@ def test_newer_version_won_by_other_initializer_is_rejected(
 
 @pytest.mark.parametrize("namespace", [None, "sample"])
 def test_replaced_database_is_checked_again(
-    tmp_path: Path, namespace: str | None,
+    tmp_path: Path,
+    namespace: str | None,
 ) -> None:
     path = tmp_path / "state.sqlite"
     replacement = tmp_path / "replacement.sqlite"

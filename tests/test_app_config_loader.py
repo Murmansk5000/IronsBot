@@ -14,7 +14,7 @@ from ironsbot.config.loader import (
     ConfigFileNotFoundError,
     load_settings,
 )
-from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.config.models.features import build_feature_service
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
@@ -59,6 +59,10 @@ DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB = 1000
 DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
 DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
 EXAMPLE_BILI_ACCOUNT_UID = 912345678
+EXAMPLE_GROUP_A_ID = 987654321
+EXAMPLE_GROUP_B_ID = 876543210
+EXAMPLE_OWNER_ID = 1234567890
+EXAMPLE_USER_A_ID = 2345678901
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS = 90.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
@@ -129,8 +133,7 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
     assert (
-        docker_update.handoff_timeout_seconds
-        == DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS
+        docker_update.handoff_timeout_seconds == DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS
     )
     assert docker_update.fallback_to_current_image_on_handoff_failure
     assert docker_update.registry_username == ""
@@ -205,9 +208,6 @@ def _assert_default_matcher_priorities(
     matcher_priority: MatcherPriorityConfig,
 ) -> None:
     assert matcher_priority.seer_query < matcher_priority.ai_chat
-    assert matcher_priority.ai_group_at < 0
-    assert matcher_priority.bot_mention_block < 0
-    assert matcher_priority.ai_group_at < matcher_priority.bot_mention_block
     assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
     assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
     assert matcher_priority.sendpic < matcher_priority.seer_pet
@@ -236,6 +236,7 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert "竞技段位" in config.rank_keys
     assert "狂野段位" in config.rank_keys
     assert "专家段位" in config.rank_keys
+    assert "大师段位" in config.rank_keys
     assert config.target_limits == {}
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
@@ -273,21 +274,21 @@ def _assert_example_new_content(config: Settings) -> None:
     )
 
 
+def _assert_example_identities(config: Settings) -> None:
+    assert config.identities.groups["group_a"].qq == EXAMPLE_GROUP_A_ID
+    assert config.identities.groups["group_b"].qq == EXAMPLE_GROUP_B_ID
+    assert config.identities.users["owner"].qq == EXAMPLE_OWNER_ID
+    assert config.identities.users["user_a"].qq == EXAMPLE_USER_A_ID
+
+
 def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
 
     assert config.features.superuser_bypass
-    assert config.features.group_aliases == {
-        "group_a": 987654321,
-        "group_b": 876543210,
-    }
-    assert config.features.user_aliases == {
-        "owner": 1234567890,
-        "user_a": 2345678901,
-        "qq_group_manager": 2854196310,
-    }
-    assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
-    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
+    _assert_example_identities(config)
+    assert config.features.user_policy == {}
+    assert config.ai.provider_order == ["deepseek"]
+    assert config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
     assert "fire_manual" in config.ai.intent_actions
     assert config.ai.intent_actions["fire_manual"].promotion == "fire_manual"
     assert config.promotions["fire_manual"].append_to_push
@@ -390,7 +391,7 @@ def test_scheduled_push_rejects_legacy_hour_and_minute() -> None:
         MessageScheduledAction.model_validate(
             {
                 "id": "daily",
-                "message": "私聊定时推送",
+                "messages": ["私聊定时推送"],
                 "hour": 23,
                 "minute": 5,
             }
@@ -433,6 +434,13 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
             id="daily reminder",
             commands=["hello"],
             messages=["world"],
+        )
+
+
+def test_message_actions_reject_removed_singular_message_field() -> None:
+    with pytest.raises(ValidationError, match="message"):
+        MessageCommandAction.model_validate(
+            {"id": "hello", "commands": ["hello"], "message": "world"}
         )
 
 
@@ -539,7 +547,7 @@ def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
     config = load_settings(env={CONFIG_ENV: str(ROOT / "config.example.toml")})
-    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
+    assert config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
 
 
 def test_unknown_app_config_fields_are_rejected(tmp_path: Path) -> None:
@@ -572,6 +580,36 @@ unknown_command_field = true
         ("unknown_top_level",),
         ("seer", "player", "old_player_setting"),
         ("messaging", "commands", 0, "unknown_command_field"),
+    }
+
+
+def test_removed_pre_command_mention_settings_are_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bot.matcher_priority]
+ai_group_at = -10
+bot_mention_block = -5
+
+[messaging.command_cooldown]
+mention_initial_window_seconds = 600.0
+mention_initial_max_responses = 3
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
+
+    assert {
+        error["loc"]
+        for error in exc_info.value.errors()
+        if error["type"] == "extra_forbidden"
+    } == {
+        ("bot", "matcher_priority", "ai_group_at"),
+        ("bot", "matcher_priority", "bot_mention_block"),
+        ("messaging", "command_cooldown", "mention_initial_window_seconds"),
+        ("messaging", "command_cooldown", "mention_initial_max_responses"),
     }
 
 
@@ -629,7 +667,7 @@ def test_keyword_reply_actions_parse_and_register_features(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 main = 123456789
 
 [features.group_policy]
@@ -656,7 +694,7 @@ def test_message_command_feature_registers_for_bundle_and_group_policy(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 main = 123456789
 
 [features.bundles]
@@ -675,11 +713,12 @@ feature = "seerinfo_link"
     )
 
     config = load_settings(config_path)
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         config.features,
         frozenset(),
         command_features=config.messaging.command_feature_keys,
         schedule_features=config.messaging.schedule_feature_keys,
+        references=config.platform_references,
     )
 
     assert config.messaging.command_feature_keys == frozenset({"seerinfo_link"})
@@ -696,7 +735,7 @@ def test_message_schedule_feature_registers_for_user_policy(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.user_aliases]
+[identities.users]
 owner = 123456789
 
 [features.user_policy]
@@ -720,10 +759,10 @@ def test_blacklist_feature_loads_user_and_group_aliases(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 blocked_group = 987654321
 
-[features.user_aliases]
+[identities.users]
 blocked_user = 123456789
 
 [features.group_policy]
@@ -737,7 +776,11 @@ blocked_user = ["blacklist"]
 
     config = load_settings(config_path)
 
-    features = build_onebot_feature_service(config.features, config.superuser_ids)
+    features = build_feature_service(
+        config.features,
+        config.superuser_ids,
+        references=config.platform_references,
+    )
     assert features.is_message_blocked(
         ActorRef(Platform.ONEBOT, "123456789"),
         ConversationRef(Platform.ONEBOT, "private", "123456789"),
@@ -752,7 +795,7 @@ def test_all_bundle_declares_custom_extension_feature(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 main = 123456789
 
 [features.bundles]
@@ -765,7 +808,11 @@ main = ["all"]
     )
 
     config = load_settings(config_path)
-    features = build_onebot_feature_service(config.features, config.superuser_ids)
+    features = build_feature_service(
+        config.features,
+        config.superuser_ids,
+        references=config.platform_references,
+    )
 
     assert features.is_feature_allowed(
         ActorRef(Platform.ONEBOT, "1"),
@@ -783,10 +830,10 @@ def test_onebot_config_references_accept_aliases_and_numeric_ids(
 [bot]
 superusers = ["owner", "300"]
 
-[features.group_aliases]
+[identities.groups]
 main_group = 100
 
-[features.user_aliases]
+[identities.users]
 owner = 200
 at_user = 201
 
@@ -866,10 +913,10 @@ unknown_group = ["seer"]
         ),
         (
             """
-[features.group_aliases]
+[identities.groups]
 "123" = 100
 """,
-            "features.group_aliases.123 must not use a numeric alias",
+            "identity aliases must be nonempty and nonnumeric",
         ),
         (
             """
@@ -1074,7 +1121,7 @@ def test_lucky_skin_window_resolves_user_alias_and_rejects_duplicates(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.user_aliases]
+[identities.users]
 owner = 123456789
 
 [seer.lucky_skin_window]
@@ -1140,7 +1187,7 @@ def test_lucky_skin_window_rejects_duplicate_configured_player_id(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.user_aliases]
+[identities.users]
 owner = 123456789
 friend = 987654321
 
@@ -1366,9 +1413,56 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     settings = load_settings(ROOT / "config.example.toml", env=env)
 
     assert settings.bot.onebot_token == "token"
-    assert settings.ai.endpoints[0].api_key == "sk-test"
+    assert settings.ai.providers["deepseek"].api_key == "sk-test"
     assert settings.messaging.sendpic.cnb_token == "cnb-token"
     assert settings.operations.data_sync.github_token == "gh-token"
+
+
+def test_ai_provider_keys_are_injected_independently(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[ai]
+provider_order = ["primary", "backup"]
+
+[ai.providers.primary]
+base_url = "https://primary.test/v1"
+models = ["fast", "quality"]
+
+[ai.providers.backup]
+base_url = "https://backup.test/v1"
+models = ["stable"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        config_path,
+        env={"AI_KEY_PRIMARY": "first", "AI_KEY_BACKUP": "second"},
+    )
+
+    assert [name for name, _provider in settings.ai.configured_providers] == [
+        "primary",
+        "backup",
+    ]
+    assert settings.ai.providers["primary"].api_key == "first"
+    assert settings.ai.providers["backup"].api_key == "second"
+
+
+def test_legacy_ai_key_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text("[ai]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="AI_KEY is retired"):
+        load_settings(config_path, env={"AI_KEY": "legacy"})
+
+
+def test_undeclared_ai_provider_key_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text("[ai]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="undeclared providers: EXTRA"):
+        load_settings(config_path, env={"AI_KEY_EXTRA": "secret"})
 
 
 def test_player_accounts_resolve_names_and_hash_environment_passwords(
@@ -1433,7 +1527,7 @@ def test_player_account_aliases_can_be_public_or_group_scoped(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 allowed_group = 123456789
 
 [[seer.player_accounts]]
@@ -1494,7 +1588,7 @@ def test_player_account_alias_group_all_grants_every_private_account(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.group_aliases]
+[identities.groups]
 allowed_group = 123456789
 
 [[seer.player_accounts]]
@@ -1721,7 +1815,7 @@ def test_docker_registry_credentials_read_from_environment(
 def test_app_config_defaults_cover_runtime_services() -> None:
     app_config = load_settings(ROOT / "config.example.toml")
 
-    assert app_config.ai.endpoints[0].models == ["deepseek-v4-pro"]
+    assert app_config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (

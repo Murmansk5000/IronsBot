@@ -65,10 +65,7 @@ def format_activity_line(
         period_text = format_activity_period(activity)
         offer_label = activity.offer_label or "限时优惠"
         return [
-            (
-                f"{index}. {activity.name}：{offer_label}见官方说明 | "
-                f"活动：{period_text}"
-            )
+            (f"{index}. {activity.name}：{offer_label}见官方说明 | 活动：{period_text}")
         ]
 
     period_text = format_activity_period(activity)
@@ -88,7 +85,5 @@ def format_activity_list(reminders: list[ActivityReminder]) -> str:
                 f"{reminder.end_time:%Y-%m-%d %H:%M}"
             )
         else:
-            lines.append(
-                f"{index}. {reminder.name}：{reminder.end_label}见官方说明"
-            )
+            lines.append(f"{index}. {reminder.name}：{reminder.end_label}见官方说明")
     return "\n".join(lines)

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Any
 
 
 class ClientNotInitializedError(Exception): ...
@@ -14,14 +13,21 @@ class DisconnectedError(Exception): ...
 class SocketRecvError(Exception):
     def __init__(
         self,
-        head: Any,
+        result_code: int,
+        *,
+        command_id: int | None = None,
         message: str = "",
     ) -> None:
-        self.head = head
+        self.result_code = result_code
+        self.command_id = command_id
         self.message = message
 
     def __str__(self) -> str:
-        return self.__repr__()
+        return self.message or f"请求失败：{self.result_code}"
 
     def __repr__(self) -> str:
-        return f"SocketRecvError(head={self.head}, message={self.message or '无'})"
+        return (
+            "SocketRecvError("
+            f"result_code={self.result_code}, command_id={self.command_id}"
+            ")"
+        )

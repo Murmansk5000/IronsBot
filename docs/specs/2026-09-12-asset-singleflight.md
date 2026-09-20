@@ -438,7 +438,7 @@ Native Windows htmlkit rendering was exercised with the retained real release
 database and six real pet records (70, 3549, 4511, 4911, 3407, 4525), using
 official asset-tree revision 1b53a16cfe32d36d921a04fbd8423116c5b1e2e1.
 The release at `.tmp/skin-body-publication/seerapi-data.sqlite` is rejected by
-the production loader because ironsbot_schema_contract_version is absent.
+the production loader because seerapi_schema_contract_version is absent.
 No version marker was injected and no production validator was relaxed.
 The subsequent visual probe therefore used an explicitly offline, read-only
 repository reader and a test-only asset pin with final caching disabled. This

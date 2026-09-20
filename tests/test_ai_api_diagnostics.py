@@ -5,13 +5,13 @@ import httpx
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
-from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
 from ironsbot.integrations.http.ai import (
     AiApiSettings,
     HttpAiCompletionClient,
     check_ai_api,
 )
 from ironsbot.services.ai.responses import AiResponseResult
+from tests.helpers.ai import configured_ai_config
 
 HTTP_OK = 200
 
@@ -20,7 +20,7 @@ def test_ai_api_fails_without_key() -> None:
     result = asyncio.run(check_ai_api(AiApiSettings(api_key="")))
 
     assert not result.ok
-    assert result.error == "未配置 AI_KEY"
+    assert result.error == "未配置 AI provider key"
 
 
 def test_ai_api_success(monkeypatch: MonkeyPatch) -> None:
@@ -80,20 +80,12 @@ def test_ai_completion_uses_fallback_models_in_order() -> None:
         )
 
     async def run() -> AiResponseResult:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(handler)
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             completion = HttpAiCompletionClient(
                 client,
-                AiConfig(
-                    endpoints=[
-                        AiEndpointConfig(
-                            name="primary",
-                            base_url="https://example.test/v1",
-                            models=["primary", "backup", "unused"],
-                            api_key="test-key",
-                        )
-                    ]
+                configured_ai_config(
+                    api_key="test-key",
+                    models=("primary", "backup", "unused"),
                 ),
             )
             return await completion.complete([{"role": "user", "content": "hi"}])
@@ -102,62 +94,5 @@ def test_ai_completion_uses_fallback_models_in_order() -> None:
 
     assert requested_models == ["primary", "backup"]
     assert result.ok
-    assert result.endpoint == "primary"
     assert result.model == "backup"
     assert result.reply == "备用模型回复"
-
-
-def test_ai_completion_switches_endpoint_after_auth_failure() -> None:
-    requested: list[tuple[str, str, str]] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        payload = json.loads(request.content)
-        requested.append(
-            (
-                request.url.host or "",
-                str(payload["model"]),
-                request.headers["Authorization"],
-            )
-        )
-        if request.url.host == "primary.test":
-            return httpx.Response(403, json={"error": {"message": "denied"}})
-        return httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": "备用端点回复"}}]},
-        )
-
-    async def run() -> AiResponseResult:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(handler)
-        ) as client:
-            completion = HttpAiCompletionClient(
-                client,
-                AiConfig(
-                    endpoints=[
-                        AiEndpointConfig(
-                            name="primary",
-                            base_url="https://primary.test/v1",
-                            models=["first", "unused"],
-                            api_key="primary-key",
-                        ),
-                        AiEndpointConfig(
-                            name="backup",
-                            base_url="https://backup.test/v1",
-                            models=["fallback"],
-                            api_key="backup-key",
-                        ),
-                    ]
-                ),
-            )
-            return await completion.complete([{"role": "user", "content": "hi"}])
-
-    result = asyncio.run(run())
-
-    assert requested == [
-        ("primary.test", "first", "Bearer primary-key"),
-        ("backup.test", "fallback", "Bearer backup-key"),
-    ]
-    assert result.ok
-    assert result.endpoint == "backup"
-    assert result.model == "fallback"
-    assert [attempt.endpoint for attempt in result.attempts] == ["primary"]

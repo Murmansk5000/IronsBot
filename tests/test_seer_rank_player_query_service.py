@@ -23,6 +23,7 @@ ACHIEVEMENT_SCORE = 5000
 CURRENT_PEAK_SCORE = 300033
 RANK_POSITION = 42
 CACHED_AT = 1_700_000_000.0
+MASTER_SUB_KEY = 20260904
 
 
 class FakeGame:
@@ -148,8 +149,7 @@ async def test_rank_player_query_fetches_only_achievement_source() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rank_player_query_writes_only_current_metric(
-) -> None:
+async def test_rank_player_query_writes_only_current_metric() -> None:
     async def fake_find_rank(_game: object, **_kwargs: Any) -> RankLookupResult:
         return RankLookupResult(
             title="成就点数",
@@ -163,9 +163,7 @@ async def test_rank_player_query_writes_only_current_metric(
     rank = build_rank_stub(fake_find_rank)
     local_rank, upsert = build_local_rank_stub(
         enabled=True,
-        summary=LocalRankSummary(
-            sample_ranks={"achievement_score": "样本前10%"}
-        ),
+        summary=LocalRankSummary(sample_ranks={"achievement_score": "样本前10%"}),
     )
 
     message = await rank_player_query.fetch_rank_player_message(
@@ -259,7 +257,7 @@ async def test_peak_rank_player_query_retries_without_stale_forever_score(
             key=20,
             sub_key=20260717,
             unit="",
-            peak_season_sub_key=True,
+            sub_key_source="peak_season",
         ),
     )
     local_rank, upsert = build_local_rank_stub(enabled=True)
@@ -276,3 +274,43 @@ async def test_peak_rank_player_query_retries_without_stale_forever_score(
     assert upsert.await_args is not None
     stored = upsert.await_args.kwargs
     assert stored["current_metrics"]["peak_standard"]["value"] == CURRENT_PEAK_SCORE
+
+
+@pytest.mark.asyncio
+async def test_master_rank_player_query_uses_leaderboard_without_packet_score() -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_find_rank(_game: object, **kwargs: Any) -> RankLookupResult:
+        captured.update(kwargs)
+        return RankLookupResult(
+            title="大师段位",
+            score_name="分",
+            rank=12,
+            score=400004,
+            queried=True,
+        )
+
+    rank = build_rank_stub(
+        fake_find_rank,
+        spec=GlobalRankSpec(
+            title="大师段位榜",
+            key=256,
+            sub_key=MASTER_SUB_KEY,
+            unit="分",
+            sub_key_source="master_season",
+            score_format="peak_rating",
+        ),
+    )
+    local_rank, upsert = build_local_rank_stub(enabled=True)
+
+    message = await rank_player_query.fetch_rank_player_message(
+        rank,
+        local_rank,
+        FakeGame(),
+        command=RankPlayerCommand(rank_key="大师段位", player_id=PLAYER_ID),
+    )
+
+    assert captured["target_score"] is None
+    assert captured["sub_key"] == MASTER_SUB_KEY
+    assert "大师段位：圣皇4星｜全服第12" in message
+    upsert.assert_not_awaited()
