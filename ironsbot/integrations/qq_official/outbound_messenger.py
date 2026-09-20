@@ -30,6 +30,9 @@ from ironsbot.integrations.qq_official.reply_sequences import (
 if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage, ReplyContext
     from ironsbot.core.platform import ConversationRef
+    from ironsbot.integrations.qq_official.recipient_state import (
+        QQOfficialRecipientStateStore,
+    )
 
 
 class QQOfficialMessageSender(Protocol):
@@ -68,6 +71,7 @@ class QQOfficialOutboundMessenger:
     account_proactive: Mapping[str, bool]
     bot_provider: BotProvider
     account_custom_keyboards: Mapping[str, bool] = field(default_factory=dict)
+    recipient_state: QQOfficialRecipientStateStore | None = None
     reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
         default_factory=dict
     )
@@ -117,6 +121,16 @@ class QQOfficialOutboundMessenger:
             return _failure(
                 "proactive_disabled",
                 "QQ Official proactive messages are disabled",
+                DeliveryFailureKind.PERMANENT,
+            )
+        recipient_rejected = (
+            self.recipient_state is not None
+            and not await self.recipient_state.allows_proactive(conversation)
+        )
+        if recipient_rejected:
+            return _failure(
+                "recipient_rejected",
+                "QQ Official recipient disabled proactive messages",
                 DeliveryFailureKind.PERMANENT,
             )
         return await self._deliver(conversation, message)

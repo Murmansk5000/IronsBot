@@ -21,7 +21,8 @@ from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.group_message_events import (
     GROUP_MESSAGE_CREATE,
-    enable_group_message_dispatch,
+    enable_qq_event_dispatch,
+    is_recipient_state_event,
     message_event_family,
     parse_message_event,
 )
@@ -46,6 +47,9 @@ if TYPE_CHECKING:
 
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.integrations.qq_official.recipient_state import (
+        QQOfficialRecipientStateStore,
+    )
     from ironsbot.services.identity_observation import (
         SilentIdentityObservationService,
     )
@@ -249,11 +253,12 @@ class QQOfficialRuntime:
         http_client: AsyncClient,
         session_root: Path,
         startup_timeout_seconds: float = 15.0,
+        recipient_state: QQOfficialRecipientStateStore | None = None,
     ) -> None:
         if startup_timeout_seconds <= 0:
             msg = "QQ Official startup timeout must be positive"
             raise ValueError(msg)
-        enable_group_message_dispatch()
+        enable_qq_event_dispatch()
         self._startup_timeout_seconds = startup_timeout_seconds
         self._inbound_deduplicator = QQOfficialInboundDeduplicator(
             session_root / "inbound.sqlite"
@@ -261,6 +266,7 @@ class QQOfficialRuntime:
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
         self._identity_observer: SilentIdentityObservationService | None = None
+        self._recipient_state = recipient_state
         self._connections: dict[str, _Connection] = {}
         for index, account in enumerate(accounts, start=1):
             if account.app_id in self._connections:
@@ -379,6 +385,21 @@ class QQOfficialRuntime:
         event_type: str,
         raw: Mapping[str, object],
     ) -> None:
+        if is_recipient_state_event(event_type):
+            if self._recipient_state is not None:
+                recorded = await self._recipient_state.record_event(
+                    app_id=app_id,
+                    event_type=event_type,
+                    raw=raw,
+                )
+                logger.info(
+                    "QQ Official recipient state event: account=%s "
+                    "event_type=%s recorded=%s",
+                    self._connections[app_id].lifecycle.account,
+                    event_type,
+                    recorded,
+                )
+            return
         event = parse_message_event(event_type, raw)
         if event is None:
             logger.warning(
