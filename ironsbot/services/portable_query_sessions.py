@@ -644,10 +644,11 @@ class PortableQuerySessions:
                     title=prompt_title,
                     items=tuple(
                         SelectionMenuItem(
-                            label=choice.name,
-                            detail_lines=(choice.description,)
-                            if choice.description
-                            else (),
+                            label=(
+                                f"{choice.name}（{choice.description}）"
+                                if choice.description
+                                else choice.name
+                            ),
                             is_sub_item=choice.is_sub_choice,
                         )
                         for choice in result.choices
