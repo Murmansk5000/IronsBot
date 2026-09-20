@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import OutboundMessage, address_message_to
 from ironsbot.services.messaging.push_time import (
     build_push_time_menu_prompt,
     normalize_push_time_input,
@@ -298,9 +298,13 @@ def _text_operation(action: MessageReplyAction) -> PortableOperation:
         text: str,
         context: MessageInputContext,
     ) -> PortableReply:
-        del text, context
+        del text
         messages = tuple(
-            OutboundMessage.from_text(message) for message in action.messages
+            address_message_to(
+                OutboundMessage.from_text(message),
+                context.member_mentions,
+            )
+            for message in action.messages
         )
         return PortableReply(messages[0], additional_messages=messages[1:])
 
