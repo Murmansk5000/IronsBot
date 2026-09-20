@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
@@ -23,6 +24,7 @@ from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinQuery,
     LuckySkinWatchItem,
+    LuckySkinWindowAccessError,
     LuckySkinWindowResult,
 )
 from ironsbot.services.seer.pet_query import PetImageSelection
@@ -30,7 +32,6 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 if TYPE_CHECKING:
-    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
 
@@ -86,7 +87,9 @@ def _dependencies(
     service = Mock()
     pet = Mock()
     identity = Mock()
-    identity.linked_onebot_actor = AsyncMock(return_value=onebot if linked else None)
+    identity.canonical_actor.return_value = (
+        onebot if linked else _context().message.actor
+    )
     return service, pet, identity, PortableQuerySessions(), onebot
 
 
@@ -95,33 +98,91 @@ def _operations(
     pet: Mock,
     identity: Mock,
     sessions: PortableQuerySessions,
+    *,
+    bound_player_id: int | None = 90002,
 ) -> dict[str, _Operation]:
     return cast(
         "dict[str, _Operation]",
         build_portable_lucky_skin_operations(
             cast("LuckySkinWindowService", service),
             cast("PetQueryService", pet),
-            cast("IdentityLinkingService", identity),
+            cast("FeatureService", identity),
             sessions,
             PlayerIdResolver(
                 lambda value, _conversation: (
                     int(value) if value.isdecimal() else {"示例账号": 90002}.get(value)
                 ),
-                lambda _actor: 90002,
+                lambda _actor: bound_player_id,
             ),
         ),
     )
 
 
 @pytest.mark.asyncio
-async def test_unlinked_official_identity_is_not_guessed() -> None:
+async def test_unlinked_official_identity_uses_its_player_binding_for_query() -> None:
     service, pet, identity, sessions, _ = _dependencies(linked=False)
+    service.cached_query.side_effect = LuckySkinWindowAccessError(
+        "只能查询你本人已配置的幸运橱窗账号。"
+    )
     operations = _operations(service, pet, identity, sessions)
+    context = _context()
+
+    reply = await operations["seer.lucky_skin_window.query"]("橱窗", context)
+
+    assert "只能查询你本人" in _text(reply)
+    service.cached_query.assert_called_once_with(
+        LuckySkinQuery(context.message.actor, None, 90002)
+    )
+
+
+@pytest.mark.asyncio
+async def test_unlinked_unbound_official_identity_still_requires_link() -> None:
+    service, pet, identity, sessions, _ = _dependencies(linked=False)
+    operations = _operations(
+        service,
+        pet,
+        identity,
+        sessions,
+        bound_player_id=None,
+    )
 
     reply = await operations["seer.lucky_skin_window.query"]("橱窗", _context())
 
     assert "关联官方账号" in _text(reply)
     service.cached_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_configured_official_identity_uses_canonical_onebot_account() -> None:
+    service, pet, _features, sessions, onebot = _dependencies()
+    features = FeatureService({}, {}, frozenset())
+    features.register_identity_link(
+        official_app_id="official-app",
+        official_openid="member-openid",
+        onebot_qq_id=onebot.id,
+    )
+    result = LuckySkinWindowResult("2026-09-15", 90001, (), from_cache=True)
+    service.cached_query.return_value = result
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(
+        return_value=OutboundMessage.from_text("【幸运橱窗】")
+    )
+    operations = build_portable_lucky_skin_operations(
+        cast("LuckySkinWindowService", service),
+        cast("PetQueryService", pet),
+        features,
+        sessions,
+        PlayerIdResolver(lambda *_: None, lambda _actor: 90002),
+    )
+    context = _context()
+
+    reply = await operations["seer.lucky_skin_window.query"]("橱窗", context)
+
+    service.cached_query.assert_called_once_with(
+        LuckySkinQuery(context.message.actor, onebot)
+    )
+    assert isinstance(reply, OutboundMessage)
+    assert _text(reply) == "【幸运橱窗】"
 
 
 @pytest.mark.asyncio
@@ -263,7 +324,7 @@ async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     operations = build_portable_lucky_skin_operations(
         cast("LuckySkinWindowService", service),
         cast("PetQueryService", pet),
-        cast("IdentityLinkingService", identity),
+        cast("FeatureService", identity),
         sessions,
         resolver,
     )
