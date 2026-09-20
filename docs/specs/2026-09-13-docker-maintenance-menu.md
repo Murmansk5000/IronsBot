@@ -19,6 +19,10 @@ Owner: `services.operations.docker_update`
 - `2` 检查镜像；有更新时启动 Watchtower 交接，无更新时重启当前容器。
 - `/检查更新镜像` 与 `/检查镜像更新` 保持只读。
 - 删除 `check_on_restart`。不保留旧配置或旧 service 方法的兼容读取。
+- 新容器确认使用目标镜像后，按交接记录中的精确旧镜像 ID 执行非强制删除。
+- Docker 返回镜像仍被容器引用时保留镜像；不得删除引用它的容器，也不得执行全局
+  `image prune`。
+- 私有扩展镜像拉取并成功读取归档后，同样只清理本次被替换且未被引用的旧镜像。
 
 ## Boundaries
 
