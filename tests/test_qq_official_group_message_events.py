@@ -7,7 +7,9 @@ from qqbot_agent_sdk import websocket as sdk_websocket
 from ironsbot.integrations.qq_official.group_message_events import (
     GROUP_AT_MESSAGE_CREATE,
     GROUP_MESSAGE_CREATE,
-    enable_group_message_dispatch,
+    RECIPIENT_STATE_EVENT_TYPES,
+    enable_qq_event_dispatch,
+    is_recipient_state_event,
     message_event_family,
     parse_message_event,
 )
@@ -21,11 +23,11 @@ def test_full_group_event_is_registered_with_sdk_dispatch(
 ) -> None:
     monkeypatch.setattr(sdk_websocket, "MESSAGE_EVENT_TYPES", frozenset())
 
-    enable_group_message_dispatch()
-    enable_group_message_dispatch()
+    enable_qq_event_dispatch()
+    enable_qq_event_dispatch()
 
-    assert (
-        frozenset({GROUP_MESSAGE_CREATE}) == vars(sdk_websocket)["MESSAGE_EVENT_TYPES"]
+    assert vars(sdk_websocket)["MESSAGE_EVENT_TYPES"] == frozenset(
+        {GROUP_MESSAGE_CREATE, *RECIPIENT_STATE_EVENT_TYPES}
     )
 
 
@@ -54,3 +56,9 @@ def test_group_delivery_variants_share_one_deduplication_family() -> None:
     assert message_event_family(GROUP_MESSAGE_CREATE) == "GROUP_MESSAGE"
     assert message_event_family(GROUP_AT_MESSAGE_CREATE) == "GROUP_MESSAGE"
     assert message_event_family("C2C_MESSAGE_CREATE") == "C2C_MESSAGE_CREATE"
+
+
+def test_recipient_state_event_classification_is_explicit() -> None:
+    assert is_recipient_state_event("GROUP_MSG_REJECT")
+    assert is_recipient_state_event("C2C_MSG_RECEIVE")
+    assert not is_recipient_state_event(GROUP_MESSAGE_CREATE)
