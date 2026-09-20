@@ -314,9 +314,7 @@ def test_official_startup_notice_does_not_wait_for_onebot_connect() -> None:
     )
 
     assert base.hooks.startup == ()
-    assert [name for name, _hook in contribution.hooks.startup] == [
-        "startup_notice"
-    ]
+    assert [name for name, _hook in contribution.hooks.startup] == ["startup_notice"]
     assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
         "startup_notice"
     ]
