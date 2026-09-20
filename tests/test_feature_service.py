@@ -88,6 +88,28 @@ def test_verified_official_identity_inherits_onebot_user_policy() -> None:
     assert not feature_service.is_actor_superuser(official_member)
 
 
+def test_discovered_official_group_inherits_onebot_group_policy() -> None:
+    feature_service = build_feature_service(
+        FeatureConfig(group_policy={"123": ["seer"]}),
+        (),
+    )
+    official_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-openid",
+        account_id="app-id",
+    )
+
+    feature_service.register_group_link(
+        official_app_id="app-id",
+        official_group_openid="group-openid",
+        onebot_group_id="123",
+    )
+
+    assert feature_service.conversation_has_feature(official_group, "seer_pet")
+    assert official_group in feature_service.conversations_for_feature("seer_pet")
+
+
 def test_feature_service_exposes_only_explicitly_configured_feature_keys() -> None:
     feature_service = build_feature_service(
         FeatureConfig(

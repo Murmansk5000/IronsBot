@@ -16,8 +16,13 @@ from ironsbot.core.plugin_install import (
 )
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import (
+    event_sender_at_user_ids,
+    finish_event_reply,
+    finish_matcher_message,
+)
+from ironsbot.integrations.onebot.rules import member_targets_command
 from ironsbot.services.messaging.meeting import (
     build_meeting_reply,
     meeting_command_contracts,
@@ -61,11 +66,19 @@ def install(
             )
             return
 
-        await finish_event_reply(matcher, event, reply)
+        target_ids = tuple(
+            int(actor.id) for actor in message_input_context(event).member_mentions
+        )
+        await finish_matcher_message(
+            matcher,
+            reply,
+            at_user_ids=target_ids or event_sender_at_user_ids(event),
+            event=event,
+        )
 
     matcher = registry.on_message(
         policy=CommandPolicy.command("meeting", help_ids=("meeting",)),
-        rule=Rule(is_meeting_command) & explicit_command(),
+        rule=Rule(is_meeting_command) & member_targets_command(),
         priority=registry.priority("meeting"),
         block=True,
     )

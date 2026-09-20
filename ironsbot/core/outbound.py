@@ -115,6 +115,21 @@ class OutboundMessage:
         return cls((TextPart(text),))
 
 
+def address_message_to(
+    message: OutboundMessage,
+    actors: tuple[ActorRef, ...],
+) -> OutboundMessage:
+    """Address a message to explicit member targets, preserving their order."""
+
+    targets = tuple(dict.fromkeys(actors))
+    if not targets:
+        return message
+    prefix: list[MessagePart] = []
+    for actor in targets:
+        prefix.extend((MentionPart(actor), TextPart(" ")))
+    return OutboundMessage((*prefix, *message.parts), prompt=message.prompt)
+
+
 def format_outbound_message(
     template: str,
     /,
