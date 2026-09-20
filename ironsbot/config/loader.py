@@ -20,8 +20,11 @@ TOMLDecodeError = tomllib.TOMLDecodeError
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
-QQ_OFFICIAL_APP_ID_ENV_PREFIX = "QQ_OFFICIAL_APP_ID_"
-QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
+QQ_OFFICIAL_SECRET_ENV_PREFIX = "APP_SECRET_"
+_RETIRED_QQ_OFFICIAL_ENV_PREFIXES = (
+    "QQ_OFFICIAL_APP_ID_",
+    "QQ_OFFICIAL_SECRET_",
+)
 ONEBOT_TRUSTED_OFFICIAL_BOT_ENV_PREFIX = "ONEBOT_TRUSTED_OFFICIAL_BOT_"
 AI_KEY_ENV_PREFIX = "AI_KEY_"
 LEGACY_AI_KEY_ERROR = (
@@ -102,64 +105,59 @@ def _inject_qq_official_credentials(
     *,
     env: Mapping[str, str],
 ) -> None:
+    retired = sorted(
+        key
+        for key, value in env.items()
+        if any(key.startswith(prefix) for prefix in _RETIRED_QQ_OFFICIAL_ENV_PREFIXES)
+        and str(value).strip()
+    )
+    if retired:
+        raise ValueError(
+            "retired QQ Official credential variables are not supported; "
+            "declare app_id in TOML and use APP_SECRET_<AppID>: " + ", ".join(retired)
+        )
     bot = data.get("bot")
     qq_official = bot.get("qq_official") if isinstance(bot, dict) else None
-    if not isinstance(qq_official, dict):
-        return
-    accounts = qq_official.get("accounts")
+    accounts = qq_official.get("accounts") if isinstance(qq_official, dict) else None
     if not isinstance(accounts, dict):
-        return
-    declared_names = {str(name).upper(): str(name) for name in accounts}
-    credential_names = {
-        key[len(prefix) :].upper()
-        for key in env
-        for prefix in (
-            QQ_OFFICIAL_APP_ID_ENV_PREFIX,
-            QQ_OFFICIAL_SECRET_ENV_PREFIX,
-        )
-        if key.startswith(prefix)
+        accounts = {}
+    declared_app_ids = {
+        str(account.get("app_id", "")).strip(): str(name)
+        for name, account in accounts.items()
+        if isinstance(account, dict) and str(account.get("app_id", "")).strip()
     }
-    unknown_names = sorted(credential_names - declared_names.keys())
-    if unknown_names:
-        names = ", ".join(unknown_names)
+    credential_app_ids = {
+        key[len(QQ_OFFICIAL_SECRET_ENV_PREFIX) :]
+        for key, value in env.items()
+        if key.startswith(QQ_OFFICIAL_SECRET_ENV_PREFIX) and str(value).strip()
+    }
+    unknown_app_ids = sorted(credential_app_ids - declared_app_ids.keys())
+    if unknown_app_ids:
+        app_ids = ", ".join(unknown_app_ids)
         msg = (
-            "QQ Official environment credentials reference undeclared accounts: "
-            f"{names}"
+            "QQ Official Secret environment variables reference undeclared AppIDs: "
+            f"{app_ids}"
         )
         raise ValueError(msg)
     for raw_name, raw_account in accounts.items():
         if not isinstance(raw_account, dict):
             continue
         name = str(raw_name)
-        credentials: dict[str, str | None] = {}
-        for field, prefix in (
-            ("app_id", QQ_OFFICIAL_APP_ID_ENV_PREFIX),
-            ("secret", QQ_OFFICIAL_SECRET_ENV_PREFIX),
-        ):
-            env_name = prefix + name.upper()
-            if field in raw_account:
-                msg = (
-                    f"bot.qq_official.accounts.{name}.{field} is a deployment "
-                    f"credential and must be set with {env_name}"
-                )
-                raise ValueError(msg)
-            value = env.get(env_name)
-            credentials[field] = None if value is None else str(value).strip()
-        present = {field for field, value in credentials.items() if value}
-        if present and len(present) != len(credentials):
-            missing = "secret" if "secret" not in present else "app_id"
-            env_name = (
-                QQ_OFFICIAL_SECRET_ENV_PREFIX
-                if missing == "secret"
-                else QQ_OFFICIAL_APP_ID_ENV_PREFIX
-            ) + name.upper()
+        if "secret" in raw_account:
+            app_id = str(raw_account.get("app_id", "")).strip()
+            env_name = QQ_OFFICIAL_SECRET_ENV_PREFIX + app_id
             msg = (
-                f"bot.qq_official.accounts.{name} has incomplete credentials; "
-                f"missing environment variable {env_name}"
+                f"bot.qq_official.accounts.{name}.secret is a deployment credential "
+                f"and must be set with {env_name}"
             )
             raise ValueError(msg)
-        if present:
-            raw_account.update(credentials)
+        app_id = str(raw_account.get("app_id", "")).strip()
+        if not app_id:
+            msg = f"bot.qq_official.accounts.{name}.app_id is required"
+            raise ValueError(msg)
+        env_name = QQ_OFFICIAL_SECRET_ENV_PREFIX + app_id
+        if secret := str(env.get(env_name, "")).strip():
+            raw_account["secret"] = secret
 
 
 def _inject_onebot_deployment_settings(
