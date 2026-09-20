@@ -44,22 +44,30 @@ def test_fire_manual_push_attachment_is_independent_from_ai_intents() -> None:
         )
     ).features
 
-    assert FIRE_MANUAL_PROMOTION.message not in _message_text(_with_promotions(
-        ai_only,
-        ConversationRef(Platform.ONEBOT, "group", "1001"),
-    ))
-    assert FIRE_MANUAL_PROMOTION.message not in _message_text(_with_promotions(
-        ai_only,
-        ConversationRef(Platform.ONEBOT, "private", "2001"),
-    ))
-    assert FIRE_MANUAL_PROMOTION.message in _message_text(_with_promotions(
-        explicit_ad,
-        ConversationRef(Platform.ONEBOT, "group", "1001"),
-    ))
-    assert FIRE_MANUAL_PROMOTION.message in _message_text(_with_promotions(
-        explicit_ad,
-        ConversationRef(Platform.ONEBOT, "private", "2001"),
-    ))
+    assert FIRE_MANUAL_PROMOTION.message not in _message_text(
+        _with_promotions(
+            ai_only,
+            ConversationRef(Platform.ONEBOT, "group", "1001"),
+        )
+    )
+    assert FIRE_MANUAL_PROMOTION.message not in _message_text(
+        _with_promotions(
+            ai_only,
+            ConversationRef(Platform.ONEBOT, "private", "2001"),
+        )
+    )
+    assert FIRE_MANUAL_PROMOTION.message in _message_text(
+        _with_promotions(
+            explicit_ad,
+            ConversationRef(Platform.ONEBOT, "group", "1001"),
+        )
+    )
+    assert FIRE_MANUAL_PROMOTION.message in _message_text(
+        _with_promotions(
+            explicit_ad,
+            ConversationRef(Platform.ONEBOT, "private", "2001"),
+        )
+    )
 
 
 def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypass() -> (
@@ -70,11 +78,15 @@ def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypas
         superuser_ids=(1002,),
     ).features
 
-    assert FIRE_MANUAL_PROMOTION.message in _message_text(_with_promotions(
-        features,
-        ConversationRef(Platform.ONEBOT, "private", "2001"),
-    ))
-    assert FIRE_MANUAL_PROMOTION.message not in _message_text(_with_promotions(
-        features,
-        ConversationRef(Platform.ONEBOT, "private", "1002"),
-    ))
+    assert FIRE_MANUAL_PROMOTION.message in _message_text(
+        _with_promotions(
+            features,
+            ConversationRef(Platform.ONEBOT, "private", "2001"),
+        )
+    )
+    assert FIRE_MANUAL_PROMOTION.message not in _message_text(
+        _with_promotions(
+            features,
+            ConversationRef(Platform.ONEBOT, "private", "1002"),
+        )
+    )

@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
 from ironsbot.core.platform import (
@@ -13,7 +12,10 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.services.bilibili.menu import DynamicMenuResult
+from ironsbot.services.bilibili.menu import (
+    DynamicDetailSelection,
+    DynamicMenuResult,
+)
 from ironsbot.services.bilibili.service import PreparedDynamicDetail
 from ironsbot.services.portable_bilibili_commands import (
     build_portable_bilibili_operations,
@@ -24,13 +26,10 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
     from ironsbot.services.bilibili.menu import DynamicMenuStatus
     from ironsbot.services.bilibili.service import BilibiliService
-    from ironsbot.services.portable_reply import PortableReply
 
 
 class _FakeBilibiliService:
     status = "ok"
-    image_collage = None
-    config = BiliConfig()
 
     def __init__(self) -> None:
         self.targets = _FakeBiliTargets()
@@ -44,8 +43,16 @@ class _FakeBilibiliService:
             prompt="动态菜单",
         )
 
-    def get_dynamic(self, dynamic_id: str) -> DynamicHistoryRecord:
-        return cast("DynamicHistoryRecord", dynamic_id)
+    def select_dynamic(
+        self,
+        cached_ids: list[object],
+        raw_text: str,
+    ) -> DynamicDetailSelection:
+        assert raw_text == "1"
+        return DynamicDetailSelection(
+            status="ok",
+            record=cast("DynamicHistoryRecord", cached_ids[0]),
+        )
 
     async def prepare_dynamic_detail(
         self,
@@ -81,13 +88,6 @@ class _FakeBiliTargets:
         return f"模式:{conversation.account_id}:{account_ref}:{raw_mode}"
 
 
-class _NoSuperusers:
-    @staticmethod
-    def is_actor_superuser(actor: ActorRef) -> bool:
-        del actor
-        return False
-
-
 def _context(text: str) -> MessageInputContext:
     actor = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -111,9 +111,6 @@ def _context(text: str) -> MessageInputContext:
     )
 
 
-FEATURES = _NoSuperusers()
-
-
 @pytest.mark.asyncio
 async def test_portable_bilibili_menu_reuses_numeric_session() -> None:
     service = _FakeBilibiliService()
@@ -126,7 +123,6 @@ async def test_portable_bilibili_menu_reuses_numeric_session() -> None:
     operation = build_portable_bilibili_operations(
         cast("BilibiliService", service),
         sessions,
-        FEATURES,
         notify_auth_invalid=notify,
         refresh_now=lambda: _refresh_result("完成"),
     )["bilibili.dynamic"]
@@ -160,7 +156,6 @@ async def test_portable_bilibili_menu_reports_auth_failure() -> None:
     operation = build_portable_bilibili_operations(
         cast("BilibiliService", service),
         sessions,
-        FEATURES,
         notify_auth_invalid=notify,
         refresh_now=lambda: _refresh_result("完成"),
     )["bilibili.dynamic"]
@@ -184,7 +179,6 @@ async def test_portable_bilibili_account_and_push_mode_keep_account_scope() -> N
     operations = build_portable_bilibili_operations(
         cast("BilibiliService", service),
         PortableQuerySessions(),
-        FEATURES,
         notify_auth_invalid=notify,
         refresh_now=lambda: _refresh_result("完成"),
     )
@@ -202,68 +196,8 @@ async def test_portable_bilibili_account_and_push_mode_keep_account_scope() -> N
         ),
     )
 
-    assert cast("TextPart", accounts.parts[0]).text == (
-        "账号:example-app:opaque-user"
-    )
-    assert cast("TextPart", mode.parts[0]).text == (
-        "模式:example-app:示例账号:链接"
-    )
-
-
-@pytest.mark.parametrize(
-    ("group_role", "expected"),
-    [
-        (None, "❌ 仅群主、管理员或超级管理员可用。"),
-        ("admin", "模式:example-app:示例账号:链接"),
-    ],
-)
-@pytest.mark.asyncio
-async def test_portable_bilibili_group_push_mode_rechecks_manager_role(
-    group_role: str | None,
-    expected: str,
-) -> None:
-    service = _FakeBilibiliService()
-
-    async def notify(_reason: str) -> None:
-        return None
-
-    operations = build_portable_bilibili_operations(
-        cast("BilibiliService", service),
-        PortableQuerySessions(),
-        FEATURES,
-        notify_auth_invalid=notify,
-        refresh_now=lambda: _refresh_result("完成"),
-    )
-    actor = ActorRef(
-        Platform.QQ_OFFICIAL,
-        "opaque-user",
-        "member",
-        "group-id",
-        "example-app",
-    )
-    context = MessageInputContext(
-        IncomingMessageRef(
-            platform=actor.platform,
-            actor=actor,
-            conversation=ConversationRef(
-                actor.platform,
-                "group",
-                "group-id",
-                account_id=actor.account_id,
-            ),
-            message_id="message-id",
-            text="B站推送模式 示例账号 链接",
-            group_role=group_role,
-        ),
-        mentions_bot=True,
-    )
-
-    result = cast(
-        "OutboundMessage",
-        await operations["bilibili.push_mode"](context.text, context),
-    )
-
-    assert cast("TextPart", result.parts[0]).text == expected
+    assert cast("TextPart", accounts.parts[0]).text == ("账号:example-app:opaque-user")
+    assert cast("TextPart", mode.parts[0]).text == ("模式:example-app:示例账号:链接")
 
 
 async def _refresh_result(message: str) -> str:
@@ -286,20 +220,14 @@ async def test_portable_bilibili_refresh_uses_shared_monitor_action() -> None:
     operations = build_portable_bilibili_operations(
         cast("BilibiliService", service),
         PortableQuerySessions(),
-        FEATURES,
         notify_auth_invalid=notify,
         refresh_now=refresh,
     )
 
     result = cast(
-        "PortableReply",
+        "OutboundMessage",
         await operations["bilibili.refresh"]("动态刷新", _context("动态刷新")),
     )
 
-    assert cast("TextPart", result.message.parts[0]).text == "⚡ 正在刷新动态..."
-    assert calls == 0
-    result.delivered()
-    assert result.follow_up is not None
-    final = cast("OutboundMessage", await result.follow_up())
-    assert cast("TextPart", final.parts[0]).text == "✅ 动态刷新完成。"
+    assert cast("TextPart", result.parts[0]).text == "✅ 动态刷新完成。"
     assert calls == 1

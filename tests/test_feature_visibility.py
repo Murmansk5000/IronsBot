@@ -11,10 +11,10 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.config.models.ai import AiEndpointConfig
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
@@ -22,6 +22,7 @@ from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.services.help_menu import visible_help_entries
+from tests.helpers.ai import configured_ai_config
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -56,14 +57,7 @@ def _settings(
             superuser_bypass=False,
         )
     )
-    settings.ai.endpoints = [
-        AiEndpointConfig(
-            name="test",
-            base_url="https://example.test/v1",
-            models=["test-model"],
-            api_key="test-key" if ai_key_configured else "",
-        )
-    ]
+    settings.ai = configured_ai_config() if ai_key_configured else AiConfig()
     settings.ai.intent_actions_enabled = ai_intent_enabled
     settings.seer.team_resource.enabled = team_resource_enabled
     if messaging_enabled:
@@ -86,7 +80,7 @@ def _visible(
     role: str = "member",
 ) -> bool:
     settings = settings or _settings()
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         settings.features,
         settings.superuser_ids,
     )
@@ -116,7 +110,7 @@ def _private_visible(
     settings: Settings,
     user_id: int = 2,
 ) -> bool:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         settings.features,
         settings.superuser_ids,
     )

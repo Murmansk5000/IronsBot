@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
+from ironsbot.config.models.ai import AiConfig, AiProviderConfig
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -17,29 +17,6 @@ if TYPE_CHECKING:
     ]
 
 
-def ai_config(
-    *,
-    models: tuple[str, ...] = ("test-model",),
-    api_key: str = "test-key",
-    **kwargs: object,
-) -> AiConfig:
-    """Build the current endpoint-based AI configuration for tests."""
-
-    return AiConfig.model_validate(
-        {
-            "endpoints": [
-                AiEndpointConfig(
-                    name="test",
-                    base_url="https://example.test/v1",
-                    models=list(models),
-                    api_key=api_key,
-                )
-            ],
-            **kwargs,
-        }
-    )
-
-
 @dataclass(slots=True)
 class FakeAiCompletionClient:
     config: AiConfig
@@ -50,3 +27,26 @@ class FakeAiCompletionClient:
         messages: list[HistoryMessage],
     ) -> AiResponseResult:
         return await self.request(self.config, messages)
+
+
+def configured_ai_config(
+    *,
+    api_key: str = "test-key",
+    provider: str = "test",
+    base_url: str = "https://example.test/v1",
+    models: tuple[str, ...] = ("test-model",),
+    thinking: bool = False,
+    **kwargs: Any,
+) -> AiConfig:
+    return AiConfig(
+        provider_order=[provider],
+        providers={
+            provider: AiProviderConfig(
+                api_key=api_key,
+                base_url=base_url,
+                models=list(models),
+                thinking=thinking,
+            )
+        },
+        **kwargs,
+    )

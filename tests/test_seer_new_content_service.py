@@ -300,16 +300,14 @@ def test_malformed_index_item_is_explicitly_unavailable(
             "(category TEXT, comparison_ready INTEGER, reason TEXT)"
         )
         connection.exec_driver_sql(
-            "INSERT INTO new_content_release VALUES "
-            "(1, '20260731', '2026-07-31', 1)"
+            "INSERT INTO new_content_release VALUES (1, '20260731', '2026-07-31', 1)"
         )
         connection.exec_driver_sql(
             "INSERT INTO new_content_item VALUES "
             "('skill', 1, '测试技能', 1, '{}', 'added')"
         )
         connection.exec_driver_sql(
-            "INSERT INTO new_content_category_state VALUES "
-            "('skill', 1, 'ready')"
+            "INSERT INTO new_content_category_state VALUES ('skill', 1, 'ready')"
         )
         connection.exec_driver_sql(
             f"UPDATE new_content_item SET {column} = ?",
@@ -351,16 +349,12 @@ def test_malformed_index_flag_is_explicitly_unavailable(
             "(category TEXT, comparison_ready INTEGER, reason TEXT)"
         )
         connection.exec_driver_sql(
-            "INSERT INTO new_content_release VALUES "
-            "(1, '20260731', '2026-07-31', 1)"
+            "INSERT INTO new_content_release VALUES (1, '20260731', '2026-07-31', 1)"
         )
         connection.exec_driver_sql(
-            "INSERT INTO new_content_category_state VALUES "
-            "('skill', 1, 'ready')"
+            "INSERT INTO new_content_category_state VALUES ('skill', 1, 'ready')"
         )
-        connection.exec_driver_sql(
-            f"UPDATE {table} SET {column} = 'true'"
-        )
+        connection.exec_driver_sql(f"UPDATE {table} SET {column} = 'true'")
         session.commit()
 
     with pytest.raises(NewContentIndexUnavailableError):

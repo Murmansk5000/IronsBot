@@ -230,9 +230,7 @@ def _skill_belongs_to_existing_pet(
             continue
         raw_id = pet.get("id")
         pet_id = (
-            raw_id
-            if isinstance(raw_id, int) and not isinstance(raw_id, bool)
-            else 0
+            raw_id if isinstance(raw_id, int) and not isinstance(raw_id, bool) else 0
         )
         pet_name = str(pet.get("name", "")).strip()
         if pet_id:

@@ -105,10 +105,7 @@ def main(*, output_path: Path = MANIFEST_PATH) -> None:
         display_path = output_path
     commands = manifest["commands"]
     assert isinstance(commands, dict)
-    print(
-        f"Generated {display_path}: "
-        f"{len(commands)} promoted commands"
-    )
+    print(f"Generated {display_path}: {len(commands)} promoted commands")
 
 
 if __name__ == "__main__":

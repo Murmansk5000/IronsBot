@@ -162,10 +162,9 @@ class LocalRankService:
         return self.repository.stats(LOCAL_METRICS)
 
     def can_cache(self, player_id: int) -> bool:
-        return (
-            not self.exclusion_policy.excludes_from_sample(player_id)
-            and self.repository.can_cache(player_id)
-        )
+        return not self.exclusion_policy.excludes_from_sample(
+            player_id
+        ) and self.repository.can_cache(player_id)
 
     async def upsert_metrics(
         self,
@@ -273,21 +272,15 @@ class LocalRankService:
                     actor=actor,
                 )
             except asyncio.TimeoutError:
-                result.failures.append(
-                    LocalRankRefreshFailure(player_id, "查询超时")
-                )
+                result.failures.append(LocalRankRefreshFailure(player_id, "查询超时"))
             except PlayerRequestPausedError as error:
-                result.failures.append(
-                    LocalRankRefreshFailure(player_id, str(error))
-                )
+                result.failures.append(LocalRankRefreshFailure(player_id, str(error)))
                 logger.info(
                     "local rank cache auto refresh stopped: player requests paused"
                 )
                 break
             except Exception as error:  # noqa: BLE001
-                result.failures.append(
-                    LocalRankRefreshFailure(player_id, str(error))
-                )
+                result.failures.append(LocalRankRefreshFailure(player_id, str(error)))
             else:
                 result.success += 1
             await asyncio.sleep(self.config.refresh_interval_seconds)

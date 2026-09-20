@@ -10,6 +10,10 @@ import pytest
 
 import ironsbot.platform_state_migration as migration
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.integrations.storage.identity_links import (
+    OfficialIdentity,
+    SqliteIdentityLinkStore,
+)
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.sqlite import SqliteMigrationError
 from ironsbot.platform_state_migration import (
@@ -116,6 +120,18 @@ def _seed_legacy_platform_state(root: Path) -> None:
             """
             INSERT INTO bili_push_preferences VALUES (
                 'group', 2001, 123, 'full', '2026-08-04T00:00:00Z'
+            )
+            """,
+            """
+            CREATE TABLE bili_push_category_preferences (
+                target_type TEXT, target_id INTEGER, uid INTEGER,
+                category TEXT, muted INTEGER, updated_at TEXT
+            )
+            """,
+            """
+            INSERT INTO bili_push_category_preferences VALUES (
+                'group', 2001, 123, 'lottery', 1,
+                '2026-08-04T00:00:00Z'
             )
             """,
             """
@@ -348,8 +364,7 @@ def test_platform_state_migration_dry_run_is_read_only(tmp_path: Path) -> None:
     assert result.migrated_rows["player_bindings"] == 1
     with sqlite3.connect(data_root / "state/qq_state.sqlite") as connection:
         columns = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info(player_bindings)")
+            row[1] for row in connection.execute("PRAGMA table_info(player_bindings)")
         }
     assert "qq_user_id" in columns
     assert "actor_id" not in columns
@@ -410,14 +425,20 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
         ).fetchall() == [("group", "2001")]
         assert connection.execute(
             """
+            SELECT conversation_platform, conversation_account_id,
+                   conversation_kind, conversation_id, uid, category, muted
+            FROM bili_push_category_preferences
+            """
+        ).fetchall() == [("onebot", "", "group", "2001", 123, "lottery", 1)]
+        assert connection.execute(
+            """
             SELECT actor_id, position
             FROM team_resource_subscription_mentions
             ORDER BY position
             """
         ).fetchall() == [("1001", 0), ("1002", 1)]
         columns = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info(player_bindings)")
+            row[1] for row in connection.execute("PRAGMA table_info(player_bindings)")
         }
     assert "qq_user_id" not in columns
     with sqlite3.connect(data_root / "state/runtime_state.sqlite") as connection:
@@ -443,14 +464,38 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
     assert not repeated.applied
 
 
+@pytest.mark.asyncio
+async def test_platform_migration_preserves_explicit_identity_links(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_legacy_platform_state(data_root)
+    store = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
+    official = OfficialIdentity("app-a", "member", "member-a", "group-a")
+    await store.issue(
+        token_hash="token-hash",
+        onebot_qq_id="1001",
+        official_app_id="app-a",
+        created_at=1.0,
+        expires_at=10.0,
+    )
+    await store.consume(token_hash="token-hash", official=official, now=2.0)
+
+    result = migrate_platform_state_identities(data_root=data_root, apply=True)
+
+    assert result.applied
+    migrated = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
+    links = await migrated.for_onebot("1001")
+    assert len(links) == 1
+    assert links[0].official == OfficialIdentity("app-a", "member", "member-a")
+
+
 def test_platform_state_migration_rejects_invalid_target_type(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     _seed_legacy_platform_state(data_root)
     _execute(
         data_root / "state/qq_state.sqlite",
-        (
-            "UPDATE push_unsubscriptions SET target_type = 'unsupported'",
-        ),
+        ("UPDATE push_unsubscriptions SET target_type = 'unsupported'",),
     )
 
     with pytest.raises(PlatformStateMigrationError, match="invalid target type"):
@@ -589,7 +634,8 @@ def test_platform_state_migration_rejects_duplicate_target_keys(tmp_path: Path) 
 
 
 def test_platform_install_failure_restores_each_database_and_allows_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     data_root = tmp_path / "data"
     _seed_legacy_platform_state(data_root)

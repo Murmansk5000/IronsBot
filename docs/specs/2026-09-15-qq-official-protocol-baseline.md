@@ -1,0 +1,294 @@
+# QQ Official Protocol Baseline
+
+Status: `accepted`
+
+Contract: `target`
+
+Owner: QQ Official transport integration, application lifecycle, and shared
+delivery contracts.
+
+Related architecture: [ARCHITECTURE.md](../../ARCHITECTURE.md)
+
+Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
+
+## Problem
+
+The Tencent SDK transport is implemented, but several current documents still
+describe the removed NoneBot adapter. The application also needs an explicit
+boundary between protocol work already performed by `qqbot-agent-sdk==1.2.2`
+and business guarantees that remain IronsBot's responsibility. Without that
+baseline, later reply, lifecycle, and media work could duplicate the SDK or
+mistake a local unit test for real platform acceptance.
+
+## Goal
+
+Freeze a dated, source-backed protocol baseline for Phase 7. Current documents
+must describe the SDK transport accurately, and every remaining implementation
+slice must have a named owner and observable acceptance evidence.
+
+## Non-Goals
+
+- This slice does not change runtime behavior.
+- This document records only the real acceptance evidence listed below; quota,
+  duplicate-replay, and multi-account gates remain open until exercised.
+- This slice does not implement cross-platform identity linking.
+
+## Ownership And Reuse
+
+- Semantic owner: shared inbound, reply, delivery, identity, and account-health
+  contracts.
+- Reused contracts: `ActorRef`, `ConversationRef`, `MessageInputContext`,
+  `OutboundMessage`, `CommandCatalog`, and `FeatureService`.
+- Adapter boundary: `integrations.qq_official` converts Tencent events and API
+  results; services never receive Tencent or NoneBot event types.
+- No new interface is introduced in this documentation-only slice.
+
+## Audited Sources
+
+Audit date: 2026-09-15.
+
+| Source | Observed contract |
+| --- | --- |
+| [Access token](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html) | AppID and ClientSecret obtain a short-lived token; the documented default lifetime is 7200 seconds and refresh becomes available near expiry. |
+| [WebSocket](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/event-emit/websocket.html) | HELLO supplies the heartbeat interval; READY establishes a session; Resume uses session ID and gateway sequence; RESUMED follows replay. |
+| [Intents](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/event-emit/payload.html) | `GROUP_AND_C2C_EVENT` covers C2C and group-at events; event subscriptions remain permission controlled. |
+| [Message overview](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/overview.html) | C2C passive replies are documented as 60 minutes and four replies; group passive replies are five minutes and five replies; repeated delivery can occur and inbound `msg_id` plus outbound `msg_seq` carry deduplication semantics. |
+| [Rich media](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/rich-media.html) | Media is uploaded before send; local files use the recommended chunked flow; `file_info` has a TTL and cannot cross C2C/group scopes. |
+| [Text interaction](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/text-chain.html) | The page documents `<qqbot-at-user id="" />`, but current QQ group production clients displayed it literally. IronsBot therefore does not claim visible mention support. |
+| [Message buttons](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html) | Template keyboards require an application and do not accept variables; custom keyboards are invite-only. Command buttons can insert and send `@bot` input, while callback buttons require `INTERACTION_CREATE` acknowledgement. |
+| [Operating rules](https://bot.q.qq.com/wiki/business/) | Disclosed functionality, content filtering, consented data use and deletion are required. Without Tencent authorization, core bot use cannot depend on another bot or application. |
+| Installed `qqbot-agent-sdk==1.2.2` source | The SDK owns token refresh, WebSocket heartbeat/reconnect/Resume, persisted session state, READY/RESUMED callbacks, bounded in-process message-ID deduplication, URL upload, and local-file chunked upload. |
+
+The SDK's DTO includes `union_openid`, but the audited official group/C2C
+contract does not guarantee a numeric QQ ID or a common cross-transport identity
+in every event. IronsBot therefore must not infer a QQ number from that field.
+
+## Current Gap Matrix
+
+| Concern | SDK responsibility | IronsBot responsibility | Current evidence |
+| --- | --- | --- | --- |
+| Authentication | Token acquisition and refresh | Secret injection and per-AppID lifecycle | One real account passed token acquisition and READY; refresh remains covered by SDK ownership rather than a controlled expiry test |
+| Gateway | Heartbeat, reconnect, Resume, session persistence | Startup timeout, account health, required/optional policy, shutdown ordering | A real isolated WebSocket interruption reached `reconnecting`, received `RESUMED`, and returned to `ready` |
+| Inbound deduplication | Bounded in-process message-ID cache | Persistent pre-dispatch message claims beyond the SDK cache | Completed with AppID/event/message isolation and 24-hour retention |
+| Passive replies | HTTP calls and DTO encoding | Event-derived deadline, per-scene reply budget, sequential concurrent `msg_seq` | Group 5-minute/5-reply and C2C 60-minute/4-reply policies are enforced; live sequence keys are conversation-scoped and never evicted |
+| API failures | Logs status and trace ID, raises `RuntimeError` | Structured failure kind, code, trace ID, retry policy, redaction | HTTP boundary preserves status, business code and trace ID; delivery classification uses typed fields and transport exceptions |
+| Rich media | `MediaUploader` URL and chunked upload flows | Materialize binary payloads, preserve scene, and expose delivery outcome | Completed; URL and chunked paths use the SDK, and `file_info` is one-use because SDK 1.2.2 drops TTL |
+| Requester targeting | Text payload transport | Reference the triggering message from its inbound `msg_idx`; this is independent of optional NapCat identity observation | Production client renders a native reply; no literal mention markup is emitted and `MentionPart` remains a real-member-mention contract |
+| Quoted input | Parses `MSG_TYPE_QUOTE` and quoted elements | Route the user's new text while retaining the reference as metadata | Quoted commands now enter the same command/session router; live client selection remains pending |
+| Identity | Preserves opaque event fields | AppID-scoped configured, explicit, or trusted-observation links | No nickname, avatar, fuzzy-content, or OpenID-shape inference allowed |
+
+## Interactive Confirmation Target
+
+Finite follow-up choices share one platform-neutral prompt contract rather than
+separate button and text workflows. A future `PromptSession` owns the initiating
+actor and conversation, reply message, expiry, one-time consumption and
+idempotency key. Each `PromptChoice` owns a stable value and user-facing label.
+
+- QQ Official renders available choices as command or callback buttons when the
+  account has the required capability.
+- OneBot may render buttons only when its transport capability is proven; its
+  baseline remains a numbered or yes/no text prompt.
+- Typed `y`, `n`, `yes`, `no`, `是` and `否` remain accepted by the same session
+  handler as an accessibility and unsupported-client fallback, not as a second
+  business path.
+- Confirmation, cancellation, numbered selection, pagination and enable/disable
+  prompts are button candidates. Player IDs, search terms, times and free-form AI
+  input remain text fields.
+- Every click is re-authorized server-side against the initiating actor and
+  conversation. UI visibility and deprecated client-side click limits are not a
+  security boundary.
+
+Template keyboards cannot carry a dynamic per-session token, and custom
+keyboards are currently invite-only. The implementation must therefore support a
+reliable text fallback before claiming no-input confirmation as accepted.
+
+The shared core now exposes `PromptSession` and `PromptChoice`. Portable
+query menus bind a cryptographically random session ID to the initiating AppID,
+actor, conversation and message, and button action data and numeric text input
+resolve through the same selection callback. Non-persistent prompts are consumed
+exactly once. Accounts with Tencent's invite-only custom-button permission may
+set `custom_keyboards = true`. The adapter then emits type-2 command buttons
+that automatically send the opaque session action as a regular addressed
+message; this deliberately avoids a second callback business path and does not
+require `INTERACTION_CREATE` acknowledgement. Unsupported clients and accounts
+without permission retain the same numeric text choices.
+
+## Identity-Link Target
+
+Cross-platform linking is optional. Public QQ Official features continue to work
+without NapCat or a numeric QQ identity, so the official bot does not make another
+bot or application a condition of use.
+
+The reliable baseline flow is:
+
+1. A user starts linking from either transport.
+2. IronsBot issues a short-lived, single-use token scoped to the initiating
+   actor, conversation and target AppID without exposing the numeric QQ number.
+3. The user presents or confirms that token on the other transport. When an
+   approved button flow yields authenticated events from both transports, this
+   step may be rendered as buttons; otherwise the user enters one short code.
+4. The identity service atomically stores the AppID, official identity kind,
+   OpenID, numeric QQ ID, confirmation time, and audit metadata.
+5. Either side can inspect and revoke the link. Conflicts fail closed.
+
+The explicit flow remains available. Production may additionally use configured
+aliases or trusted silent group observation: an official reply references the
+triggering message, NapCat reports that exact source sender, and two independent
+matches in the same logical group establish the link. Nickname, avatar, bare
+timing, unreferenced speech history or OpenID similarity may not complete a link.
+Binding a Seer player ID to an official OpenID is separate and does not by itself
+prove a numeric QQ identity or ownership of the game account.
+
+## Delivery Slices
+
+| Slice | Acceptance criteria | Dependencies | Status |
+| --- | --- | --- | --- |
+| Protocol baseline | Current docs identify the SDK path and dated official limits; historical adapter records are labeled | Official docs and installed SDK source | completed |
+| Addressed-input routing | Valid commands precede AI and mention hints on both transports | Shared input context and command catalog | completed; chat, intent, command suppression and hints share one decision service |
+| Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, source references and structured failures | Tencent send APIs | completed; requester targeting uses native replies and command keyboards remain capability-gated |
+| Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | completed; real reconnect and Resume passed, while a Tencent-emitted duplicate replay remains unavailable for external observation |
+| Media and identity | SDK uploader, safe `file_info` lifetime, exact identity linking | Platform permissions and identity repository | completed; configured, explicit and trusted-observation links converge on one repository |
+| Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | partial; one-account READY, C2C and group-at commands, C2C/group media, sequential replies, Resume, and ordered shutdown passed |
+
+## Feature And Command Matrix
+
+The command catalog, rather than a second platform-specific inventory, is the
+source of truth. The earlier coverage-gate checkpoint contained 75 official direct
+command contracts; that historical count is not a current parity claim. The
+[command parity audit](2026-09-15-command-parity.md) tracks subsequent additions
+and outstanding behavior differences. Router construction fails when an
+official direct command has no portable operation, so a catalog entry cannot be
+silently advertised without an implementation.
+
+| Capability | OneBot / NapCat | QQ Official | Current limitation or evidence |
+| --- | --- | --- | --- |
+| Help, about, configured text and meeting replies | supported | supported | Real C2C help passed |
+| Seer data, player, team, pet, mintmark, equipment, type, peak and autocard queries | supported | supported | Shared services and portable operations; a real C2C pet-art query delivered PNG media and text |
+| Weekly content menus and details | supported | supported | 历史 C2C 菜单通过；后续图片菜单暴露纯图片 Prompt 发送失败，`f05afd75` 已按键盘 capability 处理，最新版客户端待复验 |
+| Global and sampled ranks, display limits and cache administration | supported | supported | Same rank services; administrative commands retain catalog audience checks |
+| Activity and Bilibili history queries | supported | supported | Query paths are portable; scheduled delivery is governed separately |
+| AI chat and intent actions | supported when configured | supported when configured | Command-first routing is shared; provider availability and feature policy still apply |
+| Message, Bilibili, activity and team-resource subscriptions | supported | supported when proactive delivery is enabled and authorized | Tencent proactive quota and permission failure remain a real-platform gate |
+| Data sync, status and Docker maintenance commands | supported | supported | Same services and superuser policy; destructive operations were not exercised during real acceptance |
+| Cross-platform identity-link initiation | supported | not supported | OneBot may issue a short-lived explicit challenge; trusted group observation requires no user-visible command |
+| Cross-platform identity-link confirmation | not supported | supported | Official OpenID may confirm a challenge; configured aliases and trusted source-reference observation are also exact sources |
+| OneBot-native notices and client-specific passive events | supported where a plugin registers them | not implicitly supported | They require an explicit Tencent event and policy; no fake compatibility event is synthesized |
+| Binary and remote images | supported | supported through SDK media upload | Real C2C and group binary PNG upload and rich-media delivery passed |
+
+Platform differences stay in command metadata, inbound adapters and delivery
+capabilities. Business services do not branch on the platform to maintain a
+second implementation.
+
+## Migration And Rollback
+
+- Migration: none; this slice changes documentation only.
+- Rollback: revert the documentation commit as one unit.
+- Removal condition: references to the old adapter may remain only inside dated
+  historical evidence and must be explicitly labeled as historical.
+
+## Acceptance Tests
+
+- [x] Locked runtime dependency is `qqbot-agent-sdk==1.2.2`.
+- [x] Current architecture text no longer presents `nonebot-adapter-qq` as the
+  supported transport.
+- [x] SDK and IronsBot responsibilities are separated by evidence.
+- [x] Official reply, event, upload, and mention contracts are dated and linked.
+- [x] Runtime slices are implemented and locally verified.
+- [ ] Remaining real-platform gates are tracked in the matrix below and are not
+  reported as passed without platform evidence.
+
+## Evidence
+
+| Date | Change | Verification actually run | Result / remaining risk |
+| --- | --- | --- | --- |
+| 2026-09-15 | Protocol and implementation audit | Official documents above; installed SDK 1.2.2 source; dependency lock; architecture text search | Baseline accepted; runtime gaps and real-platform gates remain open |
+| 2026-09-15 | Addressed-input routing | AI routing, command ownership, OneBot matcher, portable router and QQ Official tests | Both transports share command-first chat/intent policy; duplicate OneBot group matcher removed |
+| 2026-09-15 | Passive-reply policy | Reply allocator, official identity, outbound messenger and SDK runtime tests | Event timestamps define deadlines; group and C2C budgets are separate; active live keys cannot be evicted and reused |
+| 2026-09-15 | Structured API failures and requester targeting | 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | HTTP failures retain status/code/trace without parsing exception strings; transport failures remain typed; later production evidence replaced literal mention markup with source references |
+| 2026-09-19 | Production source-message references | Current Docker revision on Unraid; QQ client display; redacted OneBot observation and QQ Official delivery logs | A lineup query delivered progress, summary and image in passive sequences 1-3. Text replies referenced the triggering message, the client showed native replies, and no raw `<qqbot-at-user>` tag remained. Visible member @ is not claimed. |
+| 2026-09-15 | Shared prompt identity | 52 portable-command tests and 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | Numeric input and opaque button action data resolve through one actor/conversation-bound session; Tencent keyboard delivery remains open |
+| 2026-09-15 | Capability-gated command keyboards | 129 portable/QQ Official tests, 39 core capability tests and 37 admin-notice tests; Ruff; BasedPyright; static repository checks | Opt-in SDK sends current 5x5 keyboard schema; dynamic actions traverse the ordinary router; text fallback and strict admin targets remain intact; real AppID permission is external |
+| 2026-09-15 | Account lifecycle policy | 205 portable, QQ Official, lifecycle and config tests; Ruff; BasedPyright; compileall; static repository checks | Per-AppID READY/RESUMED startup gate, explicit states, required/optional failure policy and ordered WebSocket stop are application-owned; heartbeat and Resume remain SDK-owned |
+| 2026-09-15 | Inbound parser rejection diagnostics | 60 QQ Official runtime and MVP tests; Ruff; BasedPyright; compileall; diff check | Known message callbacks that cannot produce an SDK event are reported with only the account alias and event type, so missing gateway delivery and rejected payloads are distinguishable without logging message or identity data |
+| 2026-09-15 | Persistent inbound claims | 145 portable, QQ Official and lifecycle tests; Ruff; BasedPyright; compileall; static repository checks | Concurrent and cross-instance duplicate messages are rejected before portable business dispatch; claims are isolated by AppID and event type |
+| 2026-09-15 | SDK media upload | 143 portable and QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | URL uploads and binary chunked uploads preserve C2C/group scope; temporary files are deleted; known platform limits produce text fallback |
+| 2026-09-16 | Compact mixed-media and image prompts | 112 focused tests followed by full suite `3747 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks | Tencent text and rich-media message types remain separate; image details now use at most one media and one consolidated text payload, while image-only menus ignore unavailable keyboards instead of failing before transport |
+| 2026-09-15 | Linked-account Lucky Skin Window | 94 identity, portable, QQ Official, lifecycle and existing Lucky Skin Window tests; Ruff; BasedPyright; compileall; static repository checks | All six commands reuse the OneBot-keyed account service through an exact AppID/kind/OpenID/scope link; uncached login and ambiguous skins use shared labeled prompts |
+| 2026-09-15 | Portable command coverage gate | QQ-enabled full bootstrap plus router failure test; 53 portable, QQ Official and bootstrap tests; Ruff; BasedPyright; compileall; static repository checks | The full catalog currently contains 75 QQ Official direct command contracts: 72 shared business operations plus three official identity operations. Multiple texts owned by one operation, including the peak-pool change aliases, do not inflate this count. Construction fails when any direct contract lacks an operation or explicit built-in handler |
+| 2026-09-15 | Automated closure run | Full suite `3460 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks; clean tracked worktree | All local gates pass. The remaining manual Tencent account matrix below must not be reported as passed without captured platform evidence |
+| 2026-09-15 | Runtime log redaction | 60 runtime, lifecycle, portable and QQ-enabled bootstrap tests; Ruff; BasedPyright; compileall | Connection logs use the configured account alias. Message and conversation identifiers use irreversible short digests; original AppIDs and OpenIDs remain available only to routing and persistence code |
+| 2026-09-15 | Real token and READY acceptance | Dedicated local test account with AppID in ignored TOML and AppSecret in an ignored environment file | SDK obtained an access token and the redacted account alias reached `ready`; no credential or raw platform identifier was retained in this document |
+| 2026-09-15 | Token lifecycle observability | Token observer, runtime and SDK sender tests; Ruff; BasedPyright; compileall | SDK remains the sole token owner. IronsBot records only `acquired` or `refreshed` with the account alias after a public token value changes; raw tokens and token fingerprints are never logged |
+| 2026-09-15 | Forced token reauthentication | A dedicated process acquired a real token, called the SDK's public `clear_token()`, reacquired, and fetched the authenticated gateway endpoint without displaying credentials or the endpoint | Cache invalidation and authenticated reacquisition passed. Tencent returned the same token value immediately, so natural-expiry rotation and the changed-token observer remain pending rather than being inferred |
+| 2026-09-15 | Peak-pool command ownership | 252 peak, catalog, portable and QQ Official tests; Ruff; BasedPyright; compileall | Competitive, expert and master pool base commands and their change aliases share `seer.peak.query` and its binary-image result; three duplicate weekly-content operations were removed without removing the user command texts |
+| 2026-09-15 | Real C2C command acceptance | Operator sent `帮助` three times after READY; runtime recorded one recognized inbound route and one successful initial delivery for each message | Each operator message produced exactly one private reply; command recognition, C2C passive delivery and persistent inbound deduplication passed without duplicate execution |
+| 2026-09-15 | Application-owned data startup | 51 focused lifecycle/registry/bootstrap tests, local portable dispatch and a real C2C `新增内容` command | Seer data now loads as an application resource rather than a OneBot plugin side effect; the shared router delivered the five-choice menu through Tencent with passive sequence 1 |
+| 2026-09-15 | Real ordered shutdown | Operator stopped the READY process repeatedly with the normal interrupt path | Uvicorn completed application shutdown and the process exited without a surviving QQ Official runtime task |
+| 2026-09-15 | Expired portable menu response | Real C2C selection arrived 148 seconds after a menu with a 120-second session lifetime; 54 focused tests and the full suite then passed | Expired numeric or button responses now receive an explicit timeout message, while unrelated commands are not claimed by the expired session |
+| 2026-09-15 | Real C2C image and sequential-reply acceptance | Operator sent a pet-art query and selected a menu item; redacted runtime logs recorded a successful binary image payload at passive sequence 1 followed by its text payload at sequence 2 | Tencent accepted the same-scope chunked PNG upload and both replies, and the operator confirmed that the QQ client displayed the image |
+| 2026-09-15 | Real reconnect and Resume acceptance | A dedicated no-dispatch acceptance process closed only its SDK WebSocket after READY; runtime health observed `ready` to `reconnecting` to `ready`, and a READY-only callback distinguished the second gateway dispatch | The gateway returned `RESUMED` rather than a fresh READY, pending operations were failed explicitly, and the process then stopped cleanly without exposing session or account identifiers |
+| 2026-09-15 | Real group-at command and image acceptance | Operator addressed the bot in an authorized group; redacted runtime logs recorded recognized `GROUP_AT_MESSAGE_CREATE` routes, successful passive text replies, and a successful group-scoped image payload | Group addressed-input routing produced one reply per recognized command, and the operator confirmed that the QQ client displayed the image |
+| 2026-09-15 | Quoted inbound routing | SDK 1.2.2 example behavior, identity conversion, runtime dispatch and portable router tests | `MSG_TYPE_QUOTE` is treated as user input instead of being discarded; quoted reference metadata is preserved, while a real client quote-selection check remains pending |
+
+## Progress
+
+The former fixed 98% is withdrawn following the user's 2026-09-15 priority
+clarification: the immediate target is a usable QQ Official bot, not completion
+of internal refactoring. Track the explicit live acceptance milestones in
+[Official usability acceptance](2026-09-15-official-usability-acceptance.md).
+Local tests and historical connection checks do not prove current-release
+business acceptance. The broader protocol and multi-account gates below remain.
+
+## Real Tencent Acceptance Matrix
+
+Run this matrix only with a dedicated test application whose AppID and AppSecret
+are supplied through the process environment. Never paste either credential into
+TOML, command-line arguments, logs, screenshots, or this evidence table.
+
+| Check | Operator action | Required evidence | Status |
+| --- | --- | --- | --- |
+| Access token acquisition and READY | Start one required test account | Redacted startup log reaches `ready` after SDK `READY` | passed 2026-09-15 |
+| Access token refresh | Keep the account active, then perform authenticated work after token rotation | Redacted `access token refreshed` lifecycle event followed by authenticated gateway use | Automatic token-value rotation and authenticated reconnect observed at 13:52 and 15:52 on 2026-09-15; exact expiry-versus-gateway-invalidation trigger is not exposed by these logs |
+| Group addressed command | In an authorized test group, address the bot and send `帮助` | One reply; no mention-guard interception or duplicate execution | passed 2026-09-15; repeated recognized group-at routes delivered one passive reply each |
+| C2C command | Send `帮助` in the bot's private conversation | One private reply using the C2C reply budget | passed 2026-09-15; repeated three times without duplicate execution |
+| Sequential replies | Run a command whose one inbound message produces several outbound payloads | Payloads referencing that same inbound message use increasing sequence values | passed 2026-09-15; C2C image sequence 1 followed by text sequence 2 |
+| Image upload | Run a query whose result contains an image | SDK media upload succeeds in the same group/C2C scope | passed 2026-09-15 in C2C and group scope; operator confirmed client display |
+| Resume and deduplication | Interrupt connectivity after READY, restore it, then retry one message | `reconnecting` to `ready`; replayed message ID causes no duplicate side effect | Resume passed 2026-09-15 through an isolated WebSocket interruption; persistent replay deduplication remains locally verified because a real duplicate delivery was not emitted by Tencent |
+| Proactive permission failure | With proactive sends disabled or ungranted, exercise one scheduled target in a test scope | Structured permission/error code is logged; no passive-reply fallback | pending authorized test |
+| Multi-account isolation | Enable two authorized test AppIDs and address each independently | Separate READY state, OpenID namespace, token and send route | external gate: second AppID required |
+| Ordered shutdown | Stop the local process after the checks | Accounts stop cleanly before shared resources; no surviving SDK task | passed 2026-09-15 |
+
+Completion requires recording only redacted timestamps, result categories and trace
+IDs. App secrets, access tokens, full OpenIDs and numeric account identifiers are not
+acceptance evidence and must not be retained.
+
+### Running-Process Refresh Evidence
+
+Read-only inspection on 2026-09-15 found the local `python -m ironsbot` process
+still running since 12:52:06. No restart, forced invalidation, token request or
+outbound message was initiated during this inspection. Redacted lifecycle events:
+
+| Time | Event |
+| --- | --- |
+| 12:52:10.389 | access token acquired |
+| 12:52:10.983 | ready |
+| 13:52:16.090 | access token refreshed |
+| 13:52:16.184 | ready |
+| 15:52:26.070 | access token refreshed |
+| 15:52:26.184 | ready |
+
+The observer emits refreshed only when the token value changes, not on every
+ensure-token call. SDK 1.2.2 reconnect obtains an authenticated gateway URL and
+authenticates the WebSocket with its token; the subsequent connected callback
+requires a successful READY/RESUMED dispatch. This is evidence of automatic
+credential rotation followed by usable authentication, rather than the earlier
+forced clear/reacquire experiment that returned the same value.
+
+The logs do not identify whether expiry or a gateway invalidation triggered each
+rotation, and do not distinguish READY from RESUMED in the application ready line.
+They therefore do not prove every refresh cause or a duplicate-message replay.
+The long-running process also predates later command commits: these events do not
+validate the latest command changes in a live QQ client. Runtime/token observer
+source was last changed in `e5b64dd3`; current command parity work remains open.
+Multi-account acceptance still needs a second authorized AppID. Proactive error
+acceptance still needs an explicitly authorized test target; no messages were sent.

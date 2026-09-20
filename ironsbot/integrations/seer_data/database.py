@@ -5,6 +5,7 @@ import json
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from threading import RLock
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from weakref import WeakKeyDictionary
@@ -50,7 +51,6 @@ from .release_contract import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
-    from datetime import datetime
 
     from seerapi_models import PetORM, PetSkinORM
     from sqlalchemy.engine import Engine
@@ -241,9 +241,10 @@ class SeerDatabase:
                     session,
                     class_ids,
                 )
-                mintmark_ids = (*(
-                    mintmark.id for mintmark in direct
-                ), *class_member_ids)
+                mintmark_ids = (
+                    *(mintmark.id for mintmark in direct),
+                    *class_member_ids,
+                )
             yield _load_mintmark_details(session, mintmark_ids)
 
     def error_message(self, result_code: int) -> str | None:
@@ -267,6 +268,28 @@ class SeerDatabase:
         except SQLAlchemyError as error:
             logger.warning("failed to read peak season", exc_info=True)
             raise DataUnavailableError("巅峰赛季数据读取失败") from error
+
+    def master_season_start(self) -> datetime | None:
+        try:
+            with self._databases.session(SEERAPI_DB) as session:
+                if session is None:
+                    raise DataUnavailableError("大师赛季数据未加载")
+                value = session.execute(
+                    text(
+                        "SELECT start_time FROM peak_cost_pool "
+                        "ORDER BY start_time DESC LIMIT 1"
+                    )
+                ).scalar_one_or_none()
+                if value is None:
+                    return None
+                return (
+                    value
+                    if isinstance(value, datetime)
+                    else datetime.fromisoformat(str(value))
+                )
+        except SQLAlchemyError as error:
+            logger.warning("failed to read master season", exc_info=True)
+            raise DataUnavailableError("大师赛季数据读取失败") from error
 
     def version(self) -> str:
         """Return the release version cached when the in-memory DB was loaded."""
@@ -311,7 +334,7 @@ def _read_publication(engine: Engine) -> SeerPublication:
                 text(
                     "SELECT name FROM sqlite_master "
                     "WHERE type = 'table' AND name IN "
-                    "('api_metadata', 'ironsbot_metadata')"
+                    "('api_metadata', 'seerapi_metadata')"
                 )
             ).scalars()
         )
@@ -324,7 +347,7 @@ def _read_publication(engine: Engine) -> SeerPublication:
             raise SeerApiReleaseContractError.missing_api_metadata()
         rows = session.execute(
             text(
-                "SELECT key, value FROM ironsbot_metadata WHERE key IN "
+                "SELECT key, value FROM seerapi_metadata WHERE key IN "
                 "(:revision, :contract, :scopes, :repositories)"
             ),
             {
@@ -369,9 +392,11 @@ def _mintmark_class_member_ids(
 ) -> tuple[int, ...]:
     if not class_ids:
         return ()
-    statement = select(UniversalPartORM.mintmark_id).where(
-        col(UniversalPartORM.mintmark_class_id).in_(class_ids)
-    ).order_by(col(UniversalPartORM.mintmark_id))
+    statement = (
+        select(UniversalPartORM.mintmark_id)
+        .where(col(UniversalPartORM.mintmark_class_id).in_(class_ids))
+        .order_by(col(UniversalPartORM.mintmark_id))
+    )
     return tuple(session.exec(statement).all())
 
 
@@ -386,33 +411,35 @@ def _load_mintmark_details(
         return ()
 
     connected_ids = _collect_connected_mintmark_ids(session, requested_ids)
-    statement = select(MintmarkORM).where(
-        col(MintmarkORM.id).in_(connected_ids)
-    ).options(
-        selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
-            cast("Any", AbilityPartORM.max_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.skill_part)),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.base_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.max_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.extra_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.mintmark_class)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.connect)
-        ),
-        selectinload(cast("Any", MintmarkORM.connected_universal_parts)).selectinload(
-            cast("Any", UniversalPartORM.mintmark)
-        ),
-        selectinload(cast("Any", MintmarkORM.pet)),
-        selectinload(cast("Any", MintmarkORM.skill)),
+    statement = (
+        select(MintmarkORM)
+        .where(col(MintmarkORM.id).in_(connected_ids))
+        .options(
+            selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
+                cast("Any", AbilityPartORM.max_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.skill_part)),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.base_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.max_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.extra_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.mintmark_class)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.connect)
+            ),
+            selectinload(
+                cast("Any", MintmarkORM.connected_universal_parts)
+            ).selectinload(cast("Any", UniversalPartORM.mintmark)),
+            selectinload(cast("Any", MintmarkORM.pet)),
+            selectinload(cast("Any", MintmarkORM.skill)),
+        )
     )
     loaded = {mintmark.id: mintmark for mintmark in session.exec(statement).all()}
     return tuple(

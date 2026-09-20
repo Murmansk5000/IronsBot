@@ -28,9 +28,6 @@ class RankLookupCost:
     cache_page_hits: int = 0
     online_page_fetches: int = 0
     restricted_miss: bool = False
-    cached_rank_age_seconds: float | None = None
-    used_recent_cache_anchor: bool = False
-    used_recent_cache_fallback: bool = False
 
     @property
     def lightweight_confirmed(self) -> bool:
@@ -49,33 +46,13 @@ class RankLookupResult:
     score_name: str
     rank: int | None = None
     score: int | None = None
-    observed_score: int | None = None
     excluded: bool = False
     searched_limit: int = 0
     queried: bool = False
     failure: str | None = None
     fallback_cached_at: float | None = None
     fetched_at: float | None = None
-    profile_score: int | None = None
-    scanned_count: int = 0
-    scan_complete: bool = False
-    budget_exhausted: bool = False
-    query_id: str = "-"
     cost: RankLookupCost = field(default_factory=RankLookupCost)
-
-    @property
-    def status(self) -> str:
-        if self.failure and "顺序异常" in self.failure:
-            return "order_anomaly"
-        if self.budget_exhausted and self.rank is None:
-            return "budget_exhausted"
-        if self.failure:
-            return "failed"
-        if self.rank is not None:
-            return "found"
-        if self.scan_complete:
-            return "scanned_missing"
-        return "unconfirmed" if self.queried else "not_queried"
 
     def record_page(self, start: int, page: RankPageResult) -> None:
         """Retain the oldest page evidence and its observed query cost."""
@@ -89,9 +66,7 @@ class RankLookupResult:
 
     def include_observation(self, fetched_at: float) -> None:
         self.fetched_at = (
-            fetched_at
-            if self.fetched_at is None
-            else min(self.fetched_at, fetched_at)
+            fetched_at if self.fetched_at is None else min(self.fetched_at, fetched_at)
         )
 
 
@@ -131,7 +106,6 @@ class RankScoreSearchResult:
     items: list[RankScoreSearchItem] = field(default_factory=list)
     higher_gap: RankScoreGap | None = None
     lower_gap: RankScoreGap | None = None
-    failure: str | None = None
 
 
 @dataclass(slots=True)
@@ -256,6 +230,7 @@ class PeakSeasonRankSummary:
     standard: RankLookupResult
     wild: RankLookupResult
     expert: RankLookupResult
+    master: RankLookupResult
 
     @classmethod
     def empty(cls) -> "PeakSeasonRankSummary":
@@ -279,4 +254,5 @@ class PeakSeasonRankSummary:
             standard=item("standard_peak", "竞技赛季榜", "段位分"),
             wild=item("wild_peak", "狂野赛季榜", "段位分"),
             expert=item("expert_peak", "专家赛季榜", "专家积分"),
+            master=item("master_peak", "大师赛季榜", "段位分"),
         )

@@ -17,9 +17,7 @@ def test_unity_notice_source_normalizes_and_caches_response() -> None:
         )
 
     async def run() -> None:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(respond)
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
             source = UnityNoticeSource(client, timeout_seconds=8)
             now = datetime(2026, 6, 1, tzinfo=timezone.utc)
 

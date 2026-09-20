@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from dataclasses import dataclass
+from typing import Literal
 
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
@@ -11,6 +12,7 @@ from ironsbot.services.seer.rank_constants import (
     COUNTERMARK_RANK_KEY,
     COUNTERMARK_RANK_SUB_KEY,
     EXPERT_PEAK_USER_RANK_KEY,
+    MASTER_PEAK_USER_RANK_KEY,
     MOUNT_RANK_SUB_KEY,
     OUTFIT_PART_RANK_SUB_KEY,
     OUTFIT_RANK_KEY,
@@ -30,9 +32,7 @@ RANK_PAGE_CACHE_STATUS_PREFIXES = (
     "榜单情况",
     "榜单状态",
 )
-RANK_PAGE_CACHE_REFRESH_PREFIXES = (
-    "刷新榜单",
-)
+RANK_PAGE_CACHE_REFRESH_PREFIXES = ("刷新榜单",)
 RANK_SAMPLE_STATUS_COMMANDS = ("/样本情况", "/样本状态")
 RANK_SAMPLE_REFRESH_COMMANDS = ("/刷新样本",)
 RANK_PAGE_OVERVIEW_COMMANDS = tuple(
@@ -47,8 +47,12 @@ class GlobalRankSpec:
     key: int
     sub_key: int
     unit: str
-    peak_season_sub_key: bool = False
+    sub_key_source: Literal["fixed", "peak_season", "master_season"] = "fixed"
     score_format: str = ""
+
+    @property
+    def season_limited(self) -> bool:
+        return self.sub_key_source != "fixed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +137,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         STANDARD_PEAK_USER_RANK_KEY,
         0,
         "分",
-        peak_season_sub_key=True,
+        sub_key_source="peak_season",
         score_format="peak_rating",
     ),
     "狂野段位": GlobalRankSpec(
@@ -141,7 +145,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         WILD_PEAK_USER_RANK_KEY,
         0,
         "分",
-        peak_season_sub_key=True,
+        sub_key_source="peak_season",
         score_format="peak_rating",
     ),
     "专家段位": GlobalRankSpec(
@@ -149,7 +153,15 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         EXPERT_PEAK_USER_RANK_KEY,
         0,
         "分",
-        peak_season_sub_key=True,
+        sub_key_source="peak_season",
+    ),
+    "大师段位": GlobalRankSpec(
+        "大师段位榜",
+        MASTER_PEAK_USER_RANK_KEY,
+        0,
+        "分",
+        sub_key_source="master_season",
+        score_format="peak_rating",
     ),
 }
 
@@ -166,9 +178,7 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
     "群星牌": LocalRankSpec("样本群星牌积分榜", "autocard_score"),
     "已解锁图鉴": LocalRankSpec("样本已解锁图鉴榜", "unlocked_book_entries"),
     "成就数量": LocalRankSpec("样本成就数量榜", "achievement_count"),
-    "竞技段位": LocalRankSpec(
-        "样本竞技段位榜", "peak_standard", season_limited=True
-    ),
+    "竞技段位": LocalRankSpec("样本竞技段位榜", "peak_standard", season_limited=True),
     "竞技胜率": LocalRankSpec(
         "样本竞技胜率榜", "peak_standard_win_rate", season_limited=True
     ),

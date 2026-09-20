@@ -69,10 +69,7 @@ class PublishedPeakRepository:
         data = cast("SeerDataAccess", self._data)
         getter = data.suit if kind == "suit" else data.title
         with data.get_many(getter, item_ids) as models:
-            return {
-                item_id: str(model.name)
-                for item_id, model in models.items()
-            }
+            return {item_id: str(model.name) for item_id, model in models.items()}
 
 
 def load_peak_pool_snapshots(

@@ -21,25 +21,33 @@ class ScheduledMessageOutboundSender:
     delivery: ProactiveMessageDelivery
 
     async def send(self, delivery: ScheduledMessageDelivery) -> None:
-        private_message = OutboundMessage.from_text(delivery.message)
-        group_message = OutboundMessage(
-            (
-                *(MentionPart(actor) for actor in delivery.group_mentions),
-                TextPart(delivery.message),
+        for message in delivery.messages:
+            await self.delivery.send_many(
+                (
+                    *(
+                        ProactiveDeliveryRequest(
+                            conversation,
+                            OutboundMessage.from_text(message),
+                        )
+                        for conversation in delivery.private_conversations
+                    ),
+                    *(
+                        ProactiveDeliveryRequest(
+                            conversation,
+                            OutboundMessage(
+                                (
+                                    *(
+                                        MentionPart(actor)
+                                        for actor in delivery.group_mentions
+                                    ),
+                                    TextPart(message),
+                                )
+                            ),
+                        )
+                        for conversation in delivery.group_conversations
+                    ),
+                ),
+                action_name=delivery.action_name,
+                subscription_key=delivery.subscription_key,
+                include_promotions=True,
             )
-        )
-        await self.delivery.send_many(
-            (
-                *(
-                    ProactiveDeliveryRequest(conversation, private_message)
-                    for conversation in delivery.private_conversations
-                ),
-                *(
-                    ProactiveDeliveryRequest(conversation, group_message)
-                    for conversation in delivery.group_conversations
-                ),
-            ),
-            action_name=delivery.action_name,
-            subscription_key=delivery.subscription_key,
-            include_promotions=True,
-        )

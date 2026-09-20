@@ -174,11 +174,7 @@ def score_miss_proof_from_page(
         return None
 
     lower_offset = next(
-        (
-            offset
-            for offset, item in enumerate(items)
-            if int(item.score) < target_score
-        ),
+        (offset for offset, item in enumerate(items) if int(item.score) < target_score),
         None,
     )
     if lower_offset is None or lower_offset <= 0:
