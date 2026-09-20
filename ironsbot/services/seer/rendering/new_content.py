@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from . import HtmlTemplateRenderer
     from .custom_pet_models import SkillDict
+    from .new_content_pool_changes import PoolChangePreview
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,7 @@ class NewContentMenuItem:
     image: str | None
     skill: SkillDict | None
     friend_skill: SkillDict | None
+    pool_preview: PoolChangePreview | None = None
     image_notice: str = ""
     entity_key: tuple[str, int] | None = None
 
