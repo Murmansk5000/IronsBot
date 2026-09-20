@@ -1,4 +1,4 @@
-# Explicit Cross-Platform Identity Linking
+# Cross-Platform Identity Linking
 
 Date: 2026-09-15
 
@@ -7,7 +7,26 @@ Status: completed
 Owner: core platform identity, identity-link service, QQ state storage, and
 portable/OneBot command adapters.
 
-## Contract
+## Authoritative Contract
+
+An exact link may come from one of three sources. They converge on the same
+AppID-scoped identity repository and permission lookup; handlers do not maintain
+separate identities for each source.
+
+1. A deployment-owned `[identities]` alias explicitly names the OneBot and QQ
+   Official endpoints of one trusted principal.
+2. A user completes the explicit challenge flow below.
+3. Silent group observation matches an official `member_openid` to the numeric
+   sender of the source message referenced by the trusted official bot's reply.
+   The official bot and NapCat must share a configured logical group, and two
+   independent, unique, consistent observations are required.
+
+Silent observation fails closed on ambiguity, expiry, untrusted bot origin, or
+an existing conflicting link. It never overwrites a link. C2C `user_openid`
+does not participate because NapCat cannot authenticate its private-message
+sender through a group source reference.
+
+## Explicit Challenge Contract
 
 - A OneBot actor with a decimal QQ ID explicitly requests a challenge for one
   enabled QQ Official account alias.
@@ -34,9 +53,13 @@ button can transfer identity proof between two clients.
 
 ## Security
 
-Nickname, avatar, message time, message history, and `union_openid` are not
-identity proofs and are never used to create a link. Challenge issuance,
-successful linking, and revocation are audited without recording the raw token.
+Nickname, avatar, `union_openid`, fuzzy content similarity, bare timing, and
+unreferenced message history are not identity proofs and are never used to
+create a link. The silent observer uses only a trusted official reply's exact
+source-message reference, normalized content as a consistency check, the same
+logical group, and a bounded time window. Challenge issuance, successful
+linking, observation and revocation are audited without recording raw tokens or
+platform identifiers.
 
 ## Acceptance
 
@@ -46,14 +69,16 @@ successful linking, and revocation are audited without recording the raw token.
   inputs while status and revocation remain shared.
 - Offline platform-state migration preserves existing explicit links and their
   migration namespace.
+- Trusted observation requires two matches and covers ambiguity, conflict,
+  expiry and untrusted-source rejection.
 - Full repository tests and static checks pass before this spec becomes
   `completed`.
 
 ## Verification
 
-- Identity, command catalog, portable/OneBot routing, QQ Official, state
-  migration, and platform migration set: `285 passed`.
-- Application composition, lifecycle, plugin registry/import hygiene, and
-  configuration set: `117 passed`.
-- Ruff, BasedPyright, compileall, repository static checks, and diff checks
-  passed.
+- The original challenge slice passed its focused identity, command, routing,
+  migration and lifecycle suites before this spec was marked completed.
+- The later trusted-observation slice is covered by identity-observation,
+  platform-identity and ingress-policy tests. Production Unraid evidence on
+  2026-09-19 confirmed that QQ Official replies expose source references to
+  NapCat without sending verification messages.

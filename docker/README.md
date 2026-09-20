@@ -101,6 +101,11 @@ services:
     environment:
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
+      # Optional Unraid/deployment overrides for [bot.onebot].
+      ONEBOT_ENABLED: "true"
+      ONEBOT_SEND_MESSAGES: "true"
+      ONEBOT_IDENTITY_VERIFICATION: "false"
+      # ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT: "123456789"
       # Optional QQ Official Bot credentials. The suffix is the uppercase
       # account alias under [bot.qq_official.accounts.<alias>].
       # QQ_OFFICIAL_APP_ID_EXAMPLE_BOT: "change-me"
@@ -242,8 +247,8 @@ owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-Group and user aliases are declared in `[identities.groups]` and
-`[identities.users]` with a `qq` endpoint; numeric IDs are also accepted. Replies to incoming
+Group and user aliases come from `[identities.groups]` and
+`[identities.users]`; numeric IDs are also accepted. Replies to incoming
 commands keep using the bot that received the event. Bilibili, activity,
 scheduled-message, server-status, startup, and other proactive deliveries use
 the configured route. Routing does not filter incoming events, so avoid placing
@@ -267,10 +272,16 @@ and `logs/` paths live under the current working directory.
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+ONEBOT_ENABLED=true
+ONEBOT_SEND_MESSAGES=true
+ONEBOT_IDENTITY_VERIFICATION=false
+ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
 QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
-# Set only when [ai.providers.deepseek] is declared in TOML.
 AI_KEY_DEEPSEEK=
+# Add one variable for each additional [ai.providers.<alias>].
+# AI_KEY_FUMIN=
+# AI_KEY_NOMISS=
 # Add the plain password for each [[seer.player_accounts]] player ID that logs in.
 # IronsBot converts it to MD5 in memory.
 SEER_PASSWORD_123456789=
@@ -285,9 +296,13 @@ DOCKER_REGISTRY_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. |
-| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
-| `AI_KEY_<PROVIDER_ALIAS>` | API key for one declared `[ai.providers.<alias>]`; the suffix is the uppercase provider alias. Configure the provider and models in TOML. |
+| `ONEBOT_ENABLED` | Optional deployment override for `bot.onebot.enabled`. |
+| `ONEBOT_SEND_MESSAGES` | Optional deployment override for OneBot outbound. It is ignored when official credentials are active because NapCat is then forced silent. |
+| `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation through official source-message references seen by NapCat. |
+| `ONEBOT_TRUSTED_OFFICIAL_BOT_<ACCOUNT_ALIAS>` | Numeric QQ of the declared official account as seen by NapCat. Required for each active account when identity observation is enabled. |
+| `QQ_OFFICIAL_APP_ID_<ACCOUNT_ALIAS>` | AppID for one declared `[bot.qq_official.accounts.<alias>]`; a complete AppID/Secret pair activates the account and makes QQ Official the only outbound platform. |
+| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret paired with the AppID. Each account obtains and refreshes its own AccessToken. |
+| `AI_KEY_<PROVIDER_ALIAS>` | API key for one declared `[ai.providers.<alias>]`. Providers and their models are tried in TOML order. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
@@ -303,10 +318,27 @@ adjust `bot.qq_official.startup_timeout_seconds` when the default 15 seconds is
 not suitable. Neither setting contains a secret or belongs in Unraid variables.
 
 Published Docker images include the QQ Official runtime together with the
-OneBot/NapCat runtime, so the same image supports either transport or both at
-once. A source checkout uses `uv sync --extra qq-official` followed by
+OneBot/NapCat runtime. Complete official credentials select QQ Official as the
+only outbound transport and force NapCat silent; failures never fall back to
+NapCat. Without official credentials, `bot.onebot.send_messages` controls
+OneBot outbound. A source checkout uses `uv sync --extra qq-official` followed by
 `uv run --no-sync python -m ironsbot`. A custom OneBot-only image may explicitly
 set `--build-arg IRONSBOT_RUNTIME_EXTRA=` to omit the optional SDK dependency.
+
+Validate a mounted configuration without starting adapters, schedulers,
+databases, or network clients:
+
+```bash
+docker run --rm --entrypoint python \
+  -v /mnt/user/appdata/ironsbot/config:/config:ro \
+  --env-file /path/to/a/temporary-validation.env \
+  murmansk5000/ironsbot:<exact-tag> \
+  -m ironsbot.config_check --no-dotenv --config /config/ironsbot.toml
+```
+
+Use a copied TOML and a temporary env file for migration checks. The command
+prints only transport selection, configured account aliases, and AI provider
+aliases/model counts; it never prints credential values or transport IDs.
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
@@ -362,15 +394,15 @@ Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.
 
 ```toml
-[features]
-superuser_bypass = true
-
 [identities.groups]
-admin = { qq = 123456789 }
-main = { qq = 987654321 }
+admin = 123456789
+main = 987654321
 
 [identities.users]
-owner = { qq = 1234567890 }
+owner = 1234567890
+
+[features]
+superuser_bypass = true
 
 [features.group_policy]
 admin = ["admin_notice"]
@@ -423,13 +455,13 @@ This is the same kind of output as the built-in `战队<team_id>` query, but the
 Enable the feature and default reminder settings in `ironsbot.toml`:
 
 ```toml
-[features]
-
 [identities.groups]
-example = { qq = 987654321 }
+example = 987654321
 
 [identities.users]
-owner = { qq = 1234567890 }
+owner = 1234567890
+
+[features]
 
 [features.group_policy]
 example = ["team_resource_subscription"]
