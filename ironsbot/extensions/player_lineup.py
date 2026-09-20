@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import ObservationTime
 from ironsbot.extensions.contracts import (
     PlayerLineupCachedReply,
@@ -272,8 +273,7 @@ class PlayerLineupQueryServices:
                     )
                 except Exception as error:
                     logger.warning(
-                        "player_lineup failed stage=profile player_id=%s "
-                        "error_type=%s",
+                        "player_lineup failed stage=profile player_id=%s error_type=%s",
                         player_id,
                         type(error).__name__,
                     )
@@ -342,8 +342,8 @@ class PlayerLineupQueryServices:
             if not decision.allowed:
                 logger.warning(
                     "player lineup quota changed before successful record: "
-                    "actor=%s player=%s",
-                    actor,
+                    "actor_ref=%s player=%s",
+                    reference_digest(actor.id),
                     player_id,
                 )
         return result

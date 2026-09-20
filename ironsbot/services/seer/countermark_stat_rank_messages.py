@@ -17,6 +17,7 @@ AVAILABLE_STATS_TEXT = (
     "攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 双防 / 双攻 / 盾 / 双刀 / 总和"
 )
 
+
 def build_countermark_stat_rank_message(
     command: CountermarkStatRankCommand,
     items: list[CountermarkStatRankItem],
@@ -55,8 +56,10 @@ def _scope_text(command: CountermarkStatRankCommand) -> str:
         return f"{command.angle_count}角刻印"
     return "所有刻印"
 
+
 def _format_number(value: float) -> str:
     return str(int(value)) if value.is_integer() else f"{value:.2f}".rstrip("0")
+
 
 def _format_item_line(
     index: int,

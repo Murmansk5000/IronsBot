@@ -5,12 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from ironsbot.core.outbound import (
-    BinaryImagePart,
-    OutboundMessage,
-    RemoteImagePart,
-    TextPart,
-)
+from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -24,7 +19,6 @@ from ironsbot.services.bilibili.outbound_delivery import (
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliDynamicOutboundSender,
-    prepare_dynamic_image_message,
     render_dynamic_content_message,
     render_dynamic_image_message,
     render_dynamic_link_message,
@@ -35,11 +29,6 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.target_models import BiliPushTargets
-from ironsbot.services.messaging.image_collage import (
-    MIN_COLLAGE_IMAGES,
-    ImageCollageError,
-    ImageCollageService,
-)
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     ProactiveDeliverySummary,
@@ -264,6 +253,29 @@ async def test_content_failure_after_shared_policy_notifies_admins(
 
 
 @pytest.mark.asyncio
+async def test_content_failure_without_admin_notices_redacts_target_ids(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    delivery = _RecordingDelivery(content_failures=1)
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+    )
+
+    await sender.send(
+        _item(include_image=False),
+        PUB_TS,
+        1310714247,
+        _targets(full_groups=(1001,), full_users=(2001,)),
+    )
+
+    assert "Bilibili dynamic content push failed" in caplog.text
+    assert "1001" not in caplog.text
+    assert "2001" not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_full_dynamic_uses_summary_only_for_long_content(
     tmp_path: Path,
 ) -> None:
@@ -469,27 +481,24 @@ def test_image_only_dynamic_does_not_invent_content_text() -> None:
     assert isinstance(images.parts[0], RemoteImagePart)
 
 
-@pytest.mark.asyncio
-async def test_complete_dynamic_content_keeps_text_before_images() -> None:
-    message = await render_dynamic_content_message(_item())
+def test_complete_dynamic_content_keeps_text_before_images() -> None:
+    message = render_dynamic_content_message(_item())
 
     assert message is not None
     assert isinstance(message.parts[0], TextPart)
     assert isinstance(message.parts[1], RemoteImagePart)
 
 
-@pytest.mark.asyncio
-async def test_complete_dynamic_content_supports_image_only_items() -> None:
-    message = await render_dynamic_content_message(_item(text=""))
+def test_complete_dynamic_content_supports_image_only_items() -> None:
+    message = render_dynamic_content_message(_item(text=""))
 
     assert message is not None
     assert len(message.parts) == 1
     assert isinstance(message.parts[0], RemoteImagePart)
 
 
-@pytest.mark.asyncio
-async def test_complete_dynamic_content_supports_text_only_items() -> None:
-    message = await render_dynamic_content_message(_item(include_image=False))
+def test_complete_dynamic_content_supports_text_only_items() -> None:
+    message = render_dynamic_content_message(_item(include_image=False))
 
     assert message is not None
     assert len(message.parts) == 1
@@ -527,96 +536,3 @@ def test_bilibili_admin_hint_is_limited_once_per_group_per_day(
 
 def _message_text(message: OutboundMessage) -> str:
     return "".join(part.text for part in message.parts if isinstance(part, TextPart))
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "count,enabled,failure",
-    [
-        (2, True, None),
-        (3, True, None),
-        (1, True, None),
-        (0, True, None),
-        (2, False, None),
-        (2, True, ImageCollageError.animated()),
-        (2, True, RuntimeError("unexpected")),
-        (19, True, None),
-    ],
-)
-async def test_adaptive_images_preserve_originals_on_failure(
-    *,
-    count: int,
-    enabled: bool,
-    failure: Exception | None,
-) -> None:
-    item = _item()
-    urls = [f"https://example.test/{index}.png" for index in range(count)]
-    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
-        {"url": url + "]"} for url in urls
-    ]
-    fetched: list[str] = []
-
-    async def fetch(url: str, _max_bytes: int) -> bytes:
-        fetched.append(url)
-        if failure:
-            raise failure
-        return url.encode()
-
-    def render(image_bytes: object, **_kwargs: int) -> bytes:
-        assert image_bytes == tuple(url.encode() for url in urls)
-        return b"combined-png"
-
-    collage = ImageCollageService(fetch, render)
-    result = await prepare_dynamic_image_message(
-        item,
-        image_collage=collage,
-        combine_images=enabled,
-    )
-    if count == 0:
-        assert result is None
-    elif (
-        enabled
-        and MIN_COLLAGE_IMAGES <= count <= collage.max_images
-        and failure is None
-    ):
-        assert result == OutboundMessage(
-            (BinaryImagePart(b"combined-png", "image/png"),)
-        )
-    else:
-        assert result == OutboundMessage(tuple(RemoteImagePart(url) for url in urls))
-    if not enabled or count < MIN_COLLAGE_IMAGES or count > collage.max_images:
-        assert fetched == []
-
-
-@pytest.mark.asyncio
-async def test_query_and_push_share_collage_and_skip_unsubscribed_images(
-    tmp_path: Path,
-) -> None:
-    item = _item()
-    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] *= 2
-    fetched: list[str] = []
-
-    async def fetch(url: str, _max_bytes: int) -> bytes:
-        fetched.append(url)
-        return b"source"
-
-    def render(image_bytes: object, **_kwargs: int) -> bytes:
-        del image_bytes
-        return b"combined-png"
-
-    collage = ImageCollageService(fetch, render)
-    detail = await render_dynamic_content_message(item, image_collage=collage)
-    assert detail is not None
-    assert isinstance(detail.parts[0], TextPart)
-    assert detail.parts[1:] == (BinaryImagePart(b"combined-png", "image/png"),)
-    delivery = _RecordingDelivery()
-    sender = BilibiliDynamicOutboundSender(
-        delivery,  # type: ignore[arg-type]
-        PushUnsubscribeStore(tmp_path / "subscriptions.sqlite"),
-        image_collage=collage,
-    )
-    await sender.send(item, PUB_TS, AUTHOR_MID, _targets(full_groups=(1001,)))
-    assert delivery.content_calls[-1]["message"] == OutboundMessage(detail.parts[1:])
-    fetched.clear()
-    await sender.send(item, PUB_TS, AUTHOR_MID, _targets(link_groups=(1001,)))
-    assert fetched == []

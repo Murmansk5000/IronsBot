@@ -264,17 +264,20 @@ def migrate_state_databases(  # noqa: PLR0913
             migrated_rows=migrated_rows,
             created_at=now or datetime.now(timezone.utc),
         )
-        apply_sqlite_bundle_changes((
-            SqliteBundleChange(qq_state, temp_qq),
-            SqliteBundleChange(runtime_state, temp_runtime),
-            *(
-                SqliteBundleChange(
-                    path, backup=backup_path / "legacy" / path.relative_to(data_root),
-                )
-                for _, path in sources
-                if path.is_relative_to(data_root)
-            ),
-        ))
+        apply_sqlite_bundle_changes(
+            (
+                SqliteBundleChange(qq_state, temp_qq),
+                SqliteBundleChange(runtime_state, temp_runtime),
+                *(
+                    SqliteBundleChange(
+                        path,
+                        backup=backup_path / "legacy" / path.relative_to(data_root),
+                    )
+                    for _, path in sources
+                    if path.is_relative_to(data_root)
+                ),
+            )
+        )
     finally:
         cleanup_sqlite_bundles((temp_qq, temp_runtime))
     return MigrationResult(
@@ -325,9 +328,7 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
         0,
     )
     SqliteLuckySkinWatchPreferenceStore(qq_state).get(migration_actor)
-    SqliteRankDisplayStore(qq_state).get(
-        ConversationRef(Platform.ONEBOT, "group", "0")
-    )
+    SqliteRankDisplayStore(qq_state).get(ConversationRef(Platform.ONEBOT, "group", "0"))
     TeamResourceSubscriptionStore(qq_state).list_all()
 
     ActivitySentStore(runtime_state).filter_unsent([])
@@ -663,8 +664,6 @@ def _prepare_for_atomic_replace(path: Path) -> None:
         result = connection.execute("PRAGMA integrity_check").fetchone()
     if result is None or str(result[0]).lower() != "ok":
         raise StateMigrationError.integrity_failed(path)
-
-
 
 
 def _write_manifest(  # noqa: PLR0913

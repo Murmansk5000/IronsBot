@@ -74,7 +74,7 @@ class BiliTargetService:
             conversation: configured.get(conversation, default_rule)
             for conversation in (
                 private_conversation_for_actor(actor)
-                for actor in self.features.actors_for_feature("bili_push")
+                for actor in self.features.private_actors_for_feature("bili_push")
             )
         }
 

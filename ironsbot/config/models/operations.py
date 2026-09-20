@@ -23,38 +23,6 @@ INVALID_RECONNECT_TIME_ERROR = (
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 WorkflowInputValue = str | int | float | bool
-DEFAULT_SERVER_STATUS_COMMANDS = (
-    "开服了吗",
-    "开服了嘛",
-    "开服了没",
-    "开服没",
-    "关服了吗",
-    "关服了嘛",
-    "开了吗",
-    "关了吗",
-)
-
-
-class ServerStatusConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    commands: list[str] = Field(
-        default_factory=lambda: list(DEFAULT_SERVER_STATUS_COMMANDS)
-    )
-
-    @field_validator("commands")
-    @classmethod
-    def validate_commands(cls, value: list[str]) -> list[str]:
-        commands = list(dict.fromkeys(command.strip() for command in value))
-        if not commands or any(
-            not command or command.startswith("/") for command in commands
-        ):
-            message = "server status commands must be nonempty ordinary commands"
-            raise ValueError(message)
-        if "开服查询" in commands:
-            message = "开服查询 is reserved for administrator commands"
-            raise ValueError(message)
-        return commands
 
 
 class RemoteBuildStepConfig(BaseModel):
@@ -306,7 +274,6 @@ class OperationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_sync: DataSyncConfig = Field(default_factory=DataSyncConfig)
-    server_status: ServerStatusConfig = Field(default_factory=ServerStatusConfig)
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)

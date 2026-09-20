@@ -52,6 +52,7 @@ def _install(
             resources.commands,
             resources.player_id_resolver,
             resources.query_sessions,
+            resources.identity_links,
             resources.sendpic.exact_command_texts,
             frozenset(settings.seer.new_content.expanded_categories),
             settings.seer.new_content.auto_expand_max_items,

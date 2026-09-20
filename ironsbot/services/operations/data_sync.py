@@ -93,8 +93,7 @@ class DataSyncService:
         check_status = self._backend.format_sync_check_statuses(statuses)
         if failed:
             return (
-                "数据更新检查失败，未执行更新："
-                f"{', '.join(failed)}\n{check_status}",
+                f"数据更新检查失败，未执行更新：{', '.join(failed)}\n{check_status}",
                 False,
             )
         changed = [
@@ -172,7 +171,8 @@ class DataSyncService:
             return BUSY_MESSAGE
         return self._format_manual_result(
             results,
-            downstream_publication_pending=trigger_remote_build and any(
+            downstream_publication_pending=trigger_remote_build
+            and any(
                 source.remote_build.enabled
                 and source.remote_build.downstream_publication_pending
                 for source in self._config.sources.values()

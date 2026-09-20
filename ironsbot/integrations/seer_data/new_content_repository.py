@@ -116,9 +116,7 @@ def _index_item(row: Any) -> NewContentIndexItem:
         category=str(row["category"]),
         entity_id=require_int(row["entity_id"], field="new_content_item.entity_id"),
         name=str(row["name"]),
-        sort_value=require_int(
-            row["sort_value"], field="new_content_item.sort_value"
-        ),
+        sort_value=require_int(row["sort_value"], field="new_content_item.sort_value"),
         payload=payload,
         change_kind=str(row["change_kind"]),
     )

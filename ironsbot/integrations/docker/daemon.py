@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 IMAGE_PULL_RETRY_ATTEMPTS = 3
 IMAGE_PULL_RETRY_BASE_DELAY_SECONDS = 2.0
+HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
 TRANSIENT_DOCKER_PULL_ERRORS = (
     "eof",
     "timeout",
@@ -112,9 +114,8 @@ async def pull_docker_image(
             raise_for_docker_status(response)
             break
         except Exception as error:
-            if (
-                attempt >= IMAGE_PULL_RETRY_ATTEMPTS
-                or not is_transient_pull_error(error)
+            if attempt >= IMAGE_PULL_RETRY_ATTEMPTS or not is_transient_pull_error(
+                error
             ):
                 raise
             logger.warning(
@@ -150,10 +151,10 @@ async def ensure_watchtower_image(
         return cached
 
 
-async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerImageInfo:
-    response = await client.get(f"/images/{quote(image, safe='')}/json")
-    raise_for_docker_status(response)
-    data = response.json()
+def _parse_image_info(data: object) -> DockerImageInfo:
+    if not isinstance(data, dict):
+        message = "Docker API returned invalid image metadata"
+        raise TypeError(message)
     image_id = data.get("Id")
     if not isinstance(image_id, str) or not image_id:
         message = "Docker API did not return target image id"
@@ -178,6 +179,41 @@ async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerIma
         labels=raw_labels,
         repo_digests=repo_digests,
     )
+
+
+async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerImageInfo:
+    response = await client.get(f"/images/{quote(image, safe='')}/json")
+    raise_for_docker_status(response)
+    return _parse_image_info(response.json())
+
+
+async def inspect_image_info_if_present(
+    client: httpx.AsyncClient,
+    image: str,
+) -> DockerImageInfo | None:
+    response = await client.get(f"/images/{quote(image, safe='')}/json")
+    if response.status_code == HTTP_NOT_FOUND:
+        return None
+    raise_for_docker_status(response)
+    return _parse_image_info(response.json())
+
+
+async def remove_image_if_unused(
+    client: httpx.AsyncClient,
+    image_id: str,
+) -> bool:
+    """Remove one exact image without forcing containers that still reference it."""
+
+    response = await client.delete(
+        f"/images/{quote(image_id, safe='')}",
+        params={"force": "false", "noprune": "false"},
+    )
+    if response.status_code == HTTP_NOT_FOUND:
+        return True
+    if response.status_code == HTTP_CONFLICT:
+        return False
+    raise_for_docker_status(response)
+    return True
 
 
 async def inspect_remote_image_digest(

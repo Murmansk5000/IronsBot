@@ -7,7 +7,12 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    reference_digest,
+)
 from ironsbot.services.team.audit import TEAM_AUDIT_FEATURE
 
 if TYPE_CHECKING:
@@ -97,5 +102,5 @@ def _log_unavailable(conversation: ConversationRef) -> None:
         "team audit followup skipped: no compatible connected OneBot bot for "
         "conversation=%s:%s",
         conversation.kind,
-        conversation.id,
+        reference_digest(conversation.id),
     )

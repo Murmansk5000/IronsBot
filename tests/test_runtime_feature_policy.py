@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from tests.helpers.onebot_events import group_message_event
@@ -10,7 +10,7 @@ _SUPERUSER_ID = 10001
 
 
 def test_group_event_feature_policy_uses_superuser_bypass() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(superuser_bypass=True),
         frozenset({_SUPERUSER_ID}),
     )
@@ -20,7 +20,7 @@ def test_group_event_feature_policy_uses_superuser_bypass() -> None:
 
 
 def test_group_event_feature_policy_respects_disabled_superuser_bypass() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(superuser_bypass=False),
         frozenset({_SUPERUSER_ID}),
     )

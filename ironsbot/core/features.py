@@ -24,6 +24,7 @@ class Feature(str, Enum):
     MEETING = "meeting"
     PET_CONFIG = "pet_config"
     PLAYER_LINEUP_PRIVATE = "player_lineup_private"
+    QQ_OFFICIAL_IDENTITY_INFO = "qq_official_identity_info"
     SEER = "seer"
     SEER_ACTIVITY_PUSH = "seer_activity_push"
     SEER_ACTIVITY_QUERY = "seer_activity_query"

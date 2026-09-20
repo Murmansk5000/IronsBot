@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.messaging.meeting import build_meeting_reply
+from ironsbot.services.operations.docker_update import (
+    DOCKER_MAINTENANCE_OPTIONS,
+    DockerMaintenanceOption,
+    docker_maintenance_menu_text,
+)
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 
@@ -19,10 +24,7 @@ if TYPE_CHECKING:
         DataSyncService,
         ManualDataSyncOption,
     )
-    from ironsbot.services.operations.docker_update import (
-        DockerMaintenanceOption,
-        DockerUpdateService,
-    )
+    from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
@@ -76,7 +78,10 @@ class _PortableDataSyncOperations:
             if not should_run:
                 return message
 
-            async def select(option: ManualDataSyncOption) -> PortableReply:
+            async def select(
+                option: ManualDataSyncOption,
+                _context: MessageInputContext,
+            ) -> PortableReply:
                 async def run(action_progress: ProgressReporter) -> str:
                     return await self.service.run_manual(
                         action=option.action,
@@ -103,53 +108,7 @@ def build_portable_docker_operations(
     service: DockerUpdateService,
     sessions: PortableQuerySessions,
 ) -> Mapping[str, PortableOperation]:
-    """Bind Docker maintenance with transport-confirmed progress and restart."""
-
-    from functools import partial
-
-    from ironsbot.services.operations.docker_update import (
-        DOCKER_IMAGE_UPDATE_START_MESSAGE,
-        DockerMaintenanceChoice,
-        docker_maintenance_menu_text,
-    )
-
-    async def select(option: DockerMaintenanceOption) -> PortableReply:
-        choice = option.choice
-        if choice is DockerMaintenanceChoice.RESTART_ONLY:
-            message, action = await service.prepare_maintenance(choice)
-            return PortableReply(
-                OutboundMessage.from_text(message),
-                after_delivered=partial(service.execute_restart, action),
-            )
-
-        async def prepare(progress: ProgressReporter) -> PortableReply:
-            await progress(DOCKER_IMAGE_UPDATE_START_MESSAGE)
-            message, action = await service.prepare_maintenance(choice)
-            return PortableReply(
-                OutboundMessage.from_text(message),
-                after_delivered=partial(service.execute_restart, action),
-            )
-
-        return await progress_operation_reply(prepare)
-
-    async def maintenance_menu(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        del text
-        from ironsbot.services.operations.docker_update import (
-            DOCKER_MAINTENANCE_OPTIONS,
-        )
-
-        return sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=DOCKER_MAINTENANCE_OPTIONS,
-                select=select,
-                prompt=OutboundMessage.from_text(docker_maintenance_menu_text()),
-                exit_message="已退出机器人维护。",
-            ),
-        )
+    """Bind Docker maintenance with restart work gated by reply delivery."""
 
     async def check_image(
         text: str,
@@ -162,9 +121,40 @@ def build_portable_docker_operations(
 
         return await progress_operation_reply(check)
 
+    async def open_maintenance(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+
+        async def select(
+            option: DockerMaintenanceOption,
+            _context: MessageInputContext,
+        ) -> PortableReply:
+            message, action = await service.prepare_maintenance(option.choice)
+
+            async def execute() -> OutboundMessage:
+                await service.execute_restart(action)
+                return OutboundMessage.from_text("机器人维护操作已提交。")
+
+            return PortableReply(
+                OutboundMessage.from_text(message),
+                follow_up=execute,
+            )
+
+        return sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=DOCKER_MAINTENANCE_OPTIONS,
+                select=select,
+                prompt=OutboundMessage.from_text(docker_maintenance_menu_text()),
+                exit_message="已退出机器人维护。",
+            ),
+        )
+
     return {
-        "docker_update.restart": maintenance_menu,
-        "docker_update.image_update": maintenance_menu,
+        "docker_update.restart": open_maintenance,
+        "docker_update.image_update": open_maintenance,
         "docker_update.image_check": check_image,
     }
 
@@ -216,9 +206,7 @@ def build_portable_meeting_operations(
         del text, context
         reply = build_meeting_reply(number, template)
         if reply is None:
-            reply = (
-                "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。"
-            )
+            reply = "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。"
         return OutboundMessage.from_text(reply)
 
     return {

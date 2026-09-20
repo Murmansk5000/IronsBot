@@ -58,9 +58,7 @@ def test_clock_check_uses_request_midpoint_without_changing_time() -> None:
         )
     )
 
-    assert samples == (
-        ClockCheckSample("https://clock.example", 5.0),
-    )
+    assert samples == (ClockCheckSample("https://clock.example", 5.0),)
     assert client.urls == ["https://clock.example"]
 
 

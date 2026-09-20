@@ -12,11 +12,81 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
+from ironsbot.services.identity.player_accounts import (
+    PlayerAccount,
+    PlayerAccountRegistry,
+)
+from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 _ALIAS_PLAYER_ID = 700
 _CURRENT_PLAYER_ID = 600
 _MENTIONED_PLAYER_ID = 800
+
+
+def test_partial_reference_visibility_and_exact_precedence() -> None:
+    context = _context()
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                700001, "公开玩家", ("玩家甲", "玩家甲号"), None, public=True
+            ),
+            PlayerAccount(700002, "群内玩家", (), None),
+            PlayerAccount(700003, "隐藏玩家", (), None),
+        ),
+        private_alias_groups={context.message.conversation: ("群内玩家",)},
+    )
+    resolver = PlayerIdResolver(
+        lambda reference, conversation: registry.resolve_player_id(
+            reference,
+            conversation=conversation,
+        ),
+        lambda _actor: None,
+        reference_search=lambda reference, actor, conversation: (
+            registry.find_references(
+                reference,
+                conversation=conversation,
+                include_private=actor.id == "admin",
+            )
+        ),
+    )
+    actor, conversation = context.message.actor, context.message.conversation
+    binding = next(
+        command
+        for command in seer_command_contracts(resolver)
+        if command.id == "seer.player.bind"
+    )
+    command_context = CommandContext(actor=actor, conversation=conversation)
+    assert binding.matches_direct_input(command_context, "绑定米米号玩家")
+    assert not binding.matches_direct_input(command_context, "绑定米米号隐藏")
+    assert not binding.matches_direct_input(command_context, "绑定米米号不存在")
+    assert [
+        c.player_id for c in resolver.reference_choices("玩家", actor, conversation)
+    ] == [
+        700001,
+        700002,
+    ]
+    assert [
+        c.player_id for c in resolver.reference_choices("玩家甲", actor, conversation)
+    ] == [
+        700001,
+    ]
+    assert [
+        c.player_id
+        for c in resolver.reference_choices(
+            "玩家",
+            ActorRef(Platform.ONEBOT, "admin"),
+            conversation,
+        )
+    ] == [700001, 700002, 700003]
+    outside = ConversationRef(Platform.ONEBOT, "private", "outside")
+    assert [
+        c.player_id for c in resolver.reference_choices("玩家", actor, outside)
+    ] == [
+        700001,
+    ]
+    assert not resolver.reference_choices("", actor, conversation)
+    assert not resolver.reference_choices("999999999999999999", actor, conversation)
 
 
 def _context(

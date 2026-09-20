@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.config.models.features import build_feature_service
 from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.onebot.matchers import PromptSessionManager
@@ -25,7 +25,6 @@ from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
     ProactiveMessageDelivery,
 )
-from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,7 +43,6 @@ class CommonComponents:
     """Shared runtime dependencies constructed once per application process."""
 
     prompt_sessions: PromptSessionManager
-    query_sessions: PortableQuerySessions
     features: FeatureService
     promotions: PromotionCatalog
     outbound: GroupOutboundRateLimitService
@@ -64,9 +62,9 @@ def build_common_components(
     cache_root: Path,
 ) -> CommonComponents:
     """Build policy, push delivery, and shared interaction primitives."""
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         settings.features,
-        settings.superuser_ids,
+        settings.bot.superusers,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
         qq_official=(
@@ -74,7 +72,19 @@ def build_common_components(
             if settings.bot.qq_official.enabled_accounts
             else None
         ),
+        references=settings.platform_references,
     )
+    for target in settings.identities.users.values():
+        if target.qq is None:
+            continue
+        for alias, openid in target.official.items():
+            account = settings.bot.qq_official.enabled_accounts.get(alias)
+            if account is not None:
+                features.register_identity_link(
+                    official_app_id=account.app_id,
+                    official_openid=openid,
+                    onebot_qq_id=str(target.qq),
+                )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
         features,
@@ -86,8 +96,13 @@ def build_common_components(
         settings.onebot_references,
     )
     promotions = PromotionCatalog(settings.promotions)
+    platform_selection = settings.outbound_platform_selection
     platform_messengers: dict[Platform, OutboundMessenger] = {
-        Platform.ONEBOT: OneBotOutboundMessenger(bot_router, outbound),
+        Platform.ONEBOT: OneBotOutboundMessenger(
+            bot_router,
+            outbound,
+            enabled=platform_selection.onebot_outbound_enabled,
+        ),
     }
     qq_official = None
     if settings.bot.qq_official.enabled_accounts:
@@ -109,11 +124,18 @@ def build_common_components(
 
         qq_official = QQOfficialRuntime(
             tuple(
-                QQOfficialRuntimeAccount(account.app_id, account.secret)
-                for account in settings.bot.qq_official.enabled_accounts.values()
+                QQOfficialRuntimeAccount(
+                    account.app_id,
+                    account.secret,
+                    required=account.required,
+                    custom_keyboards=account.custom_keyboards,
+                    label=alias,
+                )
+                for alias, account in settings.bot.qq_official.enabled_accounts.items()
             ),
             http_client=http_client,
             session_root=cache_root / "qq_official",
+            startup_timeout_seconds=settings.bot.qq_official.startup_timeout_seconds,
         )
 
         platform_messengers[Platform.QQ_OFFICIAL] = QQOfficialOutboundMessenger(
@@ -122,6 +144,10 @@ def build_common_components(
                 for account in settings.bot.qq_official.enabled_accounts.values()
             },
             bot_provider=qq_official.sender,
+            account_custom_keyboards={
+                account.app_id: account.custom_keyboards
+                for account in settings.bot.qq_official.enabled_accounts.values()
+            },
         )
     outbound_messenger = PlatformOutboundMessenger(platform_messengers)
     proactive_delivery = ProactiveMessageDelivery(
@@ -146,7 +172,6 @@ def build_common_components(
     install_outbound_rate_limit_hooks(outbound)
     return CommonComponents(
         prompt_sessions=PromptSessionManager(),
-        query_sessions=PortableQuerySessions(),
         features=features,
         promotions=promotions,
         outbound=outbound,
@@ -164,7 +189,5 @@ def build_common_components(
 
 def _configure_qq_sdk_api(*, sandbox: bool) -> None:
     os.environ["QQ_API_BASE"] = (
-        "https://sandbox.api.sgroup.qq.com"
-        if sandbox
-        else "https://api.sgroup.qq.com"
+        "https://sandbox.api.sgroup.qq.com" if sandbox else "https://api.sgroup.qq.com"
     )

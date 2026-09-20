@@ -132,10 +132,7 @@ class PlayerRankPageScheduler:
                     task_group.start_soon(
                         self._process_request,
                         request,
-                        name=(
-                            "player-rank-page:"
-                            f"{request.lookup_id}:{request.title}"
-                        ),
+                        name=(f"player-rank-page:{request.lookup_id}:{request.title}"),
                     )
 
     def _next_ready_request(self) -> _PageRequest[Any] | None:

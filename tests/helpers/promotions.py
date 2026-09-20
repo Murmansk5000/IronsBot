@@ -6,6 +6,4 @@ FIRE_MANUAL_PROMOTION = PromotionConfig(
     text="Manual: {url}",
     append_to_push=True,
 )
-FIRE_MANUAL_PROMOTIONS = PromotionCatalog(
-    {"fire_manual": FIRE_MANUAL_PROMOTION}
-)
+FIRE_MANUAL_PROMOTIONS = PromotionCatalog({"fire_manual": FIRE_MANUAL_PROMOTION})

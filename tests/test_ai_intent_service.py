@@ -10,7 +10,7 @@ from ironsbot.services.ai import intent
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import AiService
-from tests.helpers.ai import FakeAiCompletionClient, ai_config
+from tests.helpers.ai import FakeAiCompletionClient, configured_ai_config
 from tests.helpers.runtime import build_test_runtime
 
 CompletionRequester = Callable[
@@ -96,7 +96,8 @@ def _service(
     *allowed_features: str,
     request_completion: CompletionRequester = _yes_completion,
 ) -> AiService:
-    config = ai_config(
+    config = configured_ai_config(
+        api_key="key",
         memory=False,
         intent_actions={action.id: action},
     )

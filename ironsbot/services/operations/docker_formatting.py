@@ -71,7 +71,7 @@ def format_docker_update_reply(
         if check_only:
             lines.extend(
                 [
-                    "结论：检测到远端新镜像，等待确认后更新并重启。",
+                    "结论：检测到远端新镜像，可发送 /更新镜像 更新并重启。",
                     "本次只检查，未拉取镜像、未创建 Watchtower、未重启容器。",
                 ]
             )
@@ -115,8 +115,6 @@ def format_docker_image_check_reply(
     result: DockerImageCheckResult,
 ) -> str:
     """Format a read-only registry comparison for an administrator."""
-    if result.ok and not result.missing_socket:
-        return _format_docker_revision_check(container_name, image, result)
     return format_docker_update_reply(
         container_name=container_name,
         image=image,
@@ -133,81 +131,6 @@ def format_docker_image_check_reply(
             missing_socket=result.missing_socket,
         ),
         check_only=True,
-    )
-
-
-def _format_docker_revision_check(
-    container_name: str,
-    image: str,
-    result: DockerImageCheckResult,
-) -> str:
-    current = format_image_version(
-        result.current_image_id,
-        result.current_image_created,
-    )
-    remote = format_image_version(
-        result.remote_image_id or result.remote_digest,
-        result.remote_image_created,
-    )
-    lines = [
-        (
-            f"Docker 镜像已是最新（与配置目标一致）：{container_name}"
-            if result.up_to_date
-            else f"配置目标与本机镜像不同：{container_name}"
-        ),
-        f"目标镜像：{image}",
-        f"本机当前镜像ID：{current}",
-        f"配置目标镜像ID：{remote}",
-    ]
-    if current_commit := visible_image_commit_summary(result.current_image_commit):
-        lines.append(f"本机代码：{current_commit}")
-    if remote_commit := visible_image_commit_summary(result.remote_image_commit):
-        lines.append(f"目标代码：{remote_commit}")
-
-    if result.github_main_repository:
-        lines.append(f"GitHub 参考仓库：{result.github_main_repository}")
-    if result.github_main_revision:
-        lines.append(f"GitHub main：{_short_revision(result.github_main_revision)}")
-        for label, revision in (
-            ("目标代码", result.remote_image_revision),
-            ("本机代码", result.current_image_revision),
-        ):
-            lines.append(
-                _format_main_alignment(label, revision, result.github_main_revision)
-            )
-    else:
-        lines.append(
-            f"GitHub main 未确认：{result.github_main_error or '缺少源码元数据'}"
-        )
-    if not result.up_to_date:
-        lines.append("操作：等待确认后更新并重启。")
-    lines.append("本次只检查，未拉取镜像、未创建 Watchtower、未重启容器。")
-    return "\n".join(lines)
-
-
-def _short_revision(revision: str) -> str:
-    return revision.strip()[:12] or "未知"
-
-
-def _format_main_alignment(label: str, revision: str, main_revision: str) -> str:
-    if not GIT_REVISION_PATTERN.fullmatch(revision.strip()):
-        return f"{label}：缺少有效提交编号，无法比较 main。"
-    if _revisions_match(revision, main_revision):
-        return f"{label}已对齐 GitHub main。"
-    return f"{label}（{_short_revision(revision)}）与参考 main 不同；未判断提交先后。"
-
-
-def _revisions_match(left: str, right: str) -> bool:
-    normalized_left = left.strip().lower()
-    normalized_right = right.strip().lower()
-    return bool(
-        GIT_REVISION_PATTERN.fullmatch(normalized_left)
-        and GIT_REVISION_PATTERN.fullmatch(normalized_right)
-        and (
-            normalized_left == normalized_right
-            or normalized_left.startswith(normalized_right)
-            or normalized_right.startswith(normalized_left)
-        )
     )
 
 

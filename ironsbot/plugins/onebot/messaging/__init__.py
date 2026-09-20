@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="文本发送",
@@ -64,7 +63,6 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     references: OneBotReferenceResolver,
     activity_service: ActivityService,
     scheduler: Scheduler,
-    query_sessions: PortableQuerySessions,
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
 ) -> None:
@@ -79,7 +77,6 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
         registry,
         refresh_push_time_jobs=refresh_push_time_jobs,
         messaging=messaging,
-        query_sessions=query_sessions,
         references=references,
         command_help_ids=command_help_ids,
         keyword_help_ids=keyword_help_ids,
@@ -94,7 +91,6 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
     service: MessagingService,
     activity_service: ActivityService,
     scheduler: Scheduler,
-    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
@@ -124,7 +120,6 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
             references=references,
             activity_service=activity_service,
             scheduler=scheduler,
-            query_sessions=query_sessions,
             command_help_ids=tuple(
                 f"messaging.{action.id}" for action in config.commands if action.enabled
             ),
@@ -150,6 +145,5 @@ if (context := active_plugin_install_context()) is not None:
             service=context.resources.messaging,
             activity_service=context.resources.activity,
             scheduler=context.scheduler,
-            query_sessions=context.resources.query_sessions,
         ),
     )

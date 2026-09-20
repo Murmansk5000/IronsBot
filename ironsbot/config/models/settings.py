@@ -19,10 +19,12 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.features import FeatureConfig, validate_feature_config
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
+from ironsbot.config.models.transport import OneBotConfig
 from ironsbot.config.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
@@ -34,7 +36,7 @@ from ironsbot.config.platform_references import (
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
 from ironsbot.core.features import FEATURE_KEYS
-from ironsbot.core.platform import Platform
+from ironsbot.core.platform_selection import OutboundPlatformSelection
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
@@ -43,7 +45,7 @@ from ironsbot.services.identity.player_accounts import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.platform import ConversationRef
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -55,8 +57,7 @@ VALID_LOG_LEVELS = {
     "CRITICAL",
 }
 _QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR = (
-    "proactive_messages must be true when "
-    "team_resource_subscription is enabled"
+    "proactive_messages must be true when team_resource_subscription is enabled"
 )
 _QQ_OFFICIAL_ACCOUNT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
@@ -71,16 +72,6 @@ class SettingsReferenceError(ValueError):
         return cls("seer.lucky_skin_window.accounts must not repeat an account")
 
     @classmethod
-    def lucky_skin_window_requires_proactive_messages(
-        cls,
-        account_id: str,
-    ) -> SettingsReferenceError:
-        return cls(
-            "seer.lucky_skin_window official user requires proactive_messages "
-            f"for QQ Official AppID {account_id}"
-        )
-
-    @classmethod
     def missing_player_account_password(
         cls,
         player_id: int,
@@ -92,22 +83,10 @@ class SettingsReferenceError(ValueError):
         )
 
 
-class MatcherPriorityConfigError(ValueError):
-    @classmethod
-    def bot_mention_order(cls) -> MatcherPriorityConfigError:
-        return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
-
-
 class QQOfficialConfigError(ValueError):
     @classmethod
-    def no_enabled_accounts(cls) -> QQOfficialConfigError:
-        return cls("bot.qq_official requires at least one enabled account")
-
-    @classmethod
     def invalid_account_name(cls) -> QQOfficialConfigError:
-        return cls(
-            "bot.qq_official account names must match [A-Za-z][A-Za-z0-9_]*"
-        )
+        return cls("bot.qq_official account names must match [A-Za-z][A-Za-z0-9_]*")
 
     @classmethod
     def duplicate_app_id(cls, app_id: str) -> QQOfficialConfigError:
@@ -127,14 +106,6 @@ class QQOfficialConfigError(ValueError):
     @classmethod
     def empty_target_openid(cls) -> QQOfficialConfigError:
         return cls("QQ Official target OpenID must not be empty")
-
-    @classmethod
-    def invalid_alias_mapping(cls) -> QQOfficialConfigError:
-        return cls("QQ Official target aliases must be a table")
-
-    @classmethod
-    def empty_target_alias(cls) -> QQOfficialConfigError:
-        return cls("QQ Official target alias must not be empty or numeric")
 
 
 def _command_starts(value: object) -> list[str]:
@@ -166,8 +137,6 @@ class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     help_hint: int = Field(default=0, ge=0)
-    ai_group_at: int = Field(default=-10, ge=-100)
-    bot_mention_block: int = Field(default=-5, ge=-100)
     server_status: int = Field(default=1, ge=0)
     server_status_admin: int = Field(default=2, ge=0)
     bilibili: int = Field(default=3, ge=0)
@@ -197,12 +166,6 @@ class MatcherPriorityConfig(BaseModel):
     seer_pet: int = Field(default=110, ge=0)
     seer_query: int = Field(default=120, ge=0)
     ai_chat: int = Field(default=200, ge=0)
-
-    @model_validator(mode="after")
-    def validate_bot_mention_order(self) -> MatcherPriorityConfig:
-        if self.ai_group_at >= self.bot_mention_block:
-            raise MatcherPriorityConfigError.bot_mention_order()
-        return self
 
 
 class LoggingConfig(BaseModel):
@@ -247,10 +210,11 @@ class QQOfficialAccountConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
+    required: bool = False
     app_id: str = ""
     secret: str = Field(default="", exclude=True, repr=False)
     proactive_messages: bool = False
+    custom_keyboards: bool = False
     features: list[str] = Field(
         default_factory=lambda: [
             "help",
@@ -266,10 +230,6 @@ class QQOfficialAccountConfig(BaseModel):
             "seer_rank",
         ]
     )
-    superusers: list[str] = Field(default_factory=list)
-    group_superusers: dict[str, list[str]] = Field(default_factory=dict)
-    group_aliases: dict[str, str] = Field(default_factory=dict)
-    user_aliases: dict[str, str] = Field(default_factory=dict)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -278,32 +238,10 @@ class QQOfficialAccountConfig(BaseModel):
     def normalize_credentials(cls, value: object) -> str:
         return str(value or "").strip()
 
-    @field_validator("features", "superusers", mode="before")
+    @field_validator("features", mode="before")
     @classmethod
     def normalize_string_lists(cls, value: object) -> list[str]:
         return _command_starts(value)
-
-    @field_validator("group_aliases", "user_aliases", mode="before")
-    @classmethod
-    def normalize_target_aliases(cls, value: object) -> dict[str, str]:
-        if not isinstance(value, Mapping):
-            raise QQOfficialConfigError.invalid_alias_mapping()
-        aliases: dict[str, str] = {}
-        for raw_alias, raw_openid in value.items():
-            alias = str(raw_alias).strip()
-            if not alias or alias.isdecimal():
-                raise QQOfficialConfigError.empty_target_alias()
-            openid = str(raw_openid).strip()
-            if not openid:
-                raise QQOfficialConfigError.empty_target_openid()
-            aliases[alias] = openid
-        return aliases
-
-    def resolve_group_openid(self, reference: str) -> str:
-        return self.group_aliases.get(reference, reference)
-
-    def resolve_user_openid(self, reference: str) -> str:
-        return self.user_aliases.get(reference, reference)
 
     @field_validator("group_policy", "user_policy", mode="before")
     @classmethod
@@ -317,24 +255,6 @@ class QQOfficialAccountConfig(BaseModel):
                 raise QQOfficialConfigError.empty_target_openid()
             policy[target] = _command_starts(raw_features)
         return policy
-
-    @field_validator("group_superusers", mode="before")
-    @classmethod
-    def normalize_group_superusers(cls, value: object) -> dict[str, list[str]]:
-        if not isinstance(value, Mapping):
-            raise QQOfficialConfigError.invalid_target_policy()
-        result: dict[str, list[str]] = {}
-        for raw_group, raw_members in value.items():
-            group = str(raw_group).strip()
-            if not group:
-                raise QQOfficialConfigError.empty_target_openid()
-            members = _command_starts(raw_members)
-            if not members:
-                raise ValueError(  # noqa: TRY003
-                    "QQ Official group superusers must not be empty"
-                )
-            result[group] = members
-        return result
 
     @property
     def configured_features(self) -> set[str]:
@@ -354,15 +274,12 @@ class QQOfficialConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
     sandbox: bool = False
+    startup_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_accounts(self) -> QQOfficialConfig:
-        enabled_accounts = self.enabled_accounts
-        if self.enabled and not enabled_accounts:
-            raise QQOfficialConfigError.no_enabled_accounts()
         app_ids: set[str] = set()
         environment_names: set[str] = set()
         for name, account in self.accounts.items():
@@ -372,7 +289,7 @@ class QQOfficialConfig(BaseModel):
             if environment_name in environment_names:
                 raise QQOfficialConfigError.duplicate_secret_environment(name)
             environment_names.add(environment_name)
-            if not self.enabled or not account.enabled:
+            if not account.app_id and not account.secret:
                 continue
             missing = [
                 field
@@ -403,12 +320,10 @@ class QQOfficialConfig(BaseModel):
 
     @property
     def enabled_accounts(self) -> dict[str, QQOfficialAccountConfig]:
-        if not self.enabled:
-            return {}
         return {
             name: account
             for name, account in self.accounts.items()
-            if account.enabled
+            if account.app_id and account.secret
         }
 
 
@@ -424,7 +339,7 @@ class BotConfig(BaseModel):
     plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
-    onebot_observer: bool = False
+    onebot: OneBotConfig = Field(default_factory=OneBotConfig)
     qq_official: QQOfficialConfig = Field(default_factory=QQOfficialConfig)
     matcher_priority: MatcherPriorityConfig = Field(
         default_factory=MatcherPriorityConfig
@@ -454,6 +369,7 @@ class BotConfig(BaseModel):
     def normalize_command_start(cls, value: object) -> object:
         return _command_starts(value)
 
+
 class PathsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -465,11 +381,12 @@ class PathsConfig(BaseModel):
 
 
 class Settings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     bot: BotConfig = Field(default_factory=BotConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
+    identities: IdentityConfig = Field(default_factory=IdentityConfig)
     promotions: dict[str, PromotionConfig] = Field(default_factory=dict)
     ai: AiConfig = Field(default_factory=AiConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
@@ -482,6 +399,8 @@ class Settings(BaseModel):
     @model_validator(mode="after")
     def validate_registered_features(self) -> Settings:
         try:
+            self._validate_platform_selection()
+            self._validate_identity_accounts()
             validate_feature_config(
                 self.features,
                 command_features=self.messaging.command_feature_keys,
@@ -507,6 +426,58 @@ class Settings(BaseModel):
             ) from exc
         return self
 
+    def _validate_identity_accounts(self) -> None:
+        declared = set(self.bot.qq_official.accounts)
+        referenced = {
+            account
+            for targets in (self.identities.groups, self.identities.users)
+            for target in targets.values()
+            for account in target.official
+        }
+        unknown = sorted(referenced - declared)
+        if unknown:
+            msg = "identities reference undeclared official accounts: " + ", ".join(
+                unknown
+            )
+            raise ValueError(msg)
+
+    def _validate_platform_selection(self) -> None:
+        onebot = self.bot.onebot
+        active_accounts = self.bot.qq_official.enabled_accounts
+        if onebot.identity_verification:
+            if not onebot.enabled:
+                msg = "bot.onebot.identity_verification requires bot.onebot.enabled"
+                raise ValueError(msg)
+            if not active_accounts:
+                msg = (
+                    "bot.onebot.identity_verification requires complete "
+                    "QQ Official environment credentials"
+                )
+                raise ValueError(msg)
+            trusted = set(onebot.trusted_official_bots)
+            expected = set(active_accounts)
+            if trusted != expected:
+                missing = sorted(expected - trusted)
+                unknown = sorted(trusted - expected)
+                details = []
+                if missing:
+                    details.append("missing " + ", ".join(missing))
+                if unknown:
+                    details.append("unknown " + ", ".join(unknown))
+                msg = (
+                    "bot.onebot.trusted_official_bots must exactly match active "
+                    "official accounts: " + "; ".join(details)
+                )
+                raise ValueError(msg)
+
+    @property
+    def outbound_platform_selection(self) -> OutboundPlatformSelection:
+        return OutboundPlatformSelection.resolve(
+            official_account_aliases=tuple(self.bot.qq_official.enabled_accounts),
+            onebot_enabled=self.bot.onebot.enabled,
+            onebot_send_messages=self.bot.onebot.send_messages,
+        )
+
     def _validate_promotions(self) -> None:
         catalog = PromotionCatalog(self.promotions)
         for promotion_id, promotion in self.promotions.items():
@@ -530,15 +501,24 @@ class Settings(BaseModel):
     @property
     def onebot_references(self) -> OneBotReferenceResolver:
         return OneBotReferenceResolver(
-            group_aliases=self.features.group_aliases,
-            user_aliases=self.features.user_aliases,
+            group_aliases={
+                alias: target.qq
+                for alias, target in self.identities.groups.items()
+                if target.qq is not None
+            },
+            user_aliases={
+                alias: target.qq
+                for alias, target in self.identities.users.items()
+                if target.qq is not None
+            },
         )
 
     @property
     def platform_references(self) -> PlatformReferenceResolver:
         return build_platform_reference_resolver(
             self.onebot_references,
-            self.bot.qq_official.enabled_accounts.values(),
+            self.identities,
+            self.bot.qq_official.enabled_accounts,
         )
 
     @property
@@ -591,12 +571,12 @@ class Settings(BaseModel):
         references.resolve_users(self.bot.superusers, location="bot.superusers")
         self._validate_policy_refs(
             self.features.group_policy,
-            resolve=references.resolve_group,
+            resolve=platform_references.group_conversation_refs,
             location="features.group_policy",
         )
         self._validate_policy_refs(
             self.features.user_policy,
-            resolve=references.resolve_user,
+            resolve=platform_references.actor_refs,
             location="features.user_policy",
         )
         self._validate_mapping_refs(
@@ -611,36 +591,24 @@ class Settings(BaseModel):
         )
         self._validate_mapping_refs(
             self.bilibili.push.groups,
-            resolve=platform_references.group_conversation_ref,
+            resolve=platform_references.group_conversation_refs,
             location="bilibili.push.groups",
         )
         self._validate_mapping_refs(
             self.bilibili.push.users,
-            resolve=platform_references.private_conversation_ref,
+            resolve=platform_references.private_conversation_refs,
             location="bilibili.push.users",
         )
-        lucky_users: set[ActorRef] = set()
+        lucky_users: set[int] = set()
         lucky_accounts: set[int] = set()
         for index, account in enumerate(self.seer.lucky_skin_window.accounts):
-            user = platform_references.user_actor_ref(
+            user_id = references.resolve_user(
                 account.user,
                 location=f"seer.lucky_skin_window.accounts[{index}].user",
             )
-            if user in lucky_users:
+            if user_id in lucky_users:
                 raise SettingsReferenceError.duplicate_lucky_skin_window_user()
-            lucky_users.add(user)
-            if (
-                self.seer.lucky_skin_window.enabled
-                and user.platform is Platform.QQ_OFFICIAL
-                and not any(
-                    item.app_id == user.account_id and item.proactive_messages
-                    for item in self.bot.qq_official.enabled_accounts.values()
-                )
-            ):
-                error = (
-                    SettingsReferenceError.lucky_skin_window_requires_proactive_messages
-                )
-                raise error(user.account_id or "")
+            lucky_users.add(user_id)
             configured_account = accounts.resolve(
                 account.account,
                 location=f"seer.lucky_skin_window.accounts[{index}].account",

@@ -10,6 +10,7 @@ from ironsbot.core.command_catalog import (
     CommandContract,
     parsed_command_input_matcher,
 )
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 
@@ -139,6 +140,107 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
     assert [command.id for command in private] == ["regular"]
 
 
+@pytest.mark.parametrize("platform", (Platform.ONEBOT, Platform.QQ_OFFICIAL))
+def test_superuser_execution_bypass_does_not_expand_group_visibility(
+    platform: Platform,
+) -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="regular",
+            plugin_id="example",
+            section="查询",
+            examples=("查询",),
+            description="查询资料",
+            features_any=("example_feature",),
+            show_in_poke=True,
+        ),
+    )
+    account_id = "example-app" if platform is Platform.QQ_OFFICIAL else None
+    actor = ActorRef(platform, "admin", account_id=account_id)
+    conversation = ConversationRef(
+        platform,
+        "group",
+        "disabled-group",
+        account_id=account_id,
+    )
+    context = CommandContext(actor=actor, conversation=conversation)
+    features = FeatureService(
+        group_features={},
+        actor_features={},
+        superusers=frozenset({actor}),
+        superuser_bypass=True,
+    )
+
+    assert catalog.available_for_context(context, features) == ()
+    assert catalog.poke_candidates_for_context(context, features) == ()
+    assert [
+        command.id for command in catalog.executable_for_context(context, features)
+    ] == ["regular"]
+    assert catalog.claims_direct_input(context, features, "查询")
+
+
+@pytest.mark.parametrize("platform", (Platform.ONEBOT, Platform.QQ_OFFICIAL))
+def test_superuser_execution_bypass_can_be_disabled(platform: Platform) -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="regular",
+            plugin_id="example",
+            section="查询",
+            examples=("查询",),
+            description="查询资料",
+            features_any=("example_feature",),
+        ),
+    )
+    account_id = "example-app" if platform is Platform.QQ_OFFICIAL else None
+    actor = ActorRef(platform, "admin", account_id=account_id)
+    context = CommandContext(
+        actor=actor,
+        conversation=ConversationRef(
+            platform,
+            "group",
+            "disabled-group",
+            account_id=account_id,
+        ),
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={},
+        superusers=frozenset({actor}),
+        superuser_bypass=False,
+    )
+
+    assert catalog.executable_for_context(context, features) == ()
+    assert not catalog.claims_direct_input(context, features, "查询")
+
+
+def test_feature_access_does_not_bypass_command_audience() -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="manager",
+            plugin_id="example",
+            section="管理",
+            examples=("管理",),
+            description="管理资料",
+            features_any=("example_feature",),
+            access=(CommandAccess("group", "group_manager"),),
+        ),
+    )
+    actor = ActorRef(Platform.ONEBOT, "member")
+    conversation = ConversationRef(Platform.ONEBOT, "group", "group")
+    context = CommandContext(
+        actor=actor,
+        conversation=conversation,
+        group_role="member",
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={actor: frozenset({"example_feature"})},
+        superusers=frozenset(),
+    )
+
+    assert catalog.executable_for_context(context, features) == ()
+
+
 def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
     catalog = _catalog(
         CommandContract(
@@ -258,6 +360,29 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
     assert not catalog.claims_direct_input(context, features, "动态刷新")
     assert not catalog.claims_direct_input(context, features, "//动态刷新")
     assert not catalog.claims_direct_input(context, features, "/帮助")
+
+
+def test_catalog_recognizes_command_syntax_before_feature_and_audience() -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="manager",
+            plugin_id="example",
+            section="管理",
+            examples=("/刷新",),
+            description="刷新资料",
+            features_any=("example_feature",),
+            access=(CommandAccess("group", "group_manager"),),
+        )
+    )
+    member_context = _context(1, group_id=100, group_role="member")
+
+    assert catalog.recognizes_direct_input(member_context, "/刷新")
+    assert not catalog.recognizes_direct_input(_context(1), "/刷新")
+    assert not catalog.recognizes_direct_input(
+        member_context,
+        "/刷新",
+        ignored_plugins=("example",),
+    )
 
 
 def test_parser_adapter_accepts_falsy_values_but_not_none() -> None:
@@ -402,10 +527,44 @@ def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
     catalog.validate_matcher_registrations(help_ids=("documented",))
 
 
+def test_platform_scoped_command_is_routed_only_on_its_transport() -> None:
+    command = CommandContract(
+        id="official",
+        plugin_id="example",
+        section="查询",
+        examples=("官方命令",),
+        description="只在官方机器人提供",
+        platforms=frozenset({Platform.QQ_OFFICIAL}),
+    )
+    catalog = _catalog(command)
+    features = FakeFeatures({}, {}, set())
+    official_actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "123",
+        account_id="app",
+    )
+    official_context = CommandContext(
+        official_actor,
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            official_actor.id,
+            official_actor.account_id,
+        ),
+    )
+
+    assert catalog.available_for_context(_context(123), features) == ()
+    assert catalog.available_for_context(official_context, features) == (command,)
+    catalog.validate_matcher_registrations(help_ids=())
+
+
 def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> None:
     command = CommandContract(
-        id="parsed", plugin_id="example", section="query",
-        examples=("reserved",), routing_aliases=("also reserved",),
+        id="parsed",
+        plugin_id="example",
+        section="query",
+        examples=("reserved",),
+        routing_aliases=("also reserved",),
         description="A parser owns admission, not its illustrative examples",
         routing_matcher=lambda text, _context: text == "accepted",
     )
@@ -417,8 +576,12 @@ def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> Non
 @pytest.mark.parametrize("text", ["hELP", "help", " Help", "Help ", "H elp", "/Help"])
 def test_exact_contract_does_not_infer_normalized_spellings(text: str) -> None:
     command = CommandContract(
-        id="literal", plugin_id="example", section="query", examples=("Help",),
-        routing_aliases=("two words",), description="Literal commands",
+        id="literal",
+        plugin_id="example",
+        section="query",
+        examples=("Help",),
+        routing_aliases=("two words",),
+        description="Literal commands",
     )
     assert command.matches_direct_input(_context(1), "Help")
     assert command.matches_direct_input(_context(1), "two words")

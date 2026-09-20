@@ -452,6 +452,9 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
         render_onebot_outbound_message,
     )
     from ironsbot.integrations.seer_data.database import SeerDatabase
+    from ironsbot.integrations.seer_data.new_content_repository import (
+        PublishedNewContentRepository,
+    )
     from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
         render_peak_pet_rank,
     )
@@ -470,6 +473,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
         render_type_matchup,
     )
     from ironsbot.runtime.cache_paths import CachePaths
+    from ironsbot.services.seer.new_content import NewContentService
     from ironsbot.services.seer.peak import (
         LIMIT_POOL_VOTE_COUNT,
         PeakItemData,
@@ -583,6 +587,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
                             inputs.images,
                             coordinator.render,
                         ),
+                        NewContentService(PublishedNewContentRepository(inputs.data)),
                     )
 
             class FixtureGame:

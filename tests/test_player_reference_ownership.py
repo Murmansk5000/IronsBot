@@ -28,11 +28,13 @@ from ironsbot.plugins.onebot.seer.query.commands import (
 )
 from ironsbot.plugins.onebot.seer.query.commands.player import _is_binding_command
 from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
-from ironsbot.services.portable_player_commands import resolve_portable_player_shortcut
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -108,13 +110,14 @@ async def test_factory_registration_matches_catalog_and_runs_admission(
         features=features,
         commands=catalog,
         player_id_resolver=resolver,
-        query_sessions=Mock(),
+        query_sessions=PortableQuerySessions(),
+        identity_links=Mock(),
         image_command_texts=frozenset(),
     )
     try:
         player.install(group)
         basic = factory.message_matchers[-1]
-        binding = factory.message_matchers[0]
+        binding = factory.message_matchers[3]
         player_shortcuts.install(group)
         shortcut = factory.message_matchers[-1]
         rank_offset = len(factory.message_matchers)
@@ -198,8 +201,14 @@ def test_player_command_ownership_matches_resolution(
     )
     catalog = CommandCatalog()
     catalog.load(
-        (PluginContribution(id="seer_query", commands=commands),),
-        known_features={"seer_player"},
+        (
+            PluginContribution(id="seer_query", commands=commands),
+            PluginContribution(
+                id="ai_chat",
+                commands=ai_chat_command_contracts(enabled=True),
+            ),
+        ),
+        known_features={"seer_player", "ai_chat"},
     )
     event_factory = (
         partial(group_message_event, group_id=int(_GROUP.id))
@@ -216,7 +225,14 @@ def test_player_command_ownership_matches_resolution(
     )
     if not group:
         # Exercise the actual AI routing rule, without invoking a completion API.
-        assert _capture_ai_prompt(event, {}, features, catalog) is not expected
+        assert (
+            _capture_ai_prompt(
+                event,
+                {},
+                AiInputRoutingService(features, catalog),
+            )
+            is not expected
+        )
     binding.assert_not_called()
 
 
@@ -231,7 +247,7 @@ def test_player_ownership_preserves_literal_command_prefix(
     context = command_context(event)
     matcher = player_reference_input_matcher((prefix,), lambda *_: False)
     actual = (
-        asyncio.run(_is_binding_command(event, {}))
+        asyncio.run(_is_binding_command(event))
         if prefix == "绑定米米号"
         else extract_player_query_arg(text) is not None
     )
@@ -243,8 +259,8 @@ def test_player_ownership_preserves_literal_command_prefix(
 @pytest.mark.parametrize(
     "prefix,index",
     [
-        ("绑定米米号", 0),
-        ("米米号", 1),
+        ("绑定米米号", 1),
+        ("米米号", 2),
         ("收集", 0),
         ("巅峰", 0),
         ("群星牌", 0),
@@ -256,7 +272,7 @@ def test_player_ownership_preserves_literal_command_prefix(
     "target",
     ["numeric", "alias", "member", "bot", "mixed", "multiple", "unbound", "reply"],
 )
-async def test_installed_player_rules_admit_member_targets_and_enforce_feature(  # noqa: PLR0912 - input matrix
+async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
     prefix: str,
     index: int,
     target: str,
@@ -277,6 +293,7 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
     group = Mock(spec=SeerMatcherGroup)
     group.features = features
     group.player_id_resolver = resolver
+    group.identity_links = Mock()
     group.resources = Mock()
     group.resources.player_detail_extensions = PlayerDetailExtensionRegistry()
     if prefix == "成就榜":
@@ -298,6 +315,7 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
             message += MessageSegment.at(789)
     event = group_message_event(
         message=message,
+        user_id=456 if target == "bot" else 123,
         group_id=int(_GROUP.id),
         reply_sender_user_id=456 if target == "reply" else None,
     )
@@ -305,24 +323,17 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
         event.reply.message = Message([MessageSegment.at(789)])
     rule = group.on_message.call_args_list[index].kwargs["rule"]
     state: dict[str, Any] = {}
-    admitted = enabled and target != "bot"
+    admitted = enabled and not (target == "bot" and prefix == "成就榜")
     assert await rule(cast("Any", None), event, state) is admitted
-    if not admitted or prefix in {"绑定米米号", "成就榜"}:
+    if not admitted or prefix in {"绑定米米号", "米米号"}:
         return
-    if prefix == "米米号":
-        resolved = resolver.resolve(
-            message_input_context(event),
-            extract_player_query_arg(event.get_plaintext()) or None,
-        )
-        player_id = resolved.player_id
-    else:
-        resolved = resolve_portable_player_shortcut(
-            event.get_plaintext(),
-            message_input_context(event),
-            resolver,
-        )
-        assert resolved is not None
-        player_id = resolved.command.player_id if resolved.command is not None else None
+    key = (
+        rank_list.RANK_PLAYER_COMMAND_KEY
+        if prefix == "成就榜"
+        else player_shortcuts._SHORTCUT_COMMAND_KEY
+    )
+    resolved = state[key]
+    player_id = resolved.command.player_id if resolved.command is not None else None
     if target in {"mixed", "multiple", "unbound"}:
         assert player_id is None
         assert resolved.error

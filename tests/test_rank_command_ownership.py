@@ -9,6 +9,7 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_catalog import RANK_COMMAND_MAP
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
@@ -63,7 +64,7 @@ def test_rank_alias_and_window_are_owned_by_exactly_the_right_section(
 ) -> None:
     kind, key = rank
     peak = (
-        GLOBAL_RANKS[key].peak_season_sub_key
+        GLOBAL_RANKS[key].season_limited
         if kind == "global"
         else LOCAL_RANKS[key].season_limited
     )
@@ -97,7 +98,9 @@ def test_ai_leaves_valid_rank_commands_to_the_catalog(
     catalog: CommandCatalog, text: str
 ) -> None:
     assert not _capture_ai_prompt(
-        private_message_event(text, user_id=int(_ACTOR.id)), {}, _features(), catalog
+        private_message_event(text, user_id=int(_ACTOR.id)),
+        {},
+        AiInputRoutingService(_features(), catalog),
     )
 
 

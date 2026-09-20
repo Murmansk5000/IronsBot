@@ -11,6 +11,9 @@ import tomllib
 if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
 
+    from ironsbot.config.models.operations import StartupConfig
+    from ironsbot.services.operations.startup import StartupNoticeService
+
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
@@ -25,6 +28,9 @@ from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
+)
+from ironsbot.plugins.onebot.startup_notice import (
+    plugin_contribution as startup_notice_plugin_contribution,
 )
 from ironsbot.services.ai.command_contracts import (
     ai_chat_command_contracts,
@@ -143,12 +149,12 @@ def test_manifest_activity_owns_its_commands_and_schedule() -> None:
     ]
 
 
-def test_manifest_data_sync_owns_its_commands_and_schedule() -> None:
+def test_manifest_data_sync_owns_only_its_onebot_commands() -> None:
     contribution = DEFINITIONS_BY_ID["db_sync"]
 
     assert contribution.commands
     assert {command.plugin_id for command in contribution.commands} == {"db_sync"}
-    assert [name for name, _hook in contribution.hooks.startup] == ["db_sync"]
+    assert contribution.hooks.startup == ()
 
 
 def test_manifest_bilibili_owns_its_commands_and_lifecycle() -> None:
@@ -206,14 +212,13 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
         Settings.model_validate(
             {
                 "ai": {
-                    "endpoints": [
-                        {
-                            "name": "test",
+                    "providers": {
+                        "test": {
+                            "api_key": "test",
                             "base_url": "https://example.test/v1",
                             "models": ["test-model"],
-                            "api_key": "test",
                         }
-                    ]
+                    }
                 }
             }
         )
@@ -227,14 +232,13 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
                 }
             },
             "ai": {
-                "endpoints": [
-                    {
-                        "name": "test",
+                "providers": {
+                    "test": {
+                        "api_key": "test",
                         "base_url": "https://example.test/v1",
                         "models": ["test-model"],
-                        "api_key": "test",
                     }
-                ],
+                },
                 "intent_actions": {
                     "manual": {
                         "feature": "ai_intent_fire_manual",
@@ -301,6 +305,21 @@ def test_manifest_startup_notice_owns_its_lifecycle() -> None:
     ]
 
 
+def test_official_startup_notice_does_not_wait_for_onebot_connect() -> None:
+    base = DEFINITIONS_BY_ID["startup_notice"]
+    contribution = startup_notice_plugin_contribution(
+        service=cast("StartupNoticeService", object()),
+        config=cast("StartupConfig", object()),
+        send_on_startup=True,
+    )
+
+    assert base.hooks.startup == ()
+    assert [name for name, _hook in contribution.hooks.startup] == ["startup_notice"]
+    assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
+        "startup_notice"
+    ]
+
+
 def test_manifest_headless_runtime_owns_its_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["headless_seer"]
 
@@ -353,7 +372,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "bilibili_monitor_jobs",
         "messaging",
         "docker_update",
-        "db_sync",
         "lucky_skin_window_schedule",
         "team_resource_jobs",
         "activity_reminder_jobs",

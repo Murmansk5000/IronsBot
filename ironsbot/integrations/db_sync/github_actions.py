@@ -314,9 +314,7 @@ async def trigger_and_wait_workflow(
             )
             if reusable_run is not None:
                 matched_run_id = int(reusable_run["id"])
-                last_run_url = str(
-                    reusable_run.get("html_url") or last_run_url
-                )
+                last_run_url = str(reusable_run.get("html_url") or last_run_url)
 
         if matched_run_id is None:
             await _dispatch_workflow(github_client, config=config, token=token)

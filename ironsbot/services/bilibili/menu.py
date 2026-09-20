@@ -9,16 +9,42 @@ from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
+    from ironsbot.services.bilibili.dynamic_history import (
+        BiliDynamicHistoryStore,
+        DynamicHistoryRecord,
+    )
 
+DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_MENU_DEFAULT_LIMIT = 10
 
+DynamicSelectionStatus = Literal["ok", "expired", "invalid", "out_of_range"]
+DynamicDetailStatus = Literal[
+    "ok",
+    "expired",
+    "invalid",
+    "out_of_range",
+    "missing",
+]
 DynamicMenuStatus = Literal[
     "ok",
     "no_accounts",
     "auth_invalid",
     "no_history",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicSelection:
+    status: DynamicSelectionStatus
+    dynamic_id: str = ""
+    available_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicDetailSelection:
+    status: DynamicDetailStatus
+    record: DynamicHistoryRecord | None = None
+    available_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,3 +84,57 @@ def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:
 
 def dynamic_record_ids(records: Sequence[DynamicHistoryRecord]) -> list[str]:
     return [record.dynamic_id for record in records]
+
+
+def select_cached_dynamic_id(
+    cached_ids: Sequence[object],
+    raw_text: str,
+) -> DynamicSelection:
+    if not cached_ids:
+        return DynamicSelection(status="expired")
+
+    try:
+        select_num = int(raw_text.strip())
+    except ValueError:
+        return DynamicSelection(
+            status="invalid",
+            available_count=len(cached_ids),
+        )
+
+    if select_num < 1 or select_num > len(cached_ids):
+        return DynamicSelection(
+            status="out_of_range",
+            available_count=len(cached_ids),
+        )
+
+    return DynamicSelection(
+        status="ok",
+        dynamic_id=str(cached_ids[select_num - 1]),
+        available_count=len(cached_ids),
+    )
+
+
+def build_dynamic_detail_for_selection(
+    history: BiliDynamicHistoryStore,
+    cached_ids: Sequence[object],
+    raw_text: str,
+) -> DynamicDetailSelection:
+    selection = select_cached_dynamic_id(cached_ids, raw_text)
+    if selection.status != "ok":
+        return DynamicDetailSelection(
+            status=selection.status,
+            available_count=selection.available_count,
+        )
+
+    record = history.get(selection.dynamic_id)
+    if record is None:
+        return DynamicDetailSelection(
+            status="missing",
+            available_count=selection.available_count,
+        )
+
+    return DynamicDetailSelection(
+        status="ok",
+        record=record,
+        available_count=selection.available_count,
+    )

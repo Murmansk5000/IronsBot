@@ -24,7 +24,7 @@ from ironsbot.services.seer.rank_constants import (
     BOOK_RANK_KEY,
     STANDARD_PEAK_USER_RANK_KEY,
 )
-from ironsbot.services.seer.rank_models import RankLookupResult
+from ironsbot.services.seer.rank_models import PeakSeasonRankSummary, RankLookupResult
 from ironsbot.services.seer.rank_player_scheduler import (
     current_player_rank_page_scheduler,
     run_player_rank_lookup_jobs,
@@ -113,6 +113,24 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
                 find_rank=find_rank,
                 run_lookup_jobs=runner,
                 **kwargs,
+            )
+
+        async def fetch_master_peak_summary(
+            self,
+            _game: Any,
+            _player_id: int,
+            **_kwargs: Any,
+        ) -> PeakSeasonRankSummary:
+            return PeakSeasonRankSummary.from_results(
+                {
+                    "master_peak": RankLookupResult(
+                        title="大师赛季榜",
+                        score_name="段位分",
+                        rank=4,
+                        score=300_010,
+                        queried=True,
+                    )
+                }
             )
 
         async def fetch_autocard_summary(

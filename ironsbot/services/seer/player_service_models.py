@@ -29,10 +29,6 @@ class PlayerBaseSnapshot:
     def nick(self) -> str:
         return str(getattr(self.user_info, "nick", ""))
 
-    @property
-    def team_id(self) -> int:
-        return int(getattr(self.user_info, "team_id", 0) or 0)
-
 
 @dataclass(slots=True)
 class PendingPlayerQuery:

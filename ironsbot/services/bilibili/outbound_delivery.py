@@ -9,13 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.outbound import (
-    BinaryImagePart,
-    OutboundMessage,
-    RemoteImagePart,
-    TextPart,
-)
-from ironsbot.core.platform import ConversationRef
+from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
+from ironsbot.core.platform import ConversationRef, reference_digest
 from ironsbot.services.bilibili.parser import (
     dynamic_content,
     dynamic_image_urls,
@@ -28,10 +23,6 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.target_models import BiliPushTargets
-from ironsbot.services.messaging.image_collage import (
-    MIN_COLLAGE_IMAGES,
-    ImageCollageError,
-)
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     append_outbound_text_once,
@@ -41,7 +32,6 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.content import DynamicContentCompactor
     from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
-    from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.proactive_delivery import (
         ProactiveMessageDelivery,
     )
@@ -76,8 +66,6 @@ class BilibiliDynamicOutboundSender:
     can_query_history: HistoryQueryChecker | None = None
     admin_notices: AdminNoticeService | None = None
     has_category_subscriptions: Callable[[int], bool] | None = None
-    image_collage: ImageCollageService | None = None
-    combine_images: bool = True
 
     async def send(
         self,
@@ -149,16 +137,8 @@ class BilibiliDynamicOutboundSender:
             full_targets,
             bili_media_subscription_key(author_mid, "image"),
         )
-        image_message = (
-            await prepare_dynamic_image_message(
-                item,
-                image_collage=self.image_collage,
-                combine_images=self.combine_images,
-            )
-            if image_targets.has_targets
-            else None
-        )
-        if image_message is not None:
+        image_message = render_dynamic_image_message(item)
+        if image_message is not None and image_targets.has_targets:
             await self._send_content(
                 item,
                 author_mid,
@@ -232,7 +212,14 @@ class BilibiliDynamicOutboundSender:
                 FULL_DYNAMIC_PUSH_ACTION,
                 author_mid,
                 item.get("id_str", "unknown"),
-                conversations,
+                tuple(
+                    (
+                        conversation.platform.value,
+                        conversation.kind,
+                        reference_digest(conversation.id),
+                    )
+                    for conversation in conversations
+                ),
             )
             return
         target_lines = [
@@ -341,53 +328,19 @@ def render_dynamic_text_message(
     return OutboundMessage.from_text(content) if content else None
 
 
-async def render_dynamic_content_message(
+def render_dynamic_content_message(
     item: dict[str, Any],
     content_override: str | None = None,
-    *,
-    image_collage: ImageCollageService | None = None,
-    combine_images: bool = True,
 ) -> OutboundMessage | None:
     """Render the complete portable body used by interactive history queries."""
 
     text = render_dynamic_text_message(item, content_override)
-    images = await prepare_dynamic_image_message(
-        item,
-        image_collage=image_collage,
-        combine_images=combine_images,
-    )
+    images = render_dynamic_image_message(item)
     parts = (
         *(text.parts if text is not None else ()),
         *(images.parts if images is not None else ()),
     )
     return OutboundMessage(parts) if parts else None
-
-
-async def prepare_dynamic_image_message(
-    item: dict[str, Any],
-    *,
-    image_collage: ImageCollageService | None,
-    combine_images: bool,
-) -> OutboundMessage | None:
-    """Share adaptive images and lossless failure fallback across query and push."""
-    fallback = render_dynamic_image_message(item)
-    if fallback is None or image_collage is None or not combine_images:
-        return fallback
-    urls = tuple(
-        part.url for part in fallback.parts if isinstance(part, RemoteImagePart)
-    )
-    if len(urls) < MIN_COLLAGE_IMAGES:
-        return fallback
-    try:
-        content = await image_collage.compose_urls(urls)
-        return OutboundMessage((BinaryImagePart(content, "image/png"),))
-    except ImageCollageError as error:
-        _LOGGER.warning(
-            "Bilibili collage fallback: dynamic=%s reason=%s", item.get("id_str"), error
-        )
-    except Exception:
-        _LOGGER.exception("Bilibili collage failed: dynamic=%s", item.get("id_str"))
-    return fallback
 
 
 def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:

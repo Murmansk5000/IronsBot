@@ -20,6 +20,7 @@ dependencies = [
     "pillow>=12.3.0",
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
+    "python-dotenv>=1.2.2",
     "qrcode[pil]>=8.2",
 ]
 

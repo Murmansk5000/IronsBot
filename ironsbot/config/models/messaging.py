@@ -121,8 +121,6 @@ class CommandCooldownConfig(BaseModel):
     in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
     duplicate_window_seconds: float = Field(default=60.0, gt=0)
     duplicate_message: str = "该指令重复发送；后续重复不再提醒。"
-    mention_initial_window_seconds: float = Field(default=600.0, gt=0)
-    mention_initial_max_responses: int = Field(default=3, ge=1)
     commands: dict[str, list[CommandCooldownWindowConfig]] = Field(default_factory=dict)
 
     @field_validator("cooldown_message")
@@ -247,26 +245,14 @@ class BotRoutingConfig(BaseModel):
         return None
 
 
-class MessageContent(BaseModel):
+class BaseMessageAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-    messages: list[str] = Field(min_length=1)
-
-    @field_validator("messages")
-    @classmethod
-    def validate_messages(cls, value: list[str]) -> list[str]:
-        messages = [message.strip() for message in value]
-        if any(not message for message in messages):
-            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
-        return messages
-
-
-class BaseMessageAction(MessageContent):
 
     id: str = ""
     name: str = ""
     enabled: bool = True
     feature: str = "text"
+    messages: list[str] = Field(min_length=1)
 
     @field_validator("id", "name")
     @classmethod
@@ -278,6 +264,15 @@ class BaseMessageAction(MessageContent):
     def normalize_feature(cls, value: str) -> str:
         feature = value.strip()
         return feature or "text"
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: list[str]) -> list[str]:
+        messages = [message.strip() for message in value]
+        if any(not message for message in messages):
+            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
+        return messages
+
 
 class MessageReplyAction(BaseMessageAction):
     at_user_ids: OneBotReferenceList = Field(default_factory=list)

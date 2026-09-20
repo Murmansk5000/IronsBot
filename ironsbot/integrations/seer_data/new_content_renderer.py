@@ -123,10 +123,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         *(_item_visuals(images, prepared) for prepared in prepared_items)
     )
 
-    cacheable = all(
-        prepared.details.complete
-        for prepared in prepared_items
-    )
+    cacheable = all(prepared.details.complete for prepared in prepared_items)
     prepared_by_key = {
         (prepared.item.category, prepared.item.entity_id): (prepared, visual)
         for prepared, visual in zip(prepared_items, visuals, strict=True)
@@ -211,13 +208,15 @@ def _initial_rows(
         category: [item for item in prepared_items if item.item.category == category]
         for category in display_categories
     }
-    next_code = 1
-    for category in display_categories:
+    for index, category in enumerate(display_categories):
+        code = chr(ord("a") + index)
         rows.append(
             NewContentMenuItem(
-                code=str(next_code),
+                code=code,
                 name=CATEGORY_NAMES[category],
-                description=format_new_content_category_count(snapshot.items_for(category)),
+                description=format_new_content_category_count(
+                    snapshot.items_for(category)
+                ),
                 metadata="",
                 side_title="",
                 side_description="",
@@ -237,11 +236,13 @@ def _initial_rows(
                 friend_skill=None,
             )
         )
-        next_code += 1
         if category in expanded_categories:
-            for prepared in prepared_by_category[category]:
-                rows.append(_content_row(str(next_code), prepared))
-                next_code += 1
+            rows.extend(
+                _content_row(f"{code}{item_index}", prepared)
+                for item_index, prepared in enumerate(
+                    prepared_by_category[category], start=1
+                )
+            )
     return rows
 
 

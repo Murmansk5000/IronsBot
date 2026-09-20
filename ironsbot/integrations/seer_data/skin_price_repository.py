@@ -99,12 +99,8 @@ def load_active_skin_store_prices(
     unique_ids = tuple(dict.fromkeys(skin_id for skin_id in skin_ids if skin_id > 0))
     if not unique_ids:
         return {}
-    placeholders = ", ".join(
-        f":skin_id_{index}" for index in range(len(unique_ids))
-    )
-    params = {
-        f"skin_id_{index}": skin_id for index, skin_id in enumerate(unique_ids)
-    }
+    placeholders = ", ".join(f":skin_id_{index}" for index in range(len(unique_ids)))
+    params = {f"skin_id_{index}": skin_id for index, skin_id in enumerate(unique_ids)}
     params["now"] = int(time.time()) if now is None else now
     try:
         rows = session.execute(

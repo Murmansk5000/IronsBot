@@ -1,27 +1,210 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""OneBot transport boundary for Autocard queries."""
-
 from __future__ import annotations
 
-from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.integrations.onebot.matchers import CommandPolicy
-from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
-from ironsbot.integrations.onebot.rules import affix_command, explicit_command
-from ironsbot.services.portable_autocard_commands import (
-    build_portable_autocard_operations,
+from typing import TYPE_CHECKING
+
+from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves callbacks
+    MessageEvent,
 )
+from nonebot.adapters.onebot.v11.exception import ActionFailed
+from nonebot.exception import FinishedException
+from nonebot.log import logger
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
+
+from ironsbot.integrations.onebot.conversations import (
+    enter_event_reply_conversation,
+    event_conversation_session_id,
+)
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    bind_async,
+    get_prompt_session_manager,
+)
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
+from ironsbot.integrations.onebot.params import parse_string_arg
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_commands import AUTOCARD_QUERY
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ironsbot.services.seer.autocard import (
+        AutocardEntry,
+        AutocardPromptValue,
+        AutocardService,
+    )
+    from ironsbot.services.seer.autocard_media import AutocardMediaService
+
+AUTOCARD_PROMPT_NAMESPACE = "autocard"
+AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
+
+
+def _is_autocard_prompt_reply(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip().isdigit()
+
+
+def _invalidate_autocard_prompt(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    get_prompt_session_manager(matcher).invalidate(
+        event_conversation_session_id(AUTOCARD_PROMPT_NAMESPACE, event)
+    )
+
+
+async def _reply_with_image_fallback(
+    matcher: Matcher,
+    event: MessageEvent,
+    entry: AutocardEntry,
+    media: AutocardMediaService,
+    *,
+    finish: bool,
+) -> None:
+    reply = finish_event_reply if finish else send_event_reply
+    try:
+        await reply(
+            matcher,
+            event,
+            render_onebot_outbound_message(await media.outbound(entry)),
+        )
+    except ActionFailed as error:
+        logger.warning(
+            "autocard image reply failed, falling back to text: "
+            "kind={} id={} name={} error={}",
+            entry.kind,
+            entry.item_id,
+            entry.name,
+            error,
+        )
+        await reply(
+            matcher,
+            event,
+            render_onebot_outbound_message(entry.to_outbound()),
+        )
+
+
+async def _enter_autocard_prompt(  # noqa: PLR0913 - matcher conversation boundary
+    service: AutocardService,
+    media: AutocardMediaService,
+    matcher: Matcher,
+    event: MessageEvent,
+    values: Sequence[AutocardPromptValue],
+    prompt: str | None,
+) -> None:
+    matcher.state[AUTOCARD_PROMPT_STATE_KEY] = tuple(values)
+    await enter_event_reply_conversation(
+        matcher,
+        event,
+        namespace=AUTOCARD_PROMPT_NAMESPACE,
+        handlers=[bind_async(_handle_autocard_prompt_reply, service, media)],
+        reply_check=_is_autocard_prompt_reply,
+        prompt=prompt,
+    )
+
+
+async def _finish_service_error(
+    matcher: Matcher,
+    event: MessageEvent,
+    error: Exception,
+) -> None:
+    message = (
+        DATABASE_UNAVAILABLE_MESSAGE
+        if isinstance(error, DataUnavailableError)
+        else f"❌ 群星牌公开配置获取失败：{error}"
+    )
+    await finish_event_reply(matcher, event, message)
+
+
+async def _handle_autocard_prompt_reply(
+    service: AutocardService,
+    media: AutocardMediaService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    key_text = event.get_plaintext().strip()
+    if key_text == "0":
+        await finish_event_reply(matcher, event, "❌ 已退出群星牌选择")
+
+    values = tuple(state.get(AUTOCARD_PROMPT_STATE_KEY) or ())
+    if not values:
+        raise FinishedException
+    index = int(key_text)
+    if index < 1 or index > len(values):
+        await finish_event_reply(
+            matcher,
+            event,
+            "⚠️ 序号超出范围，已退出群星牌选择",
+        )
+
+    try:
+        entry = service.select(values[index - 1])
+    except (DataUnavailableError, RuntimeError) as error:
+        await _finish_service_error(matcher, event, error)
+        return
+    if entry is None:
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。",
+        )
+        return
+
+    await _reply_with_image_fallback(
+        matcher,
+        event,
+        entry,
+        media,
+        finish=False,
+    )
+    await _enter_autocard_prompt(service, media, matcher, event, values, prompt=None)
+
+
+async def handle_autocard_query(
+    service: AutocardService,
+    media: AutocardMediaService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    _invalidate_autocard_prompt(matcher, event)
+    try:
+        result = service.search(parse_string_arg(state))
+    except (DataUnavailableError, RuntimeError) as error:
+        await _finish_service_error(matcher, event, error)
+        return
+
+    if result.entry is not None:
+        await _reply_with_image_fallback(
+            matcher,
+            event,
+            result.entry,
+            media,
+            finish=True,
+        )
+    if result.message:
+        await finish_event_reply(matcher, event, result.message)
+    if not result.prompt_values:
+        raise FinishedException
+    await _enter_autocard_prompt(
+        service,
+        media,
+        matcher,
+        event,
+        result.prompt_values,
+        prompt=result.prompt_text,
+    )
+
 
 def install(group: SeerMatcherGroup) -> None:
-    operation = build_portable_autocard_operations(
-        group.resources.autocard,
-        group.resources.autocard_media,
-        group.resources.autocard_sanctuary,
-        group.query_sessions,
-    )["seer.autocard.query"]
     matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_autocard_query",
@@ -33,9 +216,9 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_autocard"),
     )
     matcher.append_handler(
-        make_portable_query_handler(
-            operation,
-            group.query_sessions,
-            ActionDefinition("seer_autocard_query", "群星牌查询"),
+        bind_async(
+            handle_autocard_query,
+            group.resources.autocard,
+            group.resources.autocard_media,
         )
     )

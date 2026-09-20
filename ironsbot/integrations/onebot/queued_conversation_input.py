@@ -14,6 +14,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.prompt_sessions import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
@@ -50,11 +51,11 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     if not prompt_sessions.claim_input(event):
         logger.debug(
             "queued conversation input already claimed: namespace=%s "
-            "session=%s user=%s message_id=%s",
+            "session_ref=%s actor_ref=%s message_ref=%s",
             context.namespace,
-            context.event_session_id,
-            event.user_id,
-            event.message_id,
+            reference_digest(context.event_session_id),
+            reference_digest(str(event.user_id)),
+            reference_digest(str(event.message_id)),
         )
         raise FinishedException
 
@@ -128,12 +129,12 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     dispatch_handlers(matcher, context)
     action_id = request.action.id if request is not None else "none"
     logger.info(
-        "queued conversation input dispatched: namespace=%s session=%s "
-        "user=%s message_id=%s ticket=%s action=%s waited=%s queue_wait=%.3fs",
+        "queued conversation input dispatched: namespace=%s session_ref=%s "
+        "actor_ref=%s message_ref=%s ticket=%s action=%s waited=%s queue_wait=%.3fs",
         context.namespace,
-        context.event_session_id,
-        event.user_id,
-        event.message_id,
+        reference_digest(context.event_session_id),
+        reference_digest(str(event.user_id)),
+        reference_digest(str(event.message_id)),
         ticket,
         action_id,
         waited,

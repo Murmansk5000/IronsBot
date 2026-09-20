@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -8,6 +9,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.services.messaging.push_time import PushTimeOption
+    from ironsbot.services.portable_reply import PortableReply
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
@@ -18,14 +20,7 @@ from ironsbot.config.models.messaging import (
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
-from ironsbot.core.outbound import (
-    BinaryImagePart,
-    MentionPart,
-    OutboundMessage,
-    OutboundMessageError,
-    SendResult,
-    TextPart,
-)
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -37,30 +32,8 @@ from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
-    configured_text_reply,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
-from ironsbot.services.portable_reply import as_portable_reply, deliver_reply_stages
-
-
-def test_configured_text_mentions_preserve_scoped_actor_identity() -> None:
-    first = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="app-one")
-    second = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="app-two")
-    reply = configured_text_reply(("text",), final_mentions=(first, first, second))
-
-    assert isinstance(reply, OutboundMessage)
-    assert reply.parts == (
-        MentionPart(first),
-        TextPart(" "),
-        MentionPart(second),
-        TextPart(" "),
-        TextPart("text"),
-    )
-
-
-def test_configured_text_rejects_empty_sequence() -> None:
-    with pytest.raises(OutboundMessageError, match="reply sequence must not be empty"):
-        configured_text_reply(())
 
 
 class _MemoryImages:
@@ -94,7 +67,7 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
                 MessageCommandAction(
                     id="portable",
                     commands=["链接"],
-                    messages=["https://example.test"],
+                    messages=["第一条", "https://example.test"],
                 ),
                 MessageCommandAction(
                     id="onebot-only",
@@ -121,60 +94,40 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
         "messaging.push_subscription",
     }
     result = cast(
-        "OutboundMessage",
+        "PortableReply",
         await operations["messaging.portable"]("链接", _context("链接")),
     )
-    assert cast("TextPart", result.parts[0]).text == "https://example.test"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("failed_stage", [None, 0, 1])
-async def test_configured_messages_keep_boundaries_and_stop_on_delivery_failure(
-    failed_stage: int | None,
-) -> None:
-    messages = ["first", "second", "second", "last"]
-    messaging = MessagingService(
-        MessageConfig(
-            commands=[
-                MessageCommandAction(
-                    id="sequence",
-                    commands=["sequence"],
-                    messages=messages,
-                )
-            ]
-        ),
-        ActivityConfig(),
-        cast("Any", object()),
-        cast("Any", object()),
-        cast("Any", object()),
-        cast("Any", object()),
+    assert cast("TextPart", result.message.parts[0]).text == "第一条"
+    assert len(result.additional_messages) == 1
+    assert (
+        cast("TextPart", result.additional_messages[0].parts[0]).text
+        == "https://example.test"
     )
-    context = _context("sequence")
-    operation = build_portable_messaging_operations(
-        messaging,
-        PortableQuerySessions(),
-    )["messaging.sequence"]
-    reply = as_portable_reply(await operation("sequence", context))
-    sent: list[str] = []
-
-    async def send(message: OutboundMessage) -> SendResult:
-        sent.append(cast("TextPart", message.parts[0]).text)
-        if len(sent) - 1 == failed_stage:
-            return SendResult(delivered=False, error_code="delivery-failed")
-        return SendResult(delivered=True, message_id=str(len(sent)))
-
-    await deliver_reply_stages(send, context.message, reply)
-    expected = messages if failed_stage is None else messages[: failed_stage + 1]
-    assert sent == expected
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("demote", [False, True])
+@pytest.mark.parametrize("button", [False, True])
 async def test_portable_subscription_menu_persists_qq_official_openid(
     tmp_path: Path,
+    *,
+    demote: bool,
+    button: bool,
 ) -> None:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 
     context = _context("TD")
+    if demote:
+        context = replace(
+            context,
+            message=replace(
+                context.message,
+                conversation=ConversationRef(
+                    Platform.QQ_OFFICIAL, "group", "test-group"
+                ),
+                group_role="admin",
+            ),
+        )
     conversation = context.message.conversation
     actor = context.message.actor
     store = PushUnsubscribeStore(tmp_path / "qq_state.sqlite")
@@ -183,7 +136,7 @@ async def test_portable_subscription_menu_persists_qq_official_openid(
         ActivityConfig(),
         store,
         FeatureService(
-            {},
+            {conversation: frozenset({"seer_activity_push"})} if demote else {},
             {actor: frozenset({"seer_activity_push"})},
             frozenset(),
         ),
@@ -198,19 +151,44 @@ async def test_portable_subscription_menu_persists_qq_official_openid(
     menu = cast("OutboundMessage", await operation("TD", context))
     assert "活动结束提醒" in cast("TextPart", menu.parts[0]).text
 
-    result = await sessions.select("1", context)
+    selection_context = replace(
+        context, message=replace(context.message, group_role="member")
+    )
+    assert menu.prompt is not None
+    assert menu.prompt is sessions.active_prompt(context)
+    selection = menu.prompt.action_data(menu.prompt.choices[0]) if button else "1"
+    result = await sessions.select(selection, selection_context)
     assert result is not None
-    assert "已退订：活动结束提醒" in cast("TextPart", result.parts[0]).text
-    assert store.is_unsubscribed(conversation, "seer_activity_push")
+    expected = "普通群成员只能查看" if demote else "已退订：活动结束提醒"
+    assert expected in cast("TextPart", result.parts[0]).text
+    assert store.is_unsubscribed(conversation, "seer_activity_push") is not demote
+    assert result.prompt is sessions.active_prompt(selection_context)
+    assert result.prompt is not None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("demote_at", ["never", "menu", "input"])
+@pytest.mark.parametrize("button", [False, True])
 async def test_portable_push_time_updates_qq_official_conversation(
     tmp_path: Path,
+    demote_at: str,
+    *,
+    button: bool,
 ) -> None:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 
     context = _context("推送时间")
+    if demote_at != "never":
+        context = replace(
+            context,
+            message=replace(
+                context.message,
+                conversation=ConversationRef(
+                    Platform.QQ_OFFICIAL, "group", "test-group"
+                ),
+                group_role="admin",
+            ),
+        )
     actor = context.message.actor
     store = PushUnsubscribeStore(tmp_path / "qq_state.sqlite")
     messaging = MessagingService(
@@ -226,7 +204,11 @@ async def test_portable_push_time_updates_qq_official_conversation(
         ),
         ActivityConfig(),
         store,
-        FeatureService({}, {actor: frozenset({"text_push"})}, frozenset()),
+        FeatureService(
+            {context.message.conversation: frozenset({"text_push"})},
+            {actor: frozenset({"text_push"})},
+            frozenset(),
+        ),
         cast("Any", object()),
         cast("Any", object()),
     )
@@ -247,17 +229,38 @@ async def test_portable_push_time_updates_qq_official_conversation(
         await operations["messaging.push_time"]("推送时间", context),
     )
     assert "每日消息" in cast("TextPart", menu.parts[0]).text
-    value_prompt = await sessions.select("1", context)
+    assert menu.prompt is not None
+    assert menu.prompt is sessions.active_prompt(context)
+    selection = menu.prompt.action_data(menu.prompt.choices[0]) if button else "1"
+    member = replace(context, message=replace(context.message, group_role="member"))
+    value_prompt = await sessions.select(
+        selection, member if demote_at == "menu" else context
+    )
     assert value_prompt is not None
+    if demote_at == "menu":
+        assert "不能修改推送时间" in cast("TextPart", value_prompt.parts[0]).text
+        assert not sessions.has_active_session(member)
+        assert not refreshed
+        return
     assert "HH:MM" in cast("TextPart", value_prompt.parts[0]).text
     assert sessions.recognizes_response("21:30", context)
-    result = await sessions.select("21:30", context)
+    result = await sessions.select("21:30", member if demote_at == "input" else context)
 
     assert result is not None
+    if demote_at == "input":
+        assert "不能修改推送时间" in cast("TextPart", result.parts[0]).text
+        assert (
+            messaging.push_time_options(context.message.conversation)[0].current_value
+            != "21:30:00"
+        )
+        assert not refreshed
+        return
     assert "已设置：每日消息" in cast("TextPart", result.parts[0]).text
     current = messaging.push_time_options(context.message.conversation)[0].current_value
     assert current == "21:30:00"
     assert len(refreshed) == 1
+    assert result.prompt is not None
+    assert result.prompt is sessions.active_prompt(context)
 
 
 @pytest.mark.asyncio

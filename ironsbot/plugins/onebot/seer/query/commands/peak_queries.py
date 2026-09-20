@@ -3,13 +3,19 @@
 
 from __future__ import annotations
 
+from functools import partial
+from typing import TYPE_CHECKING, Literal
+
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
-from ironsbot.integrations.onebot.replies import run_portable_operation
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.services.portable_seer_commands import (
-    build_portable_peak_query_operation,
-    build_portable_peak_rank_operation,
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
 )
+from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import (
     PEAK_EXPERT_POOL_COMMANDS,
     PEAK_MASTER_POOL_COMMANDS,
@@ -22,11 +28,101 @@ from ironsbot.services.seer.peak import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 
+if TYPE_CHECKING:
+    from ironsbot.services.seer.peak import (
+        PeakQueryResult,
+        PeakQueryService,
+    )
+
+
+async def _report_progress(matcher: Matcher, message: str) -> None:
+    await matcher.send(message)
+
+
+async def _finish_result(
+    result: PeakQueryResult,
+    matcher: Matcher,
+) -> None:
+    await matcher.finish(render_onebot_outbound_message(result.to_outbound()))
+
+
+async def _handle_pool(
+    service: PeakQueryService,
+    matcher: Matcher,
+    *,
+    expert: bool,
+) -> None:
+    try:
+        result = await service.pool(
+            expert=expert,
+            progress=partial(_report_progress, matcher),
+        )
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_vote(
+    service: PeakQueryService,
+    matcher: Matcher,
+) -> None:
+    try:
+        result = await service.vote(partial(_report_progress, matcher))
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_master_pool(
+    service: PeakQueryService,
+    matcher: Matcher,
+) -> None:
+    try:
+        result = await service.master_pool(partial(_report_progress, matcher))
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_item_rank(
+    service: PeakQueryService,
+    matcher: Matcher,
+    event: Event,
+    *,
+    kind: Literal["套装", "称号"],
+) -> None:
+    try:
+        result = await service.item_rank(
+            event.get_plaintext(),
+            kind=kind,
+        )
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_pet_rank(
+    service: PeakQueryService,
+    matcher: Matcher,
+    event: Event,
+) -> None:
+    try:
+        result = await service.pet_rank(
+            event.get_plaintext(),
+            partial(_report_progress, matcher),
+        )
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.peak_query
-    query_operation = build_portable_peak_query_operation(service)
-    rank_operation = build_portable_peak_rank_operation(service)
     rule = seer_feature_rule(group.features, "seer_peak") & explicit_command()
     priority = group.matcher_priority("seer_peak")
 
@@ -39,9 +135,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pool.append_handler(
-        bind_async(run_portable_operation, operation=query_operation)
-    )
+    pool.append_handler(bind_async(_handle_pool, service, expert=False))
 
     expert_pool = group.on_fullmatch(
         PEAK_EXPERT_POOL_COMMANDS,
@@ -52,9 +146,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    expert_pool.append_handler(
-        bind_async(run_portable_operation, operation=query_operation)
-    )
+    expert_pool.append_handler(bind_async(_handle_pool, service, expert=True))
 
     master_pool = group.on_fullmatch(
         PEAK_MASTER_POOL_COMMANDS,
@@ -65,9 +157,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    master_pool.append_handler(
-        bind_async(run_portable_operation, operation=query_operation)
-    )
+    master_pool.append_handler(bind_async(_handle_master_pool, service))
 
     vote = group.on_fullmatch(
         PEAK_VOTE_COMMANDS,
@@ -78,9 +168,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    vote.append_handler(
-        bind_async(run_portable_operation, operation=query_operation)
-    )
+    vote.append_handler(bind_async(_handle_vote, service))
 
     suit = group.on_fullmatch(
         PEAK_SUIT_RANK_COMMANDS,
@@ -91,9 +179,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    suit.append_handler(
-        bind_async(run_portable_operation, operation=rank_operation)
-    )
+    suit.append_handler(bind_async(_handle_item_rank, service, kind="套装"))
 
     title = group.on_fullmatch(
         PEAK_TITLE_RANK_COMMANDS,
@@ -104,9 +190,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    title.append_handler(
-        bind_async(run_portable_operation, operation=rank_operation)
-    )
+    title.append_handler(bind_async(_handle_item_rank, service, kind="称号"))
 
     pet = group.on_fullmatch(
         PEAK_PET_RANK_COMMANDS,
@@ -117,6 +201,4 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pet.append_handler(
-        bind_async(run_portable_operation, operation=rank_operation)
-    )
+    pet.append_handler(bind_async(_handle_pet_rank, service))

@@ -44,6 +44,7 @@ PetDataGetter = Getter(
     AliasResolver(PetORM, PetAliasORM),
 )
 
+
 def build_mintmark_data_getter(
     *,
     merge_connected: bool,
@@ -55,6 +56,7 @@ def build_mintmark_data_getter(
         AliasResolver(MintmarkORM, MintmarkAliasORM),
         MintmarkSeriesResolver(merge_connected=merge_connected),
     )
+
 
 MintmarkClassDataGetter = Getter(
     MintmarkClassCategoryORM,
@@ -92,6 +94,7 @@ TitleDataGetter = Getter(
     IdResolver(TitlePartORM),
     NameResolver(TitlePartORM),
 )
+
 
 class TypeCombinationResolver:
     """将用户输入拆分为单属性名，再按 ID 组合查询 TypeCombinationORM。

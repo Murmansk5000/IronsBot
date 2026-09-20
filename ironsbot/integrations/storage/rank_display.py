@@ -111,7 +111,9 @@ class SqliteRankDisplayStore:
                     updated_by_scope_id = excluded.updated_by_scope_id
                 """,
                 (
-                    *ConversationIdentityColumns.from_conversation(conversation).values(),
+                    *ConversationIdentityColumns.from_conversation(
+                        conversation
+                    ).values(),
                     limit,
                     datetime.now(timezone.utc).isoformat(),
                     *ActorIdentityColumns.from_actor(actor).values(),

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -12,34 +11,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_models import DockerImageInfo
 
 GITHUB_REPO_PATH_PARTS = 2
-GITHUB_COMMIT_SHA_PATTERN = re.compile(r"[0-9a-f]{40}", re.IGNORECASE)
 logger = logging.getLogger(__name__)
-
-
-async def resolve_github_branch_revision(
-    repository: tuple[str, str],
-    branch: str = "main",
-) -> str:
-    """Return a GitHub branch head SHA without exposing authentication details."""
-
-    owner, name = repository
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
-        response = await client.get(
-            f"https://api.github.com/repos/{owner}/{name}/commits/{branch}",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "IronsBot-DockerUpdate",
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-    revision = payload.get("sha") if isinstance(payload, dict) else None
-    if not isinstance(revision, str) or not GITHUB_COMMIT_SHA_PATTERN.fullmatch(
-        revision.strip()
-    ):
-        msg = "GitHub branch response did not include a valid commit SHA"
-        raise RuntimeError(msg)
-    return revision.strip()
 
 
 def github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:

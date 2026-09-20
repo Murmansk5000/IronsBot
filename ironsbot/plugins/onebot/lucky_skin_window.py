@@ -1,15 +1,14 @@
 # SPDX-License-Identifier: MIT
-"""OneBot transport boundary for lucky-skin-window commands."""
-
+# ruff: noqa: TC002
 from __future__ import annotations
 
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
+from nonebot.typing import T_State
 
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
@@ -19,23 +18,24 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.core.semantic_requests import (
-    ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
     SemanticTarget,
 )
 from ironsbot.core.time import scheduled_clock_time
-from ironsbot.integrations.onebot.feature_policy import (
-    event_is_feature_allowed,
-)
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
     bind_async,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
-from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.integrations.onebot.rules import (
+    explicit_command,
+    member_target_command,
+)
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.portable_lucky_skin_commands import (
@@ -55,6 +55,7 @@ from ironsbot.services.seer.lucky_skin_commands import (
     is_lucky_skin_query,
     is_lucky_skin_watch_exact,
     lucky_skin_window_command_contracts,
+    parse_lucky_skin_query,
     parse_lucky_skin_watch_target,
 )
 
@@ -66,6 +67,7 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 _JOB_PREFIX = "lucky_skin_window:"
 
@@ -79,12 +81,13 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def plugin_contribution(
+def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
     scheduler: Scheduler,
-    query_sessions: PortableQuerySessions,
+    sessions: PortableQuerySessions,
+    resolver: PlayerIdResolver,
 ) -> PluginContribution:
     return PluginContribution(
         id="lucky_skin_window",
@@ -105,13 +108,16 @@ def plugin_contribution(
             service=service,
             pet=pet,
             features=features,
-            query_sessions=query_sessions,
+            sessions=sessions,
+            resolver=resolver,
         ),
         hooks=PluginHooks(
-            startup=((
-                "lucky_skin_window_schedule",
-                partial(_register_schedule, service, scheduler),
-            ),),
+            startup=(
+                (
+                    "lucky_skin_window_schedule",
+                    partial(_register_schedule, service, scheduler),
+                ),
+            ),
         ),
     )
 
@@ -122,7 +128,9 @@ def _help_visible(
     service: LuckySkinWindowService,
     features: FeatureService,
 ) -> bool:
-    if not service.is_eligible_actor(context.actor):
+    if not service.is_eligible_actor(context.actor) and not features.is_actor_superuser(
+        context.actor
+    ):
         return False
     return feature_help_visible(
         context,
@@ -137,11 +145,24 @@ async def _matches_query(
     *,
     features: FeatureService,
 ) -> bool:
-    del state
-    return is_lucky_skin_query(event.get_plaintext()) and _feature_allowed(
-        event,
-        features=features,
-    )
+    _ = state
+    if not is_lucky_skin_query(event.get_plaintext()):
+        return False
+    return _watch_feature_allowed(event, features=features)
+
+
+def _watch_feature_allowed(
+    event: MessageEvent,
+    *,
+    features: FeatureService,
+) -> bool:
+    return event_is_feature_allowed(features, event, "lucky_skin_window")
+
+
+def _actor_from_event(event: MessageEvent) -> ActorRef:
+    """Adapt the OneBot event identity before calling the domain service."""
+
+    return onebot_actor_ref(event.user_id)
 
 
 async def _matches_watch_exact(
@@ -151,11 +172,10 @@ async def _matches_watch_exact(
     commands: tuple[str, ...],
     features: FeatureService,
 ) -> bool:
-    del state
+    _ = state
     return is_lucky_skin_watch_exact(
-        event.get_plaintext(),
-        commands=commands,
-    ) and _feature_allowed(event, features=features)
+        event.get_plaintext(), commands=commands
+    ) and _watch_feature_allowed(event, features=features)
 
 
 async def _matches_watch_change(
@@ -166,33 +186,26 @@ async def _matches_watch_change(
     features: FeatureService,
 ) -> bool:
     del state
-    return (
-        parse_lucky_skin_watch_target(event.get_plaintext(), commands=commands)
-        is not None
-        and _feature_allowed(event, features=features)
-    )
-
-
-def _feature_allowed(
-    event: MessageEvent,
-    *,
-    features: FeatureService,
-) -> bool:
-    return event_is_feature_allowed(features, event, "lucky_skin_window")
-
-
-def _actor_from_event(event: MessageEvent) -> ActorRef:
-    return onebot_actor_ref(event.user_id)
+    arg = parse_lucky_skin_watch_target(event.get_plaintext(), commands=commands)
+    return arg is not None and _watch_feature_allowed(event, features=features)
 
 
 def _semantic_request(
     service: LuckySkinWindowService,
     event: MessageEvent,
     state: T_State,
+    *,
+    resolver: PlayerIdResolver,
 ) -> SemanticRequest:
-    del state
+    _ = state
     account = service.account_for_actor(_actor_from_event(event))
     target_key = str(account.player_id) if account is not None else str(event.user_id)
+    context = message_input_context(event)
+    reference = parse_lucky_skin_query(context.text)
+    if reference or context.has_member_mentions:
+        target = resolver.resolve(context, reference)
+        if target.player_id is not None:
+            target_key = str(target.player_id)
     return SemanticRequest(
         action=LUCKY_SKIN_QUERY_ACTION,
         target=SemanticTarget(target_key, f"{target_key} 幸运橱窗"),
@@ -200,56 +213,125 @@ def _semantic_request(
     )
 
 
-def _install(
+def _install(  # noqa: PLR0913 - explicit plugin resources
     registry: MatcherFactory,
     *,
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
-    query_sessions: PortableQuerySessions,
+    sessions: PortableQuerySessions,
+    resolver: PlayerIdResolver,
 ) -> None:
-    operations = build_portable_lucky_skin_operations(service, pet, query_sessions)
     priority = registry.priority("lucky_skin_window")
-
-    def handler(action: ActionDefinition):
-        return make_portable_query_handler(
-            operations[action.id],
-            query_sessions,
-            action,
-        )
-
-    query = registry.on_message(
+    operations = build_portable_lucky_skin_operations(
+        service,
+        pet,
+        features,
+        sessions,
+        resolver,
+    )
+    matcher = registry.on_message(
         policy=CommandPolicy.command(
             LUCKY_SKIN_QUERY_ACTION.id,
             help_ids=(LUCKY_SKIN_QUERY_ACTION.id,),
-            semantic_request=partial(_semantic_request, service),
+            semantic_request=partial(_semantic_request, service, resolver=resolver),
         ),
-        rule=Rule(bind_async(_matches_query, features=features)) & explicit_command(),
+        rule=Rule(bind_async(_matches_query, features=features))
+        & member_target_command(),
         priority=priority,
         block=True,
     )
-    query.append_handler(handler(LUCKY_SKIN_QUERY_ACTION))
+    matcher.append_handler(
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_QUERY_ACTION.id],
+            sessions,
+        )
+    )
 
     watch_list = registry.on_message(
         policy=CommandPolicy.command(
             LUCKY_SKIN_WATCH_LIST_ACTION.id,
             help_ids=(LUCKY_SKIN_WATCH_LIST_ACTION.id,),
         ),
-        rule=_exact_rule(LUCKY_SKIN_WATCH_LIST_COMMANDS, features=features),
+        rule=Rule(
+            bind_async(
+                _matches_watch_exact,
+                commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
+                features=features,
+            )
+        )
+        & explicit_command(),
         priority=priority,
         block=True,
     )
-    watch_list.append_handler(handler(LUCKY_SKIN_WATCH_LIST_ACTION))
+    watch_list.append_handler(
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_LIST_ACTION.id],
+            sessions,
+        )
+    )
+
+    watch_add = registry.on_message(
+        policy=CommandPolicy.command(
+            LUCKY_SKIN_WATCH_ADD_ACTION.id,
+            help_ids=(LUCKY_SKIN_WATCH_ADD_ACTION.id,),
+        ),
+        rule=Rule(
+            bind_async(
+                _matches_watch_change,
+                commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
+                features=features,
+            )
+        )
+        & explicit_command(),
+        priority=priority,
+        block=True,
+    )
+    watch_add.append_handler(
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_ADD_ACTION.id],
+            sessions,
+        )
+    )
+
+    watch_remove = registry.on_message(
+        policy=CommandPolicy.command(
+            LUCKY_SKIN_WATCH_REMOVE_ACTION.id,
+            help_ids=(LUCKY_SKIN_WATCH_REMOVE_ACTION.id,),
+        ),
+        rule=Rule(
+            bind_async(
+                _matches_watch_change,
+                commands=LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
+                features=features,
+            )
+        )
+        & explicit_command(),
+        priority=priority,
+        block=True,
+    )
+    watch_remove.append_handler(
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_REMOVE_ACTION.id],
+            sessions,
+        )
+    )
 
     for action, commands in (
-        (LUCKY_SKIN_WATCH_ADD_ACTION, LUCKY_SKIN_WATCH_LIST_COMMANDS),
-        (LUCKY_SKIN_WATCH_REMOVE_ACTION, LUCKY_SKIN_WATCH_REMOVE_COMMANDS),
+        (
+            LUCKY_SKIN_WATCH_CLEAR_ACTION,
+            LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+        ),
+        (
+            LUCKY_SKIN_WATCH_RESET_ACTION,
+            LUCKY_SKIN_WATCH_RESET_COMMANDS,
+        ),
     ):
-        change = registry.on_message(
+        watch_action = registry.on_message(
             policy=CommandPolicy.command(action.id, help_ids=(action.id,)),
             rule=Rule(
                 bind_async(
-                    _matches_watch_change,
+                    _matches_watch_exact,
                     commands=commands,
                     features=features,
                 )
@@ -258,33 +340,12 @@ def _install(
             priority=priority,
             block=True,
         )
-        change.append_handler(handler(action))
-
-    for action, commands in (
-        (LUCKY_SKIN_WATCH_CLEAR_ACTION, LUCKY_SKIN_WATCH_CLEAR_COMMANDS),
-        (LUCKY_SKIN_WATCH_RESET_ACTION, LUCKY_SKIN_WATCH_RESET_COMMANDS),
-    ):
-        watch_action = registry.on_message(
-            policy=CommandPolicy.command(action.id, help_ids=(action.id,)),
-            rule=_exact_rule(commands, features=features),
-            priority=priority,
-            block=True,
+        watch_action.append_handler(
+            make_portable_query_handler(
+                operations[action.id],
+                sessions,
+            )
         )
-        watch_action.append_handler(handler(action))
-
-
-def _exact_rule(
-    commands: tuple[str, ...],
-    *,
-    features: FeatureService,
-) -> Rule:
-    return Rule(
-        bind_async(
-            _matches_watch_exact,
-            commands=commands,
-            features=features,
-        )
-    ) & explicit_command()
 
 
 def _register_schedule(
@@ -298,8 +359,7 @@ def _register_schedule(
         config.time,
         error_message="invalid lucky skin window time",
     )
-    jobs = JobRegistry(scheduler, prefix=_JOB_PREFIX)
-    jobs.add(
+    JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
         service.clear_previous_days,
         "cron",
         job_id="cache_cleanup",
@@ -308,7 +368,7 @@ def _register_schedule(
         second=0,
         timezone=config.timezone,
     )
-    jobs.add_daily(
+    JobRegistry(scheduler, prefix=_JOB_PREFIX).add_daily(
         service.send_daily_notifications,
         clock_time=daily_time,
         job_id="daily",
@@ -325,5 +385,6 @@ if (context := active_plugin_install_context()) is not None:
             context.resources.features,
             context.scheduler,
             context.resources.query_sessions,
+            context.resources.player_id_resolver,
         ),
     )

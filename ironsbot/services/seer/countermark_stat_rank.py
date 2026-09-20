@@ -21,9 +21,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.data import SeerDataAccess
 
-MISSING_MINTMARK_QUALITY_MESSAGE = (
-    "❌ 刻印角数数据不完整，暂时无法查询刻印数值榜。"
-)
+MISSING_MINTMARK_QUALITY_MESSAGE = "❌ 刻印角数数据不完整，暂时无法查询刻印数值榜。"
 logger = logging.getLogger(__name__)
 
 

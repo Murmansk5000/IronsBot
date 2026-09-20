@@ -267,7 +267,8 @@ async def _fetch_peak_message(  # noqa: PLR0913
 ) -> QueryReply:
     extra_errors: list[str] = []
     observation = ObservationTime()
-    (nick, nick_error), peak_result = await asyncio.gather(
+    master_progress = RankSummaryProgress()
+    (nick, nick_error), peak_result, master_rank_summary = await asyncio.gather(
         _resolve_shortcut_nick(
             game,
             player_id=player_id,
@@ -279,6 +280,20 @@ async def _fetch_peak_message(  # noqa: PLR0913
             game,
             player_id,
             timeout_seconds=deadline.remaining(timeout_seconds),
+        ),
+        fetch_partial_rank_summary(
+            rank.fetch_master_peak_summary(
+                game,
+                player_id,
+                progress=master_progress,
+                anchor_only=anchor_only,
+            ),
+            progress=master_progress,
+            build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
+                results,
+                failure=failure,
+            ),
+            timeout_seconds=deadline.remaining(rank_timeout_seconds),
         ),
     )
     unity_peak = peak_result.info
@@ -306,7 +321,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
             anchor_only=anchor_only,
         )
 
-    rank_summary = await fetch_partial_rank_summary(
+    peak_rank_summary = await fetch_partial_rank_summary(
         fetch_season_ranks(),
         progress=peak_progress,
         build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
@@ -314,6 +329,10 @@ async def _fetch_peak_message(  # noqa: PLR0913
             failure=failure,
         ),
         timeout_seconds=deadline.remaining(rank_timeout_seconds),
+    )
+    rank_summary = replace(
+        peak_rank_summary,
+        master=master_rank_summary.master,
     )
     validated_peak = validate_player_peak_season(
         unity_peak,
@@ -358,20 +377,29 @@ async def _fetch_peak_message(  # noqa: PLR0913
             local_summary,
             fetched_at=_detail_observation_time(
                 observation,
-                (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+                (
+                    rank_summary.standard,
+                    rank_summary.wild,
+                    rank_summary.expert,
+                    rank_summary.master,
+                ),
             ),
             player_id=player_id,
             nick=nick,
             nick_error=nick_error,
             available_modes=peak_result.available_modes,
             mode_errors=dict(peak_result.mode_errors),
-            query_id=peak_result.query_id,
         ),
         extra_errors,
     )
     return _detail_reply(
         message,
-        (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+        (
+            rank_summary.standard,
+            rank_summary.wild,
+            rank_summary.expert,
+            rank_summary.master,
+        ),
         base_complete=not extra_errors
         and nick_error is None
         and not peak_result.mode_errors,

@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import AsyncMock
 
 import nonebot
 import pytest
@@ -39,6 +38,8 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.team import SeerTeamQueryService
 
 os.environ["APP_CONFIG_PATH"] = str(
     Path(__file__).resolve().parents[1] / "config.example.toml"
@@ -52,6 +53,8 @@ except ValueError:
 from ironsbot.plugins.onebot import team_resource as resource
 
 TEAM_ID = 1234567
+SECOND_TEAM_ID = 1234568
+TEAM_MEMBER_COUNT = 60
 TEAM_THRESHOLD = 2000
 GROUP_ID = 456
 OWNER_ID = 123
@@ -109,12 +112,19 @@ def _service(
 
 TEAM_RESOURCE_REGISTRY = TEST_RUNTIME.matcher_factory()
 TEAM_RESOURCE_SERVICE = _service(TeamResourceConfig())
-resource.install(
-    TEAM_RESOURCE_REGISTRY,
-    TEAM_RESOURCE_SERVICE,
-    query=AsyncMock(),
-    query_sessions=PortableQuerySessions(),
-)
+
+
+def _install(registry: Any, service: TeamResourceService) -> None:
+    resource.install(
+        registry,
+        service,
+        cast("PlayerIdResolver", object()),
+        cast("SeerTeamQueryService", object()),
+        PortableQuerySessions(),
+    )
+
+
+_install(TEAM_RESOURCE_REGISTRY, TEAM_RESOURCE_SERVICE)
 
 
 def _team_resource_matcher(command_id: str) -> type[Matcher]:
@@ -198,9 +208,7 @@ def test_team_config_keeps_catalog_and_matcher_registration_in_sync(
     config = TeamResourceConfig(enabled=enabled, commands=commands)
     service = _service(config, state_path=tmp_path / "qq.sqlite")
     registry = TEST_RUNTIME.matcher_factory()
-    resource.install(
-        registry, service, query=AsyncMock(), query_sessions=PortableQuerySessions()
-    )
+    _install(registry, service)
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -296,9 +304,7 @@ async def test_team_resource_private_rules_allow_enabled_user() -> None:
         FakeTeamResourceNoticeSender(),
     )
     registry = runtime.matcher_factory()
-    resource.install(
-        registry, service, query=AsyncMock(), query_sessions=PortableQuerySessions()
-    )
+    _install(registry, service)
     manage = next(
         matcher
         for matcher in registry.message_matchers
@@ -366,6 +372,57 @@ async def test_team_resource_notice_uses_typed_target(
             "出来买资源，别逼我求你😡",
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_team_overview_places_bound_team_first_and_keeps_partial_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store = TeamResourceSubscriptionStore(tmp_path / "qq_state.sqlite")
+    for team_id in (TEAM_ID, SECOND_TEAM_ID):
+        store.upsert(
+            TeamResourceSubscriptionUpdate(
+                conversation=_group(),
+                team_id=team_id,
+                team_name=f"战队{team_id}",
+                threshold=1000,
+                mention_actors=(),
+                operator=_actor(1),
+            )
+        )
+    service = TeamResourceService(
+        TeamResourceConfig(),
+        store,
+        HEADLESS,
+        TEST_RUNTIME.features,
+        FakeTeamResourceNoticeSender(),
+    )
+
+    async def fake_query(
+        _self: TeamResourceService,
+        team_id: int,
+    ) -> TeamResourceResult:
+        if team_id == SECOND_TEAM_ID:
+            raise TeamResourceQueryError.timeout(team_id)
+        return TeamResourceResult(
+            team_id,
+            f"战队{team_id}",
+            "",
+            500,
+            TEAM_MEMBER_COUNT,
+        )
+
+    monkeypatch.setattr(TeamResourceService, "query", fake_query)
+
+    items = await service.query_overview(
+        TeamResourceSubscriptionTarget(_group()),
+        first_team_id=SECOND_TEAM_ID,
+    )
+
+    assert [item.team_id for item in items] == [SECOND_TEAM_ID, TEAM_ID]
+    assert "查询超时" in items[0].error
+    assert items[1].member_count == TEAM_MEMBER_COUNT
 
 
 @pytest.mark.asyncio
@@ -449,58 +506,3 @@ async def test_default_mentions_do_not_cross_platforms(
     )
 
     assert store.list_conversation(conversation)[0].mention_actors == ()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("private", [False, True])
-@pytest.mark.parametrize("first_id", [None, TEAM_ID, TEAM_ID + 2])
-async def test_overview_prioritizes_binding_deduplicates_and_keeps_failures(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    *,
-    private: bool,
-    first_id: int | None,
-) -> None:
-    service = _service(TeamResourceConfig(), tmp_path / "state.sqlite")
-    target = TeamResourceSubscriptionTarget(_actor(OWNER_ID) if private else _group())
-    for team_id in (TEAM_ID, TEAM_ID + 1):
-        if private:
-            service._store.upsert_private(
-                TeamResourcePrivateSubscriptionUpdate(
-                    actor=_actor(OWNER_ID),
-                    team_id=team_id,
-                    team_name="旧名称",
-                    threshold=1000,
-                )
-            )
-        else:
-            service._store.upsert(
-                TeamResourceSubscriptionUpdate(
-                    conversation=_group(),
-                    team_id=team_id,
-                    team_name="旧名称",
-                    threshold=1000,
-                    mention_actors=(),
-                    operator=_actor(OWNER_ID),
-                )
-            )
-    calls = []
-
-    async def query(_self: TeamResourceService, team_id: int) -> TeamResourceResult:
-        calls.append(team_id)
-        if team_id == TEAM_ID:
-            raise TeamResourceQueryError.timeout(team_id)
-        return TeamResourceResult(team_id, "新名称", "详情", 100, 42)
-
-    monkeypatch.setattr(TeamResourceService, "query", query)
-    items = await service.query_overview(target, first_team_id=first_id)
-    expected = list(
-        dict.fromkeys((*((first_id,) if first_id else ()), TEAM_ID, TEAM_ID + 1))
-    )
-    assert calls == expected
-    assert [item.team_id for item in items] == expected
-    failed = next(item for item in items if item.team_id == TEAM_ID)
-    assert failed.name == "旧名称" and "超时" in failed.description
-    successful = next(item for item in items if item.team_id == TEAM_ID + 1)
-    assert successful.name == "新名称"
-    assert "42" in successful.description and "100" in successful.description

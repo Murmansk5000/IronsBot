@@ -108,10 +108,7 @@ async def test_single_battle_effect_returns_formatted_reply() -> None:
     assert result.reply is not None
     assert result.reply.image == b"image:1"
     assert result.reply.text == (
-        "【害怕（ID：1）】\n"
-        "类型：控制\n"
-        "抗性类型：害怕\n"
-        "效果：无法行动"
+        "【害怕（ID：1）】\n类型：控制\n抗性类型：害怕\n效果：无法行动"
     )
 
 
@@ -144,6 +141,4 @@ async def test_multiple_battle_effects_return_choices() -> None:
 async def test_battle_effect_selection_reports_missing_item() -> None:
     result = await _service(FakeData()).select(99)
 
-    assert result.message == (
-        "❌未找到异常状态 99（这是一个bug，请反馈给开发者）"
-    )
+    assert result.message == ("❌未找到异常状态 99（这是一个bug，请反馈给开发者）")

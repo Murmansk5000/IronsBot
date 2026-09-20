@@ -44,7 +44,6 @@ DEFAULT_KEYWORD_INFO_PROMPT = (
     "Reply briefly and directly. If real-time bot data is needed, say which bot "
     "command or feature should be used instead of inventing data."
 )
-AI_ENDPOINT_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
 def builtin_ai_actions() -> dict[str, AiIntentAction]:
@@ -73,31 +72,20 @@ def default_ai_actions() -> dict[str, AiIntentAction]:
     return {}
 
 
-class AiEndpointConfig(BaseModel):
+class AiProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
+    api_key: str = Field(default="", exclude=True, repr=False)
     base_url: str
     models: list[str]
-    api_key: str = Field(default="", exclude=True, repr=False)
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str) -> str:
-        name = value.strip().lower()
-        if not AI_ENDPOINT_NAME_PATTERN.fullmatch(name):
-            raise ValueError(  # noqa: TRY003
-                "ai.endpoints[].name must start with a letter and contain only "
-                "letters, digits, or underscores"
-            )
-        return name
+    thinking: bool = False
 
     @field_validator("base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         base_url = value.strip().rstrip("/")
         if not base_url:
-            raise ValueError("ai.endpoints[].base_url must not be empty")  # noqa: TRY003
+            raise ValueError("AI provider base_url must not be empty")  # noqa: TRY003
         return base_url
 
     @field_validator("models")
@@ -108,23 +96,20 @@ class AiEndpointConfig(BaseModel):
             model = raw_model.strip()
             if not model:
                 raise ValueError(  # noqa: TRY003
-                    f"ai.endpoints[].models[{index}] must not be empty"
+                    f"AI provider models[{index}] must not be empty"
                 )
             if model not in models:
                 models.append(model)
         if not models:
-            raise ValueError("ai.endpoints[].models must not be empty")  # noqa: TRY003
+            raise ValueError("AI provider models must not be empty")  # noqa: TRY003
         return models
-
-    @property
-    def key_environment_name(self) -> str:
-        return f"AI_KEY_{self.name.upper()}"
 
 
 class AiConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    endpoints: list[AiEndpointConfig] = Field(default_factory=list)
+    provider_order: list[str] = Field(default_factory=list)
+    providers: dict[str, AiProviderConfig] = Field(default_factory=dict)
     prompt: str = DEFAULT_AI_PROMPT
     history_turns: int = Field(default=6, ge=0, le=20)
     memory: bool = True
@@ -134,7 +119,6 @@ class AiConfig(BaseModel):
     timeout: float = Field(default=45.0, gt=0)
     max_tokens: int = Field(default=800, gt=0)
     temperature: float = Field(default=0.7, ge=0, le=2)
-    thinking: bool = False
     waiting_notice: bool = False
     max_reply_chars: int = Field(default=1500, gt=0)
     admin_notice_cooldown_seconds: float = Field(
@@ -147,21 +131,36 @@ class AiConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_endpoint_names(self) -> Self:
-        names = [endpoint.name for endpoint in self.endpoints]
-        if len(names) != len(set(names)):
-            raise ValueError("ai.endpoints contains duplicate endpoint names")  # noqa: TRY003
+    def validate_providers(self) -> Self:
+        aliases = list(self.providers)
+        for alias in aliases:
+            if re.fullmatch(r"[a-z][a-z0-9_]*", alias) is None:
+                raise ValueError(  # noqa: TRY003
+                    "ai.providers aliases must use lowercase letters, digits, "
+                    "and underscores, starting with a letter"
+                )
+
+        if not self.provider_order:
+            self.provider_order = aliases
+        if len(self.provider_order) != len(set(self.provider_order)):
+            raise ValueError("ai.provider_order contains duplicates")  # noqa: TRY003
+        if set(self.provider_order) != set(aliases):
+            raise ValueError(  # noqa: TRY003
+                "ai.provider_order must contain every declared provider exactly once"
+            )
         return self
 
     @property
-    def configured_endpoints(self) -> tuple[AiEndpointConfig, ...]:
+    def configured_providers(self) -> tuple[tuple[str, AiProviderConfig], ...]:
         return tuple(
-            endpoint for endpoint in self.endpoints if endpoint.api_key.strip()
+            (alias, self.providers[alias])
+            for alias in self.provider_order
+            if self.providers[alias].api_key.strip()
         )
 
     @property
-    def ai_enabled(self) -> bool:
-        return bool(self.configured_endpoints)
+    def enabled(self) -> bool:
+        return bool(self.configured_providers)
 
     @field_validator("intent_actions", mode="before")
     @classmethod
@@ -214,8 +213,7 @@ def _validate_resolved_action(action: AiIntentAction) -> None:
 
     if action.action == "team_recommend" and not action.messages:
         raise ValueError(  # noqa: TRY003
-            f"ai.intent_actions.{action.id}: "
-            f"{TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR}"
+            f"ai.intent_actions.{action.id}: {TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR}"
         )
 
     if action.action == "ai_reply" and not action.reply_prompt.strip():

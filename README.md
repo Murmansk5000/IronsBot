@@ -83,8 +83,8 @@ owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-`group_a/group_b` 和 `owner/user_a` 分别引用 `[features.group_aliases]`、
-`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
+`group_a/group_b` 和 `owner/user_a` 统一引用 `[identities.groups]`、
+`[identities.users]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
 `default_bot`；若默认机器人也未连接或没有配置，主动发送会明确失败并记录 warning，
 不会选择任意在线 OneBot 机器人。第一版只控制主动发送，不过滤接收事件；同一个群
 放入多个机器人时，它们仍可能同时收到并响应。
@@ -113,31 +113,39 @@ services:
 启动前先根据 [config.example.toml](config.example.toml) 创建
 `./ironsbot-config/ironsbot.toml`。配置文件会在启动时严格校验。
 完整部署说明见
-[docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
+[docker/README.md](docker/README.md) 和 [.env.example](.env.example)。从旧的手工开关配置迁移时，
+参考 [出站平台迁移说明](docs/outbound-platform-migration.md)。
 
-### QQ 官方机器人调试版
+### QQ 官方机器人
 
-重构分支的当前版本、独立部署方法、剩余验收和下一位维护者的执行提示，统一见
-[重构交接与使用指南](docs/refactor-handoff.md)。不要将下方生产 main 镜像当作重构候选。
+QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。
+NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk` 作为应用资源
+启动和关闭，不经过 `nonebot-adapter-qq`。只要任一 TOML 官方账号拥有完整的
+AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；NapCat
+不回复指令、不主动发送，官方端掉线或发送失败也不会回退到 NapCat。
+没有任何官方凭据时，才由 `[bot.onebot].send_messages` 决定 NapCat 是否发送。
 
-真实 AppID 上线前按 [QQ 官方机器人线上验收清单](docs/specs/2026-09-14-qq-official-live-acceptance.md)
-验证连接、私聊、群 `@`、图片和所需的主动消息能力。只有取得 `READY/RESUMED`
-并完成对应消息矩阵，才算平台接入成功。
-
-QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
+官方端支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
 套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
-活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时直接发送数字选择，
-发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。官方传输当前忽略引用
-回复；这不是 OneBot 的全局引用规则。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
-查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
+活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时可发送数字选择，
+发送 `0` 退出；已开通并启用自定义按钮的账号还会显示同一组快捷按钮。其中
+`下周预告` 同时验证官方图片回复链路。引用回复会按全局
+规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
+查询或绑定目标。跨平台群成员身份可选由静默 NapCat 观察验证，见下方配置。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
-同一个 AI 服务；已注册查询始终优先。没有配置对应的 `AI_KEY_<端点名>` 时不会开放 AI 聊天入口。
+同一个 AI 服务；已注册查询始终优先。没有为任一 `[ai.providers.<别名>]`
+配置对应的 `AI_KEY_<大写别名>` 时，不会开放 AI 聊天入口。提供商按
+`ai.provider_order` 切换，每个提供商内部再按 `models` 顺序切换模型。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
 `[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
 `feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
 读取，远程图片继续使用已配置后端，不会复制进机器人镜像。带数字 QQ 提醒对象的文本
 口令只在 OneBot 显示和执行，避免官方平台静默丢失 @ 语义。
+
+原版学习力、巅峰姬、必先、技能石和伪随机表的八个图片口令，可按
+[固定图片部署模板](docs/examples/fixed-images.md) 配置；五张图片需放入挂载目录，
+模板不会自动加载，也不包含原图片文件。
 
 主动发送默认关闭。机器人应用确认具备对应平台权限后可设置
 `proactive_messages = true`；开启 `team_resource_subscription` 时必须同时开启该项，
@@ -147,14 +155,22 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 在 `ironsbot.toml` 中启用：
 
 ```toml
-[bot.qq_official]
+[bot.onebot]
 enabled = true
+send_messages = true
+identity_verification = false
+
+[bot.onebot.trusted_official_bots]
+# example_bot = 123456789
+
+[bot.qq_official]
 sandbox = false
+startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.example_bot]
-enabled = true
-app_id = "你的 QQ 机器人 AppID"
+required = false
 proactive_messages = false
+custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 superusers = []
 
@@ -167,30 +183,85 @@ superusers = []
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
 数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
+`features` 是该账号对所有入站会话开放的默认功能，不表示账号优先级，也不按 TOML
+书写顺序选择“默认机器人”。面向公众的账号可配置完整默认功能；专用账号应使用
+`features = []`，再通过账号策略或 `[features]` 下基于逻辑身份的策略只开放特殊目标。
+被动回复始终由收到事件的同一 AppID 发出，不能把一个官方账号收到的消息转给另一个
+账号回复；因此同一群若同时加入两个开放了相同功能的机器人，仍会产生两份独立回复。
+账号不再使用 TOML `enabled`；同名 AppID 和 Secret 环境变量同时存在即激活。
+只填其中一个、为未声明账号提供凭据，都会阻止启动。
+账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
+`startup_timeout_seconds` 控制启动等待时间；`required = true` 的账号未能及时就绪会
+阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
+官方入站消息 ID 会在业务执行前持久化到 `/app/data/qq_official/inbound.sqlite`，防止
+Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
-目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
+目标必须填写 `[identities]` 中声明的别名，不再直接散写 OpenID。开启
 `proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
 
+跨平台使用同一个真实群或用户时，只在 `[identities.groups]` / `[identities.users]`
+声明一次 QQ 端点与各官方账号 OpenID。一条全局 `features.group_policy` /
+`user_policy` 会展开到该逻辑目标的所有显式端点，不需要再起 `official_admin`
+之类的平台专用名字，也不再维护账号内的第二套别名表。
+每个原生端点只能归属一个逻辑别名；同一群号、QQ 号或同一账号作用域内的 OpenID
+若被多个别名重复声明，严格配置加载会直接失败，而不是任意选择其中一个。
+
+`custom_keyboards` 默认关闭。只有腾讯后台已为该应用开通内邀的“自定义按钮”能力时
+才能设为 `true`。启用后，有限选项会附加最多 5 行、每行 5 个的指令按钮；按钮发送的
+动态会话 action 与手输序号共用同一个用户和会话绑定，不支持按钮的客户端仍可输入数字。
+用户也可以引用机器人的菜单消息后输入序号或命令；引用内容仅作为回复元数据保存，
+本次新输入仍经过相同的去重、权限、Feature 和会话路由，不会被静默忽略。
+
+远程图片通过 SDK URL 上传，本地渲染结果通过 SDK 分片上传，不再整体 Base64 编码。
+SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不猜测并缓存有效期；平台
+拒绝超大图片或当日上传额度耗尽时，机器人会返回明确文字说明。
+
 凭据只放环境变量：
 
 ```text
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=你的 AppID
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
 ```
 
 腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
 AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
-大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。
+大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_APP_ID_EXAMPLE_BOT_2` 和
+`QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。TOML 中的旧 `app_id` 和 `secret` 字段会被
+严格拒绝。
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
+运行日志只记录 TOML 账号别名；消息 ID、群 OpenID 和用户 OpenID 仅记录不可逆短摘要，
+便于关联同一次故障而不把平台原始标识写入日志。
+OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可逆摘要，不输出原始 QQ 号
+或群号。
+
+首次配置官方身份时，可临时在目标账号的 `features` 中加入
+`qq_official_identity_info`，然后私聊发送“官方身份”，或在目标群 @机器人发送
+“官方身份”。机器人只向当前会话返回该事件携带的用户、群或群成员 OpenID；完成
+本机配置后应立即移除这个 Feature。它默认关闭，也不会被 `all` 功能包隐式启用。
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
-不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID
-与群成员 OpenID 不会被擅自视为同一身份。日志中的 OpenID 可用于配置官方平台
-超级管理员，跨平台身份关联必须由用户显式完成。
+不是普通 QQ 号。静态 owner 等身份在 `[identities.users]` 中统一声明；普通群成员
+不需要手工写入 TOML。设置 `identity_verification = true` 后，NapCat 只观察
+`trusted_official_bots` 中的官方机器人群消息。官方回复通过 `message_reference`
+引用触发它的成员消息，NapCat 从引用来源读取数字 QQ；程序再使用同一逻辑群、
+规范化消息内容和短时间窗口建立候选。只有两次独立、唯一且一致的观察才关联
+`member_openid ↔ QQ号`。同一官方账号中的相同 member_openid 跨群视为同一主体；
+群只用于验证消息来源，不进入身份主键。歧义、超时、非可信来源和已存在冲突都不会
+建立或覆盖映射。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
+不参与 NapCat 群消息推断；启动前必须已知的私聊目标仍在 `[identities.users]` 声明。
+
+QQ 官方群接口的 `<qqbot-at-user>` 文本标记在当前生产客户端会按普通文字显示，
+因此 IronsBot 不再伪造可见 @，而是引用用户的原始消息。2026-09-19 的 Unraid 实机
+验收确认阵容查询的进度、文字和图片均引用或延续同一被动回复序列，且不再泄露标签。
+
+依赖数字 QQ 账号配置的个人幸运橱窗也使用这条已验证关联。完成关联后，QQ 官方端可查询
+当天橱窗、查看皮肤详情以及管理关注列表；未关联身份不会尝试按昵称或其他资料猜测。
+现有 `[seer.lucky_skin_window]` 账号与米米号配置无需迁移。
 
 腾讯官方 `qqbot-agent-sdk` 是可选运行组件。直接运行源码时使用：
 
@@ -199,15 +270,23 @@ uv sync --extra qq-official
 uv run --no-sync python -m ironsbot
 ```
 
-默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
-`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
-明确报错。
+源码启动会先读取项目根目录的 `.env`，再读取
+`.env.<ENVIRONMENT>`（未设置时为 `.env.prod`）。系统、终端或容器中已经存在的环境变量
+优先级最高；环境专用文件覆盖基础 `.env`。例如本机开发可在终端设置
+`ENVIRONMENT=dev`，由应用自动读取被 Git 忽略的 `.env.dev`，无需逐项导入 Secret。
+行为配置仍由 `APP_CONFIG_PATH` 指向 TOML，所有密钥仍只放环境变量。
 
-当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
-`GROUP_MESSAGE_CREATE`。腾讯 Node SDK 将后者明确视为私域机器人能力；公域机器人只会
-收到 `GROUP_AT_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”同时要求应用具备私域
-事件权限，并且 Python SDK 后续正式支持该事件，不能只靠配置实现。IronsBot 不会修改
-SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
+源码的默认依赖集不包含该 SDK，因此从源码运行时必须使用上述 `qq-official` extra。
+正式发布的 Docker 镜像已经同时包含 OneBot/NapCat 与 QQ 官方运行组件，不需要另外寻找
+官方机器人专用镜像或传入 build arg。只有自行构建纯 OneBot 镜像时，才显式传入空的
+`--build-arg IRONSBOT_RUNTIME_EXTRA=` 省略腾讯 SDK。
+
+在目标群为机器人开启“接收所有消息”后，腾讯会下发
+[`GROUP_MESSAGE_CREATE`](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)。
+IronsBot 会处理其中明确匹配的命令和正在进行的选项会话，
+普通聊天不会触发 AI 意图、AI 聊天或帮助提示。带 `@` 的消息若同时收到
+`GROUP_MESSAGE_CREATE` 与 `GROUP_AT_MESSAGE_CREATE`，会按同一消息去重，只执行一次。
+未开启该群设置时，群聊仍需 `@` 机器人。
 
 ## 常用赛尔查询
 
@@ -243,11 +322,16 @@ SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
 
 ## 配置方式
 
-行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
+行为与部署配置默认写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量包含：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY_<端点名>`、按账号库配置的
-  `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
+  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、
+  每个 AI 提供商的 `AI_KEY_<提供商别名>`、
+  按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
+  `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
+- Unraid 部署覆盖：`ONEBOT_ENABLED`、`ONEBOT_SEND_MESSAGES`、
+  `ONEBOT_IDENTITY_VERIFICATION` 和 `ONEBOT_TRUSTED_OFFICIAL_BOT_<账号别名>`
 
 示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
 [配置布局与新增功能指南](docs/configuration-layout.md)，确认它应归入消息推送、赛尔实时无头查询、
@@ -258,15 +342,65 @@ SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
+ONEBOT_ENABLED=true
+ONEBOT_SEND_MESSAGES=true
+ONEBOT_IDENTITY_VERIFICATION=false
+ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
 AI_KEY_DEEPSEEK=
+# 若 TOML 声明了 fumin、nomiss，还可分别设置：
+AI_KEY_FUMIN=
+AI_KEY_NOMISS=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
+DOCKER_REGISTRY_USERNAME=
+DOCKER_REGISTRY_TOKEN=
 ```
 
 每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和 `public`。
+
+`绑定米米号<部分名称>` 支持在可见账号中查找：精确匹配优先，一个候选直接进入
+绑定流程，多个候选显示共享选择菜单，发送序号或使用已开通的官方按钮选择，
+发送 `0` 退出。选择本身不会跳过已有的换绑确认。私有账号只对配置开放的会话
+或超级管理员可见；为其他成员代绑定仍仅限群内超级管理员。
+部分名称选择已接入绑定、橱窗、战队及共享玩家查询入口，包括米米号、查询玩家信息、
+收集、巅峰、群星牌和详情扩展快捷查询。共享目标选择先检查当前可见候选，选择后
+再执行业务；无参数时仍查询默认绑定，@成员仍只读取该成员的绑定，不能混写别名。
+OneBot 旧玩家主查询入口尚未替换，不据此宣称其全部别名交互已迁移。
+共享玩家信息菜单可使用数字、栏目名称（收集、巅峰、群星牌及已开放扩展的别名）
+或已启用的官方按钮继续查看详情。查看一个栏目不会关闭菜单；发送 `0` 退出，
+闲置超时后需重新查询。菜单仍只属于发起账号及会话，不允许他人操作。
+首次查询需要设置默认米米号时，共享菜单追加“设为默认米米号”和“暂不绑定”，
+也可回复 `y`/`是`、`n`/`否`。确认后保留详情栏目，不重复查询或计数。
+OneBot 的旧玩家详情入口仍在迁移中，不能据此视为两端全部交互已对齐。
+共享交互模板在同一账号、同一会话内只保留一个当前状态；选择菜单与文字输入
+相互替换，不会残留旧输入处理器。OneBot 适配器统一续接这两种模板，包含
+推送管理中“选择项目后输入时间”的流程；无交互结果不进入等待。
+`收集`、`巅峰`、`群星牌` 的两端快捷查询共用操作和送达感知进度模板。
+共享详情菜单中的这些栏目使用相同实现：缓存命中直接返回结果，首次请求需要
+等待时才发送查询或排队提示，提示发送失败则取消未继续的查询。
+两端通过同一个投递执行器依次发送首条、附加消息和最终结果；发送中断或取消时
+通知未完成操作清理资源。首条成功后的确认不会被回滚，后续失败不会重复计数。
+首个进度产生前取消查询，也会取消并等待其后台任务结束。
+通用菜单和自由输入模板的回调统一接收“选择值 + 本次回复上下文”，不沿用打开
+菜单时的群角色。业务在操作时检查权限，平台适配器只负责事件转换和投递；
+文字、序号及按钮共用此契约，不为每条口令分别增加平台分支。
+订阅和推送时间菜单直接返回模板生成的结构化消息，操作反馈与菜单一起投递；
+官方账号获准启用自定义键盘时由发送适配器生成按钮，未启用时保留文本交互。
+
+玩家详情扩展通过 `PlayerDetailExtensionAction` 提供动作、别名和查询回调，配合
+同一 `command_help_id` 的命令声明即可接入共享执行器，无需另写官方端处理器。
+执行器负责 Feature 复查、管理权限上下文和进度投递；命令声明仍决定平台及权限
+范围，不会自动开放平台权限。已经有独立业务语义的直接命令（如战队号查询）
+不会被同名详情动作替换。
+例如 `橱窗<部分名称>` 会先选择可见账号，再按原有权限检查和登录确认流程执行。
+选中账号不代表获得登录权限；普通用户仍只能查询自己已授权的橱窗账号。
+`战队<部分玩家名>` 或 `战队米米号<部分玩家名>` 使用同一候选菜单查询所属战队；
+`战队123456` 仍然按战队 ID 查询，不会把该数字当成米米号。
 需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量，填写明文即可；
 机器人仅在内存中将其转换为旧登录接口所需的 MD5。
 `[operations.headless].accounts` 引用的账号组成可互换的公共查询池，支持账号名称、别名和
@@ -281,18 +415,19 @@ GITHUB_WORKFLOW_TOKEN=
 
 ### 幸运橱窗
 
-幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的平台用户开放。需要：
+迁移核对范围和未完成项见[原版命令迁移核对表](docs/specs/2026-09-15-command-parity.md)。
+
+个人橱窗及关注管理向 TOML 明确配置、且已绑定对应米米号的用户开放。需要：
 
 1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
-2. 在 `[[seer.lucky_skin_window.accounts]]` 为该用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。OneBot 可使用 QQ 号或用户别名；QQ 官方机器人使用其 `user_aliases` 中的别名。
+2. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。
 3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；填写明文密码，不写入 TOML。
 4. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
-5. 该平台用户将默认米米号绑定为该账号的 `player_id`。
+5. QQ 用户将默认米米号绑定为该账号的 `player_id`。
 
-QQ 官方机器人还需为所属账号设置 `proactive_messages = true`，并在该账号的 feature
-策略中启用 `lucky_skin_window`。OpenID 始终与 AppID 一起作为身份，不会转换成数字 QQ。
+每天配置的 `time` 到达时，机器人会逐个使用专用账号读取当天四个皮肤，并向未在 `TD` 退订的对应用户私聊通知。手动发送“橱窗”时，有当天缓存则直接返回；没有缓存则显示登录确认菜单，选择“确认查询”或回复 `1` 后才登录，选择“取消查询”或回复 `2` 取消。
 
-每天配置的 `time` 到达时，机器人会逐个使用专用账号读取当天四个皮肤，并向未在 `TD` 退订的对应用户私聊通知。手动发送“橱窗”时，若该账号当天已有缓存会直接返回；没有缓存时，机器人会先说明将登录的绑定米米号，只有回复“是”或“y”后才会登录查询。回复“否”或“n”取消本次查询。
+超级管理员可用“橱窗123456”“橱窗账号别名”或“橱窗 @成员”查询指定游戏账号，目标必须已在账号库配置登录凭据。普通用户只能查询自己的已授权账号。管理员无需为自己新增橱窗订阅或绑定；QQ 官方身份按配置的超级管理员权限判断，不能由 OpenID 猜测 QQ 号。查看结果不会修改任何人的关注设置。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
@@ -306,6 +441,18 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 程序只读并严格校验配置，不会修改磁盘上的 TOML。真实 env 文件包含密钥，不纳入仓库；
 使用 Docker Compose 时可参考 [.env.example](.env.example) 手动创建。
 
+改动 TOML 或环境变量后，可以只执行严格配置校验，不启动 NoneBot、QQ 官方连接、
+调度器、数据库或其他网络客户端：
+
+```bash
+python -m ironsbot.config_check --config /config/ironsbot.toml
+```
+
+源码环境可将 `python` 换成 `uv run python`。命令默认按正常启动顺序读取 `.env` 和
+`.env.<ENVIRONMENT>`；容器环境只使用已经注入的变量时可加 `--no-dotenv`。成功输出只包含
+所选发送平台、已启用的官方账号别名和 AI provider 别名/模型数量，不输出 Key、AppID、
+OpenID、QQ 号或密码。建议复制生产 TOML 后先对副本运行，再修改真实生产配置。
+
 如果没有设置 `APP_CONFIG_PATH`，IronsBot 会默认读取当前工作目录的
 `config/ironsbot.toml`；文件不存在会立即报错。日志默认写入当前工作目录的 `logs/`，
 运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载
@@ -315,15 +462,15 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 示例 TOML：
 
 ```toml
-[features]
-superuser_bypass = true
-
-[features.group_aliases]
-admin = 123456789
+[identities.groups]
+admin = { qq = 123456789, official = { local_bot = "ADMIN_GROUP_OPENID" } }
 example = 987654321
 
-[features.user_aliases]
-owner = 1234567890
+[identities.users]
+owner = { qq = 1234567890, official = { local_bot = "OWNER_OPENID" } }
+
+[features]
+superuser_bypass = true
 
 [features.bundles]
 all = ["my_extension_feature"]
@@ -342,7 +489,7 @@ blocked_user = ["blacklist"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym", "雷小伊", "重聚"]
-message = "https://seerinfo.yuyuqaq.cn/"
+messages = ["https://seerinfo.yuyuqaq.cn/"]
 feature = "seerinfo_link"
 
 [bilibili.accounts.seer]
@@ -404,17 +551,18 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
 群或用户；超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于
 `[features.help]`。所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
-数字字符串或数字 ID；别名在 `[features.user_aliases]` 和
-`[features.group_aliases]` 中定义，纯数字别名不可用。
+数字字符串或数字 ID；别名在 `[identities.users]` 和
+`[identities.groups]` 中定义，纯数字别名不可用。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
 跨群、私聊和多个机器人账号共用多个精确滑动窗口，不同语义命令互不影响。
 默认关闭；显式设置 `enabled = true` 后，内置窗口是 `60 秒 3 次` 与 `300 秒 5 次`。
 成功、失败、超时和异常都会在命令结束后计入相同窗口，超级管理员绕过。玩家基础查询、收集、巅峰、群星牌分别使用
 `seer_player`、`seer_player_collection`、`seer_player_peak`、`seer_player_autocard`
 四个独立额度，可在 `commands` 中单独覆盖。
-同一 QQ、同一真实语义目标的重复响应和未启用 AI 时的群内 @ 提示同样使用
-`[messaging.command_cooldown]` 的 `duplicate_*` 与 `mention_initial_*` 配置，但不受
-`enabled` 影响。
+同一 QQ、同一真实语义目标的重复响应使用
+`[messaging.command_cooldown]` 的 `duplicate_*` 配置，但不受 `enabled` 影响。
+未启用 AI 时，群内未知 @ 提示复用 `[features.help]` 的提示窗口，并按用户与会话
+分别限流；有效的 `@机器人 + 指令` 不受提示限流影响。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、
 `seer_player_peak`、`seer_player_autocard`、`seer_team`、
 `seer_rank_list`、`seer_rank_player`、`seer_rank_score`、
@@ -438,7 +586,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `query` | 常用查询组合：赛尔查询、精灵配置图、图片、榜单、B站查询、活动查询、开服查询。 |
 | `seer` | 全部赛尔查询子功能总开关。 |
 | `seer_player` | 米米号绑定、玩家基础信息及收集/巅峰/群星牌快捷查询。 |
-| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户。无当天缓存时，用户确认登录后才查询；TD 可退订每日私聊提醒。 |
+| `lucky_skin_window` | 查询每日四个皮肤；个人账号需 TOML 授权并绑定，超级管理员可指定已配置凭据的账号。无缓存时确认后登录；TD 可退订每日提醒。 |
 | `player_lineup_private` | 查询公开阵容；群聊和私聊都使用这个独立权限。 |
 | `seer_team` | 战队 ID 查询。 |
 | `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |
@@ -641,6 +789,9 @@ check_on_startup = false
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
 本轮启动会被新容器替换。镜像通知会显示当前/最新镜像短号、北京时间构建时间，
 并在镜像带有 OCI revision label 时附上对应 Git commit 摘要。
+新容器确认运行目标镜像后，程序会按原镜像 ID 尝试删除本次替换的旧镜像；私有扩展包
+刷新成功后也会清理被新标签替换的旧包镜像。清理不使用全局 prune，也不强制删除：
+若旧镜像仍被回滚容器引用，Docker 会拒绝删除并保留该镜像。
 
 没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行可把启动检查关闭。
 新版 Unraid / Docker Engine 如果提示 `client version 1.25 is too old`，保持
@@ -651,7 +802,7 @@ AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提�
 私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送；发送 `推送时间` 可修改可编辑推送的提醒时间。
 
-`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
+`.env`、`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
 ## 鸣谢
 
