@@ -24,9 +24,14 @@ from ironsbot.integrations.qq_official.message_rendering import (
 from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
+from ironsbot.integrations.qq_official.recipient_state import (
+    QQOfficialRecipientStateStore,
+)
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.integrations.qq_official.message_rendering import QQOfficialPayload
 
@@ -115,6 +120,34 @@ async def test_proactive_delivery_is_explicitly_disabled_by_default() -> None:
     assert result.error_code == "proactive_disabled"
     assert result.failure_kind is DeliveryFailureKind.PERMANENT
     assert bot.calls == []
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_respects_persisted_recipient_rejection(
+    tmp_path: Path,
+) -> None:
+    bot = _Bot()
+    state = QQOfficialRecipientStateStore(tmp_path / "state.sqlite")
+    await state.record_event(
+        app_id="app",
+        event_type="GROUP_MSG_REJECT",
+        raw={"group_openid": GROUP.id},
+    )
+    messenger = QQOfficialOutboundMessenger(
+        {"app": True},
+        bot_provider=lambda _app_id: bot,
+        recipient_state=state,
+    )
+
+    result = await messenger.send(GROUP, TEXT)
+
+    assert result.error_code == "recipient_rejected"
+    assert result.failure_kind is DeliveryFailureKind.PERMANENT
+    assert bot.calls == []
+
+    passive = await messenger.reply(_reply(GROUP, "event-id"), TEXT)
+    assert passive.delivered
+    assert len(bot.calls) == 1
 
 
 def test_custom_keyboard_capability_is_account_scoped() -> None:
