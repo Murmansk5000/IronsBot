@@ -100,14 +100,27 @@ def _catalog() -> CommandCatalog:
                     ),
                 ),
             ),
+            PluginContribution(
+                id="example",
+                commands=(
+                    CommandContract(
+                        id="example.query",
+                        plugin_id="example",
+                        section="查询",
+                        examples=("查询",),
+                        description="示例查询",
+                        features_any=("example",),
+                    ),
+                ),
+            ),
         ),
-        known_features={"ai_chat", "ai_intent"},
+        known_features={"ai_chat", "ai_intent", "example"},
     )
     return catalog
 
 
 def _features() -> FeatureService:
-    enabled = frozenset({"ai_chat", "ai_intent"})
+    enabled = frozenset({"ai_chat", "ai_intent", "example"})
     return FeatureService(
         {GROUP: enabled},
         {ACTOR: enabled},
@@ -139,13 +152,39 @@ def _router(ai: _Ai) -> PortableCommandRouter:
     features = _features()
     return PortableCommandRouter(
         catalog,
-        {},
+        {"example.query": _run_query},
         features,
         ai=cast("AiService", ai),
         ai_intent_actions=cast("AiIntentActionExecutor", _Executor()),
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=AddressedInputHintService(),
     )
+
+
+async def _run_query(
+    text: str,
+    context: MessageInputContext,
+) -> str:
+    del text, context
+    return "查询结果"
+
+
+@pytest.mark.parametrize("input_form", ["direct", "mentioned"])
+@pytest.mark.asyncio
+async def test_group_command_precedes_ai_with_or_without_bot_mention(
+    input_form: str,
+) -> None:
+    ai = _Ai(action=ACTION)
+    router = _router(ai)
+    context = _context(GROUP, "查询", mentions_bot=input_form == "mentioned")
+
+    assert router.recognizes(context)
+    reply = await router.dispatch(context)
+
+    assert reply is not None
+    assert reply.message.parts == (TextPart("查询结果"),)
+    assert ai.intent_calls == []
+    assert ai.chat_calls == []
 
 
 @pytest.mark.asyncio

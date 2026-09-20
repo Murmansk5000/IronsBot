@@ -82,7 +82,6 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
-    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -339,7 +338,6 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
     lucky_skin_window: LuckySkinWindowService | None = None,
-    identity_linking: IdentityLinkingService | None = None,
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
     refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
@@ -393,7 +391,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             else build_portable_lucky_skin_operations(
                 lucky_skin_window,
                 seer.pet_query,
-                identity_linking or identity_links.service,
+                features,
                 sessions,
                 player_id_resolver,
             )
