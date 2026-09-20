@@ -126,6 +126,15 @@ class DockerGateway(Protocol):
         timeout_seconds: float,
     ) -> bool: ...
 
+    async def remove_stale_images(
+        self,
+        *,
+        repository_image: str,
+        current_image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> tuple[int, int]: ...
+
 
 class DockerUpdateService:
     def __init__(
@@ -221,6 +230,25 @@ class DockerUpdateService:
                         previous_image_id[:19],
                         exc_info=True,
                     )
+            try:
+                removed, retained = await self._docker.remove_stale_images(
+                    repository_image=str(self._config.image),
+                    current_image_id=expected_image_id,
+                    socket_path=socket_path,
+                    timeout_seconds=float(self._config.timeout_seconds),
+                )
+                if removed or retained:
+                    logger.info(
+                        "stale IronsBot image cleanup completed after handoff: "
+                        "removed=%s retained=%s",
+                        removed,
+                        retained,
+                    )
+            except Exception:  # noqa: BLE001 - cleanup must not invalidate handoff
+                logger.warning(
+                    "could not clean stale IronsBot images after handoff",
+                    exc_info=True,
+                )
             return True
 
     async def abandon_update_handoff(

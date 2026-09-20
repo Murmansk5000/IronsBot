@@ -216,6 +216,80 @@ async def remove_image_if_unused(
     return True
 
 
+def _normalized_repository(repository: str) -> str:
+    normalized = repository.removeprefix("docker.io/").removeprefix("index.docker.io/")
+    return normalized.removeprefix("registry-1.docker.io/")
+
+
+def _image_repository(tag: str) -> str:
+    if tag == "<none>:<none>":
+        return ""
+    return split_docker_image(tag)[0]
+
+
+async def remove_stale_repository_images(
+    client: httpx.AsyncClient,
+    *,
+    repository_image: str,
+    current_image: DockerImageInfo,
+) -> tuple[int, int]:
+    """Remove unused historical images belonging to the current repository."""
+
+    response = await client.get("/images/json", params={"all": "true"})
+    raise_for_docker_status(response)
+    payload = response.json()
+    if not isinstance(payload, list):
+        message = "Docker API returned invalid image list"
+        raise TypeError(message)
+
+    target_repository = _normalized_repository(split_docker_image(repository_image)[0])
+    current_source = current_image.labels.get(
+        "org.opencontainers.image.source",
+        "",
+    )
+    candidates: set[str] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        image_id = item.get("Id")
+        if not isinstance(image_id, str) or not image_id:
+            continue
+        if image_id == current_image.image_id:
+            continue
+        raw_tags = item.get("RepoTags")
+        repo_tags = (
+            tuple(tag for tag in raw_tags if isinstance(tag, str) and tag)
+            if isinstance(raw_tags, list)
+            else ()
+        )
+        belongs_to_repository = any(
+            _normalized_repository(_image_repository(tag)) == target_repository
+            for tag in repo_tags
+            if _image_repository(tag)
+        )
+        labels = item.get("Labels")
+        image_source = (
+            labels.get("org.opencontainers.image.source", "")
+            if isinstance(labels, dict)
+            else ""
+        )
+        is_dangling = not any(_image_repository(tag) for tag in repo_tags)
+        belongs_to_dangling_source = bool(
+            is_dangling and current_source and image_source == current_source
+        )
+        if belongs_to_repository or belongs_to_dangling_source:
+            candidates.add(image_id)
+
+    removed = 0
+    retained = 0
+    for image_id in sorted(candidates):
+        if await remove_image_if_unused(client, image_id):
+            removed += 1
+        else:
+            retained += 1
+    return removed, retained
+
+
 async def inspect_remote_image_digest(
     client: httpx.AsyncClient,
     image: str,
