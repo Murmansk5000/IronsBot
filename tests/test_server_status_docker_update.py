@@ -25,6 +25,7 @@ from ironsbot.integrations.docker.daemon import (
     inspect_remote_image_digest,
     pull_docker_image,
     remove_image_if_unused,
+    remove_stale_repository_images,
 )
 from ironsbot.integrations.docker.registry import (
     inspect_registry_image_info,
@@ -441,6 +442,7 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
         checked: tuple[str, str] | None = None
         removed: str | None = None
         removed_image: str | None = None
+        stale_cleanup: tuple[str, str] | None = None
 
         async def socket_exists(self, _socket_path: str) -> bool:
             return True
@@ -481,6 +483,19 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
             self.removed_image = image_id
             return True
 
+        async def remove_stale_images(
+            self,
+            *,
+            repository_image: str,
+            current_image_id: str,
+            socket_path: str,
+            timeout_seconds: float,
+        ) -> tuple[int, int]:
+            assert socket_path == "/var/run/docker.sock"
+            assert timeout_seconds > 0
+            self.stale_cleanup = (repository_image, current_image_id)
+            return 3, 1
+
     docker = FakeDocker()
     service = DockerUpdateService(
         DockerUpdateConfig(),
@@ -500,6 +515,10 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
     assert docker.checked == ("ironsbot", "sha256:target")
     assert docker.removed == "watchtower-id"
     assert docker.removed_image == "sha256:previous"
+    assert docker.stale_cleanup == (
+        "murmansk5000/ironsbot:latest",
+        "sha256:target",
+    )
 
 
 def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> None:
@@ -690,6 +709,83 @@ def test_remove_image_if_unused_handles_daemon_outcomes(
         "force": "false",
         "noprune": "false",
     }
+
+
+def test_remove_stale_repository_images_is_scoped_and_non_forcing() -> None:
+    class FakeClient:
+        deleted: list[str]
+
+        def __init__(self) -> None:
+            self.deleted = []
+
+        async def get(
+            self,
+            url: str,
+            *,
+            params: dict[str, str],
+        ) -> httpx.Response:
+            assert url == "/images/json"
+            assert params == {"all": "true"}
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "Id": "sha256:current",
+                        "RepoTags": ["murmansk5000/ironsbot:latest"],
+                        "Labels": {"org.opencontainers.image.source": "source"},
+                    },
+                    {
+                        "Id": "sha256:old-tag",
+                        "RepoTags": ["docker.io/murmansk5000/ironsbot:sha-old"],
+                        "Labels": {"org.opencontainers.image.source": "source"},
+                    },
+                    {
+                        "Id": "sha256:old-dangling",
+                        "RepoTags": ["<none>:<none>"],
+                        "Labels": {"org.opencontainers.image.source": "source"},
+                    },
+                    {
+                        "Id": "sha256:private",
+                        "RepoTags": ["murmansk5000/ironsbot-private:latest"],
+                        "Labels": {"org.opencontainers.image.source": "private"},
+                    },
+                    {
+                        "Id": "sha256:python",
+                        "RepoTags": ["python:3.10-slim"],
+                        "Labels": None,
+                    },
+                ],
+                request=httpx.Request("GET", "http://docker/images/json"),
+            )
+
+        async def delete(
+            self,
+            url: str,
+            *,
+            params: dict[str, str],
+        ) -> httpx.Response:
+            assert params == {"force": "false", "noprune": "false"}
+            self.deleted.append(url.rsplit("/", maxsplit=1)[-1])
+            status = 409 if url.endswith("sha256%3Aold-tag") else 200
+            return httpx.Response(
+                status,
+                request=httpx.Request("DELETE", f"http://docker{url}"),
+            )
+
+    client = FakeClient()
+    result = asyncio.run(
+        remove_stale_repository_images(
+            client,  # type: ignore[arg-type]
+            repository_image="murmansk5000/ironsbot:latest",
+            current_image=DockerImageInfo(
+                image_id="sha256:current",
+                labels={"org.opencontainers.image.source": "source"},
+            ),
+        )
+    )
+
+    assert result == (1, 1)
+    assert client.deleted == ["sha256%3Aold-dangling", "sha256%3Aold-tag"]
 
 
 def test_inspect_image_info_if_present_returns_none_for_missing_tag() -> None:

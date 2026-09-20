@@ -1387,7 +1387,7 @@ def test_group_at_or_structured_self_mention_is_classified_as_bot_mention() -> N
     assert qq_official_event_mentions_bot(at_message)
 
 
-def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -> None:
+def test_full_group_mentions_are_removed_without_dropping_member_targets() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
         chat_scope="group",
@@ -1411,7 +1411,7 @@ def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -
 
     incoming = qq_official_incoming_message(event, account_id="example-app")
 
-    assert incoming.text == "@target 战队"
+    assert incoming.text == "战队"
     assert incoming.direct_mentions == (
         ActorRef(
             Platform.QQ_OFFICIAL,
@@ -1471,7 +1471,7 @@ def test_full_group_self_mention_removes_official_structured_marker(
     assert incoming.text == "战队订阅"
 
 
-def test_full_group_later_self_mention_preserves_leading_member_mention() -> None:
+def test_full_group_later_self_mention_survives_member_marker_normalization() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
         chat_scope="group",
@@ -1494,7 +1494,67 @@ def test_full_group_later_self_mention_preserves_leading_member_mention() -> Non
 
     incoming = qq_official_incoming_message(event, account_id="example-app")
 
-    assert incoming.text == "@target @无极圣武 战队"
+    assert incoming.text == "@无极圣武 战队"
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "阵容 @target",
+        "阵容＠target",
+        "阵容 <@target-openid>",
+        "阵容 <@!target-openid>",
+        "@target 阵容",
+    ),
+)
+@pytest.mark.parametrize(
+    "event_type",
+    ("GROUP_MESSAGE_CREATE", "GROUP_AT_MESSAGE_CREATE"),
+)
+def test_group_member_mention_marker_is_not_part_of_command_text(
+    content: str,
+    event_type: str,
+) -> None:
+    event = _sdk_event(
+        event_type=event_type,
+        chat_scope="group",
+        chat_id="group-openid",
+        content=content,
+        raw={
+            "mentions": [
+                {
+                    "is_you": False,
+                    "member_openid": "target-openid",
+                    "username": "target",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "阵容"
+    assert incoming.direct_mentions == (
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            "group-openid",
+            account_id="example-app",
+        ),
+    )
+
+
+def test_unstructured_at_text_is_not_removed_from_official_command_text() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        content="阵容 @ordinary-text",
+        raw={},
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "阵容 @ordinary-text"
 
 
 def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
@@ -1578,6 +1638,41 @@ def test_qq_official_renderer_emits_scoped_member_mentions() -> None:
     assert rendered == (
         QQOfficialTextPayload(
             '<qqbot-at-user id="member-&quot;openid" /> result',
+            markdown=True,
+        ),
+    )
+
+
+def test_qq_official_renderer_keeps_exit_item_in_markdown_list_layout() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                MentionPart(member),
+                TextPart(" 1. 【收集】\n2. 【巅峰】\n0. 【退出】"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" /> 1. 【收集】\n'
+            "2. 【巅峰】\n"
+            "0. 【退出】",
             markdown=True,
         ),
     )

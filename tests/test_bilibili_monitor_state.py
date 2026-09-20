@@ -393,6 +393,45 @@ def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:
     assert rules[_group(222)].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}
 
 
+def test_discovered_official_group_inherits_configured_bili_rule() -> None:
+    config = _bili_config(
+        accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},
+        push={
+            "groups": {
+                "222": {
+                    "accounts": [FIRE_BILI_ALIAS],
+                    "modes": {FIRE_BILI_ALIAS: "link"},
+                }
+            }
+        },
+    )
+    service = _target_service(
+        config,
+        _features({"222": ["bili_push"]}),
+    )
+    official_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-openid",
+        account_id="app-id",
+    )
+
+    service.features.register_group_link(
+        official_app_id="app-id",
+        official_group_openid="group-openid",
+        onebot_group_id="222",
+    )
+    service.register_group_link(
+        official_app_id="app-id",
+        official_group_openid="group-openid",
+        onebot_group_id="222",
+    )
+
+    rule = service.push_group_rules()[official_group]
+    assert rule.uids == frozenset({DEFAULT_BILI_ACCOUNT_UID, FIRE_BILI_UID})
+    assert rule.mode_for_uid(FIRE_BILI_UID) == "link"
+
+
 def test_global_modes_apply_to_extra_group_accounts() -> None:
     config = _bili_config(
         accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},

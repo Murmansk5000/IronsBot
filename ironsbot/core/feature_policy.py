@@ -42,6 +42,11 @@ class FeatureService:
         compare=False,
         repr=False,
     )
+    linked_group_features: dict[ConversationRef, frozenset[str]] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
@@ -104,6 +109,25 @@ class FeatureService:
     ) -> None:
         self.linked_onebot_ids.pop((official_app_id, official_openid), None)
 
+    def register_group_link(
+        self,
+        *,
+        official_app_id: str,
+        official_group_openid: str,
+        onebot_group_id: str,
+    ) -> None:
+        official = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            official_group_openid,
+            account_id=official_app_id,
+        )
+        onebot = ConversationRef(Platform.ONEBOT, "group", onebot_group_id)
+        self.linked_group_features[official] = self.group_features.get(
+            onebot,
+            frozenset(),
+        )
+
     def canonical_actor(self, actor: ActorRef) -> ActorRef:
         """Return the stable OneBot principal for a linked official identity."""
 
@@ -127,11 +151,17 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(conversation, frozenset()) or (
-            feature
-            in self._default_features(
-                conversation.platform,
-                conversation.account_id,
+        configured = self.group_features.get(conversation, frozenset())
+        linked = self.linked_group_features.get(conversation, frozenset())
+        return (
+            feature in configured
+            or feature in linked
+            or (
+                feature
+                in self._default_features(
+                    conversation.platform,
+                    conversation.account_id,
+                )
             )
         )
 
@@ -179,11 +209,17 @@ class FeatureService:
         )
 
     def conversations_for_feature(self, feature: str) -> list[ConversationRef]:
-        return [
+        conversations = [
             conversation
             for conversation, features in self.group_features.items()
             if feature in features
         ]
+        conversations.extend(
+            conversation
+            for conversation, features in self.linked_group_features.items()
+            if feature in features and conversation not in conversations
+        )
+        return conversations
 
     def actors_for_feature(self, feature: str) -> list[ActorRef]:
         return [

@@ -111,6 +111,9 @@ def build_common_components(
             from ironsbot.integrations.qq_official.outbound_messenger import (
                 QQOfficialOutboundMessenger,
             )
+            from ironsbot.integrations.qq_official.recipient_state import (
+                QQOfficialRecipientStateStore,
+            )
             from ironsbot.integrations.qq_official.runtime import (
                 QQOfficialRuntime,
                 QQOfficialRuntimeAccount,
@@ -122,6 +125,7 @@ def build_common_components(
             )
             raise RuntimeError(msg) from error
 
+        recipient_state = QQOfficialRecipientStateStore(settings.paths.qq_state)
         qq_official = QQOfficialRuntime(
             tuple(
                 QQOfficialRuntimeAccount(
@@ -136,6 +140,7 @@ def build_common_components(
             http_client=http_client,
             session_root=cache_root / "qq_official",
             startup_timeout_seconds=settings.bot.qq_official.startup_timeout_seconds,
+            recipient_state=recipient_state,
         )
 
         platform_messengers[Platform.QQ_OFFICIAL] = QQOfficialOutboundMessenger(
@@ -148,6 +153,7 @@ def build_common_components(
                 account.app_id: account.custom_keyboards
                 for account in settings.bot.qq_official.enabled_accounts.values()
             },
+            recipient_state=recipient_state,
         )
     outbound_messenger = PlatformOutboundMessenger(platform_messengers)
     proactive_delivery = ProactiveMessageDelivery(

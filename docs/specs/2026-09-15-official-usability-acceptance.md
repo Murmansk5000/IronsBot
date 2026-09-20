@@ -772,7 +772,7 @@ Markdown 正文和平台生成的纯文本回退；移除 `message_reference` �
 值未写入 TOML、Git 或验收记录。绑定玩家资料的后台榜单预热有六项超时降级警告，但未影响
 玩家主回复、幸运橱窗登录、图片投递或缓存。A7 与“主要查询功能”里程碑由此关闭。
 
-2026-09-20 当前本地候选 `dd7e3fa2` 在公开 `origin/main` 之后包含四个尚未推送的提交：
+2026-09-20 本地候选 `dd7e3fa2` 当时在公开 `origin/main` 之后包含四个尚未推送的提交：
 恢复幸运橱窗最终卡片布局、恢复新增内容根图中的竞技/专家/大师池变化、补录原版修复
 回归审计，以及恢复固定口令和会议口令对明确 `@成员` 的定向回复。最后一项同时覆盖
 OneBot 与 QQ Official：没有明确目标时仍回复发令者；存在目标时只提及目标；关键词自动
@@ -786,3 +786,70 @@ format、生产与测试 BasedPyright、compileall、静态仓库检查和 diff 
 Docker 运行时残留，未改动镜像、卷、WSL 数据盘或生产部署。恢复本机构建引擎或明确
 推送后，应从 `dd7e3fa2` 或其后继精确 HEAD 构建，再重测上述受影响行；不得继续引用
 `64058429` 的旧 digest 作为这些新修复的证据。
+
+上述候选随后连同正式的 AppID 密钥寻址方案进入公开 `main`。提交 `de4bdbbe` 将官方
+AppID 固定在严格 TOML 账号声明中，AppSecret 只接受 `APP_SECRET_<AppID>`；旧的按账号
+别名命名的 AppID/Secret 环境变量、TOML `secret` 和未声明 AppID 的 Secret 均直接报错，
+没有兼容双读。全量结果为 `3852 passed, 7 skipped`，Ruff lint/format、生产与测试
+BasedPyright、compileall、静态仓库检查和 diff check 全部通过。公开 workflow
+`35503424404` 成功发布 digest
+`sha256:4cd7f3735a0e299f6a207583e332e6b373677449b5c18f279ef0a85e929a7a02`；Unraid 精确部署
+`sha-de4bdbb` 后测得展开大小 260,040,445 bytes，`/app`、site-packages 和字体分别为
+3,273,349、102,592,867 和 19,882,302 bytes。
+
+生产配置先备份再迁移到三账号声明，Unraid 模板中的三个 AppSecret 及其他凭据项均设置
+为掩码显示。严格 `config_check` 确认 QQ Official 是唯一出站平台、OneBot outbound 关闭、
+observer 身份验证启用；三个账号均取得 AccessToken 并进入 READY，应用完成启动，公众账号
+随后完成一条 C2C 入站识别和被动回复。第三账号是单群专用账号，当前只开放官方身份查询；
+目标群已有稳定别名 `youqijiang`，但仍缺该 AppID 作用域下由真实群事件取得的
+`group_openid`，因此没有猜测复用数字群号或其他账号的 OpenID，也尚未开放该群完整
+Feature。该外部门只影响第三账号目标群策略，不推翻前两个账号和新配置结构的部署证据。
+
+随后公开 workflow `35507207052` 从 `64ff7de7` 成功发布 manifest digest
+`sha256:999930e6884b68309e393987d034e86afcf41520d073fa8d246bfd420c51d723`。
+该 workflow 上传的镜像证据记录展开大小为 `260050515` bytes（约 `248.00 MiB`），其中
+`/app` 为 `4824 KiB`、Python site-packages 为 `106000 KiB`、字体为 `19452 KiB`，均通过
+发布工作流预算；这些数值只证明远端 `64ff7de7`，不能外推为本地后继候选的镜像结果。
+Unraid 模板已从历史 SHA 固定值恢复为 `murmansk5000/ironsbot:latest`，运行容器则按 OCI
+revision 核验为 `64ff7de7f28be85f9efde1b6931067dbbf32aab6`。部署时人工删除了停止的回滚容器、
+一次性 Watchtower 容器和不再被容器引用的历史公开 IronsBot 镜像；私有扩展、Watchtower
+及其他仓库镜像均未删除。自动清理实现仍是后续本地提交，不能把这次人工清理记作其部署证据。
+
+第三账号的启动权限收口为 `help`、`about` 和 `qq_official_identity_info`，只用于新群首次
+交互和身份诊断。真实生产日志随后记录一次脱敏的 `silent group link confirmed`，状态库
+确认该账号已有一条群映射且重启后仍存在；这关闭了上文“缺 group_openid”的外部门。
+身份发现没有第二套“入站 @”API：纯 `@机器人` 在 AI 关闭时产生统一的限流帮助提示，
+启用的普通指令产生正常业务回复；两者都由官方机器人在首条回复中提及发令成员，再由
+NapCat 静默观察同一条可信回复，将官方群 OpenID/成员 OpenID 与数字群号/QQ 号配对。
+群映射只需一次唯一回复，成员映射仍要求两个不同入站消息 ID 的一致观察；该账号当前成员
+映射仍为零，因此成员关联尚未取得实机完成证据。
+
+当前腾讯事件订阅文档（2026-09-11 更新）将 `GROUP_MSG_RECEIVE`、
+`GROUP_MSG_REJECT`、`C2C_MSG_RECEIVE`、`C2C_MSG_REJECT` 以及机器人/好友增删事件列在
+`GROUP_AND_C2C_EVENT (1 << 25)` 下。SDK 1.2.2 尚未分发这些事件，因此本地后继候选在
+既有 SDK 边界统一转发并持久化收件状态。明确拒收或移除后，主动消息会在平台 API 调用前
+返回永久失败；重新开启后恢复，未知状态保持现有 TOML 行为，被动回复不受影响。该实现
+完成代码侧契约，但生产尚未捕获腾讯真实 receive/reject 事件，也未取得额度拒绝证据，
+所以 C8 仍保持“部分通过”。
+
+2026-09-20 对腾讯事件详情页再次进行字段级核验：群接收开关事件体使用
+`group_openid`、`op_member_openid` 和 `timestamp`，C2C 接收开关事件体使用 `openid`
+和 `timestamp`。本地实现以 `AppID + conversation kind + group_openid/openid` 作为持久化
+键，没有把群成员 OpenID 当作 C2C 用户 OpenID。提交 `a9f7db19` 的相关专项与随后完整
+候选门禁均通过；这仍是协议和代码证据，不替代腾讯真实事件。
+
+同一轮只读生产核验确认：当前 TOML 仅声明 `deepseek`，该 provider 配置两个顺序模型；
+容器只有对应 provider 的密钥非空，其他预留变量为空且未声明为 provider。因此当前部署
+具备同 provider 的模型顺序切换，但不具备 C6 要求的跨 provider/key 真实 failover。不得
+通过故意使两个模型共用的同一密钥失败，或使用 mock provider，把 C6 改为通过。
+
+以生产与测试代码树 `70b48254` 完成最终本地代码门禁：`3868 passed, 7 skipped`；全仓
+Ruff lint、862 文件 format check、生产与测试 BasedPyright、compileall、静态仓库检查和
+diff check 全部通过。该候选包含官方收件状态持久化、镜像清理保护和菜单退出项统一布局，
+并新增同一 AppID、同一目标字符串在群聊与 C2C 间保持拒收状态隔离的回归证据；该测试
+证据不替代腾讯真实 receive/reject 事件。其后的纯文档提交另行通过静态仓库与 diff 检查，
+不改变上述生产与测试代码树。候选尚未推送、构建或部署，生产仍运行公开
+revision `64ff7de7`。本机 Docker Desktop 4.90.0
+在 Windows build 26200 上反复创建不可访问的 `sailor-ingest.sock` AF_UNIX 重解析点；保留
+重命名临时运行目录后仍立即复现。未执行 factory reset，未删除镜像、容器、卷或 WSL
+数据盘；本地 Docker smoke 保持未验证，需 Windows 重启或上游修复后重试。

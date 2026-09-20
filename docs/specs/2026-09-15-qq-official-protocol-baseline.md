@@ -168,7 +168,7 @@ silently advertised without an implementation.
 | Global and sampled ranks, display limits and cache administration | supported | supported | Same rank services; administrative commands retain catalog audience checks |
 | Activity and Bilibili history queries | supported | supported | Query paths are portable; scheduled delivery is governed separately |
 | AI chat and intent actions | supported when configured | supported when configured | Command-first routing is shared; provider availability and feature policy still apply |
-| Message, Bilibili, activity and team-resource subscriptions | supported | supported when proactive delivery is enabled and authorized | Tencent proactive quota and permission failure remain a real-platform gate |
+| Message, Bilibili, activity and team-resource subscriptions | supported | supported when proactive delivery is enabled and authorized | Receive/reject and add/remove events persist recipient state and suppress rejected targets before API calls; Tencent quota failure remains a real-platform gate |
 | Data sync, status and Docker maintenance commands | supported | supported | Same services and superuser policy; destructive operations were not exercised during real acceptance |
 | Cross-platform identity-link initiation | supported | not supported | OneBot may issue a short-lived explicit challenge; trusted group observation requires no user-visible command |
 | Cross-platform identity-link confirmation | not supported | supported | Official OpenID may confirm a challenge; configured aliases and trusted source-reference observation are also exact sources |

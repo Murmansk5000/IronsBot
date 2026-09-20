@@ -615,6 +615,6 @@ def test_menu_image_and_text_fallback_share_layout_and_sender(
     assert selection is not None and selection.value.item == snapshot.items[0]
     if render_error is not None:
         assert "1. 潮涌" in message.extract_plain_text()
-        assert "0.【退出】" in message.extract_plain_text()
+        assert "0. 【退出】" in message.extract_plain_text()
     else:
         assert message[-1].type == "image"

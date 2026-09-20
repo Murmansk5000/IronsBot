@@ -21,6 +21,16 @@ separate identities for each source.
    The official bot and NapCat must share a configured logical group, and two
    independent, unique, consistent observations are required.
 
+Before member correlation, any normal command reply may establish the logical
+group itself. The official inbound event supplies `(AppID, group_openid)` and
+NapCat supplies the numeric group containing the trusted bot's exact reply.
+Only numeric groups already declared by `[identities.groups].qq` are candidates.
+A unique match is persisted in a separate group-link table; either-side conflicts
+fail closed and are never overwritten. The learned group immediately inherits
+the numeric group's feature policy and is restored before message handling after
+a restart. `官方身份` remains an optional diagnostic command, not a provisioning
+step.
+
 Silent observation fails closed on ambiguity, expiry, untrusted bot origin, or
 an existing conflicting link. It never overwrites a link. C2C `user_openid`
 does not participate because NapCat cannot authenticate its private-message
@@ -59,7 +69,8 @@ create a link. The silent observer uses only a trusted official reply's exact
 source-message reference, normalized content as a consistency check, the same
 logical group, and a bounded time window. Challenge issuance, successful
 linking, observation and revocation are audited without recording raw tokens or
-platform identifiers.
+platform identifiers. Group links and member links are separate records because
+a conversation identity is not an actor identity.
 
 ## Acceptance
 
@@ -71,6 +82,9 @@ platform identifiers.
   migration namespace.
 - Trusted observation requires two matches and covers ambiguity, conflict,
   expiry and untrusted-source rejection.
+- Group discovery accepts a normal command reply, requires a unique trusted-bot
+  match in a configured numeric group, persists across restarts, projects the
+  existing group feature policy, and rejects either-side conflicts.
 - Full repository tests and static checks pass before this spec becomes
   `completed`.
 

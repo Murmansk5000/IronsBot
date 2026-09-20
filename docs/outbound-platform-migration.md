@@ -98,11 +98,15 @@ local_bot = 123456789
 ```
 
 The trusted bot table must exactly cover all active official accounts. IronsBot
-links a group `member_openid` to a QQ number only after two independent, unique,
-consistent observations in the same logical group. Each observation uses the
-official reply's source-message reference and the numeric sender that NapCat
-reports for that referenced message; it does not infer identity from a visible
-mention. Ambiguous, expired,
+first learns `(AppID, group_openid) -> numeric group` from any uniquely matched
+normal command reply in a numeric group declared by `[identities.groups].qq`.
+The mapping is persisted in the QQ state database and restored on restart, so
+the diagnostic `官方身份` command and a duplicate TOML OpenID are not required.
+It then links a group `member_openid` to a QQ number only after two independent,
+unique, consistent observations in that logical group. Each observation uses
+the official reply's source-message reference and the numeric sender that
+NapCat reports for that referenced message; it does not infer identity from a
+visible mention. Ambiguous, expired,
 untrusted, or conflicting observations do not create or overwrite a link.
 NapCat sends no verification messages. C2C `user_openid` values are not inferred
 and remain explicit TOML aliases.

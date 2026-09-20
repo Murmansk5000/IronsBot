@@ -74,7 +74,9 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import NamedLifecycleHook
+    from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.identity_link_store import (
+        CrossPlatformGroupLink,
         CrossPlatformIdentityLink,
         OfficialIdentity,
     )
@@ -97,7 +99,22 @@ async def _start_data_sync_resource(
 async def _load_identity_links(
     store: SqliteIdentityLinkStore,
     features: FeatureService,
+    observer: SilentIdentityObservationService | None,
+    bili_targets: BiliTargetService,
 ) -> None:
+    for link in await store.all_group_links():
+        features.register_group_link(
+            official_app_id=link.official_app_id,
+            official_group_openid=link.official_group_openid,
+            onebot_group_id=link.onebot_group_id,
+        )
+        if observer is not None:
+            observer.register_group_link(link)
+        bili_targets.register_group_link(
+            official_app_id=link.official_app_id,
+            official_group_openid=link.official_group_openid,
+            onebot_group_id=link.onebot_group_id,
+        )
     for link in await store.all_links():
         features.register_identity_link(
             official_app_id=link.official.app_id,
@@ -281,7 +298,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         on_unlink=unregister_identity_link,
     )
     identity_links = IdentityLinkCommands(identity_linking)
-    identity_observer = _build_identity_observer(settings, identity_store, features)
+    identity_observer = _build_identity_observer(
+        settings,
+        identity_store,
+        features,
+        bilibili.targets,
+    )
     onebot_ingress = OneBotIngressPolicy(
         messages_enabled=(
             settings.outbound_platform_selection.onebot_message_handling_enabled
@@ -378,7 +400,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     resource_startup_hooks: list[NamedLifecycleHook] = [
         (
             "identity_links",
-            partial(_load_identity_links, identity_store, features),
+            partial(
+                _load_identity_links,
+                identity_store,
+                features,
+                identity_observer,
+                bilibili.targets,
+            ),
         ),
         (
             "data_sync",
@@ -435,10 +463,16 @@ def _build_identity_observer(
     settings: Settings,
     store: SqliteIdentityLinkStore,
     features: FeatureService,
+    bili_targets: BiliTargetService,
 ) -> SilentIdentityObservationService | None:
     if not settings.bot.onebot.identity_verification:
         return None
     accounts: dict[str, IdentityObservationAccount] = {}
+    candidate_groups = frozenset(
+        target.qq
+        for target in settings.identities.groups.values()
+        if target.qq is not None
+    )
     for alias, account in settings.bot.qq_official.enabled_accounts.items():
         groups = {
             target.official[alias]: target.qq
@@ -448,7 +482,8 @@ def _build_identity_observer(
         accounts[account.app_id] = IdentityObservationAccount(
             app_id=account.app_id,
             trusted_onebot_sender_id=(settings.bot.onebot.trusted_official_bots[alias]),
-            groups=groups,
+            groups=dict(groups),
+            candidate_onebot_group_ids=candidate_groups,
         )
 
     def register_link(qq_id: str, official: OfficialIdentity) -> None:
@@ -458,4 +493,21 @@ def _build_identity_observer(
             onebot_qq_id=qq_id,
         )
 
-    return SilentIdentityObservationService(store, accounts, on_link=register_link)
+    def register_group_link(link: CrossPlatformGroupLink) -> None:
+        features.register_group_link(
+            official_app_id=link.official_app_id,
+            official_group_openid=link.official_group_openid,
+            onebot_group_id=link.onebot_group_id,
+        )
+        bili_targets.register_group_link(
+            official_app_id=link.official_app_id,
+            official_group_openid=link.official_group_openid,
+            onebot_group_id=link.onebot_group_id,
+        )
+
+    return SilentIdentityObservationService(
+        store,
+        accounts,
+        on_link=register_link,
+        on_group_link=register_group_link,
+    )

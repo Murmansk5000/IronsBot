@@ -52,24 +52,30 @@ Task     [██████████] completed only after code, tests, and 
 ## 当前权威状态（2026-09-20）
 
 Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。唯一公开开发与发布源是
-`Murmansk5000/IronsBot` 的 `main`。当前生产运行时修订为 `667177ea`，Docker Hub 清单
-digest 为 `sha256:bae99232f7c816349f9e1505bbc27579591ba3ef76963f2426d2eaf3cf3dec15`，
-Unraid 展开大小为 260,026,385 bytes。发布流水线 `35497786091` 的构建、离线 smoke、
-依赖审计、目录与增长门禁均通过；QQ Official、OneBot observer、三无头 worker 和共享
-Docker 网络健康。2026-09-20 实机对照确认 TEXT 不解析 OpenID 提及，而 Markdown 与
-source `message_reference` 组合会导致部分 QQ 客户端重复正文。正式路径因此将首条群回复
-的成员提及和正文合并为一个 Markdown payload，并只使用被动 `msg_id`/`msg_seq`，不再为
-该 payload 附加 native source reference。NapCat 群历史恰好一条消息，同时包含原生 `at`
-段和完整 TD 菜单正文；单独 `at` 消息为零、正文只出现一次、字面 OpenID 标签为零。
+`Murmansk5000/IronsBot` 的 `main`。当前生产运行时修订为 `de4bdbbe`，Docker Hub 清单
+digest 为 `sha256:4cd7f3735a0e299f6a207583e332e6b373677449b5c18f279ef0a85e929a7a02`，
+Unraid 展开大小为 260,040,445 bytes；`/app`、Python site-packages 和字体分别为
+3,273,349、102,592,867 和 19,882,302 bytes。发布流水线 `35503424404` 的构建、离线
+smoke、依赖审计、目录与增长门禁均通过。生产 `config_check` 确认 QQ Official 是唯一
+出站平台、OneBot outbound 关闭且 observer 身份验证保持启用；三个独立官方账号均取得
+AccessToken 并进入 READY，OneBot observer、三无头 worker 和共享 Docker 网络健康。
+
+该候选同时包含已验收的成员提及修复：TEXT 不解析 OpenID 提及，而 Markdown 与 source
+`message_reference` 组合会导致部分 QQ 客户端重复正文。正式路径将首条群回复收口为最小
+Markdown 提及，再发送一条 TEXT 正文，并只使用被动 `msg_id`/`msg_seq`。历史 NapCat 群
+记录证明单独 `at` 消息为零、正文只出现一次、字面 OpenID 标签为零；新精确 digest 已完成
+启动、三账号隔离和一条公众账号 C2C 被动回复，但权限、故障和主动投递剩余负向项仍须继续
+实机验收，不能由 READY 或历史客户端记录替代。
 
 `docs/` 不进入 Docker 构建上下文。后续纯文档提交可能因 OCI revision 标签生成不同
 manifest digest，但不会改变运行时文件；Phase 7 可继续使用上述行为候选，除非实际生产
 部署选择了另一个精确 digest，届时必须在验收记录中固定所部署的值。
 
-主要查询矩阵已在当前生产 runtime tree 上完成 A1-A12：最后缺失的幸运橱窗使用受控
+主要查询矩阵已在此前生产 runtime tree 上完成 A1-A12：最后缺失的幸运橱窗使用受控
 OneBot 身份完成账号绑定、登录确认、隔离查询、四皮肤持久缓存和最终图片送达。生产专用
-密码只存在于 Unraid 加密环境变量，不进入 TOML 或仓库。Phase 7 实机里程碑因此为 7/8；
-剩余一项仍是权限、故障和实际配置功能的完整负向与主动投递证据。
+密码只存在于 Unraid 掩码环境变量，不进入 TOML 或仓库。当前精确 digest 已复用相同业务
+树并完成启动验证，但 Phase 7 仍保持开放；剩余项是权限、故障和实际配置功能的完整负向与
+主动投递证据，以及专用第三账号取得目标群作用域 OpenID 后的策略验收。
 
 同一 `667177ea` 生产镜像重新生成幸运橱窗 v2 卡片，客户端收到一张 1040×559 PNG；四个
 皮肤、风尚券图标、钻石图标和中文均正常。字体稳定的 `★` 关注标记另由本地真实 HTML

@@ -199,8 +199,11 @@ def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() ->
         lambda reference, _conversation: 105023264 if reference == "示例账号" else None,
         lambda _actor: None,
     )
-    player_query = _by_id(seer_command_contracts(resolver))["seer.player.query"]
+    commands = _by_id(seer_command_contracts(resolver))
+    player_query = commands["seer.player.query"]
     assert player_query.routing_matcher is not None
+    assert "@已绑定成员" in player_query.description
+    assert "@已绑定成员" in commands["seer.player.default"].description
     context = CommandContext(
         actor=ActorRef(Platform.ONEBOT, "1234567890"),
         conversation=ConversationRef(Platform.ONEBOT, "group", "987654321"),

@@ -81,11 +81,11 @@ enabled = true
 #     只要存在完整官方凭据，NapCat 就会被强制静默。
 send_messages = true
 # Default: false
-# EN: Silently correlate official group member OpenIDs with QQ numbers from the
-#     source-message references observed by NapCat. Requires active official
-#     credentials and trusted bot IDs below.
-# ZH: 由 NapCat 读取官方群回复所引用的原消息发送者，静默关联群 member_openid 与 QQ 号；
-#     需要完整官方凭据以及下方可信官方机器人 QQ 号。
+# EN: Learn official group OpenIDs from normal command replies and silently
+#     correlate member OpenIDs with QQ numbers from source-message references
+#     observed by NapCat. Candidate numeric groups come from identities.groups.
+# ZH: 由普通命令回复自动学习官方群 OpenID，并由 NapCat 读取回复所引用的原消息发送者，
+#     静默关联群 member_openid 与 QQ 号；候选数字群来自 identities.groups。
 identity_verification = false
 
 [bot.onebot.trusted_official_bots]
