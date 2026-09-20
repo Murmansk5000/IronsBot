@@ -61,9 +61,9 @@ smoke、依赖审计、目录与增长门禁均通过。生产 `config_check` �
 AccessToken 并进入 READY，OneBot observer、三无头 worker 和共享 Docker 网络健康。
 
 该候选同时包含已验收的成员提及修复：TEXT 不解析 OpenID 提及，而 Markdown 与 source
-`message_reference` 组合会导致部分 QQ 客户端重复正文。正式路径将首条群回复收口为最小
-Markdown 提及，再发送一条 TEXT 正文，并只使用被动 `msg_id`/`msg_seq`。历史 NapCat 群
-记录证明单独 `at` 消息为零、正文只出现一次、字面 OpenID 标签为零；新精确 digest 已完成
+`message_reference` 组合会导致部分 QQ 客户端重复正文。正式路径将首条群回复收口为一条
+Markdown：同时包含发令成员提及、换行和正文，并携带被动 `msg_id`/`msg_seq`。该路径不另发单独
+`at` 或 TEXT 正文，不占用第二次回复额度；字面 OpenID 标签为零。新精确 digest 已完成
 启动、三账号隔离和一条公众账号 C2C 被动回复，但权限、故障和主动投递剩余负向项仍须继续
 实机验收，不能由 READY 或历史客户端记录替代。
 
@@ -401,7 +401,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 公开 `64058429` 精确镜像已完成依赖审计、构建、离线 smoke、体积门禁和发布；真实 OneBot、QQ Official 群/C2C、主要查询及多轮交互已有历史或源码候选证据 | 将该精确 digest 部署到 Unraid，复验受后续修复影响的查询、交互、权限与故障路径，并补齐 AI 备用切换和平台拒收/额度证据 | 构建成功等同于最终客户端 8/8 验收 |
+| Phase 7 | `in_progress` | 公开 `e6b8bdad` 精确镜像已完成依赖审计、构建、离线 smoke、体积门禁、发布及 Unraid 部署；五个官方账号 READY，OneBot 静默观察正常；受控群已验证单条被动 Markdown 合并提及与正文，主/二级帮助均保留零号退出项 | 由用户在手机 QQ 确认换行和最终视觉对齐，继续补齐 AI 备用切换和平台拒收/额度证据 | 构建或服务端日志成功等同于最终客户端 8/8 验收 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from html import escape
 from typing import TYPE_CHECKING
@@ -48,6 +49,10 @@ class QQOfficialImagePayload:
 
 QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
 
+_MARKDOWN_MENU_NUMBER = re.compile(
+    r"(?m)^(?P<prefix>[ \t]*(?:↳[ \t]*)?)(?P<number>\d+)\.(?=[ \t])"
+)
+
 
 def render_qq_official_outbound_message(
     message: OutboundMessage,
@@ -78,8 +83,12 @@ def render_qq_official_outbound_message(
             raise QQOfficialOutboundMessageError.unsupported_part(part)
     text_payloads: list[QQOfficialPayload] = []
     if mentions:
+        rendered_text = _escape_markdown_menu_numbers("".join(text))
         text_payloads.append(
-            QQOfficialTextPayload("".join((*mentions, *text)), markdown=True)
+            QQOfficialTextPayload(
+                _join_markdown_mention_and_text(mentions, rendered_text),
+                markdown=True,
+            )
         )
     elif text:
         text_payloads.append(QQOfficialTextPayload("".join(text)))
@@ -89,6 +98,28 @@ def render_qq_official_outbound_message(
     if supports_interactive_prompts:
         _attach_prompt(rendered, message.prompt)
     return tuple(rendered)
+
+
+def _join_markdown_mention_and_text(
+    mentions: list[str],
+    text: str,
+) -> str:
+    mention_text = "".join(mentions)
+    if not text:
+        return mention_text
+    if text.startswith("\n"):
+        return f"{mention_text}{text}"
+    body = text.lstrip(" \t")
+    return f"{mention_text}\n{body}"
+
+
+def _escape_markdown_menu_numbers(text: str) -> str:
+    """Keep numbered menu labels literal in QQ Markdown, including exit item 0."""
+
+    return _MARKDOWN_MENU_NUMBER.sub(
+        lambda match: f"{match.group('prefix')}{match.group('number')}\\.",
+        text,
+    )
 
 
 def _attach_prompt(

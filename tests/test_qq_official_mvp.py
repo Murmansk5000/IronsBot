@@ -1667,7 +1667,7 @@ def test_qq_official_renderer_emits_scoped_member_mentions() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-&quot;openid" /> result',
+            '<qqbot-at-user id="member-&quot;openid" />\nresult',
             markdown=True,
         ),
     )
@@ -1700,9 +1700,44 @@ def test_qq_official_renderer_keeps_exit_item_in_markdown_list_layout() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" /> 1. 【收集】\n'
-            "2. 【巅峰】\n"
-            "0. 【退出】",
+            '<qqbot-at-user id="member-openid" />\n1\\. 【收集】\n'
+            "2\\. 【巅峰】\n"
+            "0\\. 【退出】",
+            markdown=True,
+        ),
+    )
+
+
+def test_qq_official_renderer_only_escapes_line_start_menu_numbers() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                MentionPart(member),
+                TextPart(" 版本 1.2\n ↳ 3. 子项\n0. 【退出】"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" />\n版本 1.2\n '
+            "↳ 3\\. 子项\n"
+            "0\\. 【退出】",
             markdown=True,
         ),
     )
@@ -1799,12 +1834,55 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
     assert [call[2] for call in bot.calls] == [
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" /> first', markdown=True
+                '<qqbot-at-user id="opaque-user" />\nfirst', markdown=True
             ),
         ),
-        (QQOfficialTextPayload("second"),),
-        (QQOfficialTextPayload("third"),),
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" />\nsecond', markdown=True
+            ),
+        ),
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" />\nthird', markdown=True
+            ),
+        ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_qq_official_delivery_does_not_add_mention_only_image_message() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="opaque-user",
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    reply = PortableReply(
+        OutboundMessage.from_text("summary"),
+        additional_messages=(
+            OutboundMessage((BinaryImagePart(b"image", "image/png"),)),
+        ),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    expected_payloads = [
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" />\nsummary', markdown=True
+            ),
+        ),
+        (QQOfficialImagePayload(content=b"image", filename="ironsbot.png"),),
+    ]
+    assert bot.sent == len(expected_payloads)
+    assert [call[2] for call in bot.calls] == expected_payloads
 
 
 @pytest.mark.asyncio
@@ -1839,7 +1917,7 @@ async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
 
     assert bot.calls[0][2] == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="target-openid" /> result',
+            '<qqbot-at-user id="target-openid" />\nresult',
             markdown=True,
         ),
     )
@@ -1875,7 +1953,7 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
     payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
     assert payloads == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" /> result',
+            '<qqbot-at-user id="member-openid" />\nresult',
             markdown=True,
         ),
     )
@@ -2964,7 +3042,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
 
 
 @pytest.mark.asyncio
-async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
+async def test_portable_router_prompts_for_command_after_empty_group_mention() -> None:
     features = build_feature_service(
         FeatureConfig(),
         (),
@@ -3000,7 +3078,7 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
 
     assert reply is not None
     assert cast("TextPart", reply.message.parts[0]).text == (
-        "你想聊什么？可以直接写问题。"
+        DIRECT_COMMAND_HELP_HINT_TEXT
     )
     assert ai.calls == []
 

@@ -409,7 +409,7 @@ async def test_group_reply_references_inbound_message_index() -> None:
 
 
 @pytest.mark.asyncio
-async def test_group_member_mention_reply_uses_plain_text_and_reference() -> None:
+async def test_group_member_mention_is_one_markdown_passive_reply() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
         {"app": False},
@@ -431,7 +431,7 @@ async def test_group_member_mention_reply_uses_plain_text_and_reference() -> Non
     assert result.delivered
     assert bot.calls[0][2] == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" /> result',
+            '<qqbot-at-user id="member-openid" />\nresult',
             markdown=True,
         ),
     )

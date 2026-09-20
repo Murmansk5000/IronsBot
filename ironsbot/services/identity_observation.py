@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 _SPACE_PATTERN = re.compile(r"\s+")
 _MIN_CONFIRMATIONS = 1
+_MAX_TEXTUAL_MENTION_PREFIX_LENGTH = 128
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -249,7 +250,7 @@ class SilentIdentityObservationService:
                     and observation.group_id in account.candidate_onebot_group_ids
                 )
             )
-            and item.text == text
+            and _reply_text_matches(text, item.text)
             and now - item.created_at <= self.match_window_seconds
         ]
         if len(matches) != 1:
@@ -269,3 +270,16 @@ def _outbound_text(message: OutboundMessage) -> str:
 
 def _normalize_text(text: str) -> str:
     return _SPACE_PATTERN.sub(" ", text).strip()
+
+
+def _reply_text_matches(observed: str, expected: str) -> bool:
+    if observed == expected:
+        return True
+    if not observed.endswith(expected):
+        return False
+    prefix = observed[: -len(expected)].strip()
+    return (
+        prefix.startswith("@")
+        and "\n" not in prefix
+        and len(prefix) <= _MAX_TEXTUAL_MENTION_PREFIX_LENGTH
+    )

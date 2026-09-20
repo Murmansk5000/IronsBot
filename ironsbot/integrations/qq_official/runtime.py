@@ -628,7 +628,6 @@ async def deliver_qq_official_reply(
     from ironsbot.core.outbound import OutboundMessage, ReplyContext
 
     context = ReplyContext.from_message(incoming)
-    address_next_reply = True
 
     def on_sent(stage: DeliveryStage, result: SendResult) -> None:
         if result.delivered:
@@ -651,16 +650,12 @@ async def deliver_qq_official_reply(
         return OutboundMessage.from_text(f"❌ 操作执行失败：{type(error).__name__}")
 
     async def send(message: OutboundMessage) -> SendResult:
-        nonlocal address_next_reply
         observation = (
             identity_observer.record_official_reply(incoming, message)
             if identity_observer is not None
             else None
         )
-        delivery_message = (
-            _address_group_reply(incoming, message) if address_next_reply else message
-        )
-        address_next_reply = False
+        delivery_message = _address_group_reply(incoming, message)
         result = await messenger.reply(context, delivery_message)
         if (
             not result.delivered
@@ -691,10 +686,12 @@ def _address_group_reply(
         or incoming.actor.account_id != incoming.conversation.account_id
     ):
         return message
-    if message.parts and isinstance(message.parts[0], MentionPart):
+    if not any(isinstance(part, TextPart) for part in message.parts):
+        return message
+    if any(isinstance(part, MentionPart) for part in message.parts):
         return message
     return OutboundMessage(
-        (MentionPart(incoming.actor), TextPart(" "), *message.parts),
+        (MentionPart(incoming.actor), *message.parts),
         prompt=message.prompt,
     )
 

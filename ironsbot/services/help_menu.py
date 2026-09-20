@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import (
+    EXIT_SELECTION_LINE,
     HELP_SELECTION_FOOTER,
     SelectionMenuSection,
     format_selection_menu,
@@ -185,7 +186,7 @@ def format_plugin_detail(  # noqa: PLR0913 - explicit directory dependencies
     if entry.notes:
         lines.extend(("", *entry.notes))
     if not available:
-        lines.extend(("", "暂无可直接输入的命令。"))
+        lines.extend(("", "暂无可直接输入的命令。", "", EXIT_SELECTION_LINE))
         return "\n".join(lines)
 
     for interaction in ("direct", "conversation", "passive", "automatic"):
@@ -202,6 +203,7 @@ def format_plugin_detail(  # noqa: PLR0913 - explicit directory dependencies
                 lines.extend(("", f"【{command.section}】"))
                 current_section = command.section
             lines.append(f"{' / '.join(command.examples)} — {command.description}")
+    lines.extend(("", EXIT_SELECTION_LINE))
     return "\n".join(lines)
 
 

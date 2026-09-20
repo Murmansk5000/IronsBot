@@ -226,6 +226,40 @@ async def test_group_discovery_does_not_require_member_mention(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_group_discovery_accepts_textual_official_reply_mention(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    service = SilentIdentityObservationService(
+        store,
+        {
+            APP_ID: IdentityObservationAccount(
+                APP_ID,
+                OFFICIAL_BOT_QQ,
+                {},
+                frozenset({ONEBOT_GROUP}),
+            )
+        },
+        clock=lambda: clock[0],
+    )
+    service.record_official_reply(
+        _incoming("normal-command"),
+        OutboundMessage.from_text("正文结果"),
+    )
+
+    assert await service.observe_onebot(
+        OneBotReplyObservation(
+            OFFICIAL_BOT_QQ,
+            ONEBOT_GROUP,
+            (),
+            "@群内显示名 正文结果",
+        )
+    )
+    assert len(await store.all_group_links()) == 1
+
+
+@pytest.mark.asyncio
 async def test_group_discovery_rejects_unconfigured_or_ambiguous_groups(
     tmp_path: Path,
 ) -> None:
