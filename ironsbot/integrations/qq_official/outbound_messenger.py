@@ -19,6 +19,7 @@ from ironsbot.integrations.qq_official.api_errors import (
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialOutboundMessageError,
     QQOfficialPayload,
+    QQOfficialTextPayload,
     render_qq_official_outbound_message,
 )
 from ironsbot.integrations.qq_official.reply_sequences import (
@@ -91,7 +92,7 @@ class QQOfficialOutboundMessenger:
         return DeliveryCapabilities(
             can_reply_to_event=True,
             can_send_proactively=self._proactive_enabled(conversation),
-            can_mention_members=False,
+            can_mention_members=conversation.kind == "group",
             supports_group_context=True,
             supports_private_context=True,
             supports_images=True,
@@ -166,6 +167,7 @@ class QQOfficialOutboundMessenger:
         try:
             payloads = render_qq_official_outbound_message(
                 message,
+                conversation=conversation,
                 supports_interactive_prompts=(
                     self.account_custom_keyboards.get(
                         conversation.account_id or "",
@@ -263,6 +265,10 @@ def _reference_group_reply(
         or context.sequence is None
         or not payloads
     ):
+        return payloads
+    if isinstance(payloads[0], QQOfficialTextPayload) and payloads[0].markdown:
+        # QQ clients duplicate combined Markdown when a native source reference is
+        # attached. msg_id/msg_seq still keep this inside the passive reply contract.
         return payloads
     return (
         replace(payloads[0], reference_id=context.sequence),

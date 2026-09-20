@@ -560,6 +560,7 @@ async def deliver_qq_official_reply(
     from ironsbot.core.outbound import OutboundMessage, ReplyContext
 
     context = ReplyContext.from_message(incoming)
+    address_next_reply = True
 
     def on_sent(stage: DeliveryStage, result: SendResult) -> None:
         if result.delivered:
@@ -582,12 +583,17 @@ async def deliver_qq_official_reply(
         return OutboundMessage.from_text(f"❌ 操作执行失败：{type(error).__name__}")
 
     async def send(message: OutboundMessage) -> SendResult:
+        nonlocal address_next_reply
         observation = (
             identity_observer.record_official_reply(incoming, message)
             if identity_observer is not None
             else None
         )
-        result = await messenger.reply(context, message)
+        delivery_message = (
+            _address_group_reply(incoming, message) if address_next_reply else message
+        )
+        address_next_reply = False
+        result = await messenger.reply(context, delivery_message)
         if (
             not result.delivered
             and observation is not None
@@ -601,6 +607,27 @@ async def deliver_qq_official_reply(
         send,
         on_sent=on_sent,
         on_follow_up_error=on_follow_up_error,
+    )
+
+
+def _address_group_reply(
+    incoming: IncomingMessageRef,
+    message: OutboundMessage,
+) -> OutboundMessage:
+    from ironsbot.core.outbound import MentionPart, TextPart
+
+    if (
+        incoming.conversation.kind != "group"
+        or incoming.actor.kind != "member"
+        or incoming.actor.scope_id != incoming.conversation.id
+        or incoming.actor.account_id != incoming.conversation.account_id
+    ):
+        return message
+    if message.parts and isinstance(message.parts[0], MentionPart):
+        return message
+    return OutboundMessage(
+        (MentionPart(incoming.actor), TextPart(" "), *message.parts),
+        prompt=message.prompt,
     )
 
 
