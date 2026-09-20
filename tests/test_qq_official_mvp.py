@@ -1444,6 +1444,59 @@ def test_full_group_self_mention_does_not_require_username_metadata() -> None:
     assert incoming.text == "战队订阅"
 
 
+@pytest.mark.parametrize(
+    "marker",
+    ("<@bot-openid>", "<@!bot-openid>"),
+)
+def test_full_group_self_mention_removes_official_structured_marker(
+    marker: str,
+) -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content=f"{marker} 战队订阅",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "战队订阅"
+
+
+def test_full_group_later_self_mention_preserves_leading_member_mention() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@target @无极圣武 战队",
+        raw={
+            "mentions": [
+                {
+                    "is_you": False,
+                    "member_openid": "target-openid",
+                    "username": "target",
+                },
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                },
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "@target @无极圣武 战队"
+
+
 def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
@@ -1502,7 +1555,7 @@ def test_qq_official_renderer_compacts_text_around_image() -> None:
     )
 
 
-def test_qq_official_renderer_rejects_unreliable_visible_member_mentions() -> None:
+def test_qq_official_renderer_emits_scoped_member_mentions() -> None:
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
         "group",
@@ -1517,12 +1570,41 @@ def test_qq_official_renderer_rejects_unreliable_visible_member_mentions() -> No
         account_id="example-app",
     )
 
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage((MentionPart(member), TextPart(" result"))),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-&quot;openid" /> result',
+            markdown=True,
+        ),
+    )
+
+
+def test_qq_official_renderer_rejects_cross_group_member_mentions() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "another-group",
+        account_id="example-app",
+    )
+
     with pytest.raises(
         QQOfficialOutboundMessageError,
-        match="does not provide reliable visible member mentions",
+        match="current group",
     ):
         render_qq_official_outbound_message(
             OutboundMessage((MentionPart(member), TextPart(" result"))),
+            conversation=conversation,
         )
 
 
@@ -1551,6 +1633,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
+    assert bot.calls[0][2] == (QQOfficialTextPayload("result"),)
     assert ("reply delivered" in caplog.text) is not fail
     assert "sensitive transport detail" not in caplog.text
     assert "example-app" not in caplog.text
@@ -1559,7 +1642,12 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
 
 @pytest.mark.asyncio
 async def test_qq_official_delivery_sends_additional_messages_in_order() -> None:
-    event = _sdk_event()
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="opaque-user",
+    )
     incoming = qq_official_incoming_message(event, account_id="example-app")
     reply = PortableReply(
         OutboundMessage.from_text("first"),
@@ -1583,6 +1671,53 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
     ]
     assert bot.sent == len(expected_calls)
     assert [call[3:] for call in bot.calls] == expected_calls
+    assert [call[2] for call in bot.calls] == [
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" /> first', markdown=True
+            ),
+        ),
+        (QQOfficialTextPayload("second"),),
+        (QQOfficialTextPayload("third"),),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="sender-openid",
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    target = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "target-openid",
+        kind="member",
+        scope_id="opaque-group",
+        account_id="example-app",
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(
+        messenger,
+        incoming,
+        PortableReply(
+            OutboundMessage((MentionPart(target), TextPart(" result"))),
+        ),
+    )
+
+    assert bot.calls[0][2] == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="target-openid" /> result',
+            markdown=True,
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -1615,8 +1750,8 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
     payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
     assert payloads == (
         QQOfficialTextPayload(
-            "result",
-            reference_id="source-message-index",
+            '<qqbot-at-user id="member-openid" /> result',
+            markdown=True,
         ),
     )
 

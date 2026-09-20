@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import OutboundMessage, address_message_to
 from ironsbot.services.messaging.meeting import build_meeting_reply
 from ironsbot.services.operations.docker_update import (
     DOCKER_MAINTENANCE_OPTIONS,
@@ -203,11 +203,14 @@ def build_portable_meeting_operations(
         text: str,
         context: MessageInputContext,
     ) -> OutboundMessage:
-        del text, context
+        del text
         reply = build_meeting_reply(number, template)
         if reply is None:
             reply = "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。"
-        return OutboundMessage.from_text(reply)
+        return address_message_to(
+            OutboundMessage.from_text(reply),
+            context.member_mentions,
+        )
 
     return {
         "meeting": meeting,

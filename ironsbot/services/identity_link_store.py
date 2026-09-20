@@ -28,6 +28,11 @@ class IdentityLinkConflictError(IdentityLinkStoreError):
         super().__init__("official identity is already linked")
 
 
+class GroupLinkConflictError(IdentityLinkStoreError):
+    def __init__(self) -> None:
+        super().__init__("group identity is already linked")
+
+
 @dataclass(frozen=True, slots=True)
 class OfficialIdentity:
     app_id: str
@@ -55,7 +60,26 @@ class CrossPlatformIdentityLink:
     linked_at: float
 
 
+@dataclass(frozen=True, slots=True)
+class CrossPlatformGroupLink:
+    onebot_group_id: str
+    official_app_id: str
+    official_group_openid: str
+    linked_at: float
+
+
 class IdentityLinkStore(Protocol):
+    async def link_group_verified(
+        self,
+        *,
+        onebot_group_id: str,
+        official_app_id: str,
+        official_group_openid: str,
+        now: float,
+    ) -> CrossPlatformGroupLink: ...
+
+    async def all_group_links(self) -> tuple[CrossPlatformGroupLink, ...]: ...
+
     async def issue(
         self,
         *,
