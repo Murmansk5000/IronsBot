@@ -12,6 +12,9 @@ from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.qq_official import runtime as runtime_module
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
+from ironsbot.integrations.qq_official.recipient_state import (
+    QQOfficialRecipientStateStore,
+)
 from ironsbot.integrations.qq_official.runtime import (
     QQOfficialConnectionState,
     QQOfficialRuntime,
@@ -151,6 +154,37 @@ def test_runtime_keeps_clients_isolated_by_app_id(tmp_path: Path) -> None:
             assert runtime.sender("missing") is None
 
     asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_runtime_persists_recipient_management_events(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_fake_sdk(monkeypatch, ready=True)
+    state = QQOfficialRecipientStateStore(tmp_path / "recipient-state.sqlite")
+    async with httpx.AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (QQOfficialRuntimeAccount("app-a", "secret-a"),),
+            http_client=client,
+            session_root=tmp_path / "sessions",
+            recipient_state=state,
+        )
+
+        await runtime.handle_event(
+            "app-a",
+            "GROUP_MSG_REJECT",
+            {"group_openid": "group-a"},
+        )
+
+    assert not await state.allows_proactive(
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "group-a",
+            account_id="app-a",
+        )
+    )
 
 
 def test_runtime_rejects_duplicate_app_ids(tmp_path: Path) -> None:
