@@ -115,10 +115,7 @@ def test_decide_dynamic_push_before_targets_handles_skip_and_suppression() -> No
 
 
 def test_decide_dynamic_push_after_targets_handles_target_statuses() -> None:
-    assert (
-        decide_dynamic_push_after_targets(has_targets=False).status
-        == "no_targets"
-    )
+    assert decide_dynamic_push_after_targets(has_targets=False).status == "no_targets"
 
     decision = decide_dynamic_push_after_targets(has_targets=True)
     assert decision.should_push

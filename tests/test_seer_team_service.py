@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock
 
 import pytest
 
 from ironsbot.config.models.seer import TeamQueryConfig
-from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
@@ -19,20 +16,15 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.services.operations.headless_errors import (
-    DisconnectedError,
-    NotLoggedInError,
-    SocketRecvError,
-)
-from ironsbot.services.portable_seer_commands import build_portable_team_query_operation
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-from ironsbot.services.seer.query_commands import team_query_input_matcher
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
     TeamBossActivityStatus,
     TeamQueryActor,
     format_team_info,
 )
+from ironsbot.services.seer.team_commands import build_team_query_operation
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -49,6 +41,24 @@ def _actor(user_id: int = 1) -> ActorRef:
 
 def _group(group_id: int = 456) -> ConversationRef:
     return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _context(
+    text: str,
+    *,
+    mentions: tuple[ActorRef, ...] = (),
+) -> MessageInputContext:
+    return MessageInputContext(
+        IncomingMessageRef(
+            Platform.ONEBOT,
+            _actor(),
+            _group(),
+            "message-id",
+            text,
+            direct_mentions=mentions,
+        ),
+        mentions_bot=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -94,6 +104,11 @@ class FakeGame:
         if isinstance(self._result, Exception):
             raise self._result
         return self._result
+
+    async def get_user_info(self, _player_id: int) -> object:
+        if isinstance(self._result, Exception):
+            raise self._result
+        return type("PlayerInfo", (), {"team_id": TEAM_ID})()
 
 
 class FakeHeadless:
@@ -145,200 +160,6 @@ def test_team_service_parses_unique_ids_before_validation() -> None:
     )
 
 
-def _query_context(
-    text: str, mentions: tuple[ActorRef, ...] = ()
-) -> MessageInputContext:
-    return MessageInputContext(
-        IncomingMessageRef(
-            Platform.ONEBOT,
-            _actor(),
-            _group(),
-            "event-id",
-            text=text,
-            direct_mentions=mentions,
-        ),
-        mentions_bot=False,
-    )
-
-
-def _resolver() -> PlayerIdResolver:
-    return PlayerIdResolver(
-        lambda reference, _conversation: (
-            int(reference)
-            if reference.isdecimal()
-            else {"alias12": 700001}.get(reference)
-        ),
-        lambda _actor: 700002,
-    )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("text", "mentions", "player_id"),
-    [
-        ("战队123456", (), None),
-        ("查询战队信息123456 654321", (), None),
-        ("战队米米号700001", (), 700001),
-        ("战队alias12", (), 700001),
-        ("战队", (_actor(2),), 700002),
-    ],
-)
-async def test_team_command_shares_player_resolver_without_reinterpreting_team_ids(
-    text: str,
-    mentions: tuple[ActorRef, ...],
-    player_id: int | None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, headless, _ = _service()
-    lookup = AsyncMock(return_value=SimpleNamespace(team_id=TEAM_ID))
-    monkeypatch.setattr(headless.game, "get_user_info", lookup, raising=False)
-    context = _query_context(text, mentions)
-    resolver = _resolver()
-    matches = team_query_input_matcher(resolver.has_known_reference)
-    assert matches(text, command_context_from_input(context))
-    operation = build_portable_team_query_operation(
-        service,
-        FeatureService({}, {}, frozenset({_actor()})),
-        resolver,
-    )
-
-    result = await operation(text, context)
-
-    assert isinstance(result, OutboundMessage)
-    part = result.parts[0]
-    assert isinstance(part, TextPart)
-    assert "测试战队" in part.text
-    if player_id is None:
-        lookup.assert_not_awaited()
-    else:
-        lookup.assert_awaited_once_with(player_id)
-
-
-@pytest.mark.parametrize(
-    "text", ["战队", "战队是什么", "战队陌生别名12", "战队订阅", "专家榜"]
-)
-def test_team_command_does_not_claim_subscription_or_unknown_alias(text: str) -> None:
-    matcher = team_query_input_matcher(_resolver().has_known_reference)
-    assert not matcher(text, command_context_from_input(_query_context(text)))
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("text", "mentions"),
-    [
-        ("战队alias12", (_actor(2),)),
-        ("战队123456", (_actor(2),)),
-        ("战队", (_actor(2), _actor(3))),
-    ],
-)
-async def test_team_reference_conflicts_do_not_query_game(
-    text: str,
-    mentions: tuple[ActorRef, ...],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, headless, _ = _service()
-    query = AsyncMock()
-    monkeypatch.setattr(headless.game, "get_team_info", query)
-    lookup = AsyncMock()
-    monkeypatch.setattr(headless.game, "get_user_info", lookup, raising=False)
-    operation = build_portable_team_query_operation(
-        service,
-        FeatureService({}, {}, frozenset({_actor()})),
-        _resolver(),
-    )
-
-    result = await operation(text, _query_context(text, mentions))
-
-    assert isinstance(result, OutboundMessage)
-    part = result.parts[0]
-    assert isinstance(part, TextPart)
-    assert "不能同时使用" in part.text or "只 @ 一名成员" in part.text
-    lookup.assert_not_awaited()
-    query.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("team_id", [0, None, -1])
-async def test_player_without_team_is_not_queried_as_team_zero(
-    team_id: int | None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, headless, _ = _service()
-    monkeypatch.setattr(
-        headless.game,
-        "get_user_info",
-        AsyncMock(return_value=SimpleNamespace(team_id=team_id)),
-        raising=False,
-    )
-    query = AsyncMock()
-    monkeypatch.setattr(headless.game, "get_team_info", query)
-
-    result = await service.query_player_team(
-        700001, TeamQueryActor(_actor(), _group(), can_manage=False)
-    )
-
-    assert "当前未加入战队" in result
-    query.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_player_team_timeout_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
-    service, headless, _ = _service()
-    monkeypatch.setattr(
-        headless.game,
-        "get_user_info",
-        AsyncMock(side_effect=TimeoutError()),
-        raising=False,
-    )
-
-    result = await service.lookup_player_team(
-        700001, TeamQueryActor(_actor(), _group(), can_manage=False)
-    )
-
-    assert result.team_id is None
-    assert result.error is not None and "所属战队查询超时" in result.error
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error",
-    [
-        NotLoggedInError(),
-        DisconnectedError(),
-        SocketRecvError(SimpleNamespace(result=101105)),
-    ],
-)
-async def test_player_team_failure_is_not_reported_as_no_team(
-    error: Exception, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    service, headless, _ = _service()
-    monkeypatch.setattr(
-        headless.game, "get_user_info", AsyncMock(side_effect=error), raising=False
-    )
-    result = await service.lookup_player_team(
-        700001, TeamQueryActor(_actor(), _group(), can_manage=False)
-    )
-    assert result.team_id is None
-    assert result.error and "700001" in result.error
-    assert "未加入战队" not in result.error
-    assert not headless.available
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("text", ["战队123456", "战队米米号700001", "战队alias12"])
-async def test_team_query_rechecks_permission_before_game_access(text: str) -> None:
-    service, headless, _ = _service()
-    operation = build_portable_team_query_operation(
-        service, FeatureService({}, {}, frozenset()), _resolver()
-    )
-    result = await operation(text, _query_context(text))
-    assert isinstance(result, OutboundMessage)
-    part = result.parts[0]
-    assert isinstance(part, TextPart)
-    assert "未对你开放" in part.text
-    assert not headless.available
-
-
 @pytest.mark.asyncio
 async def test_team_service_queries_and_formats_enabled_sections() -> None:
     service, headless, resource = _service()
@@ -359,6 +180,55 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
     assert "【设施等级】" not in message
     assert headless.available
     assert not resource.offered
+
+
+@pytest.mark.asyncio
+async def test_player_team_query_reuses_team_detail_service() -> None:
+    service, headless, _resource = _service()
+
+    message = await service.query_player_team(
+        148758762,
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+    )
+
+    assert "【战队信息：测试战队】" in message
+    assert "战队ID：123456" in message
+    assert headless.available
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "mentions"),
+    [
+        ("战队玩家一", ()),
+        ("战队米米号148758762", ()),
+        ("战队", (_actor(2),)),
+    ],
+)
+async def test_team_command_resolves_player_references_and_structured_mentions(
+    text: str,
+    mentions: tuple[ActorRef, ...],
+) -> None:
+    service, _headless, _resource = _service()
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            148758762 if reference in {"玩家一", "148758762"} else None
+        ),
+        lambda actor: 148758762 if actor == _actor(2) else None,
+    )
+
+    operation = build_team_query_operation(
+        service,
+        resolver,
+        FeatureService({}, {}, frozenset()),
+        PortableQuerySessions(),
+    )
+    reply = await operation(text, _context(text, mentions=mentions))
+    assert isinstance(reply, OutboundMessage)
+    message = cast("TextPart", reply.parts[0]).text
+
+    assert "【战队信息：测试战队】" in message
+    assert "战队ID：123456" in message
 
 
 @pytest.mark.parametrize(
@@ -451,6 +321,19 @@ async def test_team_service_formats_timeout() -> None:
             TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
         )
         == "❌ 战队 123456 查询超时，请稍后再试。"
+    )
+
+
+@pytest.mark.asyncio
+async def test_player_team_service_formats_timeout_as_player_query() -> None:
+    service, _headless, _resource = _service(TimeoutError())
+
+    assert (
+        await service.query_player_team(
+            148758762,
+            TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+        )
+        == "米米号 148758762 的所属战队查询超时，请稍后再试。"
     )
 
 

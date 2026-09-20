@@ -18,9 +18,11 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.features import FeatureConfig
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.onebot.conversations import event_conversation_session_id
 from ironsbot.integrations.onebot.matcher_support import EXPLICIT_COMMAND_STATE_KEY
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
@@ -28,13 +30,19 @@ from ironsbot.integrations.onebot.messaging_config import (
 from ironsbot.integrations.storage.push_topics import SqlitePushTopicStore
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.messaging import matcher_rules, plugin_contribution
+from ironsbot.plugins.onebot.messaging import matchers as messaging_matchers
 from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
+from ironsbot.plugins.onebot.messaging.push_management_runtime import (
+    PUSH_SUBSCRIPTION_FLOW,
+    PUSH_TIME_FLOW,
+    PromptFlow,
+)
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
 )
 from ironsbot.services.messaging.topics import PushTopicService
-from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
@@ -59,6 +67,7 @@ from ironsbot.services.messaging.subscriptions import (
 from tests.helpers.onebot_events import (
     GroupMemberRole,
     group_member_message_event,
+    group_message_event,
     private_message_event,
 )
 from tests.helpers.runtime import build_test_runtime
@@ -70,6 +79,7 @@ if TYPE_CHECKING:
         ScheduledMessageDelivery,
     )
     from nonebot.adapters.onebot.v11 import Bot
+    from nonebot.matcher import Matcher
     from pytest import MonkeyPatch
 
     from ironsbot.config.models.messaging import MessageReplyAction
@@ -441,7 +451,11 @@ def test_push_menu_private_entry_is_claimed_and_not_captured_by_ai(
         messaging.feature_policy,
         text,
     )
-    assert not _capture_ai_prompt(event, {}, messaging.feature_policy, catalog)
+    assert not _capture_ai_prompt(
+        event,
+        {},
+        AiInputRoutingService(messaging.feature_policy, catalog),
+    )
 
 
 @pytest.mark.parametrize("text", ["TD", "推送时间"])
@@ -525,7 +539,6 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
         service=messaging,
         activity_service=cast("ActivityService", object()),
         scheduler=cast("Scheduler", FakeScheduler()),
-        query_sessions=PortableQuerySessions(),
     )
     assert contribution.install is not None
     contribution.install(registry)
@@ -546,16 +559,39 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
                     "MessageReplyAction", state[matcher_rules.MESSAGE_ACTION_KEY]
                 )
                 matches.append(
-                    (action.messages[0], state.get(EXPLICIT_COMMAND_STATE_KEY, False))
+                    (action.messages, state.get(EXPLICIT_COMMAND_STATE_KEY, False))
                 )
         expected = (
-            [("exact", True)]
+            [(["exact"], True)]
             if enabled and configured and text == "示例"
-            else [("keyword", False)]
+            else [(["keyword"], False)]
             if enabled and keyword and "示例" in text
             else []
         )
         assert matches == expected
+
+
+@pytest.mark.parametrize("flow", [PUSH_SUBSCRIPTION_FLOW, PUSH_TIME_FLOW])
+def test_push_menu_reply_ownership_stays_local_to_its_session(flow: PromptFlow) -> None:
+    event = group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002)
+    session_id = event_conversation_session_id(flow.namespace, event)
+    check = flow.reply_check(session_id, "group")
+    for text in ("0", "1", "2"):
+        assert check(group_message_event(text, user_id=SUPERUSER_ID, group_id=2002))
+    assert not check(group_message_event("1", user_id=1003, group_id=2002))
+    assert not check(group_message_event("1", user_id=SUPERUSER_ID, group_id=2003))
+    assert not check(private_message_event("1", user_id=SUPERUSER_ID))
+    assert not check(group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002))
+    assert not check(group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002))
+    assert not check(
+        group_message_event(
+            "1", user_id=SUPERUSER_ID, group_id=2002, reply_sender_user_id=1
+        )
+    )
+    value_check = flow.reply_check(session_id, "group", selection=False)
+    assert value_check(
+        group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002)
+    )
 
 
 @pytest.mark.parametrize("exact_enabled", [True, False])
@@ -637,6 +673,31 @@ def test_reply_cooldown_keys_distinguish_same_named_action_families() -> None:
     assert _action_command_id("message.keyword")(None, state) == "message.keyword.same"
     with pytest.raises(KeyError):
         _action_command_id("message.keyword")(None, {})
+
+
+@pytest.mark.asyncio
+async def test_onebot_configured_reply_sends_messages_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[str] = []
+
+    async def record(_matcher: object, message: str, **_kwargs: object) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr(messaging_matchers, "send_matcher_message", record)
+    monkeypatch.setattr(messaging_matchers, "finish_matcher_message", record)
+    action = MessageCommandAction(
+        id="sequence",
+        commands=["连续回复"],
+        messages=["第一条", "第二条", "第三条"],
+    )
+    await messaging_matchers.handle_message_command(
+        cast("Matcher", object()),
+        private_message_event("连续回复", user_id=SUPERUSER_ID),
+        {matcher_rules.MESSAGE_ACTION_KEY: action},
+        references=OneBotReferenceResolver(group_aliases={}, user_aliases={}),
+    )
+    assert sent == action.messages
 
 
 def test_unified_command_action_uses_feature_policy_for_each_message_scope(
@@ -787,7 +848,10 @@ def test_scheduled_messages_build_typed_private_and_group_deliveries(
         )
     )
 
-    assert [delivery.message for delivery in sent] == ["私聊定时", "群定时"]
+    assert [delivery.messages for delivery in sent] == [
+        ("私聊定时",),
+        ("群定时",),
+    ]
     assert sent[0].private_conversations == (_private(2001),)
     assert sent[0].subscription_key == "private"
     assert sent[1].group_conversations == (_group(1001),)
@@ -812,7 +876,7 @@ def test_private_schedule_builds_typed_delivery_for_enabled_user(
         )
     )
 
-    assert sent[0].message == "私聊定时"
+    assert sent[0].messages == ("私聊定时",)
     assert sent[0].private_conversations == (_private(2001),)
 
 

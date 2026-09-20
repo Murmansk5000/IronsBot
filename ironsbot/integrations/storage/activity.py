@@ -80,10 +80,7 @@ class ActivitySentStore:
                 (activity_id, end_time, lead_hours, sent_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                [
-                    (*reminder_key(reminder), sent_at_text)
-                    for reminder in reminders
-                ],
+                [(*reminder_key(reminder), sent_at_text) for reminder in reminders],
             )
 
 

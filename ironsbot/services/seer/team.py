@@ -20,12 +20,12 @@ from ironsbot.services.seer.external_references import (
     SeerInfoReference,
     SeerInfoReferences,
 )
-from ironsbot.services.seer.ids import (
-    PLAYER_ID_ERROR_MESSAGE,
-    TEAM_ID_ERROR_MESSAGE,
-    is_valid_player_id,
-    is_valid_team_id,
+from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
+    PlayerDetailExtensionAction,
 )
+from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamQueryConfig
@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.team.resource import TeamResourceService
+
+from ironsbot.core.semantic_requests import ActionDefinition
 
 MAX_TEAM_QUERY_IDS = 3
 TEAM_BOSS_MAX_ENERGY = 200
@@ -77,47 +79,53 @@ class SeerTeamQueryService:
     def parse_team_ids(text: str) -> tuple[int, ...]:
         return tuple(dict.fromkeys(int(item) for item in re.findall(r"\d+", text)))
 
-    async def lookup_player_team(
-        self, player_id: int, actor: TeamQueryActor
-    ) -> PlayerTeamLookup:
-        if not is_valid_player_id(player_id):
-            return PlayerTeamLookup(error=PLAYER_ID_ERROR_MESSAGE)
+    async def query_player_team(self, player_id: int, actor: TeamQueryActor) -> str:
+        lookup = await self.lookup_player_team(player_id)
+        if lookup.error is not None:
+            return lookup.error
+        if lookup.team_id is None:
+            return f"米米号 {player_id} 当前未加入战队。"
+        return await self.query((lookup.team_id,), actor)
+
+    async def lookup_player_team(self, player_id: int) -> PlayerTeamLookup:
         try:
             game = self._headless.get_game()
             with game.operations.track(
                 "玩家所属战队查询",
                 f"米米号 {player_id}",
                 source="战队查询",
-                conversation=actor.conversation,
             ):
                 info = await asyncio.wait_for(
                     game.get_user_info(player_id),
                     timeout=self._config.timeout_seconds,
                 )
         except TimeoutError:
-            return PlayerTeamLookup(error=f"米米号 {player_id} 的所属战队查询超时。")
+            return PlayerTeamLookup(
+                error=f"米米号 {player_id} 的所属战队查询超时，请稍后再试。"
+            )
         except (NotLoggedInError, DisconnectedError) as error:
             await self._headless.mark_unavailable(str(error), source="战队查询")
             return PlayerTeamLookup(
-                error=format_player_query_error(player_id, error, self._error_message)
+                error=format_player_query_error(
+                    player_id,
+                    error,
+                    self._error_message,
+                )
             )
         except SocketRecvError as error:
             return PlayerTeamLookup(
-                error=format_player_query_error(player_id, error, self._error_message)
+                error=format_player_query_error(
+                    player_id,
+                    error,
+                    self._error_message,
+                )
             )
         await self._headless.mark_available(
-            source="战队查询", user_id=int(game.user_id)
+            source="战队查询",
+            user_id=int(game.user_id),
         )
         team_id = int(getattr(info, "team_id", 0) or 0)
-        return PlayerTeamLookup(team_id=team_id if team_id > 0 else None)
-
-    async def query_player_team(self, player_id: int, actor: TeamQueryActor) -> str:
-        lookup = await self.lookup_player_team(player_id, actor)
-        if lookup.error is not None:
-            return lookup.error
-        if lookup.team_id is None:
-            return f"米米号 {player_id} 当前未加入战队。"
-        return await self.query((lookup.team_id,), actor)
+        return PlayerTeamLookup(team_id=team_id or None)
 
     async def query(  # noqa: C901 - distinct query failures retain their messages
         self,
@@ -209,6 +217,33 @@ class SeerTeamQueryService:
             team_name=str(team_info.name or ""),
             can_manage=actor.can_manage,
         )
+
+
+def player_team_detail_action(
+    service: SeerTeamQueryService,
+) -> PlayerDetailExtensionAction:
+    async def query(request: PlayerDetailActionRequest) -> QueryReply:
+        return QueryReply(
+            text=await service.query_player_team(
+                request.player_id,
+                TeamQueryActor(
+                    request.actor,
+                    request.conversation,
+                    request.can_manage,
+                ),
+            )
+        )
+
+    return PlayerDetailExtensionAction(
+        id="player_team",
+        feature="seer_team",
+        label="战队",
+        aliases=("战队",),
+        command_help_id="seer.team.query",
+        query=query,
+        action=ActionDefinition("player_team", "玩家所属战队"),
+        work_unit="team",
+    )
 
 
 def _format_team_unavailable_message(team_id: int) -> str:

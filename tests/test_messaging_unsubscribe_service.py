@@ -45,10 +45,7 @@ class FakeSchedule:
 
 
 def test_schedule_key_requires_stable_id() -> None:
-    assert (
-        schedule_key(2, FakeSchedule(id="daily", feature="push"))
-        == "daily"
-    )
+    assert schedule_key(2, FakeSchedule(id="daily", feature="push")) == "daily"
     with pytest.raises(ValueError, match="requires a stable id"):
         schedule_key(2, FakeSchedule(id="", feature="push"))
 
@@ -93,7 +90,7 @@ def test_builtin_push_options_split_startup_admin_notices() -> None:
     assert labels["ai_chat_error_notice"] == "AI聊天异常通知"
     assert labels["bili_login_notice"] == "B站登录通知"
     assert labels["headless_seer_notice"] == "无头赛尔号通知"
-    assert labels["render_crash_notice"] == "精灵渲染异常通知"
+    assert labels["render_crash_notice"] == "精灵渲染崩溃通知"
     assert labels["red_packet_notice"] == "红包提醒"
     assert labels["admin_notice"] == "其他管理通知"
 
@@ -184,9 +181,7 @@ def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:
             conversation_kind="private",
         )
         if preference.conversation == _private(1001)
-    } == {
-        ("seer_activity_push", ACTIVITY_LEAD_HOURS_PREFERENCE): "24,3,1"
-    }
+    } == {("seer_activity_push", ACTIVITY_LEAD_HOURS_PREFERENCE): "24,3,1"}
     assert [
         preference.conversation
         for preference in store.all_time_preferences(
@@ -199,8 +194,7 @@ def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:
     store.clear_time_preference(_group(2001), "daily", CRON_TIME_PREFERENCE)
 
     assert (
-        store.get_time_preference(_group(2001), "daily", CRON_TIME_PREFERENCE)
-        is None
+        store.get_time_preference(_group(2001), "daily", CRON_TIME_PREFERENCE) is None
     )
 
 
@@ -303,9 +297,7 @@ def test_build_schedule_subscription_options_marks_subscription_state(
 
 
 def test_build_push_subscription_menu_shows_subscription_state() -> None:
-    assert "server_status_push" not in {
-        option.key for option in BUILTIN_PUSH_OPTIONS
-    }
+    assert "server_status_push" not in {option.key for option in BUILTIN_PUSH_OPTIONS}
 
     options = [
         BUILTIN_PUSH_OPTIONS[0],

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from sqlmodel import Session
 
+
 @dataclass(frozen=True, slots=True)
 class SkinImageResolution:
     skin_id: int

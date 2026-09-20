@@ -22,7 +22,6 @@ def test_all_reference_urls_are_available_by_default() -> None:
         SeerInfoReference.WEEKLY_PREVIEW: "/preview",
         SeerInfoReference.BILIBILI_HISTORY: "/bilibili",
         SeerInfoReference.PEAK_POOL: "/peak/pvpban",
-        SeerInfoReference.PEAK_MASTER_POOL: "/peak/pvpcostmode",
         SeerInfoReference.PEAK_VOTE: "/peak/pvpvote",
     }
     for reference, suffix in expected.items():
@@ -55,15 +54,9 @@ def test_peak_references_follow_mode_and_category(
 def test_category_toggle_hides_all_matching_peak_links() -> None:
     references = SeerInfoReferences(ExternalReferencesConfig(peak_suit_rank=False))
 
-    assert not references.url_for(
-        peak_rank_reference(peak_type=1, category="suit")
-    )
-    assert not references.url_for(
-        peak_rank_reference(peak_type=2, category="suit")
-    )
-    assert references.url_for(
-        peak_rank_reference(peak_type=3, category="title")
-    )
+    assert not references.url_for(peak_rank_reference(peak_type=1, category="suit"))
+    assert not references.url_for(peak_rank_reference(peak_type=2, category="suit"))
+    assert references.url_for(peak_rank_reference(peak_type=3, category="title"))
 
 
 def test_append_adds_reference_only_when_enabled() -> None:
@@ -81,8 +74,9 @@ def test_reference_config_rejects_unknown_fields() -> None:
         ExternalReferencesConfig.model_validate({"unknown": True})
 
 
-def test_settings_rejects_unknown_reference_keys_even_when_other_extras_ignore(
-) -> None:
+def test_settings_rejects_unknown_reference_keys_even_when_other_extras_ignore() -> (
+    None
+):
     with pytest.raises(ValidationError, match="external_references"):
         Settings.model_validate(
             {"seer": {"external_references": {"unknown": True}}},

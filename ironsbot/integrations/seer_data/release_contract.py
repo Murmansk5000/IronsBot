@@ -12,14 +12,14 @@ from sqlalchemy import text
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection, Engine
 
-SEERAPI_SCHEMA_CONTRACT_VERSION = "1"
-_SCHEMA_CONTRACT_KEY = "ironsbot_schema_contract_version"
-_SCHEMA_TABLES_KEY = "ironsbot_schema_tables"
-_SCHEMA_FINGERPRINT_KEY = "ironsbot_schema_fingerprint"
+SEERAPI_SCHEMA_CONTRACT_VERSION = "2"
+_SCHEMA_CONTRACT_KEY = "seerapi_schema_contract_version"
+_SCHEMA_TABLES_KEY = "seerapi_schema_tables"
+_SCHEMA_FINGERPRINT_KEY = "seerapi_schema_fingerprint"
 _REQUIRED_TABLES: frozenset[str] = frozenset(
     (
         "api_metadata",
-        "ironsbot_metadata",
+        "seerapi_metadata",
         "item",
         "mintmark",
         "peak_cost_pool",
@@ -136,7 +136,7 @@ def validate_published_seerapi_release(engine: Engine) -> None:
         metadata = dict(
             connection.execute(
                 text(
-                    "SELECT key, value FROM ironsbot_metadata "
+                    "SELECT key, value FROM seerapi_metadata "
                     "WHERE key IN (:version_key, :tables_key, :fingerprint_key)"
                 ),
                 {
@@ -144,7 +144,9 @@ def validate_published_seerapi_release(engine: Engine) -> None:
                     "tables_key": _SCHEMA_TABLES_KEY,
                     "fingerprint_key": _SCHEMA_FINGERPRINT_KEY,
                 },
-            ).tuples().all()
+            )
+            .tuples()
+            .all()
         )
 
     version = metadata.get(_SCHEMA_CONTRACT_KEY)

@@ -28,9 +28,11 @@ def test_special_skill_uses_shop_item_when_upstream_item_is_missing(
     )
     monkeypatch.setattr(
         "ironsbot.integrations.seer_data.pet_info_repository._load_item_exchange_prices",
-        lambda _session, item_ids: {SPECIAL_SKILL_ITEM_ID: (price,)}
-        if set(item_ids) == {SPECIAL_SKILL_ITEM_ID}
-        else {},
+        lambda _session, item_ids: (
+            {SPECIAL_SKILL_ITEM_ID: (price,)}
+            if set(item_ids) == {SPECIAL_SKILL_ITEM_ID}
+            else {}
+        ),
     )
 
     items = _load_activation_items(cast("Any", object()), [link])

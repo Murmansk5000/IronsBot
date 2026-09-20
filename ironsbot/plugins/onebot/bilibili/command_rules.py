@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
@@ -14,6 +15,11 @@ from ironsbot.services.bilibili.commands import (
     DYNAMIC_MENU_COMMANDS,
     is_dynamic_update_text,
     parse_bili_push_mode_command,
+)
+
+from .account_commands import (
+    BILI_PUSH_MODE_ACCOUNT_KEY,
+    BILI_PUSH_MODE_RAW_KEY,
 )
 
 if TYPE_CHECKING:
@@ -60,7 +66,15 @@ def is_bili_account_command(
 def is_bili_push_mode_command(
     features: FeatureService,
     event: MessageEvent,
+    state: T_State,
 ) -> bool:
     if not event_is_feature_allowed(features, event, "bili_push"):
         return False
-    return parse_bili_push_mode_command(event.get_plaintext()) is not None
+    parsed = parse_bili_push_mode_command(event.get_plaintext())
+    if parsed is None:
+        return False
+
+    account, raw_mode = parsed
+    state[BILI_PUSH_MODE_ACCOUNT_KEY] = account
+    state[BILI_PUSH_MODE_RAW_KEY] = raw_mode
+    return True

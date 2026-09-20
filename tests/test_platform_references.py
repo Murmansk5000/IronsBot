@@ -5,10 +5,11 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.settings import QQOfficialAccountConfig, Settings
 from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import (
-    PlatformReferenceError,
+    PlatformReferenceResolver,
     build_platform_reference_resolver,
 )
 from ironsbot.core.bilibili import BiliConfig
@@ -21,144 +22,161 @@ from ironsbot.services.bilibili.target_models import BiliConfiguredTargets
 from ironsbot.services.bilibili.targets import BiliTargetService
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ironsbot.services.bilibili.preferences import BiliPushPreferenceStore
-    from ironsbot.services.messaging.subscriptions import (
-        PushSubscriptionRepository,
-    )
+    from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
+
+EXPECTED_CROSS_PLATFORM_ENDPOINTS = 2
 
 
-def _account(
-    app_id: str,
+def _account(app_id: str) -> QQOfficialAccountConfig:
+    return QQOfficialAccountConfig(app_id=app_id, secret="secret")
+
+
+def _resolver(
     *,
-    group_aliases: dict[str, str] | None = None,
-    user_aliases: dict[str, str] | None = None,
-) -> QQOfficialAccountConfig:
-    return QQOfficialAccountConfig(
-        enabled=True,
-        app_id=app_id,
-        secret="secret",
-        group_aliases=group_aliases or {},
-        user_aliases=user_aliases or {},
+    groups: Mapping[str, object] | None = None,
+    users: Mapping[str, object] | None = None,
+    accounts: Mapping[str, QQOfficialAccountConfig] | None = None,
+) -> PlatformReferenceResolver:
+    identities = IdentityConfig.model_validate(
+        {"groups": groups or {}, "users": users or {}}
+    )
+    onebot = OneBotReferenceResolver(
+        {
+            alias: target.qq
+            for alias, target in identities.groups.items()
+            if target.qq is not None
+        },
+        {
+            alias: target.qq
+            for alias, target in identities.users.items()
+            if target.qq is not None
+        },
+    )
+    return build_platform_reference_resolver(
+        onebot,
+        identities,
+        accounts or {"main": _account("app-a")},
     )
 
 
-def test_platform_references_resolve_official_aliases_with_account_scope() -> None:
-    resolver = build_platform_reference_resolver(
-        OneBotReferenceResolver({}, {}),
-        (
-            _account(
-                "app-a",
-                group_aliases={"official_group": "group-openid"},
-                user_aliases={"official_user": "user-openid"},
-            ),
+def test_platform_references_merge_cross_platform_group_identity() -> None:
+    resolver = _resolver(
+        groups={"same": {"qq": 123456, "official": {"main": "group-openid"}}}
+    )
+
+    assert resolver.group_conversation_refs("same", location="test.group") == (
+        ConversationRef(Platform.ONEBOT, "group", "123456"),
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "group-openid",
+            account_id="app-a",
         ),
     )
 
-    group = resolver.group_conversation_ref(
-        "official_group",
-        location="test.group",
-    )
-    private = resolver.private_conversation_ref(
-        "official_user",
-        location="test.user",
-    )
-    actor = resolver.user_actor_ref(
-        "official_user",
-        location="test.user",
+
+def test_platform_references_merge_cross_platform_user_identity() -> None:
+    resolver = _resolver(
+        users={"same": {"qq": 234567, "official": {"main": "user-openid"}}}
     )
 
-    assert group.platform is Platform.QQ_OFFICIAL
-    assert group.kind == "group"
-    assert group.id == "group-openid"
-    assert group.account_id == "app-a"
-    assert private.platform is Platform.QQ_OFFICIAL
-    assert private.kind == "private"
-    assert private.id == "user-openid"
-    assert private.account_id == "app-a"
-    assert actor == ActorRef(
-        Platform.QQ_OFFICIAL,
-        "user-openid",
-        account_id="app-a",
+    assert resolver.actor_refs("same", location="test.user") == (
+        ActorRef(Platform.ONEBOT, "234567"),
+        ActorRef(Platform.QQ_OFFICIAL, "user-openid", account_id="app-a"),
     )
 
 
-@pytest.mark.parametrize("kind", ["group", "user"])
-def test_platform_references_reject_cross_platform_alias_collisions(
-    kind: str,
-) -> None:
-    onebot = OneBotReferenceResolver(
-        {"same": 123456} if kind == "group" else {},
-        {"same": 234567} if kind == "user" else {},
-    )
-    account = _account(
-        "app-a",
-        group_aliases={"same": "group-openid"} if kind == "group" else {},
-        user_aliases={"same": "user-openid"} if kind == "user" else {},
+def test_platform_references_merge_identity_across_official_accounts() -> None:
+    resolver = _resolver(
+        groups={"same": {"official": {"first": "group-a", "second": "group-b"}}},
+        accounts={"first": _account("app-a"), "second": _account("app-b")},
     )
 
-    with pytest.raises(
-        PlatformReferenceError,
-        match=f"configured {kind} alias is not globally unique: same",
-    ):
-        build_platform_reference_resolver(onebot, (account,))
+    assert resolver.group_conversation_refs("same", location="test.group") == (
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "group-a",
+            account_id="app-a",
+        ),
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "group-b",
+            account_id="app-b",
+        ),
+    )
 
 
-def test_platform_references_reject_alias_reused_by_official_accounts() -> None:
-    with pytest.raises(PlatformReferenceError, match="not globally unique"):
-        build_platform_reference_resolver(
-            OneBotReferenceResolver({}, {}),
-            (
-                _account(
-                    "app-a",
-                    group_aliases={"same": "group-a"},
-                ),
-                _account(
-                    "app-b",
-                    group_aliases={"same": "group-b"},
-                ),
-            ),
+@pytest.mark.parametrize("kind", ["groups", "users"])
+def test_identities_reject_duplicate_qq_targets(kind: str) -> None:
+    with pytest.raises(ValueError, match="share QQ ID"):
+        IdentityConfig.model_validate(
+            {kind: {"first": {"qq": 123456}, "second": {"qq": 123456}}}
         )
 
 
-def test_bilibili_targets_compile_official_aliases() -> None:
+@pytest.mark.parametrize("kind", ["groups", "users"])
+def test_identities_reject_duplicate_official_targets(kind: str) -> None:
+    with pytest.raises(ValueError, match="share an official endpoint"):
+        IdentityConfig.model_validate(
+            {
+                kind: {
+                    "first": {"official": {"main": "same-openid"}},
+                    "second": {"official": {"main": "same-openid"}},
+                }
+            }
+        )
+
+
+def test_bilibili_targets_compile_every_identity_endpoint() -> None:
     config = BiliConfig.model_validate(
         {
             "accounts": {"example_account": {"uid": 912345678}},
             "push": {
-                "groups": {
-                    "official_group": {"accounts": ["example_account"]}
-                },
-                "users": {
-                    "official_user": {"accounts": ["example_account"]}
-                },
+                "groups": {"same_group": {"accounts": ["example_account"]}},
+                "users": {"same_user": {"accounts": ["example_account"]}},
             },
         }
     )
-    resolver = build_platform_reference_resolver(
-        OneBotReferenceResolver({}, {}),
-        (
-            _account(
-                "app-a",
-                group_aliases={"official_group": "group-openid"},
-                user_aliases={"official_user": "user-openid"},
-            ),
-        ),
+    resolver = _resolver(
+        groups={
+            "same_group": {
+                "qq": 123456,
+                "official": {"main": "group-openid"},
+            }
+        },
+        users={
+            "same_user": {
+                "qq": 234567,
+                "official": {"main": "user-openid"},
+            }
+        },
     )
 
     targets = build_bili_configured_targets(config, resolver)
 
-    group = next(iter(targets.group_rules))
-    private = next(iter(targets.private_rules))
-    assert (group.platform, group.account_id, group.id) == (
-        Platform.QQ_OFFICIAL,
-        "app-a",
-        "group-openid",
-    )
-    assert (private.platform, private.account_id, private.id) == (
-        Platform.QQ_OFFICIAL,
-        "app-a",
-        "user-openid",
-    )
+    assert set(targets.group_rules) == {
+        ConversationRef(Platform.ONEBOT, "group", "123456"),
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "group-openid",
+            account_id="app-a",
+        ),
+    }
+    assert set(targets.private_rules) == {
+        ConversationRef(Platform.ONEBOT, "private", "234567"),
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            "user-openid",
+            account_id="app-a",
+        ),
+    }
 
 
 def test_bilibili_private_history_permission_keeps_official_account_scope() -> None:
@@ -196,69 +214,62 @@ def test_bilibili_private_history_permission_keeps_official_account_scope() -> N
     )
 
 
-def test_settings_validate_official_bilibili_alias_target() -> None:
+def test_settings_accept_shared_identity_in_feature_policy() -> None:
     settings = Settings.model_validate(
         {
-            "bot": {
-                "qq_official": {
-                    "enabled": True,
-                    "accounts": {
-                        "example_bot": {
-                            "enabled": True,
-                            "app_id": "app-a",
-                            "secret": "secret",
-                            "group_aliases": {
-                                "official_group": "group-openid"
-                            },
-                        }
-                    },
-                }
-            },
-            "bilibili": {
-                "accounts": {"example_account": {"uid": 912345678}},
-                "push": {
-                    "groups": {
-                        "official_group": {
-                            "accounts": ["example_account"]
-                        }
+            "identities": {
+                "groups": {
+                    "same": {
+                        "qq": 123456,
+                        "official": {"example_bot": "group-openid"},
                     }
                 },
+                "users": {
+                    "owner": {
+                        "qq": 234567,
+                        "official": {"example_bot": "user-openid"},
+                    }
+                },
+            },
+            "features": {
+                "group_policy": {"same": ["seer_rank"]},
+                "user_policy": {"owner": ["ai_chat"]},
+            },
+            "bot": {
+                "qq_official": {
+                    "accounts": {
+                        "example_bot": {
+                            "app_id": "app-a",
+                            "secret": "secret",
+                        }
+                    }
+                }
             },
         }
     )
 
-    target = next(
-        iter(
-            build_bili_configured_targets(
-                settings.bilibili,
-                settings.platform_references,
-            ).group_rules
+    assert (
+        len(
+            settings.platform_references.group_conversation_refs(
+                "same",
+                location="test.group",
+            )
         )
-    )
-    assert (target.platform, target.account_id, target.id) == (
-        Platform.QQ_OFFICIAL,
-        "app-a",
-        "group-openid",
+        == EXPECTED_CROSS_PLATFORM_ENDPOINTS
     )
 
 
-def test_settings_reject_cross_platform_target_alias_collision() -> None:
-    with pytest.raises(ValueError, match="group alias is not globally unique"):
+def test_settings_reject_identity_for_undeclared_official_account() -> None:
+    with pytest.raises(ValueError, match="undeclared official accounts: missing"):
         Settings.model_validate(
             {
-                "features": {"group_aliases": {"same": 123456}},
-                "bot": {
-                    "qq_official": {
-                        "enabled": True,
-                        "accounts": {
-                            "example_bot": {
-                                "enabled": True,
-                                "app_id": "app-a",
-                                "secret": "secret",
-                                "group_aliases": {"same": "group-openid"},
-                            }
-                        },
-                    }
-                },
+                "identities": {
+                    "groups": {"same": {"official": {"missing": "group-openid"}}}
+                }
             }
         )
+
+
+def test_removed_alias_tables_are_strictly_rejected() -> None:
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        Settings.model_validate({"features": {"group_aliases": {"old": 123456}}})

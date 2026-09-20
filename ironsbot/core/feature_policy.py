@@ -37,6 +37,11 @@ class FeatureService:
     account_default_features: Mapping[tuple[Platform, str], frozenset[str]] = field(
         default_factory=dict
     )
+    linked_onebot_ids: dict[tuple[str, str], str] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
@@ -59,18 +64,62 @@ class FeatureService:
         )
 
     def is_actor_superuser(self, actor: ActorRef) -> bool:
-        return actor in self.superusers
+        return (
+            actor in self.superusers
+            or any(
+                _same_official_principal(actor, configured)
+                for configured in self.superusers
+            )
+            or self._linked_onebot_actor(actor) in self.superusers
+        )
 
     def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
-        return feature in self.actor_features.get(actor, frozenset())
+        if feature in self.actor_features.get(actor, frozenset()):
+            return True
+        linked = self._linked_onebot_actor(actor)
+        if linked is not None and feature in self.actor_features.get(
+            linked,
+            frozenset(),
+        ):
+            return True
+        return any(
+            feature in features and _same_official_principal(actor, configured)
+            for configured, features in self.actor_features.items()
+        )
+
+    def register_identity_link(
+        self,
+        *,
+        official_app_id: str,
+        official_openid: str,
+        onebot_qq_id: str,
+    ) -> None:
+        self.linked_onebot_ids[(official_app_id, official_openid)] = onebot_qq_id
+
+    def unregister_identity_link(
+        self,
+        *,
+        official_app_id: str,
+        official_openid: str,
+    ) -> None:
+        self.linked_onebot_ids.pop((official_app_id, official_openid), None)
+
+    def canonical_actor(self, actor: ActorRef) -> ActorRef:
+        """Return the stable OneBot principal for a linked official identity."""
+
+        return self._linked_onebot_actor(actor) or actor
+
+    def _linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
+        if actor.platform is not Platform.QQ_OFFICIAL or actor.account_id is None:
+            return None
+        qq_id = self.linked_onebot_ids.get((actor.account_id, actor.id))
+        return None if qq_id is None else ActorRef(Platform.ONEBOT, qq_id)
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
         return (
             self.actor_has_feature(actor, feature)
             or feature in self._default_features(actor.platform, actor.account_id)
-            or (
-                self.superuser_bypass and self.is_actor_superuser(actor)
-            )
+            or (self.superuser_bypass and self.is_actor_superuser(actor))
         )
 
     def conversation_has_feature(
@@ -78,12 +127,12 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(
-            conversation,
-            self._default_features(
+        return feature in self.group_features.get(conversation, frozenset()) or (
+            feature
+            in self._default_features(
                 conversation.platform,
                 conversation.account_id,
-            ),
+            )
         )
 
     def _default_features(
@@ -92,9 +141,7 @@ class FeatureService:
         account_id: str | None,
     ) -> frozenset[str]:
         if account_id is not None:
-            account_features = self.account_default_features.get(
-                (platform, account_id)
-            )
+            account_features = self.account_default_features.get((platform, account_id))
             if account_features is not None:
                 return account_features
         return self.platform_default_features.get(platform, frozenset())
@@ -108,8 +155,10 @@ class FeatureService:
         if not is_supported_message_actor(actor, conversation):
             return False
         if conversation.kind == "group":
-            return self.conversation_has_feature(conversation, feature) or (
-                self.superuser_bypass and self.is_actor_superuser(actor)
+            return (
+                self.conversation_has_feature(conversation, feature)
+                or self.actor_has_feature(actor, feature)
+                or (self.superuser_bypass and self.is_actor_superuser(actor))
             )
         if conversation.kind == "private":
             return self.is_actor_feature_allowed(actor, feature)
@@ -143,6 +192,13 @@ class FeatureService:
             if feature in features
         ]
 
+    def private_actors_for_feature(self, feature: str) -> list[ActorRef]:
+        """Return feature actors that are valid direct-message destinations."""
+
+        return [
+            actor for actor in self.actors_for_feature(feature) if actor.kind == "user"
+        ]
+
     def superuser_actors(self) -> list[ActorRef]:
         return sorted(
             self.superusers,
@@ -159,11 +215,20 @@ class FeatureService:
 
         return [actor for actor in self.superuser_actors() if actor.kind == "user"]
 
-    def actors_with_superusers(self, feature: str) -> list[ActorRef]:
+    def private_actors_with_superusers(self, feature: str) -> list[ActorRef]:
         """Return private feature actors and private superusers once each."""
 
-        actors = self.actors_for_feature(feature)
+        actors = self.private_actors_for_feature(feature)
         actors.extend(
             actor for actor in self.private_superuser_actors() if actor not in actors
         )
         return actors
+
+
+def _same_official_principal(first: ActorRef, second: ActorRef) -> bool:
+    return (
+        first.platform is Platform.QQ_OFFICIAL
+        and second.platform is Platform.QQ_OFFICIAL
+        and first.account_id == second.account_id
+        and first.id == second.id
+    )

@@ -85,6 +85,7 @@ def _service(data: FakeData) -> MintmarkQueryService:
         merge_connected=True,
     )
 
+
 def test_mintmark_query_config_merges_connected_by_default() -> None:
     assert MintmarkQueryConfig().merge_connected is True
 
@@ -253,15 +254,11 @@ def test_connected_mintmarks_remain_separate_when_merge_disabled() -> None:
     assert format_mintmark_choice_description(
         views[0],
         merge_connected=False,
-    ).startswith(
-        "45001，关联41606"
-    )
+    ).startswith("45001，关联41606")
     assert format_mintmark_choice_description(
         views[1],
         merge_connected=False,
-    ).startswith(
-        "41606，关联45001"
-    )
+    ).startswith("41606，关联45001")
 
 
 @pytest.mark.asyncio

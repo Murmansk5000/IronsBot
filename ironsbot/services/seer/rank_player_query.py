@@ -4,7 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.services.seer.local_rank_formatting import format_metric_display
+from ironsbot.services.seer.local_rank_formatting import (
+    format_metric_display,
+    format_peak_rating_score,
+)
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_formatting_common import (
     format_player_data_time,
@@ -17,7 +20,8 @@ from ironsbot.services.seer.rank_list_models import LOCAL_RANKS, RankPlayerComma
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.sequ_extra import fetch_unity_part_one, fetch_unity_peak
 
-_PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
+_PACKET_PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
+_SEASON_RANK_KEYS = _PACKET_PEAK_KEYS | {"大师段位"}
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankService
@@ -65,7 +69,7 @@ async def fetch_rank_player_result(
         anchor_only=anchor_only,
     )
     if (
-        command.rank_key in _PEAK_KEYS
+        command.rank_key in _SEASON_RANK_KEYS
         and result.rank is None
         and result.queried
         and not result.cost.restricted_miss
@@ -82,29 +86,36 @@ async def fetch_rank_player_result(
 
     score = (
         result.score
-        if command.rank_key in _PEAK_KEYS
+        if command.rank_key in _SEASON_RANK_KEYS
         else result.score
         if result.score is not None
         else target.value
     )
     if (
-        command.rank_key not in _PEAK_KEYS
+        command.rank_key not in _SEASON_RANK_KEYS
         and result.score is None
         and score is not None
     ):
         result.score = score
 
-    metric_key = LOCAL_RANKS[command.rank_key].metric_key
-    display = _format_score(metric_key, score, spec.unit)
-    local_summary = await _update_sample_metric(
-        local_rank,
-        player_id=command.player_id,
-        nick=str(user_info.nick),
-        metric_key=metric_key,
-        score=score,
-        display=display,
-        season_sub_key=spec.sub_key if command.rank_key in _PEAK_KEYS else None,
-        clear_when_missing=command.rank_key in _PEAK_KEYS,
+    local_spec = LOCAL_RANKS.get(command.rank_key)
+    metric_key = "peak_master" if local_spec is None else local_spec.metric_key
+    display = _format_score(metric_key, score, spec.unit, spec.score_format)
+    local_summary = (
+        LocalRankSummary()
+        if local_spec is None
+        else await _update_sample_metric(
+            local_rank,
+            player_id=command.player_id,
+            nick=str(user_info.nick),
+            metric_key=metric_key,
+            score=score,
+            display=display,
+            season_sub_key=(
+                spec.sub_key if command.rank_key in _SEASON_RANK_KEYS else None
+            ),
+            clear_when_missing=command.rank_key in _SEASON_RANK_KEYS,
+        )
     )
     metric_text = join_metric_parts(
         display or "暂无数据",
@@ -160,7 +171,7 @@ async def _fetch_player_score(
         info = await fetch_unity_part_one(game, command.player_id)
         value = info.pet_kind_num if rank_key == "精灵图鉴" else info.skin_num
         return RankPlayerScore(known=True, value=int(value) or None)
-    if rank_key in _PEAK_KEYS:
+    if rank_key in _PACKET_PEAK_KEYS:
         info = await fetch_unity_peak(game, command.player_id)
         scores = calculate_player_peak_scores(info)
         values = {
@@ -227,11 +238,9 @@ def fetch_cached_rank_player_result(
     if cached is None:
         return None
     cached_item, result = cached
-    display = _format_score(
-        LOCAL_RANKS[command.rank_key].metric_key,
-        result.score,
-        spec.unit,
-    )
+    local_spec = LOCAL_RANKS.get(command.rank_key)
+    metric_key = "peak_master" if local_spec is None else local_spec.metric_key
+    display = _format_score(metric_key, result.score, spec.unit, spec.score_format)
     metric_text = join_metric_parts(
         display or "暂无数据",
         format_rank_position_text(result),
@@ -252,9 +261,17 @@ def fetch_cached_rank_player_result(
         result,
     )
 
-def _format_score(metric_key: str, score: int | None, unit: str) -> str:
+
+def _format_score(
+    metric_key: str,
+    score: int | None,
+    unit: str,
+    score_format: str = "",
+) -> str:
     if score is None:
         return ""
+    if score_format == "peak_rating":
+        return format_peak_rating_score(score)
     if metric_key in {"peak_standard", "peak_wild", "peak_expert"}:
         return format_metric_display(metric_key, score)
     return f"{score}{unit}"

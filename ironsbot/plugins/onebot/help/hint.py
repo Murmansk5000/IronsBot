@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import (
     ActionFailed,
     Bot,
+    GroupMessageEvent,
     MessageSegment,
     NoticeEvent,
     PokeNotifyEvent,
@@ -20,10 +21,15 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.help_hint import (
     OneBotHelpHintPort,
     is_onebot_poke_at_bot,
 )
+from ironsbot.integrations.onebot.matchers import CommandPolicy
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import bot_mention
 
 __plugin_meta__ = PluginMetadata(
     name="戳一戳提示",
@@ -36,6 +42,8 @@ __plugin_meta__ = PluginMetadata(
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
+    from ironsbot.services.ai.input_routing import AiInputRoutingService
+    from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 
 
 async def _is_poke_at_bot(event: NoticeEvent) -> bool:
@@ -59,7 +67,23 @@ async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
     return str(role) if role is not None else None
 
 
-def install(registry: MatcherFactory, service: OneBotHelpHintPort) -> None:
+def _should_offer_non_ai_group_hint(
+    input_routing: AiInputRoutingService,
+    event: GroupMessageEvent,
+) -> bool:
+    context = message_input_context(event)
+    return input_routing.decide(
+        context,
+        command_context(event),
+    ).offer_help_hint
+
+
+def install(
+    registry: MatcherFactory,
+    service: OneBotHelpHintPort,
+    input_routing: AiInputRoutingService,
+    addressed_input_hints: AddressedInputHintService,
+) -> None:
     async def handle_poke_help(
         matcher: Matcher,
         bot: Bot,
@@ -94,18 +118,55 @@ def install(registry: MatcherFactory, service: OneBotHelpHintPort) -> None:
     )
     matcher.append_handler(handle_poke_help)
 
+    async def handle_addressed_input_hint(
+        matcher: Matcher,
+        event: GroupMessageEvent,
+    ) -> None:
+        context = message_input_context(event)
+        if not addressed_input_hints.admit(context):
+            await matcher.finish()
+        await finish_event_reply(matcher, event, DIRECT_COMMAND_HELP_HINT_TEXT)
 
-def plugin_contribution(*, service: OneBotHelpHintPort) -> PluginContribution:
+    addressed_input_matcher = registry.on_message(
+        policy=CommandPolicy.exempt("unclaimed direct mention hint"),
+        rule=bot_mention()
+        & Rule(
+            lambda event: _should_offer_non_ai_group_hint(
+                input_routing,
+                event,
+            )
+        ),
+        priority=registry.priority("ai_chat"),
+        block=True,
+    )
+    addressed_input_matcher.append_handler(handle_addressed_input_hint)
+
+
+def plugin_contribution(
+    *,
+    service: OneBotHelpHintPort,
+    input_routing: AiInputRoutingService,
+    addressed_input_hints: AddressedInputHintService,
+) -> PluginContribution:
     """Declare the passive poke-hint matcher and its service dependency."""
 
     return PluginContribution(
         id="help_hint",
-        install=partial(install, service=service),
+        install=partial(
+            install,
+            service=service,
+            input_routing=input_routing,
+            addressed_input_hints=addressed_input_hints,
+        ),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(service=context.resources.help_hint),
+        plugin_contribution(
+            service=context.resources.help_hint,
+            input_routing=context.resources.ai_input_routing,
+            addressed_input_hints=context.resources.addressed_input_hints,
+        ),
     )

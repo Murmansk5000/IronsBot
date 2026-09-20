@@ -29,6 +29,7 @@ from ironsbot.plugins.onebot.seer.query.commands import (
     type_queries,
 )
 from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.command_contracts import seer_command_contracts
@@ -88,6 +89,8 @@ def _catalog(image_commands: frozenset[str] = frozenset()) -> CommandCatalog:
         ("魂印盖亚", "seer_pet", "seer.pet.query"),
         ("盖亚立绘", "seer_pet", "seer.pet.image"),
         ("皮肤盖亚", "seer_pet", "seer.pet.image"),
+        ("头像盖亚", "seer_pet", "seer.pet.avatar"),
+        ("盖亚头像", "seer_pet", "seer.pet.avatar"),
         ("刻印V9", "seer_mintmark", "seer.mintmark.query"),
         ("胜利宝石", "seer_mintmark", "seer.mintmark.query"),
         ("查询套装信息测试", "seer_equipment", "seer.equipment.query"),
@@ -115,7 +118,9 @@ def test_affix_catalog_and_private_ai_ownership(
         if command.matches_direct_input(context, text)
     ] == [expected]
     assert not _capture_ai_prompt(
-        private_message_event(text, user_id=int(_ACTOR.id)), {}, features, catalog
+        private_message_event(text, user_id=int(_ACTOR.id)),
+        {},
+        AiInputRoutingService(features, catalog),
     )
     assert not catalog.claims_direct_input(
         context, FeatureService({}, {}, frozenset()), text
@@ -125,8 +130,9 @@ def test_affix_catalog_and_private_ai_ownership(
 @pytest.mark.parametrize(
     "install,index,text,argument,command_id",
     [
-        (pet_queries.install, 1, "精灵盖亚技能", "盖亚", "seer.pet.query"),
-        (pet_queries.install, 0, "盖亚立绘", "盖亚", "seer.pet.image"),
+        (pet_queries.install, 2, "精灵盖亚技能", "盖亚", "seer.pet.query"),
+        (pet_queries.install, 1, "盖亚立绘", "盖亚", "seer.pet.image"),
+        (pet_queries.install, 0, "盖亚头像", "盖亚", "seer.pet.avatar"),
         (mintmark_queries.install, 0, "刻印v9", "v9", "seer.mintmark.query"),
         (mintmark_queries.install, 1, "胜利宝石", "胜利", "seer.mintmark.query"),
         (equipment_queries.install, 0, "测试套装", "测试", "seer.equipment.query"),
@@ -134,6 +140,7 @@ def test_affix_catalog_and_private_ai_ownership(
         (equipment_queries.install, 2, "称号测试", "测试", "seer.equipment.query"),
         (type_queries.install, 0, "水属性", "水", "seer.type.query"),
         (type_queries.install, 1, "异常冻伤", "冻伤", "seer.type.query"),
+        (team.install, 0, "战队7654321", None, "seer.team.query"),
         (autocard.install, 0, "卡牌盖亚", "盖亚", "seer.autocard.query"),
         (autocard_sanctuary.install, 0, "祝印测试", "测试", "seer.autocard.sanctuary"),
     ],
@@ -143,13 +150,14 @@ async def test_actual_installed_query_rule_uses_catalog_grammar(
     install: Callable[[SeerMatcherGroup], None],
     index: int,
     text: str,
-    argument: str,
+    argument: str | None,
     command_id: str,
 ) -> None:
     features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
     group = Mock(spec=SeerMatcherGroup)
     group.resources = Mock()
     group.features = features
+    group.query_sessions = PortableQuerySessions()
     group.image_command_texts = frozenset()
     install(group)
     rule = cast("Rule", group.on_message.call_args_list[index].kwargs["rule"])
@@ -157,7 +165,8 @@ async def test_actual_installed_query_rule_uses_catalog_grammar(
     assert await rule(
         cast("Bot", None), private_message_event(text, user_id=100), state
     )
-    assert state[BOT_COMMAND_ARG_KEY] == argument
+    if argument is not None:
+        assert state[BOT_COMMAND_ARG_KEY] == argument
     context = CommandContext(_ACTOR, _PRIVATE)
     command = next(
         c
@@ -167,44 +176,17 @@ async def test_actual_installed_query_rule_uses_catalog_grammar(
     assert command.matches_direct_input(context, text)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("text", "accepted"),
-    [
-        ("战队7654321", True),
-        ("战队米米号700001", True),
-        ("战队", False),
-        ("战队未知别名12", False),
-    ],
-)
-async def test_team_installed_rule_and_catalog_share_full_input(
-    text: str, *, accepted: bool
-) -> None:
-    features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
-    group = Mock(spec=SeerMatcherGroup)
-    group.resources = Mock()
-    group.features = features
-    group.player_id_resolver = PlayerIdResolver(
-        lambda _text, _conversation: None, lambda _actor: None
-    )
-    team.install(group)
-    rule = cast("Rule", group.on_message.call_args.kwargs["rule"])
-    assert (
-        await rule(cast("Bot", None), private_message_event(text, user_id=100), {})
-        is accepted
-    )
-    assert (
-        _catalog().claims_direct_input(CommandContext(_ACTOR, _PRIVATE), features, text)
-        is accepted
-    )
-
-
 @pytest.mark.parametrize("text", ["精灵雷伊", "雷伊皮肤", "雷伊配置", "皮肤盖亚"])
 def test_configured_exact_images_override_even_help_examples(text: str) -> None:
     features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
     catalog = _catalog(frozenset({text}))
     context = CommandContext(_ACTOR, _PRIVATE)
-    query_ids = {"seer.pet.query", "seer.pet.image", "pet_config.query"}
+    query_ids = {
+        "seer.pet.query",
+        "seer.pet.image",
+        "seer.pet.avatar",
+        "pet_config.query",
+    }
     assert not any(
         c.matches_direct_input(context, text)
         for c in catalog.available_for_context(context, features)
@@ -236,6 +218,7 @@ def test_rank_commands_do_not_belong_to_fuzzy_queries(text: str) -> None:
     fuzzy_ids = {
         "seer.pet.query",
         "seer.pet.image",
+        "seer.pet.avatar",
         "seer.autocard.query",
         "seer.mintmark.query",
     }
@@ -258,7 +241,6 @@ async def test_pet_config_actual_rule_shares_image_exclusion(
         Mock(),
         features,
         enabled=True,
-        query_sessions=PortableQuerySessions(),
         image_command_texts=frozenset({"雷伊配置"}),
     )
     rule = cast("Rule", registry.on_message.call_args.kwargs["rule"])

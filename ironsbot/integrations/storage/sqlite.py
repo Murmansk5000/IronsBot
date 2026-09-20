@@ -147,10 +147,13 @@ class SqliteDatabase:
         if self.migration_namespace is None:
             return int(connection.execute("PRAGMA user_version").fetchone()[0])
 
-        if connection.execute(
-            "SELECT 1 FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'ironsbot_schema_migrations'"
-        ).fetchone() is None:
+        if (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'ironsbot_schema_migrations'"
+            ).fetchone()
+            is None
+        ):
             return 0
         row = connection.execute(
             "SELECT version FROM ironsbot_schema_migrations WHERE namespace = ?",

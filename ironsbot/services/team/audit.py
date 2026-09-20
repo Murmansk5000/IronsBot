@@ -13,6 +13,7 @@ from ironsbot.core.outbound import (
     OutboundMessenger,
     TextPart,
 )
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -95,8 +96,8 @@ class TeamAuditService:
             logger.warning(
                 "team audit welcome send failed: conversation=%s:%s actor=%s error=%s",
                 conversation.kind,
-                conversation.id,
-                actor.id,
+                reference_digest(conversation.id),
+                reference_digest(actor.id),
                 result.error_code or result.error_message,
             )
         if not self._config.followup_enabled:
@@ -174,8 +175,8 @@ class TeamAuditService:
             logger.warning(
                 "team audit followup send failed: conversation=%s:%s actor=%s error=%s",
                 conversation.kind,
-                conversation.id,
-                actor.id,
+                reference_digest(conversation.id),
+                reference_digest(actor.id),
                 result.error_code or result.error_message,
             )
             return

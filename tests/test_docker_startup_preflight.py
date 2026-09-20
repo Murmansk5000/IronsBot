@@ -46,7 +46,7 @@ class FakeUpdateRunner:
         self._container_name = container_name
         self._handoff_verified = handoff_verified
         self.calls = 0
-        self.handoff_checks: list[tuple[str, str]] = []
+        self.handoff_checks: list[tuple[str, str, str]] = []
         self.abandoned_updaters: list[str] = []
 
     async def run_update(self) -> tuple[str, DockerUpdateResult]:
@@ -58,10 +58,13 @@ class FakeUpdateRunner:
     async def confirm_update_handoff(
         self,
         *,
+        previous_image_id: str,
         expected_image_id: str,
         updater_container_id: str,
     ) -> bool:
-        self.handoff_checks.append((expected_image_id, updater_container_id))
+        self.handoff_checks.append(
+            (previous_image_id, expected_image_id, updater_container_id)
+        )
         return self._handoff_verified
 
     async def abandon_update_handoff(
@@ -155,6 +158,7 @@ def test_recreated_container_reuses_watchtower_handoff_notice(tmp_path: Path) ->
             result=DockerUpdateResult(
                 ok=True,
                 updater_container_id="watchtower-id",
+                current_image_id="sha256:old",
                 target_image_id="sha256:new",
             ),
             source_instance_id="old-container",
@@ -176,7 +180,7 @@ def test_recreated_container_reuses_watchtower_handoff_notice(tmp_path: Path) ->
 
     assert action is DockerStartupPreflightAction.CONTINUE
     assert runner.calls == 0
-    assert runner.handoff_checks == [("sha256:new", "watchtower-id")]
+    assert runner.handoff_checks == [("sha256:old", "sha256:new", "watchtower-id")]
     notice = consume_docker_startup_preflight_notice(store)
     assert notice is not None
     assert "Docker 镜像已更新完成" in notice
@@ -212,7 +216,7 @@ def test_unverified_handoff_retries_watchtower_and_keeps_boot_blocked(
 
     assert action is DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
     assert runner.calls == 1
-    assert runner.handoff_checks == [("sha256:expected", "old-watchtower-id")]
+    assert runner.handoff_checks == [("", "sha256:expected", "old-watchtower-id")]
 
 
 def test_source_instance_waits_without_restarting_watchtower(tmp_path: Path) -> None:
@@ -246,7 +250,7 @@ def test_source_instance_waits_without_restarting_watchtower(tmp_path: Path) -> 
 
     assert action is DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
     assert runner.calls == 0
-    assert runner.handoff_checks == [("sha256:expected", "watchtower-id")]
+    assert runner.handoff_checks == [("", "sha256:expected", "watchtower-id")]
     assert runner.abandoned_updaters == []
 
 
@@ -378,7 +382,7 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "pip install --no-deps --no-cache-dir --no-compile" in dockerfile
     assert "pip wheel --no-deps" in dockerfile
     assert "uv export --frozen --no-dev" in dockerfile
-    assert 'ARG IRONSBOT_RUNTIME_EXTRA=""' in dockerfile
+    assert 'ARG IRONSBOT_RUNTIME_EXTRA="qq-official"' in dockerfile
     assert 'extra_args="--extra $IRONSBOT_RUNTIME_EXTRA"' in dockerfile
     assert dockerfile.startswith("# syntax=docker/dockerfile:1\n")
     assert "COPY --from=requirements_stage /wheel" not in dockerfile

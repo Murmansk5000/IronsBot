@@ -124,9 +124,7 @@ def _parse_desc_line(raw: str) -> DescLine:
             if can_merge:
                 line.segments[-1].text += text
             else:
-                line.segments.append(
-                    TextSegment(text=text, colors=cur, id=seg_id)
-                )
+                line.segments.append(TextSegment(text=text, colors=cur, id=seg_id))
 
     return line
 
@@ -172,11 +170,7 @@ class AnalyzeDescParser:
         Color matching is case-insensitive because Unity descriptions are not
         consistent about the capitalization of hexadecimal color tags.
         """
-        return [
-            text
-            for line in self.lines
-            for text in line.colored_texts(color)
-        ]
+        return [text for line in self.lines for text in line.colored_texts(color)]
 
     def to_plain_text(self, line_separator: str = "\n") -> str:
         """将完整描述转为不带任何标签的纯文本。"""

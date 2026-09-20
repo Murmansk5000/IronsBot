@@ -63,12 +63,10 @@ def _format_window(window: SeasonWindow, *, now: datetime) -> str:
         )
     if now < end:
         return (
-            f"{window.name}：{period}\n"
-            f"状态：进行中，剩余 {_format_duration(end - now)}"
+            f"{window.name}：{period}\n状态：进行中，剩余 {_format_duration(end - now)}"
         )
     return (
-        f"{window.name}：{period}\n"
-        f"状态：已结束，结束于 {_format_duration(now - end)}前"
+        f"{window.name}：{period}\n状态：已结束，结束于 {_format_duration(now - end)}前"
     )
 
 

@@ -20,7 +20,7 @@ from ironsbot.core.outbound import (
     SendResult,
     TextPart,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef
+from ironsbot.core.platform import ActorRef, ConversationRef, reference_digest
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -145,9 +145,7 @@ class ProactiveMessageDelivery:
             if transport_unavailable:
                 break
             if attempt == self.policy.max_attempts:
-                state.failed.update(
-                    request.conversation for request in next_pending
-                )
+                state.failed.update(request.conversation for request in next_pending)
                 break
             pending = next_pending
         return ProactiveDeliverySummary(
@@ -238,9 +236,7 @@ class ProactiveMessageDelivery:
                 subscription_key,
             )
         )
-        return tuple(
-            request for request in requests if request.conversation in allowed
-        )
+        return tuple(request for request in requests if request.conversation in allowed)
 
     async def _send_one(  # noqa: PLR0913 - one request plus explicit policy controls
         self,
@@ -258,11 +254,11 @@ class ProactiveMessageDelivery:
         capabilities = self.messenger.capabilities_for(request.conversation)
         if not capabilities.can_send_proactively:
             _LOGGER.warning(
-                "%s skipped unsupported conversation: platform=%s kind=%s id=%s",
+                "%s skipped unsupported conversation: platform=%s kind=%s ref=%s",
                 action_name,
                 request.conversation.platform.value,
                 request.conversation.kind,
-                request.conversation.id,
+                reference_digest(request.conversation.id),
             )
             return SendResult(
                 delivered=False,
@@ -289,11 +285,11 @@ class ProactiveMessageDelivery:
             result = await self.messenger.send(request.conversation, message)
         except Exception:
             _LOGGER.exception(
-                "%s raised while sending: platform=%s kind=%s id=%s",
+                "%s raised while sending: platform=%s kind=%s ref=%s",
                 action_name,
                 request.conversation.platform.value,
                 request.conversation.kind,
-                request.conversation.id,
+                reference_digest(request.conversation.id),
             )
             return SendResult(
                 delivered=False,
@@ -303,13 +299,13 @@ class ProactiveMessageDelivery:
         if result.delivered:
             return result
         _LOGGER.warning(
-            "%s failed: platform=%s kind=%s id=%s code=%s message=%s trace_id=%s",
+            "%s failed: platform=%s kind=%s ref=%s code=%s failure_kind=%s trace_id=%s",
             action_name,
             request.conversation.platform.value,
             request.conversation.kind,
-            request.conversation.id,
+            reference_digest(request.conversation.id),
             result.error_code,
-            result.error_message,
+            result.failure_kind.value if result.failure_kind is not None else None,
             result.trace_id,
         )
         return result
