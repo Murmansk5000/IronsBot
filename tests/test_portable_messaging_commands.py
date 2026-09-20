@@ -20,7 +20,12 @@ from ironsbot.config.models.messaging import (
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    MentionPart,
+    OutboundMessage,
+    TextPart,
+)
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -54,6 +59,35 @@ def _context(text: str) -> MessageInputContext:
             conversation=ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id),
             message_id="message-id",
             text=text,
+        ),
+        mentions_bot=False,
+    )
+
+
+def _group_context(
+    text: str,
+    *mentions: ActorRef,
+) -> MessageInputContext:
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "sender-openid",
+        kind="member",
+        scope_id="group-openid",
+        account_id="app-id",
+    )
+    return MessageInputContext(
+        IncomingMessageRef(
+            platform=Platform.QQ_OFFICIAL,
+            actor=actor,
+            conversation=ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                "group-openid",
+                account_id="app-id",
+            ),
+            message_id="message-id",
+            text=text,
+            direct_mentions=mentions,
         ),
         mentions_bot=False,
     )
@@ -102,6 +136,52 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
     assert (
         cast("TextPart", result.additional_messages[0].parts[0]).text
         == "https://example.test"
+    )
+
+
+@pytest.mark.asyncio
+async def test_portable_text_command_addresses_explicit_member_targets() -> None:
+    messaging = MessagingService(
+        MessageConfig(
+            commands=[
+                MessageCommandAction(
+                    id="portable",
+                    commands=["链接"],
+                    messages=["第一条", "第二条"],
+                )
+            ]
+        ),
+        ActivityConfig(),
+        cast("Any", object()),
+        cast("Any", object()),
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    target = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "target-openid",
+        kind="member",
+        scope_id="group-openid",
+        account_id="app-id",
+    )
+
+    result = cast(
+        "PortableReply",
+        await build_portable_messaging_operations(
+            messaging,
+            PortableQuerySessions(),
+        )["messaging.portable"]("链接", _group_context("链接", target, target)),
+    )
+
+    assert result.message.parts == (
+        MentionPart(target),
+        TextPart(" "),
+        TextPart("第一条"),
+    )
+    assert result.additional_messages[0].parts == (
+        MentionPart(target),
+        TextPart(" "),
+        TextPart("第二条"),
     )
 
 

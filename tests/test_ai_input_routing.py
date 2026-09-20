@@ -16,6 +16,7 @@ from ironsbot.core.platform import (
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.team.resource_commands import team_resource_command_contracts
 
 ACTOR = ActorRef(Platform.ONEBOT, "100")
 GROUP = ConversationRef(Platform.ONEBOT, "group", "200")
@@ -133,6 +134,40 @@ def test_claimed_command_never_enters_ai() -> None:
     assert not _decide(_input(GROUP, "查询")).recognized
     assert not _decide(_input(GROUP, "查询", mentions_bot=True)).recognized
     assert not _decide(_input(PRIVATE, "查询")).recognized
+
+
+def test_known_team_command_never_enters_ai_when_feature_is_unavailable() -> None:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="ai_chat",
+                commands=ai_chat_command_contracts(enabled=True),
+            ),
+            PluginContribution(
+                id="team_resource",
+                commands=team_resource_command_contracts(
+                    enabled=True,
+                    query_commands=("战队",),
+                ),
+            ),
+        ),
+        known_features={"ai_chat", "team_resource_subscription"},
+    )
+    features = FeatureService(
+        {GROUP: frozenset({"ai_chat"})},
+        {},
+        frozenset(),
+        superuser_bypass=False,
+    )
+    context = _input(GROUP, "战队订阅", mentions_bot=True)
+
+    decision = AiInputRoutingService(features, catalog).decide(
+        context,
+        CommandContext(ACTOR, GROUP),
+    )
+
+    assert not decision.recognized
 
 
 def test_reply_member_mention_and_blacklist_never_enter_ai() -> None:
