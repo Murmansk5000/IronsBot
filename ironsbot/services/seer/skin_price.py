@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-FASHION_TICKET_VALUE = 10
 MAX_PRICE_ROWS = 3
 
 
@@ -23,6 +22,27 @@ class SkinStorePrice:
     ticket_num: int
     start_time: int
     end_time: int
+    ticket_name: str | None = None
+    ticket_diamonds: int | None = None
+
+
+def skin_ticket_name(price: SkinStorePrice) -> str:
+    """Use the published item name without guessing a coupon identity."""
+    if name := (price.ticket_name or "").strip():
+        return name
+    return f"券道具{price.ticket_id}" if price.ticket_id > 0 else "优惠券"
+
+
+def skin_ticket_discount(price: SkinStorePrice) -> int | None:
+    """Apply only the positive per-ticket value published by SeerAPI."""
+    if (
+        price.ticket_id <= 0
+        or price.ticket_num <= 0
+        or price.ticket_diamonds is None
+        or price.ticket_diamonds <= 0
+    ):
+        return None
+    return price.ticket_num * price.ticket_diamonds
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +88,7 @@ def merge_skin_price_facts(
             shop.diamond_price if shop.diamond_price > 0 else model.diamond_price or 0
         ),
     )
+    # The model has no pool identity; multiple detailed offers cannot be matched.
     if len(stores) > 1:
         return shop, stores
     original = model.skinhouse_price or 0
@@ -116,19 +137,13 @@ def _format_store_price(price: SkinStorePrice) -> str:
 
     parts: list[str] = []
     if price.price > 0:
-        if price.original_price > 0 and price.original_price != price.price:
-            parts.append(f"{price.price}钻（原价{price.original_price}钻）")
-        else:
-            parts.append(f"{price.price}钻")
+        parts.append(format_skin_store_amount(price))
     if price.selected_price > 0 and price.selected_price != price.price:
         parts.append(f"自选{price.selected_price}钻")
     if price.ticket_num > 0 and price.price > 0:
-        ticket_discount = price.ticket_num * FASHION_TICKET_VALUE
-        if ticket_discount < price.price:
-            minimum = price.price - ticket_discount
-            parts.append(f"最多用{price.ticket_num}张风尚券，最低{minimum}钻")
-        else:
-            parts.append(f"最多用{price.ticket_num}张风尚券，可抵扣{ticket_discount}钻")
+        _, ticket_text = skin_ticket_summary(price)
+        if ticket_text:
+            parts.append(ticket_text)
 
     return "幸运橱窗：" + "；".join(parts)
 
@@ -140,17 +155,36 @@ def format_lucky_window_price_lines(
 
     if price is None or price.price <= 0:
         return ("橱窗价格暂未获取",)
-    first = f"橱窗价：{price.price}钻"
+    first = f"橱窗价：{format_skin_store_amount(price)}"
+    _, ticket_text = skin_ticket_summary(price)
+    return (first, ticket_text) if ticket_text else (first,)
+
+
+def format_skin_store_amount(price: SkinStorePrice) -> str:
+    text = f"{price.price}钻"
     if price.original_price > 0 and price.original_price != price.price:
-        first += f"（原价{price.original_price}钻）"
+        text += f"（原价{price.original_price}钻）"
+    return text
+
+
+def skin_ticket_summary(
+    price: SkinStorePrice, *, quantity_prefix: str = "最多用"
+) -> tuple[int | None, str | None]:
+    """Calculate the payment and coupon wording once for text and image views."""
     if price.ticket_num <= 0:
-        return (first,)
-    discount = price.ticket_num * FASHION_TICKET_VALUE
+        return None, None
+    discount = skin_ticket_discount(price)
+    minimum = (
+        max(price.price - discount, 0)
+        if price.price > 0 and discount is not None
+        else None
+    )
+    text = f"{quantity_prefix}{price.ticket_num}张{skin_ticket_name(price)}"
+    if discount is None:
+        return minimum, text
     if discount < price.price:
-        second = f"最多用{price.ticket_num}张风尚券，最低{price.price - discount}钻"
-    else:
-        second = f"最多用{price.ticket_num}张风尚券，可抵扣{discount}钻"
-    return first, second
+        return minimum, f"{text}，最低{minimum}钻"
+    return minimum, f"{text}，可抵扣{discount}钻"
 
 
 def _dedupe_lines(lines: Iterable[str]) -> list[str]:

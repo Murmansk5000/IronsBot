@@ -65,6 +65,13 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
         session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
         session.execute(
             text(
+                "CREATE TABLE skin_ticket_rule (ticket_id INTEGER PRIMARY KEY, "
+                "diamonds_per_ticket INTEGER NOT NULL CHECK(diamonds_per_ticket>0), "
+                "source TEXT NOT NULL, source_text TEXT NOT NULL)"
+            )
+        )
+        session.execute(
+            text(
                 "CREATE TABLE seerapi_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
@@ -424,6 +431,13 @@ def test_seer_database_rejects_release_without_schema_contract(
         session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
         session.execute(
             text(
+                "CREATE TABLE skin_ticket_rule (ticket_id INTEGER PRIMARY KEY, "
+                "diamonds_per_ticket INTEGER NOT NULL CHECK(diamonds_per_ticket>0), "
+                "source TEXT NOT NULL, source_text TEXT NOT NULL)"
+            )
+        )
+        session.execute(
+            text(
                 "CREATE TABLE seerapi_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
@@ -447,6 +461,30 @@ def test_seer_database_rejects_release_without_schema_contract(
 
     assert data.version() == "unknown"
     assert data.render_asset_snapshot() is None
+
+
+@pytest.mark.parametrize(
+    "missing", ["table", "diamonds_per_ticket", "source", "source_text"]
+)
+def test_seer_release_requires_ticket_rule_schema(tmp_path: Path, missing: str) -> None:
+    from ironsbot.integrations.seer_data.release_contract import (
+        validate_published_seerapi_release,
+    )
+
+    engine, _ = _create_release(tmp_path / "seerapi.sqlite", ("pet_info",))
+    try:
+        validate_published_seerapi_release(engine)
+        with engine.begin() as connection:
+            if missing == "table":
+                connection.execute(text("DROP TABLE skin_ticket_rule"))
+            else:
+                connection.execute(
+                    text(f"ALTER TABLE skin_ticket_rule DROP COLUMN {missing}")
+                )
+        with pytest.raises(SeerApiReleaseContractError, match="skin_ticket_rule"):
+            validate_published_seerapi_release(engine)
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize(
