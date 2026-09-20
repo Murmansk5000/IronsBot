@@ -2256,7 +2256,7 @@ async def test_portable_router_runs_scoped_query_selection(
 
     choices = await router.dispatch(_portable_input("精灵雷伊", actor, conversation))
     assert choices is not None
-    assert "1. 雷伊" in cast("TextPart", choices.message.parts[0]).text
+    assert "1. 雷伊（70）" in cast("TextPart", choices.message.parts[0]).text
     prompt = choices.message.prompt
     assert prompt is not None
     action = prompt.action_data(prompt.choices[1])
@@ -2298,7 +2298,7 @@ async def test_portable_router_runs_mintmark_query_and_selection() -> None:
 
     choices = await router.dispatch(_portable_input("刻印V8", actor, conversation))
     assert choices is not None
-    assert "1. V8-1" in cast("TextPart", choices.message.parts[0]).text
+    assert "1. V8-1（40001）" in cast("TextPart", choices.message.parts[0]).text
     prompt = choices.message.prompt
     assert prompt is not None
 
