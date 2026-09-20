@@ -106,7 +106,7 @@ def test_config_check_rejects_undeclared_official_policy_target(
     text = (ROOT / "config.example.toml").read_text(encoding="utf-8")
     text = text.replace(
         "[bot.qq_official.accounts.example_bot.user_policy]",
-        '[bot.qq_official.accounts.example_bot.user_policy]\n'
+        "[bot.qq_official.accounts.example_bot.user_policy]\n"
         '"raw-official-openid" = ["help"]',
     )
     config_path.write_text(text, encoding="utf-8")
