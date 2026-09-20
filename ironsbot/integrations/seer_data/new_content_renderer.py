@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import (
@@ -15,7 +15,9 @@ from ironsbot.services.seer.images import (
 )
 from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
+    PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
+    NewContentItem,
     NewContentSnapshot,
     format_new_content_category_count,
     is_new_content_category_auto_expanded,
@@ -27,6 +29,10 @@ from ironsbot.services.seer.rendering.new_content import (
     NewContentMenuItem,
     present_new_content_menu,
     render_new_content_document,
+)
+from ironsbot.services.seer.rendering.new_content_pool_changes import (
+    PoolChangePreview,
+    present_pool_changes,
 )
 
 from .new_content_details import SKILL_CATEGORY_ATTRIBUTE
@@ -112,18 +118,25 @@ async def render_new_content_menu(  # noqa: PLR0913
             f"new_content_{incomplete.item.category}",
             entity_id=incomplete.item.entity_id,
         )
+    visuals, (pool_previews, pool_images_complete) = await asyncio.gather(
+        asyncio.gather(
+            *(_item_visuals(images, prepared) for prepared in prepared_items)
+        ),
+        _pool_change_previews(images, snapshot, display_categories, focused_category),
+    )
     rows = _initial_rows(
         snapshot,
         display_categories,
         prepared_items,
         focused_category,
         expanded,
-    )
-    visuals = await asyncio.gather(
-        *(_item_visuals(images, prepared) for prepared in prepared_items)
+        pool_previews,
     )
 
-    cacheable = all(prepared.details.complete for prepared in prepared_items)
+    cacheable = (
+        all(prepared.details.complete for prepared in prepared_items)
+        and pool_images_complete
+    )
     prepared_by_key = {
         (prepared.item.category, prepared.item.entity_id): (prepared, visual)
         for prepared, visual in zip(prepared_items, visuals, strict=True)
@@ -191,12 +204,13 @@ def _cache_key(  # noqa: PLR0913
     )
 
 
-def _initial_rows(
+def _initial_rows(  # noqa: PLR0913 - the render inputs remain explicit
     snapshot: NewContentSnapshot,
     display_categories: tuple[NewContentCategory, ...],
     prepared_items: tuple[NewContentPreparedItem, ...],
     focused_category: NewContentCategory | None,
     expanded_categories: frozenset[NewContentCategory],
+    pool_previews: dict[NewContentCategory, PoolChangePreview],
 ) -> list[NewContentMenuItem]:
     if focused_category is not None:
         return [
@@ -234,6 +248,7 @@ def _initial_rows(
                 image=None,
                 skill=None,
                 friend_skill=None,
+                pool_preview=pool_previews.get(category),
             )
         )
         if category in expanded_categories:
@@ -273,6 +288,61 @@ def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuI
         friend_skill=details.friend_skill,
         entity_key=(prepared.item.category, prepared.item.entity_id),
     )
+
+
+async def _pool_change_images(
+    images: SeerImageSource,
+    items: tuple[NewContentItem, ...],
+) -> dict[tuple[NewContentCategory, int], str | None]:
+    results = await asyncio.gather(
+        *(_pool_change_image(images, item) for item in items)
+    )
+    return {
+        (item.category, item.entity_id): image
+        for item, image in zip(items, results, strict=True)
+    }
+
+
+async def _pool_change_previews(
+    images: SeerImageSource,
+    snapshot: NewContentSnapshot,
+    display_categories: tuple[NewContentCategory, ...],
+    focused_category: NewContentCategory | None,
+) -> tuple[dict[NewContentCategory, PoolChangePreview], bool]:
+    if focused_category is not None:
+        return {}, True
+    pool_categories = cast(
+        "tuple[NewContentCategory, ...]",
+        tuple(
+            category
+            for category in display_categories
+            if category in PEAK_POOL_NEW_CONTENT_CATEGORIES
+        ),
+    )
+    pool_items = tuple(
+        item for category in pool_categories for item in snapshot.items_for(category)
+    )
+    loaded_images = await _pool_change_images(images, pool_items)
+    previews: dict[NewContentCategory, PoolChangePreview] = {}
+    for category in pool_categories:
+        previews[category] = present_pool_changes(
+            category,
+            snapshot.items_for(category),
+            loaded_images,
+        )
+    return previews, all(image is not None for image in loaded_images.values())
+
+
+async def _pool_change_image(
+    images: SeerImageSource,
+    item: NewContentItem,
+) -> str | None:
+    try:
+        return to_data_uri(
+            await images.fetch("pet_head", str(item.entity_id), fallback=False)
+        )
+    except (ImageSourceError, RuntimeError, TypeError, ValueError):
+        return None
 
 
 async def _item_visuals(
