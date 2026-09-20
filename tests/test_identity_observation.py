@@ -33,21 +33,27 @@ OFFICIAL_BOT_QQ = 20002
 MEMBER_QQ = 30003
 
 
-def _incoming(message_id: str) -> IncomingMessageRef:
+def _incoming(
+    message_id: str,
+    *,
+    app_id: str = APP_ID,
+    official_group: str = OFFICIAL_GROUP,
+    member_openid: str = "member-openid",
+) -> IncomingMessageRef:
     return IncomingMessageRef(
         Platform.QQ_OFFICIAL,
         ActorRef(
             Platform.QQ_OFFICIAL,
-            "member-openid",
+            member_openid,
             kind="member",
-            account_id=APP_ID,
-            scope_id=OFFICIAL_GROUP,
+            account_id=app_id,
+            scope_id=official_group,
         ),
         ConversationRef(
             Platform.QQ_OFFICIAL,
             "group",
-            OFFICIAL_GROUP,
-            account_id=APP_ID,
+            official_group,
+            account_id=app_id,
         ),
         message_id,
         "帮助",
@@ -128,6 +134,99 @@ async def test_two_unique_observations_link_group_member_silently(
     assert link is not None
     assert link.onebot_qq_id == str(MEMBER_QQ)
     assert link.official.scope_id == ""
+
+
+@pytest.mark.asyncio
+async def test_duplicate_napcat_observation_does_not_count_twice(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    observation = _observation()
+
+    service.record_official_reply(
+        _incoming("official-1"),
+        OutboundMessage.from_text("结果"),
+    )
+    assert not await service.observe_onebot(observation)
+    assert not await service.observe_onebot(observation)
+
+    assert (
+        await store.for_official(
+            OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP)
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_observations_are_isolated_by_trusted_bot_and_app_id(
+    tmp_path: Path,
+) -> None:
+    second_app_id = "official-app-b"
+    second_group = "official-group-b"
+    second_bot_qq = 20003
+    second_member = "member-openid-b"
+    clock = [100.0]
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    service = SilentIdentityObservationService(
+        store,
+        {
+            APP_ID: IdentityObservationAccount(
+                APP_ID,
+                OFFICIAL_BOT_QQ,
+                {OFFICIAL_GROUP: ONEBOT_GROUP},
+            ),
+            second_app_id: IdentityObservationAccount(
+                second_app_id,
+                second_bot_qq,
+                {second_group: ONEBOT_GROUP},
+            ),
+        },
+        clock=lambda: clock[0],
+    )
+    message = OutboundMessage.from_text("相同结果")
+    service.record_official_reply(_incoming("app-a-1"), message)
+    service.record_official_reply(
+        _incoming(
+            "app-b-1",
+            app_id=second_app_id,
+            official_group=second_group,
+            member_openid=second_member,
+        ),
+        message,
+    )
+
+    second_observation = OneBotReplyObservation(
+        second_bot_qq,
+        ONEBOT_GROUP,
+        (str(MEMBER_QQ),),
+        "相同结果",
+    )
+    assert not await service.observe_onebot(second_observation)
+    clock[0] += 1
+    service.record_official_reply(
+        _incoming(
+            "app-b-2",
+            app_id=second_app_id,
+            official_group=second_group,
+            member_openid=second_member,
+        ),
+        message,
+    )
+    assert await service.observe_onebot(second_observation)
+
+    assert (
+        await store.for_official(
+            OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP)
+        )
+        is None
+    )
+    second_link = await store.for_official(
+        OfficialIdentity(second_app_id, "member", second_member, second_group)
+    )
+    assert second_link is not None
+    assert second_link.onebot_qq_id == str(MEMBER_QQ)
 
 
 @pytest.mark.asyncio

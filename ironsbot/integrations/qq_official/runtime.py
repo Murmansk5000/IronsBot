@@ -407,10 +407,13 @@ class QQOfficialRuntime:
                 reference_digest(incoming.message_id),
             )
             return
+        mentions_bot = qq_official_event_mentions_bot(event)
         context = MessageInputContext(
             incoming,
-            mentions_bot=qq_official_event_mentions_bot(event),
-            automatic_fallback_allowed=event_type != GROUP_MESSAGE_CREATE,
+            mentions_bot=mentions_bot,
+            automatic_fallback_allowed=(
+                event_type != GROUP_MESSAGE_CREATE or mentions_bot
+            ),
         )
         recognized = router.recognizes(context)
         logger.info(

@@ -1369,12 +1369,107 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
     assert incoming.reply_deadline.isoformat() == "2099-01-01T00:05:00+08:00"
 
 
-def test_only_group_at_event_is_classified_as_bot_mention() -> None:
+def test_group_at_or_structured_self_mention_is_classified_as_bot_mention() -> None:
     full_message = _sdk_event(event_type="GROUP_MESSAGE_CREATE")
+    mentioned_full_message = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        content="@babyQ help",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                    "username": "babyQ",
+                }
+            ]
+        },
+    )
     at_message = _sdk_event(event_type="GROUP_AT_MESSAGE_CREATE")
 
     assert not qq_official_event_mentions_bot(full_message)
+    assert qq_official_event_mentions_bot(mentioned_full_message)
     assert qq_official_event_mentions_bot(at_message)
+
+
+def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@babyQ @target 战队",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                    "username": "babyQ",
+                },
+                {
+                    "is_you": False,
+                    "member_openid": "target-openid",
+                    "username": "target",
+                },
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "@target 战队"
+    assert incoming.direct_mentions == (
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            event.chat_id,
+            account_id="example-app",
+        ),
+    )
+
+
+def test_full_group_self_mention_does_not_require_username_metadata() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@无极圣武 战队订阅",
+        raw={
+            "mentions": [
+                {
+                    "is_you": True,
+                    "member_openid": "bot-openid",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "战队订阅"
+
+
+def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="group-openid",
+        content="@another-bot help",
+        raw={
+            "mentions": [
+                {
+                    "bot": True,
+                    "is_you": False,
+                    "member_openid": "another-bot-openid",
+                    "username": "another-bot",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert not qq_official_event_mentions_bot(event)
+    assert incoming.text == "@another-bot help"
 
 
 def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> None:
@@ -2481,6 +2576,63 @@ async def test_portable_router_does_not_send_unavailable_command_to_ai() -> None
 
     assert await router.dispatch(_portable_input("关于", actor, conversation)) is None
     assert ai.calls == []
+
+
+@pytest.mark.asyncio
+async def test_portable_router_applies_official_superuser_bypass_in_group() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "restricted-group",
+        account_id="example-app",
+    )
+    superuser = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "owner-openid",
+        "user",
+        account_id="example-app",
+    )
+    owner_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        superuser.id,
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    ordinary_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "ordinary-openid",
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={},
+        superusers=frozenset({superuser}),
+        superuser_bypass=True,
+        platform_default_features={Platform.QQ_OFFICIAL: frozenset()},
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    owner_input = _portable_input("关于", owner_member, conversation)
+    ordinary_input = _portable_input("关于", ordinary_member, conversation)
+
+    assert router.recognizes(owner_input)
+    owner_reply = await router.dispatch(owner_input)
+    assert owner_reply is not None
+    assert "IronsBot" in cast("TextPart", owner_reply.message.parts[0]).text
+    assert not router.recognizes(ordinary_input)
+    assert await router.dispatch(ordinary_input) is None
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -20,6 +21,8 @@ if TYPE_CHECKING:
     from qqbot_agent_sdk.event_parser import InboundEvent
 
 GROUP_AT_MESSAGE_CREATE = "GROUP_AT_MESSAGE_CREATE"
+GROUP_MESSAGE_CREATE = "GROUP_MESSAGE_CREATE"
+_LEADING_MENTION_RE = re.compile(r"^[\s]*[@＠]\S+[\s]*")
 _PASSIVE_REPLY_WINDOWS = {
     "group": timedelta(minutes=5),
     "private": timedelta(minutes=60),
@@ -74,7 +77,7 @@ def qq_official_incoming_message(
         actor=actor,
         conversation=conversation,
         message_id=event.message_id,
-        text=event.content.strip(),
+        text=_message_text(event, raw),
         direct_mentions=direct_mentions,
         group_role=group_role,
         reply_to_id=_reply_reference(event, raw),
@@ -84,7 +87,36 @@ def qq_official_incoming_message(
 
 
 def qq_official_event_mentions_bot(event: InboundEvent) -> bool:
-    return event.event_type == GROUP_AT_MESSAGE_CREATE
+    if event.event_type == GROUP_AT_MESSAGE_CREATE:
+        return True
+    if event.event_type != GROUP_MESSAGE_CREATE:
+        return False
+    raw = event.raw if isinstance(event.raw, Mapping) else {}
+    return _bot_mention(raw) is not None
+
+
+def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
+    text = event.content.strip()
+    if event.event_type != GROUP_MESSAGE_CREATE:
+        return text
+    mention = _bot_mention(raw)
+    if mention is None:
+        return text
+    return _remove_leading_self_mention(text).strip()
+
+
+def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:
+    mentions = raw.get("mentions")
+    if not isinstance(mentions, Sequence) or isinstance(mentions, (str, bytes)):
+        return None
+    for mention in mentions:
+        if isinstance(mention, Mapping) and bool(mention.get("is_you")):
+            return mention
+    return None
+
+
+def _remove_leading_self_mention(text: str) -> str:
+    return _LEADING_MENTION_RE.sub("", text, count=1)
 
 
 def _direct_mentions(
