@@ -30,6 +30,7 @@ from .daemon import (
     read_container_archive,
     remove_container_quietly,
     remove_image_if_unused,
+    remove_stale_repository_images,
 )
 from .http import raise_for_docker_status
 from .metadata import resolve_image_commit_summary
@@ -128,6 +129,30 @@ class DockerClient:
         ) as client:
             return await remove_image_if_unused(client, image_id)
 
+    async def remove_stale_images(
+        self,
+        *,
+        repository_image: str,
+        current_image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> tuple[int, int]:
+        if not await self.socket_exists(socket_path):
+            message = f"Docker socket not found: {socket_path}"
+            raise RuntimeError(message)
+        transport = httpx.AsyncHTTPTransport(uds=socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            current_image = await inspect_image_info(client, current_image_id)
+            return await remove_stale_repository_images(
+                client,
+                repository_image=repository_image,
+                current_image=current_image,
+            )
+
     async def start_update(self, request: DockerUpdateRequest) -> DockerUpdateResult:
         logger.warning(
             "admin requested docker self update: container=%s, watchtower=%s",
@@ -169,6 +194,11 @@ class DockerClient:
                     target_image,
                 )
                 if current_image.image_id == target_image.image_id:
+                    await self._cleanup_stale_images(
+                        client,
+                        repository_image=request.image,
+                        current_image=current_image,
+                    )
                     return DockerUpdateResult(
                         ok=True,
                         up_to_date=True,
@@ -210,6 +240,34 @@ class DockerClient:
             target_image_created=target_image.created,
             target_image_commit=target_commit,
         )
+
+    @staticmethod
+    async def _cleanup_stale_images(
+        client: httpx.AsyncClient,
+        *,
+        repository_image: str,
+        current_image: DockerImageInfo,
+    ) -> None:
+        if not current_image.labels.get("org.opencontainers.image.source", "").strip():
+            return
+        try:
+            removed, retained = await remove_stale_repository_images(
+                client,
+                repository_image=repository_image,
+                current_image=current_image,
+            )
+        except Exception:  # noqa: BLE001 - cleanup must not block startup
+            logger.warning(
+                "could not clean stale IronsBot images",
+                exc_info=True,
+            )
+            return
+        if removed or retained:
+            logger.info(
+                "stale IronsBot image cleanup completed: removed=%s retained=%s",
+                removed,
+                retained,
+            )
 
     async def check_update(
         self,
