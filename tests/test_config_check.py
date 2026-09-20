@@ -26,7 +26,7 @@ def test_configuration_summary_reports_selection_without_credentials() -> None:
 
 
 def test_config_check_reports_aliases_without_secret_values() -> None:
-    app_id = "test-app-id-private"
+    app_id = "10001"
     secret = "test-app-secret-private"
     ai_key = "test-ai-key-private"
     result = subprocess.run(
@@ -41,8 +41,7 @@ def test_config_check_reports_aliases_without_secret_values() -> None:
         cwd=ROOT,
         env={
             **os.environ,
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": app_id,
-            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": secret,
+            "APP_SECRET_10001": secret,
             "AI_KEY_DEEPSEEK": ai_key,
         },
         capture_output=True,
@@ -123,8 +122,7 @@ def test_config_check_rejects_undeclared_official_policy_target(
         cwd=ROOT,
         env={
             **os.environ,
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
-            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+            "APP_SECRET_10001": "example-secret",
         },
         capture_output=True,
         text=True,

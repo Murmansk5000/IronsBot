@@ -93,11 +93,8 @@ class QQOfficialConfigError(ValueError):
         return cls(f"duplicate QQ Official AppID: {app_id}")
 
     @classmethod
-    def duplicate_secret_environment(cls, name: str) -> QQOfficialConfigError:
-        return cls(
-            "QQ Official account aliases must be unique ignoring case; "
-            f"duplicate environment suffix: {name.upper()}"
-        )
+    def missing_app_id(cls, name: str) -> QQOfficialConfigError:
+        return cls(f"bot.qq_official.accounts.{name}.app_id is required")
 
     @classmethod
     def invalid_target_policy(cls) -> QQOfficialConfigError:
@@ -281,30 +278,13 @@ class QQOfficialConfig(BaseModel):
     @model_validator(mode="after")
     def validate_accounts(self) -> QQOfficialConfig:
         app_ids: set[str] = set()
-        environment_names: set[str] = set()
         for name, account in self.accounts.items():
             if not _QQ_OFFICIAL_ACCOUNT_NAME.fullmatch(name):
                 raise QQOfficialConfigError.invalid_account_name()
-            environment_name = name.upper()
-            if environment_name in environment_names:
-                raise QQOfficialConfigError.duplicate_secret_environment(name)
-            environment_names.add(environment_name)
-            if not account.app_id and not account.secret:
-                continue
-            missing = [
-                field
-                for field, value in (
-                    ("app_id", account.app_id),
-                    ("secret", account.secret),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError(
-                    f"bot.qq_official.accounts.{name} requires "
-                    + ", ".join(missing)
-                    + " when enabled"
-                )
+            if not account.app_id:
+                if not account.secret:
+                    continue
+                raise QQOfficialConfigError.missing_app_id(name)
             if account.app_id in app_ids:
                 raise QQOfficialConfigError.duplicate_app_id(account.app_id)
             app_ids.add(account.app_id)
