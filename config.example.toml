@@ -100,6 +100,16 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
+# EN: The default account handles private messages and groups without an explicit
+#     route. Required when more than one official account is active.
+# ZH: 默认账号处理私聊和未显式分配的群；启用多个官方账号时必填。
+default_account = "example_bot"
+
+# EN: Optional logical group alias -> account alias ownership. The selected account
+#     is the only responder when multiple official bots share that logical group.
+# ZH: 可选的“逻辑群别名 -> 官方账号别名”归属；多个机器人同群时只允许指定账号响应。
+[bot.qq_official.group_routes]
+# example_official_group = "example_bot"
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.

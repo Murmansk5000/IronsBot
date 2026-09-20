@@ -169,6 +169,10 @@ identity_verification = false
 [bot.qq_official]
 sandbox = false
 startup_timeout_seconds = 15.0
+default_account = "example_bot"
+
+[bot.qq_official.group_routes]
+# admin = "personal_bot"
 
 [bot.qq_official.accounts.example_bot]
 app_id = "10001"
@@ -176,22 +180,25 @@ required = false
 proactive_messages = false
 custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-superusers = []
 
 [bot.qq_official.accounts.example_bot.group_policy]
-"群 OpenID" = ["seer_activity_push", "bili_push"]
+example_official_group = ["seer_activity_push", "bili_push"]
 
 [bot.qq_official.accounts.example_bot.user_policy]
-"用户 OpenID" = ["seer_activity_push", "bili_push"]
+owner = ["seer_activity_push", "bili_push"]
 ```
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
 数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
-`features` 是该账号对所有入站会话开放的默认功能，不表示账号优先级，也不按 TOML
-书写顺序选择“默认机器人”。面向公众的账号可配置完整默认功能；专用账号应使用
+`default_account` 是未分配群和私聊的唯一响应账号；启用多个官方账号时必须明确填写，
+不按 TOML 书写顺序猜测。`group_routes` 使用 `[identities.groups]` 的逻辑群别名，
+把特殊群交给指定账号；同一逻辑群中的其他官方账号保持静默。
+若逻辑群只声明了一个已启用官方账号的 OpenID，该账号会自动成为该群响应者，
+不必在 `group_routes` 重复填写；一个逻辑群声明多个官方账号时才需显式选择。
+`features` 是该账号可用的默认功能。面向公众的账号可配置完整默认功能；专用账号应使用
 `features = []`，再通过账号策略或 `[features]` 下基于逻辑身份的策略只开放特殊目标。
 被动回复始终由收到事件的同一 AppID 发出，不能把一个官方账号收到的消息转给另一个
-账号回复；因此同一群若同时加入两个开放了相同功能的机器人，仍会产生两份独立回复。
+账号回复；入站路由会在业务执行前选定唯一账号，避免两个机器人重复响应。
 账号不再使用 TOML `enabled`；TOML 声明公开 AppID，并由同后缀的
 `APP_SECRET_<AppID>` 激活。为未声明 AppID 提供 Secret 会阻止启动。
 账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
@@ -255,11 +262,12 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 引用触发它的成员消息，NapCat 从引用来源读取数字 QQ。任意正常群命令的回复都可用于
 自动建立 `(AppID, group_openid) ↔ 数字群号` 映射；候选数字群只来自
 `[identities.groups].qq`，映射写入状态库并在重启后恢复，无需把群 OpenID 再抄回 TOML。
-程序再使用已确认逻辑群、规范化消息内容和短时间窗口建立成员候选。只有两次独立、
-唯一且一致的观察才关联
+程序再使用已确认逻辑群、可信官方机器人、规范化消息内容、短时间窗口和唯一被 @ 用户
+建立成员映射。一次完全匹配的回执即可关联
 `member_openid ↔ QQ号`。同一官方账号中的相同 member_openid 跨群视为同一主体；
 群只用于验证消息来源，不进入身份主键。歧义、超时、非可信来源和已存在冲突都不会
-建立或覆盖映射。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
+建立或覆盖映射。关联后优先复用重构前的 OneBot 玩家绑定；如果只有用户后来在官方端
+重绑的数据，则将其合并到同一 OneBot 主身份。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
 不参与 NapCat 群消息推断；启动前必须已知的私聊目标仍在 `[identities.users]` 声明。
 
 QQ 官方群回复同时引用用户的原始消息，并提及发令成员。腾讯群接口的普通 TEXT

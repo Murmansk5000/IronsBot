@@ -25,6 +25,7 @@ Declare each account in TOML without an `enabled` field:
 [bot.qq_official]
 sandbox = false
 startup_timeout_seconds = 15.0
+default_account = "local_bot"
 
 [bot.qq_official.accounts.local_bot]
 app_id = "10001"
@@ -51,6 +52,12 @@ Declare every account alias and public AppID in TOML, then provide one Secret
 variable for each AppID. Do not reuse one AppID for two accounts:
 
 ```toml
+[bot.qq_official]
+default_account = "group_bot"
+
+[bot.qq_official.group_routes]
+# admin = "private_bot"
+
 [bot.qq_official.accounts.group_bot]
 app_id = "10001"
 required = false
@@ -71,15 +78,19 @@ APP_SECRET_10001=
 APP_SECRET_10002=
 ```
 
-All accounts with a configured Secret connect independently. `required` only
+All accounts with a configured Secret connect independently. `default_account`
+owns private messages and groups without a more specific owner. A logical group
+with exactly one configured official endpoint is assigned to that account;
+`group_routes` selects the responder when a logical group has several endpoints.
+`required` only
 controls whether that account's startup failure aborts the application; it does
 not select a fallback sender. A group feature policy authorizes the logical
 group and does not require two official bots to reply there. C2C and group
 replies always return through the AppID that received the event, so acceptance
 tests for a designated private bot must send the private message to that bot.
 
-In Unraid, duplicate the AppID/AppSecret variable pair for each TOML alias and
-replace the suffix with the alias in uppercase. Adding environment variables
+In Unraid, add one masked `APP_SECRET_<AppID>` variable for each TOML account.
+Adding environment variables
 without the matching TOML account, or adding the TOML account without both
 environment variables when it is intended to run, is not a complete migration.
 
@@ -102,11 +113,13 @@ first learns `(AppID, group_openid) -> numeric group` from any uniquely matched
 normal command reply in a numeric group declared by `[identities.groups].qq`.
 The mapping is persisted in the QQ state database and restored on restart, so
 the diagnostic `官方身份` command and a duplicate TOML OpenID are not required.
-It then links a group `member_openid` to a QQ number only after two independent,
-unique, consistent observations in that logical group. Each observation uses
-the official reply's source-message reference and the numeric sender that
-NapCat reports for that referenced message; it does not infer identity from a
-visible mention. Ambiguous, expired,
+It links a group `member_openid` to a QQ number after one exact, unique and
+consistent trusted reply observation in that logical group. NapCat reads the
+single numeric QQ mentioned by the official bot; source-message sender metadata
+remains a fallback. The AppID, trusted bot QQ, logical group, normalized reply
+text, time window and pending reply must all agree. Existing OneBot player
+bindings then remain authoritative, while official-only rebindings are merged
+into that principal. Ambiguous, expired,
 untrusted, or conflicting observations do not create or overwrite a link.
 NapCat sends no verification messages. C2C `user_openid` values are not inferred
 and remain explicit TOML aliases.

@@ -140,7 +140,7 @@ async def test_normal_command_reply_discovers_group_without_configured_openid(
         )
         is not None
     )
-    assert not await service.observe_onebot(_observation(text="正常指令结果"))
+    assert await service.observe_onebot(_observation(text="正常指令结果"))
 
     assert len(linked_groups) == 1
     link = linked_groups[0]
@@ -173,10 +173,6 @@ async def test_addressed_hint_uses_the_same_reply_observation_path(
     hint = OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
 
     service.record_official_reply(_incoming("mention-1"), hint)
-    assert not await service.observe_onebot(
-        _observation(text=DIRECT_COMMAND_HELP_HINT_TEXT)
-    )
-    service.record_official_reply(_incoming("mention-2"), hint)
     assert await service.observe_onebot(
         _observation(text=DIRECT_COMMAND_HELP_HINT_TEXT)
     )
@@ -297,7 +293,7 @@ async def test_group_link_conflicts_never_overwrite_existing_mapping(
 
 
 @pytest.mark.asyncio
-async def test_two_unique_observations_link_group_member_silently(
+async def test_one_exact_observation_links_group_member_silently(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
@@ -305,13 +301,6 @@ async def test_two_unique_observations_link_group_member_silently(
 
     service.record_official_reply(
         _incoming("official-1"),
-        OutboundMessage.from_text("结果"),
-    )
-    assert not await service.observe_onebot(_observation())
-
-    clock[0] += 1
-    service.record_official_reply(
-        _incoming("official-2"),
         OutboundMessage.from_text("结果"),
     )
     assert await service.observe_onebot(_observation())
@@ -336,15 +325,14 @@ async def test_duplicate_napcat_observation_does_not_count_twice(
         _incoming("official-1"),
         OutboundMessage.from_text("结果"),
     )
-    assert not await service.observe_onebot(observation)
+    assert await service.observe_onebot(observation)
     assert not await service.observe_onebot(observation)
 
-    assert (
-        await store.for_official(
-            OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP)
-        )
-        is None
+    link = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP)
     )
+    assert link is not None
+    assert link.onebot_qq_id == str(MEMBER_QQ)
 
 
 @pytest.mark.asyncio
@@ -390,17 +378,6 @@ async def test_observations_are_isolated_by_trusted_bot_and_app_id(
         ONEBOT_GROUP,
         (str(MEMBER_QQ),),
         "相同结果",
-    )
-    assert not await service.observe_onebot(second_observation)
-    clock[0] += 1
-    service.record_official_reply(
-        _incoming(
-            "app-b-2",
-            app_id=second_app_id,
-            official_group=second_group,
-            member_openid=second_member,
-        ),
-        message,
     )
     assert await service.observe_onebot(second_observation)
 

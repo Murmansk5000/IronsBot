@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ironsbot.services.identity_link_store import IdentityLinkStore
 
 _SPACE_PATTERN = re.compile(r"\s+")
-_MIN_CONFIRMATIONS = 2
+_MIN_CONFIRMATIONS = 1
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -63,7 +63,7 @@ class _PendingReply:
 class SilentIdentityObservationService:
     store: IdentityLinkStore
     accounts: Mapping[str, IdentityObservationAccount]
-    confirmation_count: int = 2
+    confirmation_count: int = 1
     match_window_seconds: float = 10.0
     clock: Callable[[], float] = time.time
     on_link: Callable[[str, OfficialIdentity], None] | None = None
@@ -78,7 +78,7 @@ class SilentIdentityObservationService:
 
     def __post_init__(self) -> None:
         if self.confirmation_count < _MIN_CONFIRMATIONS:
-            msg = "silent identity observation requires at least two confirmations"
+            msg = "silent identity observation requires at least one confirmation"
             raise ValueError(msg)
         if self.match_window_seconds <= 0:
             msg = "identity observation match window must be positive"

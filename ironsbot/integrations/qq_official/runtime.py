@@ -47,9 +47,11 @@ if TYPE_CHECKING:
 
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
     from ironsbot.integrations.qq_official.recipient_state import (
         QQOfficialRecipientStateStore,
     )
+    from ironsbot.services.identity_link_store import CrossPlatformGroupLink
     from ironsbot.services.identity_observation import (
         SilentIdentityObservationService,
     )
@@ -267,6 +269,7 @@ class QQOfficialRuntime:
         self._messenger: OutboundMessenger | None = None
         self._identity_observer: SilentIdentityObservationService | None = None
         self._recipient_state = recipient_state
+        self._ingress_routing: QQOfficialIngressRouting | None = None
         self._connections: dict[str, _Connection] = {}
         for index, account in enumerate(accounts, start=1):
             if account.app_id in self._connections:
@@ -320,6 +323,18 @@ class QQOfficialRuntime:
     def sender(self, app_id: str) -> TencentQQClient | None:
         connection = self._connections.get(app_id)
         return connection.sender if connection is not None else None
+
+    def register_group_link(self, link: CrossPlatformGroupLink) -> None:
+        if self._ingress_routing is None:
+            return
+        self._ingress_routing.register_group_endpoint(
+            account_id=link.official_app_id,
+            official_group_openid=link.official_group_openid,
+            onebot_group_id=link.onebot_group_id,
+        )
+
+    def configure_ingress_routing(self, routing: QQOfficialIngressRouting) -> None:
+        self._ingress_routing = routing
 
     @property
     def account_health(self) -> tuple[QQOfficialAccountHealth, ...]:
@@ -379,7 +394,7 @@ class QQOfficialRuntime:
             connection.started = False
             connection.lifecycle.stopped()
 
-    async def handle_event(
+    async def handle_event(  # noqa: C901 - transport boundary owns event outcomes
         self,
         app_id: str,
         event_type: str,
@@ -415,6 +430,14 @@ class QQOfficialRuntime:
             logger.error("QQ Official event arrived before runtime binding")
             return
         incoming = qq_official_incoming_message(event, account_id=app_id)
+        mentions_bot = qq_official_event_mentions_bot(event)
+        if not self._accepts_incoming(
+            app_id,
+            event_type,
+            incoming,
+            explicitly_addressed=mentions_bot,
+        ):
+            return
         if not await self._inbound_deduplicator.claim(
             app_id=app_id,
             event_type=message_event_family(event_type),
@@ -428,7 +451,6 @@ class QQOfficialRuntime:
                 reference_digest(incoming.message_id),
             )
             return
-        mentions_bot = qq_official_event_mentions_bot(event)
         context = MessageInputContext(
             incoming,
             mentions_bot=mentions_bot,
@@ -471,6 +493,31 @@ class QQOfficialRuntime:
                 account_label=self._connections[app_id].lifecycle.account,
                 identity_observer=self._identity_observer,
             )
+
+    def _accepts_incoming(
+        self,
+        app_id: str,
+        event_type: str,
+        incoming: IncomingMessageRef,
+        *,
+        explicitly_addressed: bool,
+    ) -> bool:
+        routing = self._ingress_routing
+        if routing is None or routing.allows(
+            account_id=app_id,
+            conversation_kind=incoming.conversation.kind,
+            conversation_id=incoming.conversation.id,
+            explicitly_addressed=explicitly_addressed,
+        ):
+            return True
+        logger.info(
+            "QQ Official inbound ignored by account routing: "
+            "account=%s event_type=%s conversation=%s",
+            self._connections[app_id].lifecycle.account,
+            event_type,
+            reference_digest(incoming.conversation.id),
+        )
+        return False
 
     def _callbacks(
         self,

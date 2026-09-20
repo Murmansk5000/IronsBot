@@ -26,6 +26,12 @@ reply sequences, and outbound routing by the owning AppID.
 ## Configuration Contract
 
 - `[bot.qq_official]` owns process-wide enablement and sandbox selection.
+- `default_account` owns private messages and groups without an explicit route;
+  it is mandatory when several accounts are active.
+- `group_routes` maps logical group aliases to the only account allowed to handle
+  inbound commands for that group.
+- A logical group with exactly one configured official endpoint is owned by that
+  account automatically; `group_routes` resolves only multi-endpoint overrides.
 - `[bot.qq_official.accounts.<alias>]` owns one account. Aliases contain only
   letters, digits, and underscores and are unique ignoring case.
 - Each account declares its public `app_id` in TOML. `APP_SECRET_<AppID>`
@@ -57,13 +63,15 @@ reply sequences, and outbound routing by the owning AppID.
   first selects that trusted sender, then requires the owning AppID, mapped
   official group OpenID, numeric OneBot group, exact normalized reply text and
   one mentioned QQ member to agree.
-- Several official accounts may be present in the same numeric QQ group without
-  sharing identity state. Their OpenIDs and links remain scoped by AppID.
-- Only one official account in a group should enable full-message command
-  handling. If two accounts receive all group messages and expose the same
-  command, both may legitimately claim an unaddressed command and send duplicate
-  replies. Other accounts in that group must remain mention-only or disable the
-  overlapping features; identity isolation is not responder election.
+- Several official accounts may be present in the same numeric QQ group. Their
+  OpenIDs and verified links remain scoped by AppID, while `group_routes` elects
+  one responder before command recognition or business execution.
+- A trusted official reply is accepted as one complete identity observation only
+  when AppID, trusted bot QQ, logical group, exact normalized text, time window,
+  unique pending reply and exactly one mentioned QQ member all agree.
+- A verified official identity canonicalizes to its OneBot principal. Existing
+  OneBot player bindings remain authoritative; official-only rebinding rows are
+  moved to that principal instead of creating permanent duplicate state.
 - A second NapCat observer is redundant, not an automatic failover mechanism.
   Deployments that require observer high availability need an explicit
   connection-health and leader policy rather than relying on duplicate events.
@@ -85,8 +93,9 @@ for every AppID.
 - [x] Proactive delivery selects the owning bot and per-account permission.
 - [x] Identical message IDs allocate independent reply sequences per AppID.
 - [x] Account-less and unknown-account outbound targets are rejected.
-- [x] Duplicate NapCat observations cannot satisfy the two-observation threshold.
+- [x] Duplicate NapCat observations cannot create a second identity link.
 - [x] Trusted bot QQ and AppID isolate observations when accounts share a group.
+- [x] Shared-group routing admits exactly one configured official account.
 - [x] Full pytest, Ruff, BasedPyright, compileall, diff checks, and preview image
   build pass.
 
@@ -128,9 +137,11 @@ visibility for C2C help, and menu-exit cleanup for the second account. Group hel
 and the exact rendered contents of the two second-level pages remain separate
 acceptance gates.
 
-Commit `108c4fc0` adds regression evidence that duplicate NapCat observations
-cannot satisfy the confirmation threshold and that trusted bot QQ plus AppID
-separate observations when two official accounts share one numeric group. The
+Commit `108c4fc0` originally added a two-observation threshold. The later
+single-observation contract keeps the same strict trusted-bot, AppID, group,
+text and unique-mention checks; duplicate observations cannot create a second
+link, and trusted bot QQ plus AppID still separate observations when accounts
+share one numeric group. The
 post-commit full suite completed with `3817 passed, 7 skipped`; Ruff, formatting,
 production and test BasedPyright, compileall, repository static checks, and diff
 checks all passed.

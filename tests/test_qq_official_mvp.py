@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
@@ -854,6 +855,7 @@ def test_qq_official_config_loads_independent_accounts(
     path.write_text(
         """
 [bot.qq_official]
+default_account = "example_a"
 
 [bot.qq_official.accounts.example_a]
 app_id = "10001"
@@ -882,6 +884,34 @@ features = ["about"]
         ("example_a", "10001", "secret-a"),
         ("example_b", "10002", "secret-b"),
     ]
+
+
+def test_multiple_official_accounts_require_explicit_default(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.qq_official.accounts.example_a]
+app_id = "10001"
+
+[bot.qq_official.accounts.example_b]
+app_id = "10002"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="default_account is required",
+    ):
+        load_settings(
+            path,
+            env={
+                "APP_SECRET_10001": "secret-a",
+                "APP_SECRET_10002": "secret-b",
+            },
+        )
 
 
 def test_onebot_deployment_environment_overrides_toml(tmp_path: Path) -> None:

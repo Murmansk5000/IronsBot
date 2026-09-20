@@ -10,6 +10,7 @@ from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.qq_official import runtime as runtime_module
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.recipient_state import (
@@ -343,6 +344,116 @@ def test_runtime_deduplicates_full_and_at_group_delivery(
             )
 
             assert router.dispatch_count == 1
+
+    asyncio.run(run())
+
+
+def test_runtime_dispatches_shared_group_only_through_routed_account(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        routing = QQOfficialIngressRouting(
+            "public-app",
+            {"686376929": "local-app"},
+        )
+        for app_id, openid in (
+            ("public-app", "public-group"),
+            ("local-app", "local-group"),
+        ):
+            routing.register_group_endpoint(
+                account_id=app_id,
+                official_group_openid=openid,
+                onebot_group_id="686376929",
+            )
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (
+                    QQOfficialRuntimeAccount("public-app", "public-secret"),
+                    QQOfficialRuntimeAccount("local-app", "local-secret"),
+                ),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            runtime.configure_ingress_routing(routing)
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+            )
+            common = {
+                "id": "same-logical-message",
+                "content": "帮助",
+                "timestamp": "2026-09-20T22:00:00+08:00",
+                "author": {"member_openid": "member-openid"},
+            }
+
+            await runtime.handle_event(
+                "public-app",
+                "GROUP_MESSAGE_CREATE",
+                {**common, "group_openid": "public-group"},
+            )
+            await runtime.handle_event(
+                "local-app",
+                "GROUP_MESSAGE_CREATE",
+                {**common, "group_openid": "local-group"},
+            )
+
+            assert router.dispatch_count == 1
+            context = cast("MessageInputContext", router.contexts[0])
+            assert context.message.conversation.account_id == "local-app"
+
+    asyncio.run(run())
+
+
+def test_runtime_allows_addressed_account_to_bootstrap_unknown_group(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (
+                    QQOfficialRuntimeAccount("public-app", "public-secret"),
+                    QQOfficialRuntimeAccount("special-app", "special-secret"),
+                ),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            runtime.configure_ingress_routing(
+                QQOfficialIngressRouting("public-app", {})
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+            )
+            common = {
+                "content": "@special 帮助",
+                "timestamp": "2026-09-20T23:50:00+08:00",
+                "group_openid": "new-group",
+                "author": {"member_openid": "member-openid"},
+            }
+
+            await runtime.handle_event(
+                "special-app",
+                "GROUP_MESSAGE_CREATE",
+                {**common, "id": "ordinary", "mentions": []},
+            )
+            await runtime.handle_event(
+                "special-app",
+                "GROUP_MESSAGE_CREATE",
+                {
+                    **common,
+                    "id": "addressed",
+                    "mentions": [
+                        {"is_you": True, "member_openid": "special-bot-openid"}
+                    ],
+                },
+            )
+
+            assert router.dispatch_count == 1
+            context = cast("MessageInputContext", router.contexts[0])
+            assert context.message.conversation.account_id == "special-app"
+            assert context.mentions_bot
 
     asyncio.run(run())
 
