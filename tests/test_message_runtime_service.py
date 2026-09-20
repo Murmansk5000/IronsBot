@@ -40,11 +40,14 @@ def test_find_command_action_skips_disabled_and_disallowed() -> None:
     disallowed = FakeCommandAction(enabled=True, commands=["xm"], feature="blocked")
     allowed = FakeCommandAction(enabled=True, commands=["xm"], feature="text")
 
-    assert find_command_action(
-        "xm",
-        [disabled, disallowed, allowed],
-        is_allowed=lambda action: action.feature == "text",
-    ) is allowed
+    assert (
+        find_command_action(
+            "xm",
+            [disabled, disallowed, allowed],
+            is_allowed=lambda action: action.feature == "text",
+        )
+        is allowed
+    )
 
 
 def test_find_keyword_reply_action_uses_literal_contains_matching() -> None:
@@ -56,11 +59,14 @@ def test_find_keyword_reply_action_uses_literal_contains_matching() -> None:
     )
     allowed = FakeKeywordReplyAction(enabled=True, keywords=["出出"])
 
-    assert find_keyword_reply_action(
-        "今天出出了",
-        [disabled, disallowed, allowed],
-        is_allowed=lambda action: action.feature == "text",
-    ) is allowed
+    assert (
+        find_keyword_reply_action(
+            "今天出出了",
+            [disabled, disallowed, allowed],
+            is_allowed=lambda action: action.feature == "text",
+        )
+        is allowed
+    )
     assert (
         find_keyword_reply_action(
             "今天出去玩",
@@ -113,8 +119,6 @@ def test_scheduled_action_normalizes_minute_input_with_seconds() -> None:
         == "08:30:00"
     )
     assert (
-        MessageScheduledAction(
-            id="precise", messages=["text"], time="08:30:45"
-        ).time
+        MessageScheduledAction(id="precise", messages=["text"], time="08:30:45").time
         == "08:30:45"
     )

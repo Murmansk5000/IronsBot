@@ -13,7 +13,6 @@ from ironsbot.core.plugin_install import (
     PluginContributionCatalog,
     active_plugin_install_context,
 )
-from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import explicit_command
@@ -65,7 +64,6 @@ def install(  # noqa: PLR0913 - shared help dependencies are explicit
         make_portable_query_handler(
             operation,
             query_sessions,
-            ActionDefinition("help", "帮助菜单"),
         )
     )
 

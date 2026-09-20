@@ -16,6 +16,7 @@ from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
@@ -147,10 +148,17 @@ async def _send_red_packet_notice(  # noqa: PLR0913
     conversation = onebot_conversation_ref(group_id, group_id=group_id)
     sender = onebot_actor_ref(sender_id)
     if not limiter.can_send(conversation):
-        logger.info(f"red packet notice suppressed by cooldown for group {group_id}")
+        logger.info(
+            "red packet notice suppressed by cooldown: conversation_ref={}",
+            reference_digest(conversation.id),
+        )
         return
 
-    logger.info(f"red packet notice detected: group={group_id} sender={sender_id}")
+    logger.info(
+        "red packet notice detected: conversation_ref={} actor_ref={}",
+        reference_digest(conversation.id),
+        reference_digest(sender.id),
+    )
     group_name = await _get_group_name(bot, group_id)
     notice = build_red_packet_notice_message(
         conversation=conversation,

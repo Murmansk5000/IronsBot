@@ -23,6 +23,8 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     is_dynamic_menu_command,
 )
 from ironsbot.services.about import AboutService, about_command_contracts
+from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
@@ -111,8 +113,12 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
         (
             PluginContribution(id="help", commands=help_command_contracts()),
             PluginContribution(id="about", commands=about_command_contracts()),
+            PluginContribution(
+                id="ai_chat",
+                commands=ai_chat_command_contracts(enabled=True),
+            ),
         ),
-        known_features={"help", "about"},
+        known_features={"help", "about", "ai_chat"},
     )
     about.install(registry, AboutService("test"))
     help_plugin.install(
@@ -131,7 +137,14 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
             actual = await rule(cast("Bot", None), event, {})
             assert catalog.claims_direct_input(CONTEXT, FEATURES, text) == actual
             state = {}
-            assert _capture_ai_prompt(event, state, FEATURES, catalog) is not actual
+            assert (
+                _capture_ai_prompt(
+                    event,
+                    state,
+                    AiInputRoutingService(FEATURES, catalog),
+                )
+                is not actual
+            )
             if not actual:
                 assert state[AI_CHAT_PROMPT_KEY] == text.strip()
 

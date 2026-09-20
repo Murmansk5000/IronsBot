@@ -31,12 +31,11 @@ DOCKER_HUB_REGISTRIES = frozenset(
 
 
 def split_docker_image(image: str) -> tuple[str, str]:
-    tagged_repository, separator, digest = image.partition("@")
-    last_segment = tagged_repository.rsplit("/", maxsplit=1)[-1]
+    last_segment = image.rsplit("/", maxsplit=1)[-1]
     if ":" not in last_segment:
-        return tagged_repository, digest if separator else "latest"
-    repository, tag = tagged_repository.rsplit(":", maxsplit=1)
-    return repository, digest if separator else tag
+        return image, "latest"
+    repository, tag = image.rsplit(":", maxsplit=1)
+    return repository, tag
 
 
 def docker_registry_auth_headers(

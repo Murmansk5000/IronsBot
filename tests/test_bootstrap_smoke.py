@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -7,15 +9,44 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_application_bootstrap_smoke() -> None:
+def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
+    from nonebot.log import logger
+
+    from ironsbot.app.bootstrap import configure_application_logging
+
+    application_logger = logging.getLogger("ironsbot")
+    previous_handlers = application_logger.handlers[:]
+    previous_level = application_logger.level
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda message: messages.append(str(message)),
+        format="{message}",
+        level="INFO",
+    )
+    try:
+        application_logger.handlers.clear()
+        configure_application_logging("INFO")
+        logging.getLogger("ironsbot.acceptance").info("stdlib bridge ready")
+    finally:
+        logger.remove(sink_id)
+        application_logger.handlers[:] = previous_handlers
+        application_logger.setLevel(previous_level)
+
+    assert any("stdlib bridge ready" in message for message in messages)
+
+
+def test_application_bootstrap_smoke(tmp_path: Path) -> None:
+    config = (ROOT / "config.example.toml").read_text(encoding="utf-8")
+    config = config.replace('environment = "prod"', 'environment = "test"', 1)
+    config_path = tmp_path / "bootstrap.toml"
+    config_path.write_text(config, encoding="utf-8")
     script = """
 import os
 import inspect
+import nonebot
 from copy import deepcopy
 from functools import partial
 from typing import ForwardRef
-
-os.environ["APP_CONFIG_PATH"] = "config.example.toml"
 
 from nonebot.log import logger
 from nonebot.dependencies import utils
@@ -61,11 +92,39 @@ dependencies.get_typed_signature = checked_get_typed_signature
 from ironsbot.app.bootstrap import bootstrap
 
 state = bootstrap()
+assert nonebot.get_driver().env == "test"
+assert os.environ["ENVIRONMENT"] == "outer"
+messages = []
+privacy_sink = logger.add(messages.append, format="{message}")
+actor_id = "1" * 10
+try:
+    logger.info(
+        "secret={} actor={}",
+        os.environ["QQ_OFFICIAL_SECRET_EXAMPLE_BOT"],
+        actor_id,
+    )
+finally:
+    logger.remove(privacy_sink)
+rendered = "".join(messages)
+assert "test-secret" not in rendered
+assert actor_id not in rendered
+assert "<secret:" in rendered
+assert "<id:" in rendered
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
+assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
+    "identity_links",
+    "data_sync",
+    "qq_official",
+]
+assert {"seer.team.query", "seer.pet.avatar"}.issubset(
+    state.resources.commands.qq_official_direct_command_ids
+)
 assert len(state.contributions) > 0
-assert len(state.matcher_factory.message_matchers) > 0
-assert len(state.matcher_factory.notice_matchers) > 0
+assert not state.onebot_message_handling_enabled
+assert len(state.matcher_factory.message_matchers) == 0
+assert len(state.matcher_factory.notice_matchers) == 0
+assert state.resources.onebot_ingress is not None
 assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
 
 for matcher in (
@@ -95,6 +154,13 @@ print("BOOTSTRAP_OK")
         errors="replace",
         check=False,
         timeout=30,
+        env={
+            **dict(os.environ),
+            "ENVIRONMENT": "outer",
+            "APP_CONFIG_PATH": str(config_path),
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "test-secret",
+        },
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

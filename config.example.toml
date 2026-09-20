@@ -5,8 +5,8 @@
 # See README.md "Feature 对照表" for every feature key and its meaning.
 #
 # 快速阅读顺序：
-# 1. [features.group_aliases] / [features.user_aliases]
-#    先给群号、QQ 号起短名字，后面策略里都用这些短名字。
+# 1. [identities.groups.*] / [identities.users.*]
+#    为同一个群或用户集中声明 QQ 与各官方机器人端点，后面策略只用别名。
 # 2. [features.bundles]
 #    可选：把经常重复的功能清单定义成 standard、lite 等自定义组合。
 # 3. [features.group_policy] / [features.user_policy]
@@ -64,77 +64,87 @@ command_start = ["/", ""]
 #     帮助、帮助、关于和必要运行支撑；使用 core 时，权限策略只能启用该配置
 #     已加载插件提供的功能，否则启动会明确报错。
 plugin_manifest = "full"
-
-# Receive OneBot events without running commands; allow read-only APIs only.
-# This does not establish QQ/OpenID identity links. Restart after changing.
-# ZH: OneBot 只读模式，不执行指令、不发送消息；尚不提供 QQ/OpenID 关联。
-# 修改后重启生效。独立使用 NapCat 时保持 false。
-onebot_observer = false
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
+[bot.onebot]
+# Default: true
+# EN: Process connected NapCat / OneBot v11 events.
+# ZH: 是否处理已连接的 NapCat / OneBot v11 事件。
+enabled = true
+# Default: true
+# EN: Allow OneBot replies and proactive messages only when no complete QQ
+#     Official credential pair is present. Official credentials always win.
+# ZH: 仅在没有完整 QQ 官方机器人凭据时允许 OneBot 回复和主动消息；
+#     只要存在完整官方凭据，NapCat 就会被强制静默。
+send_messages = true
+# Default: false
+# EN: Silently correlate official group member OpenIDs with QQ numbers from the
+#     source-message references observed by NapCat. Requires active official
+#     credentials and trusted bot IDs below.
+# ZH: 由 NapCat 读取官方群回复所引用的原消息发送者，静默关联群 member_openid 与 QQ 号；
+#     需要完整官方凭据以及下方可信官方机器人 QQ 号。
+identity_verification = false
+
+[bot.onebot.trusted_official_bots]
+# EN: Official account alias -> numeric QQ ID seen by NapCat.
+# ZH: 官方账号别名 -> NapCat 事件中看到的官方机器人数字 QQ 号。
+# example_bot = 123456789
+
 [bot.qq_official]
-# EN: Enable one or more QQ Official Bot accounts in this process.
-# ZH: 在同一进程启用一个或多个 QQ 官方机器人账号。
-enabled = false
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
 sandbox = false
+# EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
+# ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
+startup_timeout_seconds = 15.0
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
-#     Set its AppSecret through QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
+#     A complete AppID and AppSecret environment pair activates the account and
+#     makes QQ Official the only outbound platform. No TOML enabled flag exists.
 # ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
-#     OpenID 命名空间、权限和发送路由；此示例的 AppSecret 使用
-#     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
+#     OpenID 命名空间、权限和发送路由。完整的 AppID 与 AppSecret 环境变量
+#     会激活该账号，并使 QQ 官方成为唯一出站平台；TOML 不再使用 enabled。
 [bot.qq_official.accounts.example_bot]
-enabled = false
-app_id = ""
-# EN: Allow SDK-level proactive sends. Keep disabled until the application has
-#     the required platform permission. Team-resource subscriptions require it.
-# ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
+# EN: A required account prevents application startup when it cannot become ready.
+#     Optional accounts remain observable as degraded and may recover later.
+# ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
+required = false
+# EN: Allow official proactive sends such as schedules and Bilibili pushes.
+#     Users may disable proactive messages in QQ; platform rate limits apply.
+# ZH: 允许官方机器人发送定时提醒、B站动态等主动消息；用户可在 QQ
+#     客户端关闭主动消息，并且发送仍受平台频率限制。
 proactive_messages = false
-# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY_<ENDPOINT_NAME>.
-# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY_<端点名>。
+# EN: Enable custom command keyboards only after Tencent grants the account's
+#     invite-only custom-button capability. Text choices always remain available.
+# ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
+custom_keyboards = false
+# EN: Account-level defaults apply to every message received by this bot. Use an
+#     empty list for a special-purpose bot and grant features only through the
+#     account policies or the shared logical identity policies below. ai_chat
+#     also requires at least one AI_KEY_<PROVIDER>.
+# ZH: 账号级默认功能会应用于该机器人收到的所有消息。专用机器人应设为空列表，
+#     再通过账号策略或下方共享逻辑身份策略只向特定目标授权；查询候选项使用数字
+#     选择，0 退出；ai_chat 还需至少一个 AI_KEY_<PROVIDER>。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-# EN: C2C user_openids with superuser bypass. These are not QQ numbers.
-# ZH: 私聊超级管理员的 user_openid；这里不是 QQ 号。
-superusers = []
-
-# EN: Optional account-scoped targets keyed by group/user alias or OpenID. Declaring a
-#     target also enables these extra features there; global features remain active.
-# ZH: 可选的主动推送目标，键为群/用户别名或 OpenID；声明后会在该目标额外启用这些功能，
-#     全局 features 仍然有效。OpenID 含特殊字符时必须用引号包裹。
+# EN: Optional account-scoped targets keyed by aliases declared under identities.
+#     Raw OpenIDs are rejected. Declaring a target also enables these extra features
+#     there; global features remain active.
+# ZH: 可选的账号级目标，键必须是 identities 中声明的群/用户别名，不接受裸 OpenID；
+#     声明后会在该目标额外启用这些功能，全局 features 仍然有效。
 [bot.qq_official.accounts.example_bot.group_policy]
 # example_official_group = ["seer_activity_push", "bili_push"]
 
 [bot.qq_official.accounts.example_bot.user_policy]
 # example_official_user = ["seer_activity_push", "bili_push"]
 
-# EN: Group-scoped superusers. Keys are group aliases or raw group OpenIDs;
-#     values are member_openids observed in that group, not C2C user_openids.
-# ZH: 群聊超级管理员。键为群别名或群 OpenID，值为该群事件里的 member_openid，
-#     不能填写私聊 user_openid。
-[bot.qq_official.accounts.example_bot.group_superusers]
-# example_official_group = ["example-member-openid"]
-
-# EN: Account-scoped aliases for opaque QQ Official OpenIDs. Each alias must be
-#     globally unique across OneBot and every enabled official account.
-# ZH: QQ 官方 OpenID 的账号级别名。别名必须在 OneBot 与所有启用的官方账号中全局唯一。
-[bot.qq_official.accounts.example_bot.group_aliases]
-# example_official_group = "example-group-openid"
-
-[bot.qq_official.accounts.example_bot.user_aliases]
-# example_official_user = "example-user-openid"
-
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
-ai_group_at = -10
-bot_mention_block = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3
@@ -205,29 +215,35 @@ runtime_state = "data/state/runtime_state.sqlite"
 # Existing deployments must migrate the old small state databases while the
 # bot is stopped. See README "状态库迁移"; do not move files by hand.
 
+[identities.groups.group_a]
+qq = 987654321
+
+[identities.groups.group_a.official]
+example_bot = "example-group-openid-a"
+
+[identities.groups.group_b]
+qq = 876543210
+
+[identities.users.owner]
+qq = 1234567890
+
+[identities.users.owner.official]
+example_bot = "example-user-openid-owner"
+
+[identities.users.user_a]
+qq = 2345678901
+
+# Example automated account. Add the same alias to user_policy with blacklist so
+# its messages never trigger commands or AI handling.
+# [identities.users.blocked_bot]
+# qq = 3456789012
+
 [features]
 # Default: true
 # EN: Let NoneBot superusers bypass feature restrictions.
 # ZH: 是否允许超级管理员绕过功能策略限制。
 # Example: false
 superuser_bypass = true
-
-[features.group_aliases]
-# Default: empty table
-# EN: Named QQ group IDs used by policies.
-# ZH: 群别名，把易读名称映射到 QQ 群号。
-group_a = 987654321
-group_b = 876543210
-
-[features.user_aliases]
-# Default: empty table
-# EN: Named QQ user IDs used by policies.
-# ZH: 用户别名，把易读名称映射到 QQ 号。
-owner = 1234567890
-user_a = 2345678901
-# Official QQ group-management bot. Blacklisted below so its automated messages
-# never trigger bot commands or AI handling.
-qq_group_manager = 2854196310
 
 [features.bundles]
 # Default: empty table
@@ -283,7 +299,7 @@ lite = [
 # defined above. Seer sub-features:
 # seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
 # seer_peak, seer_autocard, seer_rank, seer_data.
-# ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询功能组合；
+# ZH: 群功能策略，控制逻辑群在所有已声明平台端点可用的功能。seer 是全部赛尔查询功能组合；
 # 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能；pet_config 需单独开启。
 # 如果某个群不想开放精灵/刻印这类宽泛匹配功能，就不要写 seer，
 # 改写 seer_player、seer_rank、seer_autocard 等精细子功能。
@@ -303,12 +319,13 @@ lite = [
 
 [features.user_policy]
 # Default: empty table
-# EN: Private/user feature allowlist.
-# ZH: 私聊/用户功能策略，也用于私聊推送目标。
+# EN: Logical private/user feature allowlist across declared platform endpoints.
+# ZH: 逻辑私聊/用户功能策略，应用到该别名已声明的 QQ 号、user_openid 和群内
+# member_openid；私聊推送只使用 QQ 号和 user_openid，不会发送给 member_openid。
 # Example:
 # owner = ["all"]
 # blocked_user = ["blacklist"]
-qq_group_manager = ["blacklist"]
+# blocked_bot = ["blacklist"]
 
 [features.help]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
@@ -347,6 +364,10 @@ text = "火火手册链接：{url}"
 append_to_push = true
 
 [ai]
+# EN: Providers are tried in this order. Every declared provider must appear once.
+# ZH: 按此顺序尝试 AI 提供商；每个已声明提供商必须且只能出现一次。
+provider_order = ["deepseek"]
+
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
 # ZH: AI 聊天系统提示词。
@@ -402,12 +423,6 @@ max_tokens = 800
 temperature = 0.7
 
 # Default: false
-# EN: Enable provider-specific thinking mode.
-# ZH: 是否启用供应商特定的思考模式。
-# Example: true
-thinking = false
-
-# Default: false
 # EN: Send a processing notice before AI replies.
 # ZH: AI 回复前是否发送“处理中”提示。
 # Example: true
@@ -432,17 +447,20 @@ admin_notice_cooldown_seconds = 600.0
 # Example: false
 intent_actions_enabled = true
 
-# OpenAI-compatible endpoints are tried in TOML order. Keys must be set only
-# in the environment as AI_KEY_<UPPERCASE_ENDPOINT_NAME>, never in this file.
-# EN: Each endpoint tries models in list order before moving to the next endpoint.
-# ZH: 按端点和模型列表顺序回退；密钥只放环境变量。
-
-[[ai.endpoints]]
-# EN: Stable endpoint name; corresponds to AI_KEY_DEEPSEEK.
-# ZH: 稳定端点名，对应环境变量 AI_KEY_DEEPSEEK。
-name = "deepseek"
+[ai.providers.deepseek]
+# EN: OpenAI-compatible endpoint and ordered model fallback list. Store the
+# secret only in AI_KEY_DEEPSEEK, never in TOML.
+# ZH: OpenAI 兼容接口与模型备用顺序。密钥只能写入 AI_KEY_DEEPSEEK，禁止写入 TOML。
 base_url = "https://api.deepseek.com"
 models = ["deepseek-v4-pro"]
+thinking = false
+
+# Add independent backup providers with their own environment keys:
+# [ai.providers.fumin]
+# base_url = "https://example.com/v1"
+# models = ["primary-model", "backup-model"]
+# thinking = false
+# Then set provider_order = ["deepseek", "fumin"] and AI_KEY_FUMIN.
 
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.
@@ -616,9 +634,6 @@ summary_max_chars = 250
 # ZH: 长动态全文推送是否调用 AI 摘要；关闭后改为发送原文节选。
 summary_use_ai = true
 
-# Combine static images for Bilibili queries and pushes; retain originals on failure.
-combine_images = true
-
 # Default: {}
 # EN: Group targets keyed by a OneBot group alias/ID or an account-scoped QQ
 #     Official group alias. Official raw OpenIDs are intentionally not accepted
@@ -676,7 +691,10 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
 # `at_user_ids` accepts user aliases or QQ IDs, only applies to group replies,
 # and is ignored in private chats.
-# Example action fields: id, enabled, feature, message, commands, at_user_ids.
+# `messages` is an ordered non-empty list. Every entry is sent as a separate
+# message on both OneBot and QQ Official.
+# `messages` 是有序非空列表；每项在 OneBot 和 QQ 官方机器人上分别发送一条消息。
+# Example action fields: id, enabled, feature, messages, commands, at_user_ids.
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.
 # `id` 唯一标识这条动作；`feature` 同时声明它的权限名，随后可在
@@ -686,7 +704,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # [[messaging.commands]]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
-# message = "https://seerinfo.yuyuqaq.cn/"
+# messages = ["https://seerinfo.yuyuqaq.cn/"]
 # feature = "seerinfo_link"
 
 # Default: []
@@ -702,7 +720,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # [[messaging.keyword_replies]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
-# message = "出出是蛆"
+# messages = ["第一条回复", "第二条回复"]
 # feature = "chuchu_reply"
 
 # Default: []
@@ -717,7 +735,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # resets TD and push-time preferences for that schedule.
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, message, time,
+# Example task fields: id, name, enabled, feature, messages, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
@@ -898,13 +916,13 @@ main_bot = 111111111
 backup_bot = 222222222
 
 # EN: Keys may be group aliases or numeric group IDs.
-# ZH: 群别名来自 [features.group_aliases]，也可直接把 key 写成群号。
+# ZH: 群别名来自 [identities.groups]，也可直接把 key 写成群号。
 [messaging.bot_routing.groups]
 group_a = "main_bot"
 group_b = "backup_bot"
 
 # EN: Keys may be user aliases or numeric QQ user IDs.
-# ZH: 用户别名来自 [features.user_aliases]，也可直接把 key 写成 QQ 号。
+# ZH: 用户别名来自 [identities.users]，也可直接把 key 写成 QQ 号。
 [messaging.bot_routing.users]
 owner = "main_bot"
 user_a = "backup_bot"
@@ -929,10 +947,6 @@ in_progress_message = "该命令正在处理中，请等待当前操作完成。
 # ZH: 同一语义动作和真实目标在此期间重复发送会被抑制；不受 enabled 开关影响。
 duplicate_window_seconds = 60.0
 duplicate_message = "该指令重复发送；后续重复不再提醒。"
-# EN: Non-AI direct mentions use a per-user initial-response budget.
-# ZH: 未启用 AI 的群内直接 @ 机器人按用户使用首次提示额度。
-mention_initial_window_seconds = 600.0
-mention_initial_max_responses = 3
 
 [messaging.command_cooldown.commands]
 # EN: Optional per-command window overrides. An empty list disables limits for that command.
@@ -1059,19 +1073,15 @@ time = "00:02"
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
-# Add one table per platform user allowed to query and receive a configured
-# account's window. `user` accepts a [features.user_aliases] OneBot alias/QQ ID
-# or a QQ Official account's `user_aliases` alias. Official accounts must set
-# `proactive_messages = true`. `account`
+# Add one table per QQ user allowed to query and receive a configured account's
+# window. `user` accepts an [identities.users] alias or QQ ID. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must
 # bind that same player ID. `watched_skin_ids` accepts either the skin table ID
 # or its 140xxxx resource ID and seeds the user's watch list only once. Users
 # can later manage that list with QQ commands. Watching only adds a ★ marker.
 # The user also needs lucky_skin_window in their user policy; group use
 # additionally needs it in the group policy.
-# ZH: 每个允许查询和接收提醒的平台用户配置一张表。user 可填写 OneBot 用户别名/QQ
-# 号，或 QQ 官方机器人账号中 user_aliases 定义的别名；官方账号还必须启用
-# proactive_messages。不同 AppID 的 OpenID 不会混用。
+# ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；
 # account 引用 seer.player_accounts 中的 name、aliases 或米米号，用户必须绑定
 # 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 可填写
 # 皮肤表 ID 或 140xxxx 资源 ID，仅在首次使用时初始化关注列表；之后可通过 QQ 指令
@@ -1185,6 +1195,7 @@ taomee_internal_user_ids = [
 "竞技" = []
 "狂野" = []
 "专家" = []
+"大师" = []
 
 # 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
 [seer.rank.player_lookup]
@@ -1280,8 +1291,8 @@ active_end = "01:30"
 times = []
 # Default: collection-related global ranks plus peak user rank lists.
 # EN: Global ranks included in scheduled page refresh.
-# ZH: 定时刷新的全服榜；竞技/狂野/专家段位使用当前巅峰赛季。
-rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴", "群星牌", "竞技段位", "狂野段位", "专家段位"]
+# ZH: 定时刷新的全服榜；竞技/狂野/专家段位使用当前巅峰赛季，大师段位使用当前大师赛季。
+rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴", "群星牌", "竞技段位", "狂野段位", "专家段位", "大师段位"]
 # Default: 24
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
@@ -1348,7 +1359,7 @@ commands = ["战队"]
 # ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。
 default_threshold = 1000
 # Default: []; EN: Default users to mention when the subscription command has no @.
-# ZH: 订阅命令没有 @ 用户时默认提醒的人；可填 user_aliases 或 QQ 号。
+# ZH: 订阅命令没有 @ 用户时默认提醒的人；可填 identities.users 别名或 QQ 号。
 default_at_users = []
 # Default: 20; EN: Team subscription query timeout seconds. ZH: 战队订阅查询超时秒数。
 query_timeout_seconds = 20

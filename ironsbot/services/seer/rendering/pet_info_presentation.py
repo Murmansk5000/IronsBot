@@ -217,9 +217,7 @@ def _soulmark_views(
                 icon_id=icon.icon_id if icon is not None else None,
                 icon_asset_url=None,
                 icon=(
-                    _data_uri(icon.png, icon.content_type)
-                    if icon is not None
-                    else None
+                    _data_uri(icon.png, icon.content_type) if icon is not None else None
                 ),
             )
         )

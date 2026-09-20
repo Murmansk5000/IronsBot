@@ -18,12 +18,13 @@ one business core:
 2. QQ Official Bot only; and
 3. OneBot and QQ Official Bot together.
 
-QQ Official Bot now has a deliberately small production adapter for passive
-group/C2C commands. It uses Tencent's `qqbot-agent-sdk`, opaque OpenIDs, shared
-business services, and the platform-neutral outbound message model. The
-application lifecycle owns its transport; NoneBot continues to host OneBot.
-This first slice is not permission to copy OneBot plugins or to
-pretend unsupported identity and proactive-delivery capabilities exist.
+QQ Official Bot now has a deliberately small production transport for passive
+group/C2C commands. It uses Tencent's `qqbot-agent-sdk` as an application-owned
+resource alongside, but not inside, the NoneBot OneBot host. Both transports
+share opaque platform identities, business services, and the platform-neutral
+outbound message model. This first slice is not permission to copy OneBot
+plugins or to pretend unsupported identity and proactive-delivery capabilities
+exist.
 
 Platform identity work follows capability-first scheduling. If a target API
 cannot faithfully express a QQ number, a direct mention, an account binding, or
@@ -273,7 +274,7 @@ feature, persistence schema, or policy decision.
 | --- | --- | --- | --- |
 | Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
-| Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_onebot_feature_service()` is the only OneBot TOML compiler and must finish alias and bundle expansion before constructing the service. |
+| Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_feature_service()` is the only policy compiler and must finish logical alias, platform endpoint and bundle expansion before constructing the service. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `integrations.onebot.identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
@@ -289,7 +290,7 @@ feature, persistence schema, or policy decision.
 | Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. Derived session keys use structural encoding of all identity fields, never delimiter concatenation of opaque IDs. |
-| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
+| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Configured targets are compiled to account-scoped platform references before entering the service. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery boundary is defined in the next row. |
 | Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. Raw-package omissions that change display use a SeerAPI `pet_soulmark_display_addition` fact with provenance; no presenter may branch on a pet ID. |
@@ -322,10 +323,17 @@ The following rules are mandatory:
   parsing, persistence, HTTP calls, scheduling, retries, or business policy.
 - Public feature-policy calls in plugins and services receive `ActorRef` and
   `ConversationRef`. `FeatureService` contains no numeric group/user helpers;
-  `config.models.features.build_onebot_feature_service()` owns the one-time
+  `config.models.features.build_feature_service()` owns the one-time
   TOML alias and feature-bundle compilation. All callers use
   `is_feature_allowed`, `conversation_has_feature`, or a typed domain
   predicate such as `is_message_blocked`.
+- Logical group and user aliases may own one endpoint per transport/account
+  scope, while each native endpoint belongs to exactly one logical alias.
+  Group-member endpoints retain their AppID and group scope and must never be
+  enumerated as private-message targets.
+- Transport diagnostics log only stable one-way reference digests for native
+  user, group and bot identifiers. Raw OneBot IDs and QQ Official OpenIDs stay
+  at the integration boundary and must not appear in operational logs.
 - Services own cohesive use cases and depend on explicit ports, never on
   NoneBot, OneBot event classes, matchers, or global application state.
 - Renderers receive view models and assets. They do not execute raw SQL,
@@ -493,6 +501,39 @@ request scheduling and operation tracing then use the request's typed actor
 and conversation. An extension that needs a platform-native value must expose
 a narrow platform integration port rather than widening this callback.
 
+`services.player_extension_commands` executes contributed detail actions for
+direct OneBot commands and shared portable menus, including feature checks,
+typed management context, and delivery-aware progress. The portable router
+builds missing direct operations from the action's command declaration; an
+existing broader domain operation, such as querying team IDs, retains ownership.
+This does not expand the platforms or access rules in the command contract.
+The old OneBot detail conversation remains a tracked migration item, not an
+alternative extension API to preserve.
+
+Portable menu and text-input callbacks receive the selected value and the
+current `MessageInputContext`. Session ownership still checks the scoped actor
+and conversation before invoking a callback. Nested menus propagate this current
+context; operations evaluate authorization when invoked, rather than storing a
+group-role decision made when the menu opened. Stateless data selectors keep
+their value-only service contract; they do not own message authorization.
+This contract does not itself authorize shared group menus or replace command
+admission policy.
+
+`services.portable_reply.deliver_portable_reply` owns initial acknowledgement,
+ordered additional/follow-up delivery, and abort notification on transport
+rejection, exception, or cancellation. OneBot and QQ Official supply the send
+function; transport logging and the explicit follow-up error presentation policy
+remain at the adapter edge. An initial acknowledgement is not rolled back by a
+later failure. Cancelling preparation before the first progress value cancels
+and joins the owned operation instead of leaving it waiting in the background.
+
+`services.player_reference_selection.select_player_target` owns message-level
+target selection for shared player queries and contributed shortcuts: explicit
+references use visible candidates, while direct mentions and default bindings
+use the player resolver. The selected action receives the current input context.
+Binding and account-login operations retain their distinct authorization rules;
+candidate selection does not grant permission to mutate or log in to an account.
+
 Separately distributed extensions import their permitted dependencies from an
 explicit public contract in `ironsbot.extensions.contracts`, never from
 `ironsbot.app.composition`, `ironsbot.app.private_extensions`, or a public
@@ -594,14 +635,25 @@ each other's adapter/event types. A feature may be enabled for one platform,
 both, or neither; an adapter must not emulate an unavailable action by silently
 falling back to a OneBot-only operation.
 
-QQ Official Bot uses `qqbot-agent-sdk`, as specified in
-`docs/specs/2026-09-14-qq-official-tencent-sdk.md`. The composition root and
-application lifecycle own one official transport per AppID; do not additionally
-register `nonebot-adapter-qq` or run `botpy.Client` for that same account.
-Official-specific protocol and asset code belongs in `integrations.qq_official`.
-New commands must first expose a platform-neutral service operation and outbound
-result. The SDK owns short-lived access-token refresh; the retired static Token
-must not be restored as a configuration requirement.
+QQ Official Bot uses Tencent's `qqbot-agent-sdk`; it is not a NoneBot adapter.
+NoneBot owns only the OneBot/NapCat transport. The application composition root
+starts and stops each official AppID as an independent SDK resource alongside
+the NoneBot host. Official-specific protocol and asset code belongs in
+`integrations.qq_official`. New commands must first expose a platform-neutral
+service operation and outbound result.
+
+Each official AppID has an independent lifecycle state. Starting a WebSocket
+thread is not readiness: only an authenticated `READY` or successful `RESUMED`
+dispatch makes the account healthy. Disconnects enter `reconnecting`; optional
+startup failures remain `degraded`, while required failures propagate through
+the application resource-startup boundary. Shutdown stops every SDK WebSocket
+before shared HTTP and database resources are closed.
+
+Inbound official message IDs are claimed in persistent SQLite before business
+dispatch. The claim key includes AppID and event type, so SDK replay, Resume,
+or process restart cannot execute the same command twice while unrelated bot
+accounts remain isolated. This integration concern must not be reimplemented
+inside command handlers or business services.
 
 ## QQ Official Capability And Safety Requirements
 
@@ -619,6 +671,7 @@ class DeliveryCapabilities:
     supports_group_context: bool
     supports_private_context: bool
     supports_images: bool
+    supports_interactive_prompts: bool = False
 ```
 
 - Check capabilities and official policy before scheduling or delivering a
@@ -627,74 +680,31 @@ class DeliveryCapabilities:
   never hide an expired official reply behind a generic retry loop.
 - Keep OneBot numeric QQ IDs separate from official open IDs. There is no
   implicit cross-platform identity mapping.
+- Cross-platform identity has three exact sources: a deployment-owned identity
+  alias, an explicit short-lived challenge confirmed on both transports, or a
+  trusted silent observation. Silent observation is allowed only when an
+  official reply references the triggering group message and NapCat reports
+  that referenced message's numeric sender in the same configured logical
+  group. Two independent, unique observations are required before persistence.
+  Nicknames, avatars, fuzzy text similarity, bare timing, `union_openid`, or
+  speech-history guesses are never identity proof. Links are revocable and
+  scoped by AppID and official identity kind.
 - Store official targets with their platform and scope. Never treat an official
   identifier as a QQ number or reuse a OneBot group alias for it.
 - Treat mentions, callbacks, message references, and media as adapter-specific
-  capabilities. A command that needs an unavailable capability must degrade
-  safely, not guess.
+  capabilities. The current QQ Official group path targets a requester with a
+  source `message_reference`; it does not claim that the client rendered a
+  visible member mention. A command that needs an unavailable capability must
+  degrade safely, not guess.
+- QQ Official URL images use the SDK's server-fetch upload and binary images use
+  its chunked local-file uploader through short-lived temporary files. The SDK
+  1.2.2 high-level API does not expose the returned TTL, so `file_info` is used
+  once immediately and is not cached with a guessed lifetime. Platform size and
+  daily-quota rejections degrade to explicit text while unexpected failures stay
+  observable as delivery errors.
 - Record a trace ID, platform, capability decision, and official error code for
   failed deliveries so platform restrictions can be distinguished from product
   bugs.
-
-## Read-Only OneBot Assistance (Target)
-
-An opt-in deployment may use NapCat/OneBot only as an identity and membership
-observer while QQ Official is the sole message sender. This target does not
-change standalone OneBot defaults and is not implemented merely by enabling
-both adapters. It adds no permission to bypass official delivery restrictions.
-NapCat assistance is optional: absence of OneBot, an identity link or a numeric
-QQ account must not block standalone Official startup, ordinary commands or its
-release acceptance. Complete that independent deployment before using the
-observer enhancement as a reason to defer Official validation.
-
-Current implementation is only the isolation slice: `[bot].onebot_observer`
-defaults to false; when enabled, an adapter-level read-only API allowlist rejects
-writes and a OneBot event preprocessor prevents business matcher execution.
-Denied delivery is permanent, not retryable. No identity-link collection,
-correlation or QQ-backed official state lookup is enabled by this setting yet.
-
-- Official events own command execution and retain their original AppID,
-  actor, conversation, message ID and reply deadline. OneBot observations must
-  not execute the same command, consume quota or start a second menu session.
-- A shared identity-link service may supply a verified QQ account for business
-  state lookup. Keep that subject separate from the transport actor; never
-  replace an official ActorRef with a OneBot ActorRef in an incoming message.
-  Unknown associations continue using scoped official identity, not guessed QQs.
-- Links must preserve the full official identity key, including AppID, actor
-  kind and member scope. Group links are separate from user links. A group-member
-  association does not prove a C2C association or an association under another
-  AppID. Nicknames, avatars, timing and identical text are not identity proof.
-- Before implementing automatic correlation, inspect real events from both
-  transports for a documented, trustworthy shared identifier. If none exists,
-  use explicit account-control verification. A challenge must be single-use,
-  expiring and bound to the initiating official identity; copying a public code
-  must not be sufficient to claim another QQ account. Conflicts require explicit
-  resolution, not last-write-wins. Do not log raw identities or challenge secrets.
-- Prefer verified QQ-linked bindings and quota subjects through one shared
-  resolver. Define handling of pre-existing official state before rollout;
-  changing a link must not reset daily usage or silently discard subscriptions.
-  Identity linking does not automatically grant group roles or administrator
-  privileges. Role evidence has its own source, scope and freshness policy.
-- All OneBot sends must be denied at the adapter API boundary in observer mode,
-  including direct send APIs, startup/error notices, scheduled jobs and private
-  extensions. Suppressing normal command handlers or removing one messenger
-  from the platform router is insufficient. Query-only APIs remain available.
-- Official delivery failure must never fall back to OneBot. An observed ordinary
-  group message does not manufacture an official reply context or proactive quota.
-  Observer disconnection must not block unrelated official commands; stale role
-  evidence must not authorize privileged operations.
-
-Implementation order: verify dual-transport evidence; implement and test the
-opt-in observer/send-denial boundary; establish scoped verified identity links;
-integrate shared business-state resolution; run the real dual-transport matrix.
-Reuse existing QQ state storage and namespace migrations when persistence is
-needed. Do not add a database or platform-specific business branch per feature.
-
-Acceptance must cover zero OneBot sends across all entry paths, exactly one
-business execution, link conflicts/revocation, AppID/member/C2C isolation,
-unchanged official reply targets, no quota reset, observer outage, and unchanged
-standalone OneBot behavior. Mocked correlation is not proof of a real identity
-link. This target is separate from the existing passive Official release gate.
 
 ## Reusable Input And Command Contracts
 
@@ -1191,11 +1201,13 @@ identity and recipient values before a service is constructed. Notifications
 already cross the platform-neutral outbound port rather than leaking platform
 objects back into plugins or individual Seer services.
 
-`app.bilibili_composition.BilibiliComponents` compiles configured OneBot
+`app.bilibili_composition.BilibiliComponents` compiles configured platform
 targets and creates Bilibili query, history, and login services before the
 messaging builder consumes its subscription options. This keeps the composition
 root as an ordering coordinator instead of a second place that knows Bilibili
-storage and HTTP construction details.
+storage and HTTP construction details. Login QR notices are portable outbound
+messages delivered through `AdminNoticeService`; their availability is not
+inferred from a connected OneBot instance.
 
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
@@ -1219,12 +1231,15 @@ module-level values.
 
 Bootstrap registers exactly these driver hooks:
 
-- `startup`: start resources, migrate stores, start configured services, and
-  install scheduled jobs;
+- `startup`: start resources, migrate stores, start configured services,
+  install scheduled jobs, and deliver the startup notice after a selected QQ
+  Official account reaches ready;
 - `shutdown`: stop jobs and background tasks, then close resources in reverse
   ownership order;
 - `bot_connect`: record the connected OneBot instance, run readiness checks,
-  and deliver startup notices once for that connection;
+  and retry the same startup notice service when OneBot is the selected
+  outbound platform. A notice already delivered through QQ Official is not
+  repeated when an observer-mode OneBot later connects;
 - `bot_disconnect`: remove the disconnected OneBot instance from routing.
 
 Plugins do not call `get_driver()` and do not register driver hooks. Runtime
@@ -1317,11 +1332,12 @@ example, a quoted `收集@成员` is a valid `member_target_command`, while an
 `@成员` contained in the quoted message itself is ignored.
 Matchers declare one input strategy instead of inspecting message segments:
 
-- `explicit_command` accepts direct commands and replies, except a current
-  ordinary-member mention;
+- `explicit_command` accepts direct commands, commands addressed with a bot
+  mention, and replies, except a current ordinary-member mention;
 - `member_target_command` and `member_targets_command` are the only command
   strategies allowed to consume current ordinary-member mentions;
-- `bot_mention` is reserved for direct AI and bot-mention-block handling;
+- `bot_mention` identifies addressed input for AI or help hints only after the
+  command catalog has declined ownership;
 - `natural_language` accepts only direct text with no mention.
 
 An anchored prompt keeps the direct owner path and may additionally allow a
@@ -1426,7 +1442,7 @@ values only.
 ```text
 APP_CONFIG_PATH
 ONEBOT_ACCESS_TOKEN
-AI_KEY
+AI_KEY_<provider_alias>
 SEER_PASSWORD_<player_id>
 SENDPIC_CNB_TOKEN
 GITHUB_WORKFLOW_TOKEN

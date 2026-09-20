@@ -328,7 +328,7 @@ class MessagingService:
             return {
                 feature: {
                     private_conversation_for_actor(actor)
-                    for actor in self._features.actors_with_superusers(feature)
+                    for actor in self._features.private_actors_with_superusers(feature)
                 }
                 for feature in feature_keys
             }

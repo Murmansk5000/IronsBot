@@ -29,9 +29,7 @@ def format_analyze_description(
 
     resolved_colors = effect_colors or {}
     names = tuple(sorted(resolved_colors, key=len, reverse=True))
-    pattern = (
-        re.compile("|".join(re.escape(name) for name in names)) if names else None
-    )
+    pattern = re.compile("|".join(re.escape(name) for name in names)) if names else None
     lines: list[str] = []
     for line in AnalyzeDescParser(value or "").lines:
         parts: list[str] = []

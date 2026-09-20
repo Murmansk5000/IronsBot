@@ -1,33 +1,25 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.help_menu import (
     entry_from_definition,
     format_plugin_detail,
-)
-from ironsbot.services.portable_seer_commands import (
-    build_portable_rank_help_operation,
 )
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
-
-    from ironsbot.core.outbound import OutboundMessage, TextPart
 
 
 _REGULAR_RANK_COMMANDS = (
@@ -63,7 +55,7 @@ def _settings() -> Settings:
 def _rank_command_ids(event: MessageEvent) -> tuple[str, ...]:
     settings = _settings()
     definitions = build_test_plugin_registry(settings)
-    features = build_onebot_feature_service(settings.features, settings.superuser_ids)
+    features = build_feature_service(settings.features, settings.superuser_ids)
     catalog = CommandCatalog()
     catalog.load(
         definitions,
@@ -112,7 +104,7 @@ def test_rank_help_command_visibility_role_snapshots() -> None:
 def test_rank_help_group_manager_detail_only_shows_group_setting() -> None:
     settings = _settings()
     definitions = build_test_plugin_registry(settings)
-    features = build_onebot_feature_service(settings.features, settings.superuser_ids)
+    features = build_feature_service(settings.features, settings.superuser_ids)
     catalog = CommandCatalog()
     catalog.load(definitions, known_features={feature.value for feature in Feature})
     definition = next(
@@ -132,32 +124,3 @@ def test_rank_help_group_manager_detail_only_shows_group_setting() -> None:
 
     assert "/榜单显示 20" in detail
     assert "/样本情况" not in detail
-
-
-@pytest.mark.asyncio
-async def test_portable_rank_help_uses_normalized_group_role() -> None:
-    settings = _settings()
-    definitions = build_test_plugin_registry(settings)
-    features = build_onebot_feature_service(settings.features, settings.superuser_ids)
-    catalog = CommandCatalog()
-    catalog.load(definitions, known_features={feature.value for feature in Feature})
-    operation = build_portable_rank_help_operation(catalog, features)
-
-    reply = cast(
-        "OutboundMessage",
-        await operation(
-            "榜单",
-            message_input_context(
-                group_message_event(
-                    "榜单",
-                    user_id=2,
-                    group_id=4,
-                    sender={"role": "admin"},
-                )
-            ),
-        ),
-    )
-    text = cast("TextPart", reply.parts[0]).text
-
-    assert "/榜单显示 20" in text
-    assert "/样本情况" not in text

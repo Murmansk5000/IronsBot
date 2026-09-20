@@ -5,9 +5,9 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
-from ironsbot.core.authorization import can_manage_group_actor
+from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.platform import is_supported_message_actor
+from ironsbot.core.platform import Platform, is_supported_message_actor
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
@@ -91,19 +91,19 @@ class CommandCatalogError(ValueError):
 
     @classmethod
     def empty_features_any(cls, command_id: str) -> CommandCatalogError:
-        return cls(
-            f"invalid command contract: {command_id!r} has an empty feature id"
-        )
+        return cls(f"invalid command contract: {command_id!r} has an empty feature id")
 
     @classmethod
     def invalid_interaction(cls, command_id: str) -> CommandCatalogError:
-        return cls(
-            f"invalid command contract: {command_id!r} has invalid interaction"
-        )
+        return cls(f"invalid command contract: {command_id!r} has invalid interaction")
 
     @classmethod
     def invalid_help_level(cls, command_id: str) -> CommandCatalogError:
         return cls(f"invalid command contract: {command_id!r} has invalid help level")
+
+    @classmethod
+    def empty_platforms(cls, command_id: str) -> CommandCatalogError:
+        return cls(f"invalid command contract: {command_id!r} has no platforms")
 
     @classmethod
     def unknown_registered_help_ids(
@@ -150,8 +150,6 @@ class CommandContext:
 
 
 def command_context_from_input(context: MessageInputContext) -> CommandContext:
-    """Project normalized message facts into the command-catalog contract."""
-
     message = context.message
     return CommandContext(
         actor=message.actor,
@@ -162,6 +160,7 @@ def command_context_from_input(context: MessageInputContext) -> CommandContext:
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]
+CommandFeatureCheck = Callable[[CommandFeaturePolicy, CommandContext, str], bool]
 _Parsed = TypeVar("_Parsed")
 
 
@@ -211,23 +210,36 @@ class CommandAccess:
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
+        return self._is_allowed(context, features, _feature_is_visible)
+
+    def is_executable(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+    ) -> bool:
+        return self._is_allowed(context, features, _feature_is_executable)
+
+    def _is_allowed(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        feature_check: CommandFeatureCheck,
+    ) -> bool:
         if not _scope_matches(context, self.scope):
             return False
         if self.features_any and not any(
-            _feature_is_allowed(features, context, feature)
-            for feature in self.features_any
+            feature_check(features, context, feature) for feature in self.features_any
         ):
             return False
         if any(
-            not _feature_is_allowed(features, context, feature)
+            not feature_check(features, context, feature)
             for feature in self.features_all
         ):
             return False
         if self.audience == "group_manager":
-            return context.is_group and can_manage_group_actor(
-                features,
-                context.actor,
-                context.group_role,
+            return context.is_group and (
+                context.group_role in GROUP_MANAGER_ROLES
+                or features.is_actor_superuser(context.actor)
             )
         return self.audience != "superuser" or features.is_actor_superuser(
             context.actor
@@ -250,11 +262,12 @@ class CommandContract:
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
     interaction: CommandInteraction = "direct"
     help_level: CommandHelpLevel = "full"
+    platforms: frozenset[Platform] = frozenset({Platform.ONEBOT, Platform.QQ_OFFICIAL})
     notes: tuple[str, ...] = ()
     show_in_poke: bool = False
     visible: CommandVisibility | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: C901 - one flat contract validator
         if not self.id.strip():
             raise CommandCatalogError.empty_id()
         if not self.plugin_id.strip():
@@ -276,21 +289,44 @@ class CommandContract:
             raise CommandCatalogError.invalid_interaction(self.id)
         if self.help_level not in {"brief", "full"}:
             raise CommandCatalogError.invalid_help_level(self.id)
+        if not self.platforms:
+            raise CommandCatalogError.empty_platforms(self.id)
 
     def is_available(
         self,
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
-        if not any(rule.is_available(context, features) for rule in self.access):
+        return self._is_allowed(context, features, execution=False)
+
+    def is_executable(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+    ) -> bool:
+        return self._is_allowed(context, features, execution=True)
+
+    def _is_allowed(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        *,
+        execution: bool,
+    ) -> bool:
+        if context.actor.platform not in self.platforms:
+            return False
+        access_check = (
+            CommandAccess.is_executable if execution else CommandAccess.is_available
+        )
+        feature_check = _feature_is_executable if execution else _feature_is_visible
+        if not any(access_check(rule, context, features) for rule in self.access):
             return False
         if self.features_any and not any(
-            _feature_is_allowed(features, context, feature)
-            for feature in self.features_any
+            feature_check(features, context, feature) for feature in self.features_any
         ):
             return False
         if any(
-            not _feature_is_allowed(features, context, feature)
+            not feature_check(features, context, feature)
             for feature in self.features_all
         ):
             return False
@@ -378,7 +414,7 @@ def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
     return context.conversation.kind == "private"
 
 
-def _feature_is_allowed(
+def _feature_is_visible(
     features: CommandFeaturePolicy,
     context: CommandContext,
     feature: str,
@@ -394,6 +430,14 @@ def _feature_is_allowed(
             context.conversation,
             feature,
         )
+    return features.is_feature_allowed(context.actor, context.conversation, feature)
+
+
+def _feature_is_executable(
+    features: CommandFeaturePolicy,
+    context: CommandContext,
+    feature: str,
+) -> bool:
     return features.is_feature_allowed(context.actor, context.conversation, feature)
 
 
@@ -482,6 +526,25 @@ class CommandCatalog:
             if command.is_available(context, features)
         )
 
+    def executable_for_context(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        *,
+        plugin_id: str | None = None,
+        ignored_plugins: Iterable[str] = (),
+    ) -> tuple[CommandContract, ...]:
+        """Return commands the actor may execute, including policy bypasses."""
+
+        ignored = set(ignored_plugins)
+        return tuple(
+            command
+            for command in self._commands
+            if (plugin_id is None or command.plugin_id == plugin_id)
+            if command.plugin_id not in ignored
+            if command.is_executable(context, features)
+        )
+
     @property
     def command_ids(self) -> frozenset[str]:
         return frozenset(command.id for command in self._commands)
@@ -490,6 +553,23 @@ class CommandCatalog:
     def direct_command_ids(self) -> frozenset[str]:
         return frozenset(
             command.id for command in self._commands if command.interaction == "direct"
+        )
+
+    @property
+    def onebot_direct_command_ids(self) -> frozenset[str]:
+        return frozenset(
+            command.id
+            for command in self._commands
+            if command.interaction == "direct" and Platform.ONEBOT in command.platforms
+        )
+
+    @property
+    def qq_official_direct_command_ids(self) -> frozenset[str]:
+        return frozenset(
+            command.id
+            for command in self._commands
+            if command.interaction == "direct"
+            and Platform.QQ_OFFICIAL in command.platforms
         )
 
     def validate_matcher_registrations(
@@ -505,7 +585,7 @@ class CommandCatalog:
         unknown = registered_ids - self.command_ids
         if unknown:
             raise CommandCatalogError.unknown_registered_help_ids(unknown)
-        missing = self.direct_command_ids - registered_ids
+        missing = self.onebot_direct_command_ids - registered_ids
         if missing:
             raise CommandCatalogError.undocumented_direct_commands(missing)
 
@@ -543,11 +623,28 @@ class CommandCatalog:
 
         return any(
             command.matches_direct_input(context, text)
-            for command in self.available_for_context(
+            for command in self.executable_for_context(
                 context,
                 features,
                 ignored_plugins=ignored_plugins,
             )
+        )
+
+    def recognizes_direct_input(
+        self,
+        context: CommandContext,
+        text: str,
+        *,
+        ignored_plugins: Iterable[str] = (),
+    ) -> bool:
+        """Whether a command owns an input before feature or audience checks."""
+
+        ignored = set(ignored_plugins)
+        return any(
+            command.plugin_id not in ignored
+            and any(_scope_matches(context, access.scope) for access in command.access)
+            and command.matches_direct_input(context, text)
+            for command in self._commands
         )
 
     def format_for_context(
