@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Portable Lucky Skin Window commands backed by explicit identity links."""
+"""Portable Lucky Skin Window commands backed by canonical actor identity."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.platform import reference_digest
+from ironsbot.core.platform import Platform, reference_digest
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
@@ -31,9 +31,9 @@ from ironsbot.services.seer.lucky_skin_window import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, PortableReply
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
@@ -53,14 +53,14 @@ _Confirmation = Literal["confirm", "cancel"]
 def build_portable_lucky_skin_operations(
     service: LuckySkinWindowService,
     pet: PetQueryService,
-    identity_links: IdentityLinkingService,
+    features: FeatureService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
 ) -> dict[str, PortableOperation]:
     commands = PortableLuckySkinCommands(
         service,
         pet,
-        identity_links,
+        features,
         sessions,
         resolver,
     )
@@ -78,7 +78,7 @@ def build_portable_lucky_skin_operations(
 class PortableLuckySkinCommands:
     service: LuckySkinWindowService
     pet: PetQueryService
-    identity_links: IdentityLinkingService
+    features: FeatureService
     sessions: PortableQuerySessions
     resolver: PlayerIdResolver
 
@@ -118,9 +118,14 @@ class PortableLuckySkinCommands:
         context: MessageInputContext,
         player_id: int | None,
     ) -> OutboundMessage:
-        actor = await self._linked_actor(context)
+        actor = self._account_actor(context)
         if actor is None and player_id is None:
-            return OutboundMessage.from_text(_LINK_REQUIRED)
+            resolution = self.resolver.resolve(context, None)
+            if resolution.error is not None:
+                return OutboundMessage.from_text(resolution.error)
+            player_id = resolution.player_id
+            if player_id is None:
+                return OutboundMessage.from_text(_LINK_REQUIRED)
         request = LuckySkinQuery(context.message.actor, actor, player_id)
         try:
             cached = self.service.cached_query(request)
@@ -173,8 +178,9 @@ class PortableLuckySkinCommands:
         del text
         return await self._watch_direct(context, self.service.watch_reset_message)
 
-    async def _linked_actor(self, context: MessageInputContext) -> ActorRef | None:
-        return await self.identity_links.linked_onebot_actor(context.message.actor)
+    def _account_actor(self, context: MessageInputContext) -> ActorRef | None:
+        actor = self.features.canonical_actor(context.message.actor)
+        return actor if actor.platform is Platform.ONEBOT else None
 
     def _confirmation_menu(
         self,
@@ -243,7 +249,7 @@ class PortableLuckySkinCommands:
         context: MessageInputContext,
         operation: Callable[[ActorRef], str],
     ) -> OutboundMessage:
-        actor = await self._linked_actor(context)
+        actor = self._account_actor(context)
         if actor is None:
             return OutboundMessage.from_text(_LINK_REQUIRED)
         try:
@@ -262,7 +268,7 @@ class PortableLuckySkinCommands:
         commands: tuple[str, ...],
         watched: bool,
     ) -> OutboundMessage:
-        actor = await self._linked_actor(context)
+        actor = self._account_actor(context)
         if actor is None:
             return OutboundMessage.from_text(_LINK_REQUIRED)
         argument = parse_lucky_skin_watch_target(text, commands=commands) or ""

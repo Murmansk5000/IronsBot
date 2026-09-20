@@ -63,7 +63,6 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
@@ -87,7 +86,6 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
     pet: PetQueryService,
     features: FeatureService,
     scheduler: Scheduler,
-    identity_links: IdentityLinkingService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
 ) -> PluginContribution:
@@ -110,7 +108,6 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
             service=service,
             pet=pet,
             features=features,
-            identity_links=identity_links,
             sessions=sessions,
             resolver=resolver,
         ),
@@ -222,7 +219,6 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
-    identity_links: IdentityLinkingService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
 ) -> None:
@@ -230,7 +226,7 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     operations = build_portable_lucky_skin_operations(
         service,
         pet,
-        identity_links,
+        features,
         sessions,
         resolver,
     )
@@ -388,7 +384,6 @@ if (context := active_plugin_install_context()) is not None:
             context.resources.seer.pet_query,
             context.resources.features,
             context.scheduler,
-            context.resources.identity_links.service,
             context.resources.query_sessions,
             context.resources.player_id_resolver,
         ),
