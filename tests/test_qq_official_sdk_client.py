@@ -139,6 +139,31 @@ async def test_sdk_client_sends_text_with_passive_reply_identity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_client_sends_member_mentions_as_markdown() -> None:
+    api = _FakeApi()
+
+    await _client(api).send_to_group(
+        "group-openid",
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="member-openid" /> result',
+                markdown=True,
+            ),
+        ),
+        msg_id="incoming-id",
+        msg_seq=PASSIVE_SEQUENCE,
+    )
+
+    message = api.messages[0][2]
+    assert message.msg_type == QQMessageType.MARKDOWN
+    assert message.content == ""
+    assert message.markdown is not None
+    assert message.markdown.content == ('<qqbot-at-user id="member-openid" /> result')
+    assert message.msg_id == "incoming-id"
+    assert message.msg_seq == PASSIVE_SEQUENCE
+
+
+@pytest.mark.asyncio
 async def test_sdk_client_references_source_message_for_member_target() -> None:
     api = _FakeApi()
 

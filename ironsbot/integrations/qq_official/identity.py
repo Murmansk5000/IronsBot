@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 GROUP_AT_MESSAGE_CREATE = "GROUP_AT_MESSAGE_CREATE"
 GROUP_MESSAGE_CREATE = "GROUP_MESSAGE_CREATE"
-_LEADING_MENTION_RE = re.compile(r"^[\s]*[@＠]\S+[\s]*")
+_LEADING_NAMED_MENTION_RE = re.compile(r"^[\s]*[@＠]\S+[\s]*")
 _PASSIVE_REPLY_WINDOWS = {
     "group": timedelta(minutes=5),
     "private": timedelta(minutes=60),
@@ -102,7 +102,7 @@ def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
     mention = _bot_mention(raw)
     if mention is None:
         return text
-    return _remove_leading_self_mention(text).strip()
+    return _remove_leading_self_mention(text, mention, raw).strip()
 
 
 def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:
@@ -115,8 +115,29 @@ def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:
     return None
 
 
-def _remove_leading_self_mention(text: str) -> str:
-    return _LEADING_MENTION_RE.sub("", text, count=1)
+def _remove_leading_self_mention(
+    text: str,
+    mention: Mapping[str, object],
+    raw: Mapping[str, object],
+) -> str:
+    stripped = text.lstrip()
+    member_openid = str(mention.get("member_openid", "")).strip()
+    if member_openid:
+        for marker in (f"<@{member_openid}>", f"<@!{member_openid}>"):
+            if stripped.startswith(marker):
+                return stripped.removeprefix(marker).lstrip()
+    if _first_mention_is_self(raw):
+        return _LEADING_NAMED_MENTION_RE.sub("", text, count=1)
+    return text
+
+
+def _first_mention_is_self(raw: Mapping[str, object]) -> bool:
+    mentions = raw.get("mentions")
+    if not isinstance(mentions, Sequence) or isinstance(mentions, (str, bytes)):
+        return False
+    return bool(
+        mentions and isinstance(mentions[0], Mapping) and mentions[0].get("is_you")
+    )
 
 
 def _direct_mentions(

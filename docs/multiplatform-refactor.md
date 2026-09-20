@@ -51,26 +51,36 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 当前权威状态（2026-09-20）
 
-Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前最新公共发布修订为 `812d8bc2`，
-Docker Hub/GHCR 清单 digest 为
-`sha256:bd09d556838daa7fcae4c7cd24aa74e057c807d497c83483b367b819cb999bc3`，
-amd64 压缩层合计 100,671,280 bytes，CI 记录的展开大小为 260,017,194 bytes。较早生产 digest 已记录 Unraid、QQ Official READY、无头
-worker 和“阵容”进度、文字、图片送达；当前公开镜像及本地后续提交仍须按最终精确 digest
-复验。群内请求者定位使用 source `message_reference`，客户端显示原生回复，不再发送会被
-原样显示的 `<qqbot-at-user>` 文本。身份静默观察也读取引用原消息的数字发送者，不再依赖
-可见 @。
+Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。唯一公开开发与发布源是
+`Murmansk5000/IronsBot` 的 `main`。当前用于生产复验的最后一个包含运行时代码变更的
+公开修订为 `64058429`，Docker Hub/GHCR 清单 digest 为
+`sha256:2aba0e2a9d9f2ab818fc4f7c6d9b2299b5f55dbafd49d970cd1982d0ea8a828b`，
+CI 记录的展开大小为 260,019,690 bytes；`/app` 为 4,788 KiB、site-packages 为
+106,000 KiB、字体为 19,452 KiB，相对上一公开基线增长 0 bytes。较早生产 digest 已记录
+Unraid、QQ Official READY、无头 worker 和“阵容”进度、文字、图片送达；当前公开精确
+digest 已通过构建、离线 smoke、依赖审计和体积门禁，但仍须部署到 Unraid 并复验受后续
+修复影响的路径。群内请求者定位保留 source `message_reference`，同时按腾讯当前文本交互
+协议发送经过 AppID、群作用域和成员类型校验的 `<qqbot-at-user>`。2026-09-20 的同目标
+实机对照确认 TEXT payload 会原样显示标签，而 MARKDOWN payload 会转成腾讯原生提及。
+NapCat 对短消息拆出独立 `at` 段，对长帮助消息保留指向同一发令 QQ 的
+`mqqapi://markdown/mention`；因此验收同时接受这两种客户端表示。正式路径只把含
+`MentionPart` 的文本编码为 Markdown，并继续使用被动 `msg_id` 与 source
+`message_reference`；其他文本不变，也不为提及消耗主动消息额度。
+
+`docs/` 不进入 Docker 构建上下文。后续纯文档提交可能因 OCI revision 标签生成不同
+manifest digest，但不会改变运行时文件；Phase 7 可继续使用上述行为候选，除非实际生产
+部署选择了另一个精确 digest，届时必须在验收记录中固定所部署的值。
 
 已发布提交 `9aa4ee79` 将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
 `superuser_bypass` 执行未对群开启的 Feature，普通成员仍受群策略限制，黑名单和命令
-audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级管理员、普通成员、黑名单和
-管理通知不外泄的同一 digest 客户端证据，因此仍是 Phase 7 的待验收项。
+audience 不被绕过。真实客户端已经覆盖超级管理员绕过、普通成员隔离和黑名单优先级；
+管理异常已验证超级管理员私聊通知链，但普通群零泄露的真实负向观察仍是 Phase 7 门槛。
 
-公开 `origin/main` 与私有预览 `preview/main` 当前都指向 `812d8bc2`，旧的“预览落后
-公开仓库 7 个提交”关系已经结束。当前本地代码候选为 `feeafb77`，比两个发布 main
-领先 26 个提交；运行时差异包括绑定玩家橱窗修复、按官方账号隔离身份观察，以及安全
-回收已经被新镜像取代的旧 Docker 镜像，其余提交收紧测试门禁并记录实机证据。
-后续唯一公开镜像发布源为 `Murmansk5000/IronsBot` 的 main；预览仓库只保留同历史镜像，
-不得重新合入旧 `codex/multiplatform-architecture-v5` 分叉。
+本地 `main` 与公开 `origin/main` 均指向 `64058429`，ahead/behind 为 0/0。完整私有重构
+历史已作为第一父线并入公开主线，公开后续完善历史作为第二父线保留，最终代码 tree 为
+`e548fa049c2bbf4c4d93e0ef424c024cd5e162e0`。私有 Preview 的全部 refs 均可由公开仓库
+到达，Release 资产哈希一致，仓库已设置为 Archived；活动工作树已移除 `preview` remote。
+后续不得再把私有 Preview 当作开发、同步或发布源。
 
 其余外部门槛包括第二真实 AppID、多账号隔离、腾讯主动消息拒绝/额度、拒收事件、
 自定义键盘权限和腾讯实际重复重投。它们不得被单账号基础查询成功替代，也不阻塞继续
@@ -78,7 +88,7 @@ audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级�
 
 ### 2026-09-20 三仓联合审计
 
-- IronsBot 本地代码候选 `feeafb77`：全量 `3824 passed, 7 skipped`；Ruff、生产与测试
+- IronsBot 公开 `main` `64058429`：全量 `3826 passed, 7 skipped`；Ruff、生产与测试
   BasedPyright、compileall、静态仓库检查和 diff check 通过。
 - SeerAPI 发布源为 `Murmansk-Seer/seerapi`，远端 main `0c7c9d5`。本地 `main` 已纯快进
   到同一远端提交；全量 `351 passed`、Ruff 通过。远端同一 main 的数据构建 workflow
@@ -379,7 +389,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 模拟能力测试、真实 OneBot WebSocket smoke、QQ Official 群/C2C MVP，以及私有 GHCR 预览镜像的安全构建与离线 smoke 已验收 | 真实 QQ 官方连接 smoke，随后逐功能迁移完整 Seer/AI 流程 | QQ Official 全功能可用或主动推送已获准 |
+| Phase 7 | `in_progress` | 公开 `64058429` 精确镜像已完成依赖审计、构建、离线 smoke、体积门禁和发布；真实 OneBot、QQ Official 群/C2C、主要查询及多轮交互已有历史或源码候选证据 | 将该精确 digest 部署到 Unraid，复验受后续修复影响的查询、交互、权限与故障路径，并补齐 AI 备用切换和平台拒收/额度证据 | 构建成功等同于最终客户端 8/8 验收 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除

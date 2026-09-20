@@ -19,6 +19,7 @@ from ironsbot.integrations.qq_official.api_errors import (
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialOutboundMessageError,
     QQOfficialPayload,
+    QQOfficialTextPayload,
     render_qq_official_outbound_message,
 )
 from ironsbot.integrations.qq_official.reply_sequences import (
@@ -91,7 +92,7 @@ class QQOfficialOutboundMessenger:
         return DeliveryCapabilities(
             can_reply_to_event=True,
             can_send_proactively=self._proactive_enabled(conversation),
-            can_mention_members=False,
+            can_mention_members=conversation.kind == "group",
             supports_group_context=True,
             supports_private_context=True,
             supports_images=True,
@@ -166,6 +167,7 @@ class QQOfficialOutboundMessenger:
         try:
             payloads = render_qq_official_outbound_message(
                 message,
+                conversation=conversation,
                 supports_interactive_prompts=(
                     self.account_custom_keyboards.get(
                         conversation.account_id or "",
@@ -264,8 +266,14 @@ def _reference_group_reply(
         or not payloads
     ):
         return payloads
+    first_payload = payloads[0]
+    if isinstance(first_payload, QQOfficialTextPayload) and first_payload.markdown:
+        # QQ mobile can render the same Markdown body twice when a native member
+        # mention and message_reference are combined. msg_id/msg_seq still keep
+        # this operation inside the passive-reply contract.
+        return payloads
     return (
-        replace(payloads[0], reference_id=context.sequence),
+        replace(first_payload, reference_id=context.sequence),
         *payloads[1:],
     )
 

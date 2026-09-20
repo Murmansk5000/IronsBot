@@ -11,8 +11,10 @@ from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.core.outbound import (
     BinaryImagePart,
     DeliveryFailureKind,
+    MentionPart,
     OutboundMessage,
     ReplyContext,
+    TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.qq_official.message_rendering import (
@@ -131,6 +133,16 @@ def test_custom_keyboard_capability_is_account_scoped() -> None:
         account_id="other-app",
     )
     assert not messenger.capabilities_for(other_account).supports_interactive_prompts
+
+
+def test_member_mentions_are_supported_only_in_owned_group_conversations() -> None:
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: _Bot(),
+    )
+
+    assert messenger.capabilities_for(GROUP).can_mention_members
+    assert not messenger.capabilities_for(PRIVATE).can_mention_members
 
 
 def _image_prompt() -> PromptSession:
@@ -344,7 +356,7 @@ async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_group_reply_references_inbound_message_index_without_mentions() -> None:
+async def test_group_reply_references_inbound_message_index() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
         {"app": False},
@@ -357,10 +369,40 @@ async def test_group_reply_references_inbound_message_index_without_mentions() -
     )
 
     assert result.delivered
-    assert not messenger.capabilities_for(GROUP).can_mention_members
+    assert messenger.capabilities_for(GROUP).can_mention_members
     assert bot.calls[0][2] == (
         QQOfficialTextPayload("result", reference_id="source-message-index"),
     )
+
+
+@pytest.mark.asyncio
+async def test_group_markdown_reply_does_not_combine_mention_with_reference() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        GROUP.id,
+        account_id="app",
+    )
+
+    result = await messenger.reply(
+        _reply(GROUP, "event-id", "source-message-index"),
+        OutboundMessage((MentionPart(member), TextPart(" result"))),
+    )
+
+    assert result.delivered
+    assert bot.calls[0][2] == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" /> result',
+            markdown=True,
+        ),
+    )
+    assert bot.calls[0][3:] == ("event-id", 1)
 
 
 @pytest.mark.asyncio

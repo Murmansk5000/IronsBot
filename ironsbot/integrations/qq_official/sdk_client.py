@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from qqbot_agent_sdk.dto import (
+    MarkdownContent,
     MediaInfo,
     MessageReference,
     MessageToCreate,
@@ -135,11 +136,10 @@ class TencentQQClient:
     ) -> Mapping[str, object]:
         keyboard: InlineKeyboard | None = None
         if isinstance(payload, QQOfficialTextPayload):
-            message = MessageToCreate(
-                content=payload.content,
-                msg_type=QQMessageType.TEXT,
-                msg_id=message_id or "",
-                msg_seq=sequence,
+            message = _text_message(
+                payload,
+                message_id=message_id,
+                sequence=sequence,
             )
             if self.custom_keyboards and payload.prompt is not None:
                 keyboard = _prompt_keyboard(payload.prompt)
@@ -197,6 +197,27 @@ class TencentQQClient:
             message,
             keyboard=keyboard,
         )
+
+
+def _text_message(
+    payload: QQOfficialTextPayload,
+    *,
+    message_id: str | None,
+    sequence: int,
+) -> MessageToCreate:
+    if payload.markdown:
+        return MessageToCreate(
+            msg_type=QQMessageType.MARKDOWN,
+            msg_id=message_id or "",
+            msg_seq=sequence,
+            markdown=MarkdownContent(content=payload.content),
+        )
+    return MessageToCreate(
+        content=payload.content,
+        msg_type=QQMessageType.TEXT,
+        msg_id=message_id or "",
+        msg_seq=sequence,
+    )
 
 
 def _response_id(response: Mapping[str, object]) -> str:
