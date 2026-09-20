@@ -14,6 +14,7 @@ ImageKind = Literal[
     "autocard_card",
     "autocard_role",
     "battle_effect",
+    "common",
     "element_type",
     "equip",
     "item",

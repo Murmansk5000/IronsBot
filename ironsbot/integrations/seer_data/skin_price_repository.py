@@ -89,10 +89,14 @@ def _load_store_prices(session: Session, skin_id: int) -> list[SkinStorePrice]:
     rows = session.execute(
         text(
             """
-            SELECT skin_id, pool_id, price, original_price, discount_rate,
-                   selected_price, ticket_id, ticket_num, start_time, end_time
-            FROM skin_store_price
-            WHERE skin_id = :skin_id
+            SELECT offer.skin_id, pool_id, price, original_price, discount_rate,
+                   selected_price, offer.ticket_id, ticket_num, start_time, end_time,
+                   item.name AS ticket_name,
+                   rule.diamonds_per_ticket AS ticket_diamonds
+            FROM skin_store_price AS offer
+            LEFT JOIN item ON item.id = offer.ticket_id
+            LEFT JOIN skin_ticket_rule AS rule ON rule.ticket_id = offer.ticket_id
+            WHERE offer.skin_id = :skin_id
               AND (start_time <= 0 OR start_time <= :now)
               AND (end_time <= 0 OR :now <= end_time)
             ORDER BY pool_id, skin_id, row_index LIMIT :limit
@@ -100,7 +104,7 @@ def _load_store_prices(session: Session, skin_id: int) -> list[SkinStorePrice]:
         ),
         {"skin_id": skin_id, "now": now, "limit": MAX_PRICE_ROWS},
     ).all()
-    return [SkinStorePrice(**_price_mapping(row)) for row in rows]
+    return [_store_price(row) for row in rows]
 
 
 def load_active_skin_store_prices(
@@ -121,10 +125,15 @@ def load_active_skin_store_prices(
         rows = session.execute(
             text(
                 f"""
-                SELECT skin_id, pool_id, price, original_price, discount_rate,
-                       selected_price, ticket_id, ticket_num, start_time, end_time
-                FROM skin_store_price
-                WHERE skin_id IN ({placeholders})
+                SELECT offer.skin_id, pool_id, price, original_price, discount_rate,
+                       selected_price, offer.ticket_id, ticket_num,
+                       start_time, end_time,
+                       item.name AS ticket_name,
+                       rule.diamonds_per_ticket AS ticket_diamonds
+                FROM skin_store_price AS offer
+                LEFT JOIN item ON item.id = offer.ticket_id
+                LEFT JOIN skin_ticket_rule AS rule ON rule.ticket_id = offer.ticket_id
+                WHERE offer.skin_id IN ({placeholders})
                   AND (start_time <= 0 OR start_time <= :now)
                   AND (end_time <= 0 OR :now <= end_time)
                 ORDER BY skin_id, pool_id, row_index
@@ -137,7 +146,7 @@ def load_active_skin_store_prices(
 
     prices: dict[int, SkinStorePrice] = {}
     for row in rows:
-        price = SkinStorePrice(**_price_mapping(row))
+        price = _store_price(row)
         prices.setdefault(price.skin_id, price)
     return prices
 
@@ -146,4 +155,19 @@ def _price_mapping(row: Any) -> dict[str, int]:
     mapping = cast(
         "Mapping[str, Any]", row._mapping if hasattr(row, "_mapping") else row
     )
-    return {key: int(value or 0) for key, value in mapping.items()}
+    return {
+        key: int(value or 0)
+        for key, value in mapping.items()
+        if key not in {"ticket_name", "ticket_diamonds"}
+    }
+
+
+def _store_price(row: Any) -> SkinStorePrice:
+    mapping = row._mapping
+    name = mapping["ticket_name"]
+    diamonds = mapping["ticket_diamonds"]
+    return SkinStorePrice(
+        **_price_mapping(row),
+        ticket_name=str(name).strip() or None if name else None,
+        ticket_diamonds=int(diamonds) if diamonds is not None else None,
+    )
