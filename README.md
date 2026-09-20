@@ -168,6 +168,7 @@ sandbox = false
 startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.example_bot]
+app_id = "<APP_ID>"  # 替换为该应用的实际 AppID
 required = false
 proactive_messages = false
 custom_keyboards = false
@@ -187,8 +188,8 @@ features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet"
 `features = []`，再通过账号策略或 `[features]` 下基于逻辑身份的策略只开放特殊目标。
 被动回复始终由收到事件的同一 AppID 发出，不能把一个官方账号收到的消息转给另一个
 账号回复；因此同一群若同时加入两个开放了相同功能的机器人，仍会产生两份独立回复。
-账号不再使用 TOML `enabled`；同名 AppID 和 Secret 环境变量同时存在即激活。
-只填其中一个、为未声明账号提供凭据，都会阻止启动。
+账号不再使用 TOML `enabled`；TOML 声明 AppID，配对 Secret 环境变量存在时激活。
+仅声明 AppID 而不提供 Secret 时账号不激活；空 AppID 或未声明 AppID 的 Secret 会被拒绝。
 账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
 `startup_timeout_seconds` 控制启动等待时间；`required = true` 的账号未能及时就绪会
 阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
@@ -218,18 +219,21 @@ Resume、平台重投或进程重启导致同一条指令执行两次；该状�
 SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不猜测并缓存有效期；平台
 拒绝超大图片或当日上传额度耗尽时，机器人会返回明确文字说明。
 
-凭据只放环境变量：
+AppSecret 只放环境变量：
+
+AppID 在 TOML 账号表中声明为非空 `app_id`，AppSecret 只放环境变量
+`APP_SECRET_<AppID>`，后缀必须与所声明的 AppID 完全一致，不是账号别名。
+下文 `<APP_ID>` / `<AppID>` 是需由部署者替换的占位说明，不是可用凭据。
+旧 `QQ_OFFICIAL_APP_ID_*` / `QQ_OFFICIAL_SECRET_*` 非空变量会被拒绝，
+TOML 中也不得包含 `secret` 键（包括空值）。
 
 ```text
-QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=你的 AppID
-QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
+APP_SECRET_<AppID>=你的 AppSecret
 ```
 
 腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
-AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
-大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_APP_ID_EXAMPLE_BOT_2` 和
-`QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。TOML 中的旧 `app_id` 和 `secret` 字段会被
-严格拒绝。
+AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀使用 TOML
+声明的 AppID；账号别名不用于 Secret 环境变量名。TOML 保留 `app_id`，禁止 `secret`。
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
@@ -325,7 +329,7 @@ IronsBot 会处理其中明确匹配的命令和正在进行的选项会话，
 
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、每个官方账号的
-  `QQ_OFFICIAL_APP_ID_<账号别名>` / `QQ_OFFICIAL_SECRET_<账号别名>`、
+  `APP_SECRET_<AppID>`（AppID 在 TOML 声明）、
   每个 AI 提供商的 `AI_KEY_<提供商别名>`、
   按账号库配置的 `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、
   `GITHUB_WORKFLOW_TOKEN`，以及启用私有扩展时使用的 Docker Registry 凭据
@@ -345,8 +349,7 @@ ONEBOT_ENABLED=true
 ONEBOT_SEND_MESSAGES=true
 ONEBOT_IDENTITY_VERIFICATION=false
 ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
-QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=
-QQ_OFFICIAL_SECRET_EXAMPLE_BOT=
+# APP_SECRET_<AppID>=  # 按 TOML 中实际声明的 AppID 添加
 AI_KEY_DEEPSEEK=
 # 若 TOML 声明了 fumin、nomiss，还可分别设置：
 AI_KEY_FUMIN=
