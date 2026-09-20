@@ -27,8 +27,7 @@ def build_rank_batch_start_message(
     truncated_text = ""
     if requested_count > request_count:
         truncated_text = (
-            "\n本次按 seer.local_rank.batch_limit "
-            f"只处理前 {request_count} 个。"
+            f"\n本次按 seer.local_rank.batch_limit 只处理前 {request_count} 个。"
         )
 
     return (
@@ -74,8 +73,7 @@ def build_local_rank_cache_status_message(  # noqa: PLR0913
     lines = [
         "📊【样本榜缓存状态】",
         f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
-        f"总缓存玩家：{stats.total_player_count} 个"
-        "（含全服榜单扫到但未计入样本的人）",
+        f"总缓存玩家：{stats.total_player_count} 个（含全服榜单扫到但未计入样本的人）",
         f"全服排行扫描上限：前 {rank_limit} 名",
         f"单次批量缓存上限：{batch_limit} 个",
         f"单轮刷新上限：{refresh_limit} 个",
@@ -85,10 +83,7 @@ def build_local_rank_cache_status_message(  # noqa: PLR0913
         "",
         "可参与排行人数：",
     ]
-    lines.extend(
-        f"{title}：{count}"
-        for title, count in stats.metric_counts.items()
-    )
+    lines.extend(f"{title}：{count}" for title, count in stats.metric_counts.items())
     return "\n".join(lines)
 
 
@@ -128,9 +123,7 @@ def build_local_rank_refresh_result_message(
     if failures:
         lines.append("")
         lines.append("失败示例：")
-        lines.extend(
-            f"- {failure.player_id}: {failure.reason}" for failure in failures
-        )
+        lines.extend(f"- {failure.player_id}: {failure.reason}" for failure in failures)
         if result.failed > _FAILURE_PREVIEW_LIMIT:
             lines.append(
                 f"- 另有 {result.failed - _FAILURE_PREVIEW_LIMIT} 个失败，"

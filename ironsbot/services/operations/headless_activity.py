@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.semantic_requests import current_semantic_request_trace
 
 if TYPE_CHECKING:
@@ -61,18 +62,14 @@ class HeadlessOperationTracker:
             background=background,
             conversation=conversation,
             started_at=time.monotonic(),
-            semantic_action_id=(
-                "" if semantic is None else semantic.request.action.id
-            ),
+            semantic_action_id=("" if semantic is None else semantic.request.action.id),
             semantic_action_label=(
                 "" if semantic is None else semantic.request.action.label
             ),
             semantic_target=(
                 "" if semantic is None else semantic.request.target.display
             ),
-            semantic_source=(
-                "" if semantic is None else semantic.request.source.value
-            ),
+            semantic_source=("" if semantic is None else semantic.request.source.value),
             semantic_actor=(None if semantic is None else semantic.actor),
         )
         token = self._current.set(operation)
@@ -110,7 +107,11 @@ class HeadlessOperationTracker:
         if operation is None or not operation.semantic_action_id:
             return ""
         actor = operation.semantic_actor
-        user = "" if actor is None else f"，用户：{actor.platform.value}/{actor.id}"
+        user = (
+            ""
+            if actor is None
+            else f"，用户：{actor.platform.value}/{reference_digest(actor.id)}"
+        )
         return (
             f"{operation.semantic_action_label}"
             f"（{operation.semantic_action_id}）"
@@ -125,7 +126,9 @@ class HeadlessOperationTracker:
         conversation = ""
         if operation.conversation is not None:
             ref = operation.conversation
-            conversation = f"，会话：{ref.platform.value}/{ref.kind}/{ref.id}"
+            conversation = (
+                f"，会话：{ref.platform.value}/{ref.kind}/{reference_digest(ref.id)}"
+            )
         return f"{operation.label}{detail}（{kind}操作{conversation}）"
 
     def _recent(

@@ -78,6 +78,7 @@ _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA, _ensure_dynamic_columns),
     SqliteMigration(2, callback=_ensure_delivery_claim_columns),
     SqliteMigration(3, callback=_ensure_summary_columns),
+    SqliteMigration(4, callback=_ensure_summary_columns),
 )
 
 

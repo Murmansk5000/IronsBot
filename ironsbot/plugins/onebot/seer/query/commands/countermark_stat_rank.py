@@ -1,31 +1,65 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves it at runtime
+    MessageEvent,
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
-from ironsbot.integrations.onebot.replies import run_portable_operation
+from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.services.portable_countermark_commands import (
-    build_portable_countermark_operations,
-)
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.countermark_stat_rank import (
+        CountermarkStatRankService,
+    )
+    from ironsbot.services.seer.countermark_stat_rank_models import (
+        CountermarkStatRankCommand,
+    )
+
+COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
 
 def _match_command(
     event: Event,
+    state: T_State,
 ) -> bool:
-    return parse_countermark_stat_rank_command(event.get_plaintext()) is not None
+    command = parse_countermark_stat_rank_command(event.get_plaintext())
+    if command is None:
+        return False
+    state[COUNTERMARK_STAT_RANK_KEY] = command
+    return True
+
+
+async def _handle_command(
+    service: CountermarkStatRankService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
+    try:
+        reply = service.query(command)
+    except DataUnavailableError:
+        reply = DATABASE_UNAVAILABLE_MESSAGE
+    await finish_event_reply(matcher, event, reply)
 
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.countermark_rank
-    operation = build_portable_countermark_operations(service)["seer.mintmark.rank"]
     matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_countermark_stat_rank",
@@ -36,6 +70,4 @@ def install(group: SeerMatcherGroup) -> None:
         & explicit_command(),
         priority=group.matcher_priority("seer_mintmark"),
     )
-    matcher.append_handler(
-        bind_async(run_portable_operation, operation=operation)
-    )
+    matcher.append_handler(bind_async(_handle_command, service))

@@ -306,7 +306,8 @@ def test_state_migration_rejects_unrelated_existing_targets(tmp_path: Path) -> N
 
 
 def test_legacy_cleanup_failure_restores_sources_and_removes_new_targets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     data_root = tmp_path / "data"
     _seed_legacy_state(data_root)
