@@ -26,11 +26,20 @@ _REQUIRED_TABLES: frozenset[str] = frozenset(
         "peak_pool",
         "pet",
         "skill",
+        "skin_ticket_rule",
     )
 )
 _REQUIRED_COLUMNS: dict[str, frozenset[str]] = {
     "peak_cost_pool": frozenset({"id", "cost", "start_time", "end_time"}),
     "pet": frozenset({"peak_cost_pool_id"}),
+    "skin_ticket_rule": frozenset(
+        {
+            "ticket_id",
+            "diamonds_per_ticket",
+            "source",
+            "source_text",
+        }
+    ),
 }
 
 
