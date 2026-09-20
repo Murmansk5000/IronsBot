@@ -218,7 +218,7 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
         return QueryResult(
             choices=(
                 QueryChoice("first", "101", 101),
-                QueryChoice("second", "202", 202),
+                QueryChoice("second", "202", 202, is_sub_choice=True),
             )
         )
 
@@ -240,8 +240,9 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
         ),
     )
 
-    assert "1. first" in _text(result)
-    assert "202" in _text(result)
+    assert "1. first（101）" in _text(result)
+    assert " ↳ 2. second（202）" in _text(result)
+    assert "\n   101" not in _text(result)
     assert sessions.recognizes_response("2", owner)
     assert not sessions.recognizes_response("2", other_member)
     assert not sessions.recognizes_response("2", other_group)
