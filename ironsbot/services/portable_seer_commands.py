@@ -111,7 +111,7 @@ def build_portable_seer_operations(
                 search=seer.pet_query.search_info,
                 select=seer.pet_query.select_info,
                 prompt_title="请问你想查询的精灵是……",
-                not_found_message="未找到对应精灵。",
+                not_found_message=None,
             ),
         ),
         "seer.pet.image": build_query_operation(
@@ -121,7 +121,7 @@ def build_portable_seer_operations(
                 search=seer.pet_query.search_image,
                 select=seer.pet_query.select_image,
                 prompt_title="请问你想查询的立绘是……",
-                not_found_message="未找到对应精灵或皮肤。",
+                not_found_message=None,
             ),
         ),
         "seer.mintmark.query": _first_matching_operation(
@@ -135,7 +135,7 @@ def build_portable_seer_operations(
                             search=seer.mintmark.search_mintmark,
                             select=seer.mintmark.select_mintmark,
                             prompt_title="请问你想查询的刻印是……",
-                            not_found_message="未找到对应刻印。",
+                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -148,7 +148,7 @@ def build_portable_seer_operations(
                             search=seer.mintmark.search_gem,
                             select=seer.mintmark.select_gem,
                             prompt_title="请问你想查询的宝石是……",
-                            not_found_message="未找到对应宝石。",
+                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -213,7 +213,7 @@ def build_portable_seer_operations(
                 search=seer.pet_query.search_avatar,
                 select=seer.pet_query.select_avatar,
                 prompt_title="请选择要查询头像的精灵：",
-                not_found_message="未找到对应精灵。",
+                not_found_message=None,
             ),
         )
     return operations
