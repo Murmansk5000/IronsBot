@@ -173,6 +173,33 @@ def _migrate_bili_principals(connection: sqlite3.Connection) -> None:
     connection.execute(_PRINCIPAL_INDEX)
 
 
+def _split_lottery_and_winning_preferences(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        INSERT INTO bili_push_category_preferences (
+            principal_kind, principal_id,
+            conversation_platform, conversation_account_id,
+            conversation_kind, conversation_id,
+            uid, category, muted, updated_at
+        )
+        SELECT lottery.principal_kind, lottery.principal_id,
+               lottery.conversation_platform, lottery.conversation_account_id,
+               lottery.conversation_kind, lottery.conversation_id,
+               lottery.uid, 'winning', lottery.muted, lottery.updated_at
+        FROM bili_push_category_preferences AS lottery
+        WHERE lottery.category = 'lottery'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM bili_push_category_preferences AS winning
+              WHERE winning.principal_kind = lottery.principal_kind
+                AND winning.principal_id = lottery.principal_id
+                AND winning.uid = lottery.uid
+                AND winning.category = 'winning'
+          )
+        """
+    )
+
+
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
     SqliteMigration(2, _CATEGORY_SCHEMA),
@@ -184,6 +211,7 @@ _MIGRATIONS = (
         ),
     ),
     SqliteMigration(4, callback=_migrate_bili_principals),
+    SqliteMigration(5, callback=_split_lottery_and_winning_preferences),
 )
 MIGRATION_NAMESPACE = "bilibili_preferences"
 
