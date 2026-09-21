@@ -33,10 +33,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.identity.player_accounts import (
-        PlayerAccount,
-        PlayerAccountRegistry,
-    )
+    from ironsbot.services.identity.player_accounts import PlayerAccount
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
@@ -200,6 +197,10 @@ class LuckySkinQuery:
 class LuckySkinWindowAccessError(ValueError):
     """The requested account cannot be queried by this actor."""
 
+    @classmethod
+    def login_not_allowed(cls) -> LuckySkinWindowAccessError:
+        return cls("该账号今日尚未缓存，只有 TOML 授权用户可以登录查询。")
+
 
 class LuckySkinWindowService:
     def __init__(  # noqa: PLR0913 - explicit composition dependencies
@@ -214,12 +215,10 @@ class LuckySkinWindowService:
         cache: LuckySkinWindowCache,
         notification_sender: LuckySkinWindowNotificationSender,
         *,
-        player_accounts: PlayerAccountRegistry,
         today: Callable[[], date] | None = None,
         renderer: LuckySkinWindowRenderer | None = None,
     ) -> None:
         self._config = config
-        self._player_accounts = player_accounts
         self._features = features
         self._headless_sessions = headless_sessions
         self._data = data
@@ -232,6 +231,10 @@ class LuckySkinWindowService:
         self._accounts = {configured.actor: configured for configured in accounts}
         if len(self._accounts) != len(accounts):
             raise LuckySkinWindowConfigurationError.duplicate_actor()
+        self._accounts_by_player_id = {
+            configured.player_account.player_id: configured.player_account
+            for configured in accounts
+        }
         self._query_lock = asyncio.Lock()
         self._memory: dict[int, tuple[int, ...]] = {}
         self._cache_day: str | None = None
@@ -340,32 +343,47 @@ class LuckySkinWindowService:
         return "已恢复 TOML 初始关注列表。\n" + self.watch_list_message(actor)
 
     async def query(self, request: LuckySkinQuery) -> LuckySkinWindowResult:
-        account = self._account_for_query(request)
+        account = self._account_for_login(request)
         if cached := self._cached_result(account.player_id):
             return cached
         return await self._check(account, background=False)
 
     def cached_query(self, request: LuckySkinQuery) -> LuckySkinWindowResult | None:
-        """Return today's result without opening the dedicated game session."""
-        account = self._account_for_query(request)
-        return self._cached_result(account.player_id)
+        """Return a configured account's public cache without granting login."""
+        account = self._configured_account_for_query(request)
+        cached = self._cached_result(account.player_id)
+        if cached is not None:
+            return cached
+        self._account_for_login(request, configured=account)
+        return None
 
-    def _account_for_query(self, request: LuckySkinQuery) -> PlayerAccount:
+    def _configured_account_for_query(
+        self,
+        request: LuckySkinQuery,
+    ) -> PlayerAccount:
         if request.player_id is None:
             if request.owner is None:
                 raise LuckySkinWindowNotConfiguredError
             return self._validated_account_for_actor(request.owner)
-        if not self._features.is_actor_superuser(request.requester):
-            if request.owner is None:
-                raise LuckySkinWindowAccessError("只能查询你本人已配置的幸运橱窗账号。")
-            own = self._validated_account_for_actor(request.owner)
-            if own.player_id != request.player_id:
-                raise LuckySkinWindowAccessError("只能查询你本人已配置的幸运橱窗账号。")
-            return own
-        account = self._player_accounts.account_for_player_id(request.player_id)
+        account = self._accounts_by_player_id.get(request.player_id)
         if not self.enabled or account is None or account.password is None:
             raise LuckySkinWindowAccessError("该米米号未配置可用的幸运橱窗登录账号。")
         return account
+
+    def _account_for_login(
+        self,
+        request: LuckySkinQuery,
+        *,
+        configured: PlayerAccount | None = None,
+    ) -> PlayerAccount:
+        account = configured or self._configured_account_for_query(request)
+        if self._features.is_actor_superuser(request.requester):
+            return account
+        if request.owner is not None:
+            own = self._validated_account_for_actor(request.owner)
+            if own.player_id == account.player_id:
+                return own
+        raise LuckySkinWindowAccessError.login_not_allowed()
 
     async def send_daily_notifications(self) -> None:
         if not self.enabled:
