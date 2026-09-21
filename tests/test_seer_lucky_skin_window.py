@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import replace
 from datetime import date
 from struct import pack
 from types import SimpleNamespace
@@ -328,6 +329,11 @@ def _service(
                 name="friend_account",
                 password="friend-secret",
             ),
+            PlayerAccountConfig(
+                player_id=90003,
+                name="unapproved_account",
+                password="unapproved-secret",
+            ),
         ]
     )
     notification_sender = _NotificationSender()
@@ -358,7 +364,6 @@ def _service(
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
         SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         notification_sender,
-        player_accounts=player_accounts,
         today=lambda: date(2026, 8, 3),
         renderer=cast("Any", renderer),
     )
@@ -675,23 +680,44 @@ def test_admin_queries_configured_account_without_own_subscription(
     assert service.cached_query(request) is not None
 
 
-@pytest.mark.parametrize("player_id", [90002, 999999])
-def test_nonadmin_cannot_query_another_account(
+def test_nonadmin_cannot_log_in_to_another_configured_account(
     tmp_path: Path,
-    player_id: int,
 ) -> None:
     service, _game, _delivery, _bindings, sessions = _service(tmp_path)
-    request = LuckySkinQuery(_actor(1001), _actor(1001), player_id)
-    with pytest.raises(LuckySkinWindowAccessError, match="本人"):
+    request = LuckySkinQuery(_actor(1001), _actor(1001), 90002)
+    with pytest.raises(LuckySkinWindowAccessError, match="尚未缓存"):
         service.cached_query(request)
-    with pytest.raises(LuckySkinWindowAccessError, match="本人"):
+    with pytest.raises(LuckySkinWindowAccessError, match="尚未缓存"):
         asyncio.run(service.query(request))
     assert sessions.opens == []
+
+
+def test_nonadmin_can_read_another_accounts_existing_cache(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    generated = asyncio.run(service.query(_request(1002)))
+    request = LuckySkinQuery(_actor(1001), _actor(1001), 90002)
+
+    assert service.cached_query(request) == replace(generated, from_cache=True)
+    with pytest.raises(LuckySkinWindowAccessError, match="尚未缓存"):
+        asyncio.run(service.query(request))
+    assert len(sessions.opens) == 1
 
 
 def test_unknown_admin_target_does_not_log_in(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, sessions = _service(tmp_path)
     request = LuckySkinQuery(_actor(9999), None, 999999)
+    with pytest.raises(LuckySkinWindowAccessError, match="未配置"):
+        asyncio.run(service.query(request))
+    assert sessions.opens == []
+
+
+def test_admin_cannot_query_account_outside_lucky_window_allowlist(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(_actor(9999), None, 90003)
     with pytest.raises(LuckySkinWindowAccessError, match="未配置"):
         asyncio.run(service.query(request))
     assert sessions.opens == []
