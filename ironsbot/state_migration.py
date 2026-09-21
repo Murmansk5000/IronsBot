@@ -47,6 +47,7 @@ from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStor
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
+from ironsbot.services.identity_principals import default_conversation_principal
 from ironsbot.state_migration_files import (
     SqliteBundleChange,
     apply_sqlite_bundle_changes,
@@ -431,25 +432,36 @@ def _copy_private_unsubscriptions(target_path: Path, source_path: Path) -> int:
         before = int(
             target.execute("SELECT COUNT(*) FROM push_unsubscriptions").fetchone()[0]
         )
-        target.executemany(
-            """
-            INSERT OR IGNORE INTO push_unsubscriptions (
-                conversation_platform, conversation_account_id,
-                conversation_kind, conversation_id, subscription_key,
-                feature, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
+        converted = []
+        for user_id, schedule_key, feature, created_at in rows:
+            conversation = ConversationRef(
+                Platform.ONEBOT,
+                "private",
+                str(user_id),
+            )
+            principal = default_conversation_principal(conversation)
+            converted.append(
                 (
+                    principal.kind,
+                    principal.id,
                     *ConversationIdentityColumns.from_conversation(
-                        ConversationRef(Platform.ONEBOT, "private", str(user_id))
+                        conversation
                     ).values(),
                     schedule_key,
                     feature,
                     created_at,
                 )
-                for user_id, schedule_key, feature, created_at in rows
-            ),
+            )
+        target.executemany(
+            """
+            INSERT OR IGNORE INTO push_unsubscriptions (
+                principal_kind, principal_id,
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, subscription_key,
+                feature, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            converted,
         )
         target.commit()
         after = int(

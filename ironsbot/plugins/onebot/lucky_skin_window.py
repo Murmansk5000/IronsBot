@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
@@ -88,6 +89,7 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
     scheduler: Scheduler,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
+    identity_principals: IdentityPrincipalService,
 ) -> PluginContribution:
     return PluginContribution(
         id="lucky_skin_window",
@@ -110,6 +112,7 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
             features=features,
             sessions=sessions,
             resolver=resolver,
+            identity_principals=identity_principals,
         ),
         hooks=PluginHooks(
             startup=(
@@ -221,6 +224,7 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     features: FeatureService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
+    identity_principals: IdentityPrincipalService,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
     operations = build_portable_lucky_skin_operations(
@@ -229,6 +233,7 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
         features,
         sessions,
         resolver,
+        identity_principals,
     )
     matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -386,5 +391,6 @@ if (context := active_plugin_install_context()) is not None:
             context.scheduler,
             context.resources.query_sessions,
             context.resources.player_id_resolver,
+            context.resources.identity_principals,
         ),
     )

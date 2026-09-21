@@ -47,16 +47,26 @@ def migrate_bilibili_subscriptions(
         if not uid.isdigit():
             continue
         for stage in ("link", "text", "image"):
-            copied = {**row, "subscription_key": f"bili_media:{uid}:{stage}"}
-            columns = tuple(copied)
             connection.execute(
-                "INSERT OR IGNORE INTO push_unsubscriptions (" + ",".join(columns)
-                + ") VALUES (" + ",".join("?" for _ in columns) + ")",
-                tuple(copied.values()),
+                "INSERT OR IGNORE INTO push_unsubscriptions "
+                "(principal_kind,principal_id,conversation_platform,"
+                "conversation_account_id,conversation_kind,conversation_id,"
+                "subscription_key,feature,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    row["principal_kind"],
+                    row["principal_id"],
+                    row["conversation_platform"],
+                    row["conversation_account_id"],
+                    row["conversation_kind"],
+                    row["conversation_id"],
+                    f"bili_media:{uid}:{stage}",
+                    row["feature"],
+                    row["created_at"],
+                ),
             )
-        owner = [name for name in row if name not in {"feature", "created_at"}]
         connection.execute(
-            "DELETE FROM push_unsubscriptions WHERE " + " AND ".join(name + "=?" for name in owner),
-            tuple(row[name] for name in owner),
+            "DELETE FROM push_unsubscriptions WHERE principal_kind=? "
+            "AND principal_id=? AND subscription_key=?",
+            (row["principal_kind"], row["principal_id"], row["subscription_key"]),
         )
     connection.execute("INSERT INTO bili_subscription_migrations VALUES (1)")

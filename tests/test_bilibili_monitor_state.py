@@ -38,6 +38,8 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
+from ironsbot.services.identity_link_store import CrossPlatformGroupLink
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from tests.helpers.onebot_events import (
     group_admin_message_event,
     group_message_event,
@@ -80,6 +82,7 @@ def _features(
     *,
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
+    principals: IdentityPrincipalService | None = None,
 ) -> FeatureService:
     return build_feature_service(
         FeatureConfig(
@@ -88,6 +91,7 @@ def _features(
             superuser_bypass=False,
         ),
         frozenset(superusers),
+        principals=principals,
     )
 
 
@@ -413,9 +417,10 @@ def test_discovered_official_group_inherits_configured_bili_rule() -> None:
             }
         },
     )
+    principals = IdentityPrincipalService()
     service = _target_service(
         config,
-        _features({"222": ["bili_push"]}),
+        _features({"222": ["bili_push"]}, principals=principals),
     )
     official_group = ConversationRef(
         Platform.QQ_OFFICIAL,
@@ -424,10 +429,8 @@ def test_discovered_official_group_inherits_configured_bili_rule() -> None:
         account_id="app-id",
     )
 
-    service.features.register_group_link(
-        official_app_id="app-id",
-        official_group_openid="group-openid",
-        onebot_group_id="222",
+    principals.register_group_link(
+        CrossPlatformGroupLink("222", "app-id", "group-openid", 1.0)
     )
     service.register_group_link(
         official_app_id="app-id",

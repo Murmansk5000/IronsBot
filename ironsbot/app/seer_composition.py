@@ -127,6 +127,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.cache_paths import CachePaths
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
@@ -152,6 +153,10 @@ class SeerComponents:
     pet_config: PetConfigQueryService
     player_id_resolver: PlayerIdResolver
     player_query_quotas: PlayerQueryQuotaService
+    player_query_limit_store: SqlitePlayerQueryLimitStore
+    lucky_skin_preference_store: SqliteLuckySkinWatchPreferenceStore
+    rank_display_store: SqliteRankDisplayStore
+    team_resource_store: TeamResourceSubscriptionStore
     player_requests: PlayerRequestProtectionService
     player_detail_extensions: PlayerDetailExtensionRegistry
     lineup_render_session: PlayerLineupRenderSessionFactory
@@ -169,6 +174,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     headless: HeadlessService,
     headless_sessions: HeadlessSessionFactory,
     player_bindings: SqlitePlayerBindingStore,
+    identity_principals: IdentityPrincipalService,
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -192,9 +198,14 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             include_private=True,
         )
 
+    team_resource_store = TeamResourceSubscriptionStore(
+        settings.paths.qq_state,
+        conversation_principal_for=identity_principals.conversation_principal,
+        actor_principal_for=identity_principals.actor_principal,
+    )
     team_resource = TeamResourceService(
         settings.seer.team_resource,
-        TeamResourceSubscriptionStore(settings.paths.qq_state),
+        team_resource_store,
         headless,
         features,
         TeamResourceOutboundSender(proactive_delivery),
@@ -338,6 +349,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         cache_paths.http_dir() / "weekly_preview",
         spawn=task_owner.create,
     )
+    lucky_skin_preference_store = SqliteLuckySkinWatchPreferenceStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.actor_principal,
+    )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -349,16 +364,20 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         headless_sessions,
         seer_database,
         player_bindings,
-        SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
+        lucky_skin_preference_store,
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
         renderer=render_window,
+    )
+    player_query_limit_store = SqlitePlayerQueryLimitStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.actor_principal,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
         player_bindings,
         features,
-        SqlitePlayerQueryLimitStore(settings.paths.qq_state),
+        player_query_limit_store,
     )
     player_requests = PlayerRequestProtectionService(
         settings.seer.player.request_protection,
@@ -384,6 +403,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         rank.exclusion_policy,
     )
     local_rank.remove_excluded_samples()
+    rank_display_store = SqliteRankDisplayStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.conversation_principal,
+    )
     rank_display = RankDisplayService(
         settings.seer.rank,
         {
@@ -396,7 +419,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 ),
             )
         },
-        SqliteRankDisplayStore(settings.paths.qq_state),
+        rank_display_store,
     )
     rank_page_refresh = RankPageRefreshService(
         settings.seer.rank.page_refresh,
@@ -522,6 +545,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         pet_config=pet_config,
         player_id_resolver=player_id_resolver,
         player_query_quotas=player_query_quotas,
+        player_query_limit_store=player_query_limit_store,
+        lucky_skin_preference_store=lucky_skin_preference_store,
+        rank_display_store=rank_display_store,
+        team_resource_store=team_resource_store,
         player_requests=player_requests,
         player_detail_extensions=player_detail_extensions,
         lineup_render_session=lineup_render_session,
