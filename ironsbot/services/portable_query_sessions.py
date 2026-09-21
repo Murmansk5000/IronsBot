@@ -71,7 +71,8 @@ class QueryOperationSpec(Generic[_T]):
     search: QuerySearch[_T]
     select: QuerySelect[_T]
     prompt_title: str
-    not_found_message: str | None
+    not_found_message: str | None = None
+    keep_open: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,6 +269,7 @@ class PortableQuerySessions:
             select=select_untyped,
             prompt_title=spec.prompt_title,
             not_found_message=spec.not_found_message,
+            keep_open=spec.keep_open,
         )
 
     def offer(
@@ -293,6 +295,7 @@ class PortableQuerySessions:
             select=select_untyped,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
+            keep_open=False,
         )
         assert message is not None
         return message
@@ -589,6 +592,7 @@ class PortableQuerySessions:
             select=pending.select,
             prompt_title=pending.prompt_title,
             not_found_message=pending.not_found_message,
+            keep_open=pending.keep_open,
         )
 
     @staticmethod
@@ -601,7 +605,7 @@ class PortableQuerySessions:
             return OutboundMessage.from_text(pending.exit_message)
         return await pending.submit(text.strip(), context)
 
-    def _present(
+    def _present(  # noqa: PLR0913 - explicit interaction state transition
         self,
         context: MessageInputContext,
         result: QueryResult[Any],
@@ -609,16 +613,20 @@ class PortableQuerySessions:
         select: _UntypedMenuSelect,
         prompt_title: str,
         not_found_message: str | None,
+        keep_open: bool,
     ) -> OutboundMessage | None:
         key = self._key(context)
         if result.message:
-            self._pending.pop(key, None)
+            if not keep_open:
+                self._pending.pop(key, None)
             return OutboundMessage.from_text(result.message)
         if result.reply is not None:
-            self._pending.pop(key, None)
+            if not keep_open:
+                self._pending.pop(key, None)
             return result.reply.to_outbound()
         if not result.choices:
-            self._pending.pop(key, None)
+            if not keep_open:
+                self._pending.pop(key, None)
             return (
                 OutboundMessage.from_text(not_found_message)
                 if not_found_message is not None
@@ -643,6 +651,7 @@ class PortableQuerySessions:
             prompt_title=prompt_title,
             not_found_message=not_found_message,
             expires_at=session.expires_at,
+            keep_open=keep_open,
         )
         return replace(
             OutboundMessage.from_text(
@@ -775,26 +784,3 @@ class PortableQuerySessions:
             choices=(*choices, exit_choice),
             expires_at=self._now() + self._ttl_seconds,
         )
-
-
-def build_query_operation(
-    sessions: PortableQuerySessions,
-    spec: QueryOperationSpec[_T],
-) -> PortableQueryOperation:
-    """Adapt one QueryResult service without duplicating its command grammar."""
-
-    async def execute(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage | None:
-        argument = spec.parser(text)
-        if argument is None:
-            msg = f"catalog accepted input that its query parser rejected: {text!r}"
-            raise ValueError(msg)
-        return await sessions.begin(
-            context,
-            argument=argument,
-            spec=spec,
-        )
-
-    return execute

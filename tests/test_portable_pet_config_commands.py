@@ -98,6 +98,16 @@ async def test_portable_pet_config_reuses_numeric_selection_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_empty_pet_config_affix_lookup_stays_silent() -> None:
+    result = await _operation(PortableQuerySessions())(
+        "不存在的精灵配置",
+        _context("不存在的精灵配置"),
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_portable_pet_config_does_not_claim_reserved_image_command() -> None:
     operation = _operation(PortableQuerySessions())
 

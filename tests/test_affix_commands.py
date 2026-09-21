@@ -59,6 +59,14 @@ def test_affixes_are_literal_ordered_and_case_configurable() -> None:
     assert AffixCommand((), ())("anything") is None
 
 
+def test_affix_command_exposes_plain_argument_parser() -> None:
+    parser = AffixCommand(("属性",), ("属性",))
+
+    assert parser.parse_argument("属性圣灵") == "圣灵"
+    assert parser.parse_argument("圣灵属性") == "圣灵"
+    assert parser.parse_argument("普通消息") is None
+
+
 @pytest.mark.asyncio
 async def test_rule_without_plaintext_does_not_mutate_state() -> None:
     event = Mock(spec=Event)
