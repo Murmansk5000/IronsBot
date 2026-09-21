@@ -10,7 +10,6 @@ from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_query_sessions import (
-    PortableQuerySessions,
     QueryOperationSpec,
     build_query_operation,
 )
@@ -44,10 +43,11 @@ from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.team_commands import build_team_query_operation
 
 if TYPE_CHECKING:
-    from ironsbot.core.affix_commands import AffixParser
+    from ironsbot.core.affix_commands import AffixCommand
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
@@ -107,21 +107,19 @@ def build_portable_seer_operations(
         "seer.pet.query": build_query_operation(
             sessions,
             QueryOperationSpec(
-                parser=_affix_argument(pet_query_input()),
+                parser=pet_query_input().parse_argument,
                 search=seer.pet_query.search_info,
                 select=seer.pet_query.select_info,
                 prompt_title="请问你想查询的精灵是……",
-                not_found_message=None,
             ),
         ),
         "seer.pet.image": build_query_operation(
             sessions,
             QueryOperationSpec(
-                parser=_affix_argument(pet_image_input()),
+                parser=pet_image_input().parse_argument,
                 search=seer.pet_query.search_image,
                 select=seer.pet_query.select_image,
                 prompt_title="请问你想查询的立绘是……",
-                not_found_message=None,
             ),
         ),
         "seer.mintmark.query": _first_matching_operation(
@@ -131,11 +129,10 @@ def build_portable_seer_operations(
                     build_query_operation(
                         sessions,
                         QueryOperationSpec(
-                            parser=_affix_argument(MINTMARK_QUERY),
+                            parser=MINTMARK_QUERY.parse_argument,
                             search=seer.mintmark.search_mintmark,
                             select=seer.mintmark.select_mintmark,
                             prompt_title="请问你想查询的刻印是……",
-                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -144,11 +141,10 @@ def build_portable_seer_operations(
                     build_query_operation(
                         sessions,
                         QueryOperationSpec(
-                            parser=_affix_argument(GEM_QUERY),
+                            parser=GEM_QUERY.parse_argument,
                             search=seer.mintmark.search_gem,
                             select=seer.mintmark.select_gem,
                             prompt_title="请问你想查询的宝石是……",
-                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -161,11 +157,10 @@ def build_portable_seer_operations(
                     build_query_operation(
                         sessions,
                         QueryOperationSpec(
-                            parser=_affix_argument(parser),
+                            parser=parser.parse_argument,
                             search=partial(seer.equipment.search, kind),
                             select=partial(seer.equipment.select, kind),
                             prompt_title=prompt_title,
-                            not_found_message=None,
                         ),
                     ),
                 )
@@ -179,11 +174,10 @@ def build_portable_seer_operations(
                     build_query_operation(
                         sessions,
                         QueryOperationSpec(
-                            parser=_affix_argument(TYPE_QUERY),
+                            parser=TYPE_QUERY.parse_argument,
                             search=seer.type_query.search,
                             select=seer.type_query.select,
                             prompt_title="请问你想查询的属性是……",
-                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -192,11 +186,10 @@ def build_portable_seer_operations(
                     build_query_operation(
                         sessions,
                         QueryOperationSpec(
-                            parser=_affix_argument(BATTLE_EFFECT_QUERY),
+                            parser=BATTLE_EFFECT_QUERY.parse_argument,
                             search=seer.battle_effect.search,
                             select=seer.battle_effect.select,
                             prompt_title="请问你想查询的异常状态是……",
-                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -207,25 +200,16 @@ def build_portable_seer_operations(
         operations["seer.pet.avatar"] = build_query_operation(
             sessions,
             QueryOperationSpec(
-                parser=_affix_argument(pet_avatar_input()),
+                parser=pet_avatar_input().parse_argument,
                 search=seer.pet_query.search_avatar,
                 select=seer.pet_query.select_avatar,
                 prompt_title="请选择要查询头像的精灵：",
-                not_found_message=None,
             ),
         )
     return operations
 
 
-def _affix_argument(parser: AffixParser):
-    def parse(text: str) -> str | None:
-        parsed = parser(text)
-        return None if parsed is None else parsed.argument
-
-    return parse
-
-
-def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixParser, str], ...]:
+def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixCommand, str], ...]:
     return (
         ("suit", SUIT_QUERY, "请问你想查询的套装是……"),
         (
@@ -242,7 +226,7 @@ def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixParser, str], ...]:
 
 
 def _first_matching_operation(
-    routes: tuple[tuple[AffixParser, PortableOperation], ...],
+    routes: tuple[tuple[AffixCommand, PortableOperation], ...],
 ) -> PortableOperation:
     async def execute(text: str, context: MessageInputContext):
         operation = next(

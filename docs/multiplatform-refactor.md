@@ -42,8 +42,8 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [███████□]  verified phases: 7/8; percentage awaits a weighted acceptance baseline
-Phase 7  [███████░]  live acceptance milestones: 7/8
+Program  [████████]  verified phases: 8/8
+Phase 7  [████████]  live acceptance milestones: 8/8
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
 
@@ -51,11 +51,10 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 当前权威状态（2026-09-21）
 
-Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。唯一公开开发与发布源是
-`Murmansk5000/IronsBot` 的 `main`。当前生产运行时修订为 `1a4b8230`，Docker Hub 清单
-digest 为 `sha256:e90a843e39c938f5c75e4c9d7aac210a813115c1f45632ab3696049f990de6bc`，
-Unraid 展开大小为 `260096743` bytes；`/app`、Python site-packages 和字体分别保持在
-`4860 KiB`、`106000 KiB` 和 `19452 KiB`。发布流水线 `35570402550` 的构建、离线 smoke、
+Phase 0 至 Phase 7 已关闭。唯一公开开发与发布源是
+`Murmansk5000/IronsBot` 的 `main`。当前生产运行时修订为 `ae186314`，Docker Hub 清单
+digest 为 `sha256:a629bb7be846c32db312f632e4e0a1d6a337897bb47572cc80db656df42be87a`，
+Unraid 展开大小为 `260096148` bytes；发布流水线 `35583061598` 的构建、离线 smoke、
 依赖审计、目录与增长门禁均通过。生产 `config_check` 确认 QQ Official 是唯一出站平台、
 OneBot outbound 关闭且 observer 身份验证保持启用；五个独立官方账号均取得 AccessToken
 并进入 READY，OneBot observer、三无头 worker 和共享 Docker 网络健康。
@@ -66,23 +65,23 @@ Markdown：同时包含发令成员提及、换行和正文，并携带被动 `m
 `at` 或 TEXT 正文，不占用第二次回复额度；字面 OpenID 标签为零。新精确 digest 已完成
 启动、三账号隔离和一条公众账号 C2C 被动回复。权限、故障和主动投递的当前可控范围已经
 闭环；AI 独立备用文本 provider 已完成真实 HTTP 401 到备用 HTTP 200 的跨 provider 切换。
-腾讯自然产生的拒收/额度事件作为 External TODO 保留，不能把未发生的平台事件描述为真实通过。
+腾讯自然产生的拒收/额度事件作为非阻塞 External TODO 保留，不能把未发生的平台事件描述为真实通过。
 
 `docs/` 不进入 Docker 构建上下文。后续纯文档提交可能因 OCI revision 标签生成不同
 manifest digest，但不会改变运行时文件；Phase 7 可继续使用上述行为候选，除非实际生产
 部署选择了另一个精确 digest，届时必须在验收记录中固定所部署的值。
 
-最新公开代码镜像来自 `1a4b8230`，workflow `35570402550` 已将 Docker Hub/GHCR 的
-`0.5.1.1962` 与 `sha-1a4b823` 固定到上述共同 digest。该候选已经写入生产 Unraid；后续
-`533a4da7` 仅更新验收文档并使用 `[skip ci]`，没有改变运行时代码或产生竞争镜像。多账号
+最新公开代码镜像来自 `ae186314`，workflow `35583061598` 已将 Docker Hub/GHCR 的
+`0.5.1.1970` 与 `sha-ae18631` 固定到上述共同 digest。该候选已经写入生产 Unraid。多账号
 群主动推送按 `group_routes` 或唯一静态端点选择一个账号，非归属账号仍可完成被用户直接
 寻址的被动回复；AppID 作用域内的 C2C 主动端点不受群选主规则影响。
 
 主要查询矩阵已在此前生产 runtime tree 上完成 A1-A12：最后缺失的幸运橱窗使用受控
 OneBot 身份完成账号绑定、登录确认、隔离查询、四皮肤持久缓存和最终图片送达。生产专用
 密码只存在于 Unraid 掩码环境变量，不进入 TOML 或仓库。当前精确 digest 已复用相同业务
-树并完成启动验证，但 Phase 7 仍保持开放；当前唯一未关闭的验收里程碑是手机 QQ 对合并
-提及、换行和正文不重复的最终视觉确认。
+树并完成启动验证。2026-09-21 用户在手机 QQ 确认最终视觉正确：成员提及与正文位于同一条
+消息、提及后正确换行、正文只出现一次；服务器同时记录到对应命令仅产生一次官方被动文本
+投递。因此 B10 与 Phase 7 最后一个里程碑均已关闭。
 
 同一 `667177ea` 生产镜像重新生成幸运橱窗 v2 卡片，客户端收到一张 1040×559 PNG；四个
 皮肤、风尚券图标、钻石图标和中文均正常。字体稳定的 `★` 关注标记另由本地真实 HTML
@@ -408,7 +407,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 公开 `1a4b8230` 已部署；主要查询、权限、AI 主/备切换、推送、五账号路由、官方优先与 NapCat 静默均有真实证据，当前里程碑为 7/8 | 由用户在手机 QQ 确认合并提及、换行和正文不重复；下一次自然群推送确认唯一发送账号；C8 腾讯自然拒收/额度事件保留为 External TODO | 把未发生的腾讯拒绝事件写成已通过，或用服务端回执替代客户端视觉确认 |
+| Phase 7 | `completed` | 公开 `ae186314` 已部署；主要查询、权限、AI 主/备切换、群主动推送唯一归属、五账号路由、官方优先与 NapCat 静默均有真实证据；用户已在手机 QQ 确认合并提及、换行和正文不重复，里程碑为 8/8 | C8 腾讯自然拒收/额度事件保留为非阻塞 External TODO；发生后补录真实证据 | 把未发生的腾讯拒绝事件写成已通过，或以模拟结果冒充腾讯真实拒绝事件 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除

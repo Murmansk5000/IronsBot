@@ -71,7 +71,7 @@ class QueryOperationSpec(Generic[_T]):
     search: QuerySearch[_T]
     select: QuerySelect[_T]
     prompt_title: str
-    not_found_message: str | None
+    not_found_message: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -29,12 +29,9 @@ def build_portable_pet_config_operation(
     return build_query_operation(
         sessions,
         QueryOperationSpec(
-            parser=lambda text: (
-                None if (parsed := parser(text)) is None else parsed.argument
-            ),
+            parser=parser.parse_argument,
             search=service.search,
             select=service.select,
             prompt_title="请问你想查询哪只精灵的配置？",
-            not_found_message=None,
         ),
     )

@@ -211,7 +211,7 @@ def _text(message: OutboundMessage | None) -> str:
 
 
 @pytest.mark.asyncio
-async def test_empty_entity_result_can_be_declared_silent() -> None:
+async def test_empty_entity_result_is_silent_by_default() -> None:
     sessions = PortableQuerySessions()
 
     async def search(_argument: str) -> QueryResult[int]:
@@ -225,7 +225,6 @@ async def test_empty_entity_result_can_be_declared_silent() -> None:
             search=search,
             select=AsyncMock(),
             prompt_title="choose",
-            not_found_message=None,
         ),
     )
 
