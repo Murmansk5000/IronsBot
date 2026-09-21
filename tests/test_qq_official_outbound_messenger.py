@@ -202,6 +202,29 @@ async def test_proactive_delivery_uses_only_the_selected_group_account() -> None
     assert len(local_bot.calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_private_proactive_delivery_uses_its_scoped_account_endpoint() -> None:
+    local_bot = _Bot()
+    routing = QQOfficialIngressRouting("public-app", {})
+    local_private = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "local-user-openid",
+        account_id="local-app",
+    )
+    messenger = QQOfficialOutboundMessenger(
+        {"public-app": True, "local-app": True},
+        bot_provider=lambda app_id: local_bot if app_id == "local-app" else None,
+        group_routing=routing,
+    )
+
+    result = await messenger.send(local_private, TEXT)
+
+    assert messenger.capabilities_for(local_private).can_send_proactively
+    assert result.delivered
+    assert len(local_bot.calls) == 1
+
+
 def test_custom_keyboard_capability_is_account_scoped() -> None:
     messenger = QQOfficialOutboundMessenger(
         {"app": False},
