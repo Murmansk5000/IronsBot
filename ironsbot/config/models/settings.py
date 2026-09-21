@@ -146,7 +146,7 @@ def _command_starts(value: object) -> list[str]:
 class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    help_hint: int = Field(default=0, ge=0)
+    poke_reply: int = Field(default=0, ge=0)
     server_status: int = Field(default=1, ge=0)
     server_status_admin: int = Field(default=2, ge=0)
     bilibili: int = Field(default=3, ge=0)

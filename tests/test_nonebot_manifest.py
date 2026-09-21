@@ -37,7 +37,8 @@ FULL_PLUGINS = [
     "ironsbot.plugins.onebot.operations.db_sync",
     "ironsbot.plugins.onebot.about",
     "ironsbot.plugins.onebot.help",
-    "ironsbot.plugins.onebot.help.hint",
+    "ironsbot.plugins.onebot.messaging.poke",
+    "ironsbot.plugins.onebot.messaging.addressed_hint",
     "ironsbot.plugins.onebot.sendpic",
     "ironsbot.plugins.onebot.messaging.blacklist",
     "ironsbot.plugins.onebot.messaging.meeting",
@@ -62,7 +63,8 @@ CORE_PLUGINS = [
     "ironsbot.plugins.onebot.seer.query",
     "ironsbot.plugins.onebot.about",
     "ironsbot.plugins.onebot.help",
-    "ironsbot.plugins.onebot.help.hint",
+    "ironsbot.plugins.onebot.messaging.poke",
+    "ironsbot.plugins.onebot.messaging.addressed_hint",
     "ironsbot.plugins.onebot.seer.rank_help",
 ]
 

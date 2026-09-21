@@ -313,7 +313,7 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if decision.offer_help_hint and self._addressed_input_hints.admit(context):
+        if decision.offer_addressed_hint and self._addressed_input_hints.admit(context):
             return PortableReply(
                 OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
             )
