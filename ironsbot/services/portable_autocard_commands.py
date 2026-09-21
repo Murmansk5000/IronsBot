@@ -54,7 +54,7 @@ class _PortableAutocardOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | None:
         try:
             result = self.service.search(text)
         except (DataUnavailableError, RuntimeError) as error:
@@ -64,7 +64,7 @@ class _PortableAutocardOperations:
         if result.message:
             return OutboundMessage.from_text(result.message)
         if not result.prompt_values:
-            return OutboundMessage.from_text("❌ 未找到对应群星牌资料。")
+            return None
 
         async def select(
             value: AutocardPromptValue,
@@ -95,11 +95,20 @@ class _PortableAutocardOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | None:
         try:
             result = self.sanctuary.search(text)
         except (DataUnavailableError, RuntimeError) as error:
             return _service_error("群星牌场地公开配置", error)
+        if not any(
+            (
+                result.message,
+                result.effect,
+                result.sanctuary,
+                result.prompt_values,
+            )
+        ):
+            return None
         return self._present_sanctuary(context, result)
 
     def _present_sanctuary(

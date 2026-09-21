@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    Adapter,
+    Event,
+    GroupMessageEvent,
+    Message,
+    MessageSegment,
+)
 from nonebot.exception import IgnoredException
 
 from ironsbot.core.outbound import OutboundMessage
@@ -107,6 +113,27 @@ def _observation(
         text,
         message_id,
     )
+
+
+def _message_sent_event(*, target_qq: int) -> Event:
+    event = Adapter.json_to_event(
+        {
+            "time": 100,
+            "self_id": 99999,
+            "post_type": "message_sent",
+            "user_id": 99999,
+            "message_id": 12345,
+            "message_type": "group",
+            "group_id": ONEBOT_GROUP,
+            "message": [
+                {"type": "at", "data": {"qq": str(OFFICIAL_BOT_QQ)}},
+                {"type": "text", "data": {"text": " "}},
+                {"type": "at", "data": {"qq": str(target_qq)}},
+            ],
+        }
+    )
+    assert event is not None
+    return event
 
 
 def _service(
@@ -783,6 +810,34 @@ async def test_silent_ingress_observes_then_blocks_onebot_event(
 
     with pytest.raises(IgnoredException):
         await policy.process(_observed_reply())
+
+
+@pytest.mark.asyncio
+async def test_silent_ingress_observes_napcat_message_sent_then_blocks(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    await service.observe_official_message(
+        _incoming(
+            "official-verification",
+            member_openid="napcat-member-openid",
+            target_openids=("target-openid",),
+            text="",
+        )
+    )
+    policy = OneBotIngressPolicy(
+        messages_enabled=False,
+        identity_observer=service,
+    )
+
+    with pytest.raises(IgnoredException):
+        await policy.process(_message_sent_event(target_qq=50005))
+
+    target = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "target-openid", OFFICIAL_GROUP)
+    )
+    assert target is not None and target.onebot_qq_id == "50005"
 
 
 @pytest.mark.asyncio

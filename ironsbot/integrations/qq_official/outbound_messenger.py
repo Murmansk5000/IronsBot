@@ -30,6 +30,7 @@ from ironsbot.integrations.qq_official.reply_sequences import (
 if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage, ReplyContext
     from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
     from ironsbot.integrations.qq_official.recipient_state import (
         QQOfficialRecipientStateStore,
     )
@@ -72,6 +73,7 @@ class QQOfficialOutboundMessenger:
     bot_provider: BotProvider
     account_custom_keyboards: Mapping[str, bool] = field(default_factory=dict)
     recipient_state: QQOfficialRecipientStateStore | None = None
+    group_routing: QQOfficialIngressRouting | None = None
     reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
         default_factory=dict
     )
@@ -95,7 +97,10 @@ class QQOfficialOutboundMessenger:
             return _UNSUPPORTED
         return DeliveryCapabilities(
             can_reply_to_event=True,
-            can_send_proactively=self._proactive_enabled(conversation),
+            can_send_proactively=(
+                self._proactive_enabled(conversation)
+                and self._selected_for_proactive(conversation)
+            ),
             can_mention_members=conversation.kind == "group",
             supports_group_context=True,
             supports_private_context=True,
@@ -115,6 +120,12 @@ class QQOfficialOutboundMessenger:
             return _failure(
                 "account_mismatch",
                 "QQ Official target belongs to another bot account",
+                DeliveryFailureKind.PERMANENT,
+            )
+        if not self._selected_for_proactive(conversation):
+            return _failure(
+                "account_not_selected",
+                "Another QQ Official account owns proactive delivery to this target",
                 DeliveryFailureKind.PERMANENT,
             )
         if not self.capabilities_for(conversation).can_send_proactively:
@@ -169,6 +180,16 @@ class QQOfficialOutboundMessenger:
         return account_id is not None and self.account_proactive.get(
             account_id,
             False,
+        )
+
+    def _selected_for_proactive(self, conversation: ConversationRef) -> bool:
+        if self.group_routing is None or conversation.kind != "group":
+            return True
+        account_id = conversation.account_id
+        return account_id is not None and self.group_routing.allows(
+            account_id=account_id,
+            conversation_kind=conversation.kind,
+            conversation_id=conversation.id,
         )
 
     async def _deliver(

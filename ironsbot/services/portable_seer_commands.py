@@ -165,13 +165,11 @@ def build_portable_seer_operations(
                             search=partial(seer.equipment.search, kind),
                             select=partial(seer.equipment.select, kind),
                             prompt_title=prompt_title,
-                            not_found_message=not_found_message,
+                            not_found_message=None,
                         ),
                     ),
                 )
-                for kind, parser, prompt_title, not_found_message in (
-                    _equipment_queries()
-                )
+                for kind, parser, prompt_title in _equipment_queries()
             )
         ),
         "seer.type.query": _first_matching_operation(
@@ -185,7 +183,7 @@ def build_portable_seer_operations(
                             search=seer.type_query.search,
                             select=seer.type_query.select,
                             prompt_title="请问你想查询的属性是……",
-                            not_found_message="未找到对应属性。",
+                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -198,7 +196,7 @@ def build_portable_seer_operations(
                             search=seer.battle_effect.search,
                             select=seer.battle_effect.select,
                             prompt_title="请问你想查询的异常状态是……",
-                            not_found_message="未找到对应异常状态。",
+                            not_found_message=None,
                         ),
                     ),
                 ),
@@ -227,20 +225,18 @@ def _affix_argument(parser: AffixParser):
     return parse
 
 
-def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixParser, str, str], ...]:
+def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixParser, str], ...]:
     return (
-        ("suit", SUIT_QUERY, "请问你想查询的套装是……", "未找到对应套装。"),
+        ("suit", SUIT_QUERY, "请问你想查询的套装是……"),
         (
             "equip",
             EQUIP_QUERY,
             "请问你想查询的装备部件是……",
-            "未找到对应装备部件。",
         ),
         (
             "title",
             TITLE_QUERY,
             "请问你想查询的称号是……",
-            "未找到对应称号。",
         ),
     )
 

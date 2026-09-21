@@ -17,6 +17,7 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
     QQOfficialTextPayload,
@@ -148,6 +149,80 @@ async def test_proactive_delivery_respects_persisted_recipient_rejection(
     passive = await messenger.reply(_reply(GROUP, "event-id"), TEXT)
     assert passive.delivered
     assert len(bot.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_uses_only_the_selected_group_account() -> None:
+    public_bot = _Bot()
+    local_bot = _Bot()
+    routing = QQOfficialIngressRouting(
+        "public-app",
+        {"686376929": "local-app"},
+    )
+    public_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "public-group-openid",
+        account_id="public-app",
+    )
+    local_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "local-group-openid",
+        account_id="local-app",
+    )
+    routing.register_group_endpoint(
+        account_id="public-app",
+        official_group_openid=public_group.id,
+        onebot_group_id="686376929",
+    )
+    routing.register_group_endpoint(
+        account_id="local-app",
+        official_group_openid=local_group.id,
+        onebot_group_id="686376929",
+    )
+    bots = {"public-app": public_bot, "local-app": local_bot}
+    messenger = QQOfficialOutboundMessenger(
+        {"public-app": True, "local-app": True},
+        bot_provider=bots.get,
+        group_routing=routing,
+    )
+
+    rejected = await messenger.send(public_group, TEXT)
+    delivered = await messenger.send(local_group, TEXT)
+    passive = await messenger.reply(_reply(public_group, "event-id"), TEXT)
+
+    assert not messenger.capabilities_for(public_group).can_send_proactively
+    assert messenger.capabilities_for(public_group).can_reply_to_event
+    assert messenger.capabilities_for(local_group).can_send_proactively
+    assert rejected.error_code == "account_not_selected"
+    assert delivered.delivered
+    assert passive.delivered
+    assert len(public_bot.calls) == 1
+    assert len(local_bot.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_private_proactive_delivery_uses_its_scoped_account_endpoint() -> None:
+    local_bot = _Bot()
+    routing = QQOfficialIngressRouting("public-app", {})
+    local_private = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "local-user-openid",
+        account_id="local-app",
+    )
+    messenger = QQOfficialOutboundMessenger(
+        {"public-app": True, "local-app": True},
+        bot_provider=lambda app_id: local_bot if app_id == "local-app" else None,
+        group_routing=routing,
+    )
+
+    result = await messenger.send(local_private, TEXT)
+
+    assert messenger.capabilities_for(local_private).can_send_proactively
+    assert result.delivered
+    assert len(local_bot.calls) == 1
 
 
 def test_custom_keyboard_capability_is_account_scoped() -> None:

@@ -35,6 +35,6 @@ def build_portable_pet_config_operation(
             search=service.search,
             select=service.select,
             prompt_title="请问你想查询哪只精灵的配置？",
-            not_found_message="未找到对应精灵。",
+            not_found_message=None,
         ),
     )

@@ -106,20 +106,22 @@ async def _load_identity_links(  # noqa: PLR0913
     qq_official: QQOfficialRuntime | None,
 ) -> None:
     for link in await store.all_group_links():
-        features.register_group_link(
-            official_app_id=link.official_app_id,
-            official_group_openid=link.official_group_openid,
-            onebot_group_id=link.onebot_group_id,
+        selected_for_outbound = qq_official is None or qq_official.register_group_link(
+            link
         )
         if observer is not None:
             observer.register_group_link(link)
-        bili_targets.register_group_link(
-            official_app_id=link.official_app_id,
-            official_group_openid=link.official_group_openid,
-            onebot_group_id=link.onebot_group_id,
-        )
-        if qq_official is not None:
-            qq_official.register_group_link(link)
+        if selected_for_outbound:
+            features.register_group_link(
+                official_app_id=link.official_app_id,
+                official_group_openid=link.official_group_openid,
+                onebot_group_id=link.onebot_group_id,
+            )
+            bili_targets.register_group_link(
+                official_app_id=link.official_app_id,
+                official_group_openid=link.official_group_openid,
+                onebot_group_id=link.onebot_group_id,
+            )
     for link in await store.all_links():
         player_bindings.reconcile_identity_link(link)
         features.register_identity_link(
@@ -505,18 +507,20 @@ def _build_identity_observer(
         )
 
     def register_group_link(link: CrossPlatformGroupLink) -> None:
-        features.register_group_link(
-            official_app_id=link.official_app_id,
-            official_group_openid=link.official_group_openid,
-            onebot_group_id=link.onebot_group_id,
+        selected_for_outbound = qq_official is None or qq_official.register_group_link(
+            link
         )
-        bili_targets.register_group_link(
-            official_app_id=link.official_app_id,
-            official_group_openid=link.official_group_openid,
-            onebot_group_id=link.onebot_group_id,
-        )
-        if qq_official is not None:
-            qq_official.register_group_link(link)
+        if selected_for_outbound:
+            features.register_group_link(
+                official_app_id=link.official_app_id,
+                official_group_openid=link.official_group_openid,
+                onebot_group_id=link.onebot_group_id,
+            )
+            bili_targets.register_group_link(
+                official_app_id=link.official_app_id,
+                official_group_openid=link.official_group_openid,
+                onebot_group_id=link.onebot_group_id,
+            )
 
     return SilentIdentityObservationService(
         store,
