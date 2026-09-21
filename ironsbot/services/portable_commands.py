@@ -217,6 +217,8 @@ class PortableCommandRouter:
             return PortableReply(
                 OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
             )
+        if result is None:
+            return None
         if isinstance(result, PortableReply):
             return result
         if isinstance(result, OutboundMessage):
