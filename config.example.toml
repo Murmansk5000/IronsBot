@@ -106,8 +106,8 @@ startup_timeout_seconds = 15.0
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
-#     is the only responder when multiple official bots share that logical group.
-# ZH: 可选的“逻辑群别名 -> 官方账号别名”归属；多个机器人同群时只允许指定账号响应。
+#     is the only responder and proactive sender when several bots share the group.
+# ZH: 可选的“逻辑群别名 -> 官方账号别名”归属；多个机器人同群时只允许指定账号响应和主动推送。
 [bot.qq_official.group_routes]
 # example_official_group = "example_bot"
 
