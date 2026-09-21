@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
@@ -51,18 +52,24 @@ class BilibiliComponents:
 
     service: BilibiliService
     login: BilibiliLoginService
+    preferences: SqliteBiliPushPreferenceStore
 
 
-def build_bilibili_components(
+def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependencies
     settings: Settings,
     http_clients: HttpClients,
     features: FeatureService,
     subscriptions: PushSubscriptionRepository,
     task_owner: TaskOwner,
+    identity_principals: IdentityPrincipalService,
 ) -> BilibiliComponents:
     """Build Bilibili services and compile configured delivery targets."""
     data_dir = settings.bilibili.storage.data_dir
     cookie_store = FileBiliCookieStore(data_dir / "bili_cookie_cache.txt")
+    preferences = SqliteBiliPushPreferenceStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.conversation_principal,
+    )
     service = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -72,7 +79,7 @@ def build_bilibili_components(
                 settings.bilibili,
                 settings.platform_references,
             ),
-            SqliteBiliPushPreferenceStore(settings.paths.qq_state),
+            preferences,
             subscriptions,
             BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
         ),
@@ -94,6 +101,7 @@ def build_bilibili_components(
             poll_qr=partial(poll_bili_login_qr, http_clients.origin),
             spawn=task_owner.create,
         ),
+        preferences=preferences,
     )
 
 

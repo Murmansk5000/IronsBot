@@ -4,9 +4,15 @@ from pathlib import Path
 
 from pytest import MonkeyPatch
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    OfficialUnionIdentity,
+    Platform,
+)
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.services.ai.memory import AiMemoryTurn
+from ironsbot.services.identity_principals import IdentityPrincipalService
 
 GROUP_ID = 456
 USER_ID = 123
@@ -95,6 +101,45 @@ def test_ai_memory_keeps_official_platform_identity_opaque(tmp_path: Path) -> No
     ) == [
         {"role": "user", "content": "official prompt"},
         {"role": "assistant", "content": "official reply"},
+    ]
+
+
+def test_ai_memory_is_shared_by_union_principal_across_apps(tmp_path: Path) -> None:
+    principals = IdentityPrincipalService()
+    store = SqliteAiMemoryStore(
+        tmp_path / "memory.sqlite",
+        principal_for=principals.actor_principal,
+    )
+    actor_a = ActorRef(Platform.QQ_OFFICIAL, "user-a", account_id="app-a")
+    actor_b = ActorRef(Platform.QQ_OFFICIAL, "user-b", account_id="app-b")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "user-a",
+        account_id="app-a",
+    )
+    asyncio.run(
+        store.append(
+            AiMemoryTurn(actor_a, "session-a", conversation, "prompt", "reply")
+        )
+    )
+    for actor in (actor_a, actor_b):
+        for merge in principals.observe_union_identity(
+            actor=actor,
+            evidence=OfficialUnionIdentity("shared-union"),
+        ):
+            store.merge_principals(merge.source, merge.target)
+
+    assert asyncio.run(
+        store.load(
+            actor=actor_b,
+            current_session_key="session-b",
+            exclude_current_session=False,
+            limit=2,
+        )
+    ) == [
+        {"role": "user", "content": "prompt"},
+        {"role": "assistant", "content": "reply"},
     ]
 
 

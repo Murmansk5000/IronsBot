@@ -12,6 +12,7 @@ from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.memory import AiMemoryTurn
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from tests.helpers.ai import FakeAiCompletionClient, configured_ai_config
 from tests.helpers.onebot_events import group_message_event
@@ -86,6 +87,7 @@ async def test_ai_chat_awaits_memory_store_reads_and_writes() -> None:
         runtime.features,
         runtime.admin_notices,
         ("战队",),
+        IdentityPrincipalService(),
         FakeAiCompletionClient(config, _successful_completion),
         memory,
     )
@@ -132,6 +134,7 @@ def _ai_service(
         runtime.features,
         runtime.admin_notices,
         ("战队",),
+        IdentityPrincipalService(),
         FakeAiCompletionClient(config, request_completion),
     )
 

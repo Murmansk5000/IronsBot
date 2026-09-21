@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import (
+    ActorPrincipal,
     ActorRef,
+    ConversationPrincipal,
     ConversationRef,
     Platform,
     is_supported_message_actor,
@@ -16,6 +18,20 @@ from ironsbot.core.platform import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+
+class IdentityPrincipalResolver(Protocol):
+    def actor_principal(self, actor: ActorRef) -> ActorPrincipal: ...
+
+    def conversation_principal(
+        self,
+        conversation: ConversationRef,
+    ) -> ConversationPrincipal: ...
+
+    def conversation_endpoints(
+        self,
+        principal: ConversationPrincipal,
+    ) -> tuple[ConversationRef, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,15 +53,8 @@ class FeatureService:
     account_default_features: Mapping[tuple[Platform, str], frozenset[str]] = field(
         default_factory=dict
     )
-    linked_onebot_ids: dict[tuple[str, str], str] = field(
-        default_factory=dict,
-        compare=False,
-        repr=False,
-    )
-    linked_group_features: dict[ConversationRef, frozenset[str]] = field(
-        default_factory=dict,
-        compare=False,
-        repr=False,
+    principals: IdentityPrincipalResolver | None = field(
+        default=None, compare=False, repr=False
     )
 
     @property
@@ -69,75 +78,16 @@ class FeatureService:
         )
 
     def is_actor_superuser(self, actor: ActorRef) -> bool:
-        return (
-            actor in self.superusers
-            or any(
-                _same_official_principal(actor, configured)
-                for configured in self.superusers
-            )
-            or self._linked_onebot_actor(actor) in self.superusers
+        return any(
+            self._same_actor_principal(actor, configured)
+            for configured in self.superusers
         )
 
     def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
-        if feature in self.actor_features.get(actor, frozenset()):
-            return True
-        linked = self._linked_onebot_actor(actor)
-        if linked is not None and feature in self.actor_features.get(
-            linked,
-            frozenset(),
-        ):
-            return True
         return any(
-            feature in features and _same_official_principal(actor, configured)
+            feature in features and self._same_actor_principal(actor, configured)
             for configured, features in self.actor_features.items()
         )
-
-    def register_identity_link(
-        self,
-        *,
-        official_app_id: str,
-        official_openid: str,
-        onebot_qq_id: str,
-    ) -> None:
-        self.linked_onebot_ids[(official_app_id, official_openid)] = onebot_qq_id
-
-    def unregister_identity_link(
-        self,
-        *,
-        official_app_id: str,
-        official_openid: str,
-    ) -> None:
-        self.linked_onebot_ids.pop((official_app_id, official_openid), None)
-
-    def register_group_link(
-        self,
-        *,
-        official_app_id: str,
-        official_group_openid: str,
-        onebot_group_id: str,
-    ) -> None:
-        official = ConversationRef(
-            Platform.QQ_OFFICIAL,
-            "group",
-            official_group_openid,
-            account_id=official_app_id,
-        )
-        onebot = ConversationRef(Platform.ONEBOT, "group", onebot_group_id)
-        self.linked_group_features[official] = self.group_features.get(
-            onebot,
-            frozenset(),
-        )
-
-    def canonical_actor(self, actor: ActorRef) -> ActorRef:
-        """Return the stable OneBot principal for a linked official identity."""
-
-        return self._linked_onebot_actor(actor) or actor
-
-    def _linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
-        if actor.platform is not Platform.QQ_OFFICIAL or actor.account_id is None:
-            return None
-        qq_id = self.linked_onebot_ids.get((actor.account_id, actor.id))
-        return None if qq_id is None else ActorRef(Platform.ONEBOT, qq_id)
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
         return (
@@ -151,17 +101,15 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        configured = self.group_features.get(conversation, frozenset())
-        linked = self.linked_group_features.get(conversation, frozenset())
-        return (
-            feature in configured
-            or feature in linked
-            or (
-                feature
-                in self._default_features(
-                    conversation.platform,
-                    conversation.account_id,
-                )
+        return any(
+            feature in features
+            and self._same_conversation_principal(conversation, configured)
+            for configured, features in self.group_features.items()
+        ) or (
+            feature
+            in self._default_features(
+                conversation.platform,
+                conversation.account_id,
             )
         )
 
@@ -209,16 +157,19 @@ class FeatureService:
         )
 
     def conversations_for_feature(self, feature: str) -> list[ConversationRef]:
-        conversations = [
+        configured = [
             conversation
             for conversation, features in self.group_features.items()
             if feature in features
         ]
-        conversations.extend(
-            conversation
-            for conversation, features in self.linked_group_features.items()
-            if feature in features and conversation not in conversations
-        )
+        if self.principals is None:
+            return configured
+        conversations: list[ConversationRef] = []
+        for conversation in configured:
+            principal = self.principals.conversation_principal(conversation)
+            for endpoint in self.principals.conversation_endpoints(principal):
+                if endpoint not in conversations:
+                    conversations.append(endpoint)
         return conversations
 
     def actors_for_feature(self, feature: str) -> list[ActorRef]:
@@ -260,11 +211,19 @@ class FeatureService:
         )
         return actors
 
+    def _same_actor_principal(self, first: ActorRef, second: ActorRef) -> bool:
+        if self.principals is None:
+            return first == second
+        first_principal = self.principals.actor_principal(first)
+        return first_principal == self.principals.actor_principal(second)
 
-def _same_official_principal(first: ActorRef, second: ActorRef) -> bool:
-    return (
-        first.platform is Platform.QQ_OFFICIAL
-        and second.platform is Platform.QQ_OFFICIAL
-        and first.account_id == second.account_id
-        and first.id == second.id
-    )
+    def _same_conversation_principal(
+        self,
+        first: ConversationRef,
+        second: ConversationRef,
+    ) -> bool:
+        if self.principals is None:
+            return first == second
+        return self.principals.conversation_principal(
+            first
+        ) == self.principals.conversation_principal(second)

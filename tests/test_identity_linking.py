@@ -13,6 +13,7 @@ from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
     IncomingMessageRef,
+    OfficialUnionIdentity,
     Platform,
 )
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
@@ -21,6 +22,8 @@ from ironsbot.services.identity_link_store import (
     IdentityLinkChallengeInvalidError,
     IdentityLinkConflictError,
     OfficialIdentity,
+    UnionIdentityConflictError,
+    UnionIdentityEvidenceChangedError,
 )
 from ironsbot.services.identity_linking import (
     IdentityLinkingAccountError,
@@ -372,6 +375,117 @@ async def test_store_reports_conflicting_owner_without_consuming_token(
         await store.consume(token_hash="second", official=official, now=103.0)
 
     assert raised.value.existing_qq_id == "10001"
+
+
+@pytest.mark.asyncio
+async def test_union_identity_propagates_confirmed_principal_across_apps(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "state.sqlite")
+    first = OfficialIdentity("app-a", "member", "member-a")
+    second = OfficialIdentity("app-b", "member", "member-b")
+    evidence = OfficialUnionIdentity("union-openid", "union-account")
+
+    assert (
+        await store.observe_union_identity(
+            official=second,
+            union_identity=evidence,
+            now=100.0,
+        )
+        == ()
+    )
+    await store.link_verified(onebot_qq_id="10001", official=first, now=101.0)
+    links = await store.observe_union_identity(
+        official=first,
+        union_identity=evidence,
+        now=102.0,
+    )
+
+    assert {link.official for link in links} == {first, second}
+    assert {link.onebot_qq_id for link in links} == {"10001"}
+    propagated = await store.for_official(second)
+    assert propagated is not None
+    assert propagated.onebot_qq_id == "10001"
+
+
+@pytest.mark.asyncio
+async def test_union_identity_observations_can_rebuild_principal_state(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "state.sqlite")
+    first = OfficialIdentity("app-a", "user", "user-a")
+    second = OfficialIdentity("app-b", "member", "member-b")
+    await store.observe_union_identity(
+        official=first,
+        union_identity=OfficialUnionIdentity("union-openid"),
+        now=100.0,
+    )
+    await store.observe_union_identity(
+        official=second,
+        union_identity=OfficialUnionIdentity(
+            "union-openid",
+            "union-account",
+        ),
+        now=101.0,
+    )
+
+    observations = await store.all_union_identities()
+
+    assert [item.official for item in observations] == [first, second]
+    assert observations[0].union_identity == OfficialUnionIdentity("union-openid")
+    assert observations[1].union_identity == OfficialUnionIdentity(
+        "union-openid",
+        "union-account",
+    )
+
+
+@pytest.mark.asyncio
+async def test_union_identity_conflict_is_rejected_without_merging(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "state.sqlite")
+    first = OfficialIdentity("app-a", "user", "user-a")
+    second = OfficialIdentity("app-b", "user", "user-b")
+    evidence = OfficialUnionIdentity("union-openid")
+    await store.link_verified(onebot_qq_id="10001", official=first, now=100.0)
+    await store.link_verified(onebot_qq_id="10002", official=second, now=101.0)
+    await store.observe_union_identity(
+        official=first,
+        union_identity=evidence,
+        now=102.0,
+    )
+
+    with pytest.raises(UnionIdentityConflictError, match="conflicting"):
+        await store.observe_union_identity(
+            official=second,
+            union_identity=evidence,
+            now=103.0,
+        )
+
+    retained_first = await store.for_official(first)
+    retained_second = await store.for_official(second)
+    assert retained_first is not None
+    assert retained_second is not None
+    assert retained_first.onebot_qq_id == "10001"
+    assert retained_second.onebot_qq_id == "10002"
+
+
+@pytest.mark.asyncio
+async def test_official_endpoint_rejects_changed_union_identity(tmp_path: Path) -> None:
+    store = _store(tmp_path / "state.sqlite")
+    official = OfficialIdentity("app-a", "user", "user-a")
+    await store.observe_union_identity(
+        official=official,
+        union_identity=OfficialUnionIdentity("union-a"),
+        now=100.0,
+    )
+
+    with pytest.raises(UnionIdentityEvidenceChangedError, match="conflicting"):
+        await store.observe_union_identity(
+            official=official,
+            union_identity=OfficialUnionIdentity("union-b"),
+            now=101.0,
+        )
 
 
 @pytest.mark.asyncio

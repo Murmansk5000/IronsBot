@@ -17,6 +17,8 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.player_references import PlayerReferenceChoice
+from ironsbot.services.identity_link_store import OfficialIdentity
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
@@ -79,24 +81,30 @@ def _dependencies(
 ) -> tuple[
     Mock,
     Mock,
-    Mock,
+    IdentityPrincipalService,
     PortableQuerySessions,
     ActorRef,
 ]:
     onebot = ActorRef(Platform.ONEBOT, "1001")
     service = Mock()
     pet = Mock()
-    identity = Mock()
-    identity.canonical_actor.return_value = (
-        onebot if linked else _context().message.actor
-    )
-    return service, pet, identity, PortableQuerySessions(), onebot
+    principals = IdentityPrincipalService()
+    if linked:
+        principals.register_official_link(
+            onebot_qq_id=onebot.id,
+            official=OfficialIdentity(
+                "official-app",
+                "member",
+                "member-openid",
+            ),
+        )
+    return service, pet, principals, PortableQuerySessions(), onebot
 
 
 def _operations(
     service: Mock,
     pet: Mock,
-    identity: Mock,
+    identity: IdentityPrincipalService,
     sessions: PortableQuerySessions,
     *,
     bound_player_id: int | None = 90002,
@@ -106,7 +114,7 @@ def _operations(
         build_portable_lucky_skin_operations(
             cast("LuckySkinWindowService", service),
             cast("PetQueryService", pet),
-            cast("FeatureService", identity),
+            FeatureService({}, {}, frozenset(), principals=identity),
             sessions,
             PlayerIdResolver(
                 lambda value, _conversation: (
@@ -114,6 +122,7 @@ def _operations(
                 ),
                 lambda _actor: bound_player_id,
             ),
+            identity,
         ),
     )
 
@@ -155,13 +164,8 @@ async def test_unlinked_unbound_official_identity_still_requires_link() -> None:
 
 @pytest.mark.asyncio
 async def test_configured_official_identity_uses_canonical_onebot_account() -> None:
-    service, pet, _features, sessions, onebot = _dependencies()
-    features = FeatureService({}, {}, frozenset())
-    features.register_identity_link(
-        official_app_id="official-app",
-        official_openid="member-openid",
-        onebot_qq_id=onebot.id,
-    )
+    service, pet, principals, sessions, onebot = _dependencies()
+    features = FeatureService({}, {}, frozenset(), principals=principals)
     result = LuckySkinWindowResult("2026-09-15", 90001, (), from_cache=True)
     service.cached_query.return_value = result
     service.detail_choices.return_value = ()
@@ -174,6 +178,7 @@ async def test_configured_official_identity_uses_canonical_onebot_account() -> N
         features,
         sessions,
         PlayerIdResolver(lambda *_: None, lambda _actor: 90002),
+        principals,
     )
     context = _context()
 
@@ -325,9 +330,10 @@ async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     operations = build_portable_lucky_skin_operations(
         cast("LuckySkinWindowService", service),
         cast("PetQueryService", pet),
-        cast("FeatureService", identity),
+        FeatureService({}, {}, frozenset(), principals=identity),
         sessions,
         resolver,
+        identity,
     )
     context = _context("橱窗示例", platform=platform)
     menu = await operations["seer.lucky_skin_window.query"](context.text, context)
