@@ -270,7 +270,51 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
     assert "序号无效" in _text(await sessions.select("9", owner))
     assert sessions.recognizes_response("2", owner)
     assert _text(await sessions.select("2", owner)) == "selected:202"
+    assert sessions.recognizes_response("1", owner)
+    assert _text(await sessions.select("1", owner)) == "selected:101"
+    assert _text(await sessions.select("0", owner)) == "已退出查询。"
     assert not sessions.recognizes_response("2", owner)
+
+
+@pytest.mark.asyncio
+async def test_query_selection_accepts_rapid_consecutive_choices() -> None:
+    sessions = PortableQuerySessions()
+    entered = asyncio.Event()
+
+    async def search(_argument: str) -> QueryResult[int]:
+        return QueryResult(
+            choices=(
+                QueryChoice("first", "", 1),
+                QueryChoice("second", "", 2),
+            )
+        )
+
+    async def select(value: int) -> QueryResult[object]:
+        entered.set()
+        await asyncio.sleep(0)
+        return QueryResult(reply=QueryReply(text=f"selected:{value}"))
+
+    context = _context("member-openid")
+    await sessions.begin(
+        context,
+        argument="query",
+        spec=QueryOperationSpec(
+            parser=lambda text: text,
+            search=search,
+            select=select,
+            prompt_title="choose",
+        ),
+    )
+
+    first = asyncio.create_task(sessions.select("1", context))
+    await entered.wait()
+    second = asyncio.create_task(sessions.select("2", context))
+
+    assert [_text(result) for result in await asyncio.gather(first, second)] == [
+        "selected:1",
+        "selected:2",
+    ]
+    assert sessions.has_active_session(context)
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,9 @@ from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
     PetDerivedDisplayData,
     PetInfoSnapshot,
+    PetItemSnapshot,
+    PetMintmarkSnapshot,
+    PetSpecialEffectView,
     PetStatsSnapshot,
 )
 from ironsbot.services.seer.render_cache import RenderCacheEntry
@@ -72,10 +75,14 @@ def _snapshot() -> PetInfoSnapshot:
         advance_stats=None,
         skills=(),
         soulmarks=(),
-        activation_items=(),
+        activation_items=(PetItemSnapshot(20, "测试道具", 1),),
         partner=None,
-        skill_mintmarks=(),
-        display=PetDerivedDisplayData((), (), ()),
+        skill_mintmarks=(PetMintmarkSnapshot(10, "测试刻印", "", ()),),
+        display=PetDerivedDisplayData(
+            (PetSpecialEffectView("测试状态", None, None, 30, ()),),
+            (),
+            (),
+        ),
         rich_texts=(),
     )
 
@@ -165,8 +172,18 @@ async def test_optional_failure_is_retried_before_final_cache(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("missing_kind", ["pet_head", "pet_body"])
-async def test_mandatory_failure_never_renders_or_caches(
+@pytest.mark.parametrize(
+    "missing_kind",
+    [
+        "pet_head",
+        "pet_body",
+        "element_type",
+        "mintmark",
+        "item",
+        "sign_buff",
+    ],
+)
+async def test_asset_failure_uses_placeholder_without_caching(
     monkeypatch: pytest.MonkeyPatch,
     missing_kind: str,
 ) -> None:
@@ -182,15 +199,30 @@ async def test_mandatory_failure_never_renders_or_caches(
                 raise ImageSourceError
             return b"image"
 
-    async def unexpected_render(**_kwargs: Any) -> bytes:
-        pytest.fail("mandatory asset failure must stop before rendering")
+    rendered: list[dict[str, Any]] = []
+    reported: list[tuple[str, str, ImageSourceError]] = []
 
-    with pytest.raises(ImageSourceError):
-        await pet_info_renderer.render_published_pet_info(
-            cast("RenderCache", cache),
-            cast("SeerDataAccess", data),
-            cast("SeerImageSource", Images()),
-            cast("HtmlTemplateRenderer", unexpected_render),
-            1,
-        )
+    async def render_html(**kwargs: Any) -> bytes:
+        rendered.append(kwargs)
+        return b"rendered-with-placeholder"
+
+    async def report_failure(
+        kind: str,
+        key: str,
+        error: ImageSourceError,
+    ) -> None:
+        reported.append((kind, key, error))
+
+    result = await pet_info_renderer.render_published_pet_info(
+        cast("RenderCache", cache),
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", Images()),
+        cast("HtmlTemplateRenderer", render_html),
+        1,
+        image_failure_reporter=report_failure,
+    )
+
+    assert result == b"rendered-with-placeholder"
+    assert rendered
+    assert reported and reported[0][0] == missing_kind
     assert not cache.values

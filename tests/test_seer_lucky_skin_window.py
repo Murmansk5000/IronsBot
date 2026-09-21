@@ -36,6 +36,7 @@ from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingSto
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
 from ironsbot.services.identity.player_accounts import build_player_account_registry
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.portable_lucky_skin_commands import (
@@ -139,9 +140,6 @@ def _request(user_id: int) -> LuckySkinQuery:
 
 
 class _Features:
-    def canonical_actor(self, actor: ActorRef) -> ActorRef:
-        return actor
-
     def is_actor_superuser(self, actor: ActorRef) -> bool:
         return actor.id == "9999"
 
@@ -561,6 +559,7 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
         features=cast("FeatureService", _Features()),
         sessions=PortableQuerySessions(),
         resolver=cast("Any", object()),
+        identity_principals=IdentityPrincipalService(),
     )
 
     assert registry.message_matchers
@@ -586,6 +585,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
         cast("FeatureService", _Features()),
         PortableQuerySessions(),
         cast("Any", object()),
+        IdentityPrincipalService(),
     )
 
     async def check() -> None:

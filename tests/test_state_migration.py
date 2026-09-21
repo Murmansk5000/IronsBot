@@ -219,10 +219,10 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
     with sqlite3.connect(qq_state) as connection:
         assert connection.execute(
             """
-            SELECT actor_platform, actor_kind, actor_id, actor_scope_id, player_id
+            SELECT principal_kind, principal_id, player_id
             FROM player_bindings
             """
-        ).fetchall() == [("onebot", "user", "1234567890", "", 812345678)]
+        ).fetchall() == [("qq", "1234567890", 812345678)]
         assert connection.execute(
             "SELECT player_id, player_nick FROM player_bindings"
         ).fetchall() == [(812345678, "示例玩家")]
@@ -235,11 +235,36 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
         ]
         assert connection.execute(
             """
-            SELECT conversation_id, team_id, actor_id, position
+            SELECT principal_kind, principal_id, team_id, actor_id, position
             FROM team_resource_subscription_mentions
             ORDER BY position
             """
-        ).fetchall() == [("2001", 3001, "1001", 0), ("2001", 3001, "1002", 1)]
+        ).fetchall() == [
+            ("qq_group", "2001", 3001, "1001", 0),
+            ("qq_group", "2001", 3001, "1002", 1),
+        ]
+        assert connection.execute(
+            """
+            SELECT principal_kind, principal_id, team_id, handled_by_id,
+                   accepted, updated_at
+            FROM team_resource_subscription_prompts
+            """
+        ).fetchall() == [
+            (
+                "qq_group",
+                "2001",
+                3001,
+                "1002",
+                1,
+                "2026-08-04T00:01:00Z",
+            )
+        ]
+        assert connection.execute(
+            """
+            SELECT principal_kind, principal_id, team_id, actor_id
+            FROM team_resource_private_subscriptions
+            """
+        ).fetchall() == [("qq", "1001", 3001, "1001")]
         namespaces = {
             str(row[0])
             for row in connection.execute(

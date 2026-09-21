@@ -3,12 +3,21 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import cache
+from io import BytesIO
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from PIL import Image, ImageDraw
+
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import Mapping
+
+logger = logging.getLogger(__name__)
+IMAGE_UNAVAILABLE_MESSAGE = "图片素材获取失败，暂时无法显示。"
 
 ImageKind = Literal[
     "autocard_card",
@@ -27,6 +36,23 @@ ImageKind = Literal[
     "title",
 ]
 AssetRepositoryKind = ImageKind | Literal["default"]
+
+_PLACEHOLDER_SIZES: dict[ImageKind, int] = {
+    "autocard_card": 160,
+    "autocard_role": 160,
+    "battle_effect": 96,
+    "common": 96,
+    "element_type": 64,
+    "equip": 160,
+    "item": 96,
+    "mintmark": 96,
+    "mount": 160,
+    "pet_body": 300,
+    "pet_head": 160,
+    "sign_buff": 96,
+    "suit": 160,
+    "title": 160,
+}
 
 _ASSET_REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ASSET_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -152,17 +178,64 @@ class SeerImageRequestSource(Protocol):
 class ImageFetchResult:
     data: bytes | None = None
     error: str = ""
+    status_code: int | None = None
+
+
+ImageFailureReporter = Callable[[str, str, ImageSourceError], Awaitable[None]]
 
 
 async def fetch_optional_image(
     images: SeerImageSource,
     kind: ImageKind,
     key: str,
+    report_failure: ImageFailureReporter | None = None,
 ) -> ImageFetchResult:
     try:
         return ImageFetchResult(data=await images.fetch(kind, key, fallback=False))
     except ImageSourceError as error:
-        return ImageFetchResult(error=f"❌获取图片失败！原因：{error}")
+        logger.warning(
+            "Seer image source failed: kind=%s key=%s error_type=%s",
+            kind,
+            key,
+            type(error).__name__,
+        )
+        if report_failure is not None:
+            await report_failure(kind, key, error)
+        return ImageFetchResult(
+            error=IMAGE_UNAVAILABLE_MESSAGE,
+            status_code=(
+                error.status_code if isinstance(error, ImageSourceStatusError) else None
+            ),
+        )
+
+
+@cache
+def placeholder_image(kind: ImageKind) -> bytes:
+    """Return a presentation-only marker for one unavailable image asset."""
+
+    size = _PLACEHOLDER_SIZES[kind]
+    image = Image.new("RGBA", (size, size), (26, 48, 78, 255))
+    draw = ImageDraw.Draw(image)
+    inset = max(3, size // 16)
+    width = max(2, size // 24)
+    draw.rectangle(
+        (inset, inset, size - inset - 1, size - inset - 1),
+        outline=(94, 150, 216, 255),
+        width=width,
+    )
+    draw.line(
+        (inset * 2, inset * 2, size - inset * 2, size - inset * 2),
+        fill=(94, 150, 216, 255),
+        width=width,
+    )
+    draw.line(
+        (size - inset * 2, inset * 2, inset * 2, size - inset * 2),
+        fill=(94, 150, 216, 255),
+        width=width,
+    )
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
 
 
 def to_data_uri(data: bytes, mime_type: str = "image/png") -> str:

@@ -6,6 +6,11 @@ from datetime import timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.services.seer.images import (
+    IMAGE_UNAVAILABLE_MESSAGE,
+    ImageFailureReporter,
+    ImageSourceError,
+)
 from ironsbot.services.seer.season_countdown import (
     SeasonWindow,
     format_season_countdown,
@@ -49,11 +54,13 @@ class SeerDataQueryService:
         preview_images: WeeklyPreviewImageSource,
         season: SeasonCountdownConfig,
         new_content: NewContentService,
+        image_failure_reporter: ImageFailureReporter | None = None,
     ) -> None:
         self._facts = facts
         self._preview_images = preview_images
         self._season = season
         self._new_content = new_content
+        self._image_failure_reporter = image_failure_reporter
 
     def new_content_snapshot(self) -> NewContentSnapshot:
         return self._new_content.snapshot()
@@ -63,7 +70,13 @@ class SeerDataQueryService:
         try:
             preview = await self._preview_images.fetch(image_url)
         except WeeklyPreviewImageError as error:
-            return f"❌获取图片失败！原因：{error}"
+            if self._image_failure_reporter is not None:
+                await self._image_failure_reporter(
+                    "weekly_preview",
+                    "current",
+                    ImageSourceError(str(error)),
+                )
+            return IMAGE_UNAVAILABLE_MESSAGE
         notice = ""
         if preview.stale:
             cached_at = preview.cached_at.astimezone(CHINA_TIMEZONE)

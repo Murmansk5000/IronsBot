@@ -157,7 +157,7 @@ features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet"
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
-help_hint = 0
+poke_reply = 0
 server_status = 1
 server_status_admin = 2
 bilibili = 3
@@ -188,6 +188,9 @@ seer_mintmark = 100
 pet_config = 109
 seer_pet = 110
 seer_query = 120
+# EN: Configured user mention replies run after all commands and before AI chat.
+# ZH: 指定用户提及回复在全部命令之后、AI 聊天之前执行。
+mention_reply = 190
 ai_chat = 200
 
 [bot.logging]
@@ -735,6 +738,24 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # keywords = ["出出"]
 # messages = ["第一条回复", "第二条回复"]
 # feature = "chuchu_reply"
+
+# Default: []
+# EN: Reply when one configured user explicitly mentions the bot in a group.
+# `users` contains aliases from `[identities.users]`; the same logical user is
+# recognized through OneBot and every configured QQ Official endpoint. Commands
+# and active menus win first, while this reply wins over AI chat. Blacklists
+# still apply. Every `messages` entry is sent in order.
+# ZH: 指定用户在群聊中明确 @机器人时回复。`users` 只能填写
+# `[identities.users]` 中的用户别名；同一真实用户通过 OneBot 或任意已配置的
+# QQ 官方机器人端点触发时共用此规则。有效命令和会话菜单优先，本回复优先于
+# AI 聊天，并继续遵守黑名单。`messages` 中的内容按顺序逐条发送。
+#
+# [[messaging.mention_replies]]
+# id = "example_user_mention"
+# name = "示例用户提及回复"
+# enabled = true
+# users = ["example_user"]
+# messages = ["示例回复"]
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its

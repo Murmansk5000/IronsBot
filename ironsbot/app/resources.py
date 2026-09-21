@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
-    from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
     from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
+    from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyPort
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.about import AboutService
@@ -90,7 +90,7 @@ class ApplicationResources:
     scheduled_restart: ScheduledRestartService
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
-    help_hint: OneBotHelpHintPort
+    poke_reply: OneBotPokeReplyPort
     addressed_input_hints: AddressedInputHintService
     identity_links: IdentityLinkCommands
     identity_linking: IdentityLinkingService

@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.platform import ConversationKind, ConversationRef, Platform
+from ironsbot.integrations.storage.conversation_principal_rows import (
+    PrincipalRowMergeSpec,
+    PrincipalTableCopySpec,
+    copy_conversation_rows_to_principals,
+    delete_principal_rows,
+    merge_latest_principal_rows,
+)
 from ironsbot.integrations.storage.platform_identity import (
     ConversationIdentityColumns,
 )
@@ -16,6 +23,7 @@ from ironsbot.integrations.storage.sqlite import (
     SqliteMigration,
     require_sqlite_columns,
 )
+from ironsbot.services.identity_principals import default_conversation_principal
 from ironsbot.services.messaging.subscriptions import (
     PushPreferencePruneResult,
     PushPreferenceType,
@@ -25,9 +33,11 @@ from ironsbot.services.messaging.subscriptions import (
 
 if TYPE_CHECKING:
     import sqlite3
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
     from collections.abc import Set as AbstractSet
     from contextlib import AbstractContextManager
+
+    from ironsbot.core.platform import ConversationPrincipal
 
 
 PUSH_SUBSCRIPTION_SCHEMA = (
@@ -103,6 +113,108 @@ PUSH_SUBSCRIPTION_SCHEMA = (
     )
     """,
 )
+
+_PRINCIPAL_TABLES = (
+    """
+    CREATE TABLE push_unsubscriptions_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        subscription_key TEXT NOT NULL,
+        feature TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (principal_kind, principal_id, subscription_key)
+    )
+    """,
+    """
+    CREATE TABLE push_time_preferences_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        subscription_key TEXT NOT NULL,
+        preference_type TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (
+            principal_kind, principal_id, subscription_key, preference_type
+        )
+    )
+    """,
+    """
+    CREATE TABLE push_daily_hints_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        hint_key TEXT NOT NULL,
+        delivered_on TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (principal_kind, principal_id, hint_key)
+    )
+    """,
+)
+
+_PRINCIPAL_INDEXES = (
+    """
+    CREATE INDEX idx_push_unsubscriptions_lookup
+    ON push_unsubscriptions (principal_kind, principal_id, subscription_key)
+    """,
+    """
+    CREATE INDEX idx_push_time_preferences_lookup
+    ON push_time_preferences (
+        principal_kind, principal_id, subscription_key, preference_type
+    )
+    """,
+    """
+    CREATE INDEX idx_push_daily_hints_lookup
+    ON push_daily_hints (principal_kind, principal_id, hint_key, delivered_on)
+    """,
+)
+
+
+_TIME_PREFERENCE_MERGE = PrincipalRowMergeSpec(
+    table="push_time_preferences",
+    value_columns=(
+        "conversation_platform",
+        "conversation_account_id",
+        "conversation_kind",
+        "conversation_id",
+        "subscription_key",
+        "preference_type",
+        "value",
+        "updated_at",
+    ),
+    identity_columns=("subscription_key", "preference_type"),
+    order_columns=("updated_at",),
+)
+_DAILY_HINT_MERGE = PrincipalRowMergeSpec(
+    table="push_daily_hints",
+    value_columns=(
+        "conversation_platform",
+        "conversation_account_id",
+        "conversation_kind",
+        "conversation_id",
+        "hint_key",
+        "delivered_on",
+        "updated_at",
+    ),
+    identity_columns=("hint_key",),
+    order_columns=("delivered_on", "updated_at"),
+)
+
+
+def _migrate_push_subscription_principals(connection: sqlite3.Connection) -> None:
+    _migrate_to_principals(connection)
+
+
 PUSH_SUBSCRIPTION_MIGRATIONS = (
     SqliteMigration(1, PUSH_SUBSCRIPTION_SCHEMA),
     SqliteMigration(
@@ -112,6 +224,7 @@ PUSH_SUBSCRIPTION_MIGRATIONS = (
             {"conversation_account_id"},
         ),
     ),
+    SqliteMigration(3, callback=_migrate_push_subscription_principals),
 )
 MIGRATION_NAMESPACE = "push_subscriptions"
 
@@ -119,23 +232,30 @@ MIGRATION_NAMESPACE = "push_subscriptions"
 class PushUnsubscribeStore:
     """Persist push state by opaque conversation identity only."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        principal_for: Callable[
+            [ConversationRef], ConversationPrincipal
+        ] = default_conversation_principal,
+    ) -> None:
         self.path = Path(path)
         self._database = SqliteDatabase(
             self.path,
             migrations=PUSH_SUBSCRIPTION_MIGRATIONS,
             migration_namespace=MIGRATION_NAMESPACE,
         )
+        self._principal_for = principal_for
 
     def unsubscribed_keys(self, conversation: ConversationRef) -> set[str]:
         with self._connect() as con:
             rows = con.execute(
                 """
                 SELECT subscription_key FROM push_unsubscriptions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                 """,
-                _conversation_values(conversation),
+                self._owner_values(conversation),
             ).fetchall()
         return {str(row[0]) for row in rows}
 
@@ -148,11 +268,10 @@ class PushUnsubscribeStore:
             row = con.execute(
                 """
                 SELECT 1 FROM push_unsubscriptions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND subscription_key = ?
                 """,
-                (*_conversation_values(conversation), subscription_key),
+                (*self._owner_values(conversation), subscription_key),
             ).fetchone()
         return row is not None
 
@@ -166,12 +285,14 @@ class PushUnsubscribeStore:
             con.execute(
                 """
                 INSERT OR REPLACE INTO push_unsubscriptions (
+                    principal_kind, principal_id,
                     conversation_platform, conversation_account_id,
                     conversation_kind, conversation_id,
                     subscription_key, feature, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    *self._owner_values(conversation),
                     *_conversation_values(conversation),
                     subscription_key,
                     feature,
@@ -188,11 +309,10 @@ class PushUnsubscribeStore:
             con.execute(
                 """
                 DELETE FROM push_unsubscriptions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND subscription_key = ?
                 """,
-                (*_conversation_values(conversation), subscription_key),
+                (*self._owner_values(conversation), subscription_key),
             )
 
     def filter_subscribed_conversations(
@@ -206,20 +326,17 @@ class PushUnsubscribeStore:
         with self._connect() as con:
             rows = con.execute(
                 """
-                SELECT conversation_platform, conversation_account_id,
-                       conversation_kind, conversation_id
+                SELECT principal_kind, principal_id
                 FROM push_unsubscriptions
                 WHERE subscription_key = ?
                 """,
                 (subscription_key,),
             ).fetchall()
-        blocked = {
-            conversation
-            for row in rows
-            if (conversation := _conversation_from_row(row)) is not None
-        }
+        blocked = {(str(row[0]), str(row[1])) for row in rows}
         return [
-            conversation for conversation in requested if conversation not in blocked
+            conversation
+            for conversation in requested
+            if self._owner_values(conversation) not in blocked
         ]
 
     def get_time_preference(
@@ -232,13 +349,12 @@ class PushUnsubscribeStore:
             row = con.execute(
                 """
                 SELECT value FROM push_time_preferences
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND subscription_key = ?
                   AND preference_type = ?
                 """,
                 (
-                    *_conversation_values(conversation),
+                    *self._owner_values(conversation),
                     subscription_key,
                     preference_type,
                 ),
@@ -256,12 +372,14 @@ class PushUnsubscribeStore:
             con.execute(
                 """
                 INSERT OR REPLACE INTO push_time_preferences (
+                    principal_kind, principal_id,
                     conversation_platform, conversation_account_id,
                     conversation_kind, conversation_id,
                     subscription_key, preference_type, value, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    *self._owner_values(conversation),
                     *_conversation_values(conversation),
                     subscription_key,
                     preference_type,
@@ -280,13 +398,12 @@ class PushUnsubscribeStore:
             con.execute(
                 """
                 DELETE FROM push_time_preferences
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND subscription_key = ?
                   AND preference_type = ?
                 """,
                 (
-                    *_conversation_values(conversation),
+                    *self._owner_values(conversation),
                     subscription_key,
                     preference_type,
                 ),
@@ -301,10 +418,9 @@ class PushUnsubscribeStore:
                 """
                 SELECT subscription_key, preference_type, value
                 FROM push_time_preferences
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                 """,
-                _conversation_values(conversation),
+                self._owner_values(conversation),
             ).fetchall()
         return _time_preference_values(rows)
 
@@ -316,28 +432,29 @@ class PushUnsubscribeStore:
         today: str | None = None,
     ) -> bool:
         delivered_on = today or datetime.now().astimezone().date().isoformat()
-        values = _conversation_values(conversation)
+        owner_values = self._owner_values(conversation)
+        endpoint_values = _conversation_values(conversation)
         with self._connect() as con:
             row = con.execute(
                 """
                 SELECT delivered_on FROM push_daily_hints
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND hint_key = ?
                 """,
-                (*values, hint_key),
+                (*owner_values, hint_key),
             ).fetchone()
             if row is not None and str(row[0]) == delivered_on:
                 return False
             con.execute(
                 """
                 INSERT OR REPLACE INTO push_daily_hints (
+                    principal_kind, principal_id,
                     conversation_platform, conversation_account_id,
                     conversation_kind, conversation_id,
                     hint_key, delivered_on, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (*values, hint_key, delivered_on, _now()),
+                (*owner_values, *endpoint_values, hint_key, delivered_on, _now()),
             )
         return True
 
@@ -424,6 +541,31 @@ class PushUnsubscribeStore:
             if (conversation := _conversation_from_row(row)) is not None
         }
 
+    def merge_principals(
+        self,
+        source: ConversationPrincipal,
+        target: ConversationPrincipal,
+    ) -> None:
+        """Merge all message preference rows under one logical conversation."""
+
+        if source == target:
+            return
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            _merge_unsubscriptions(con, source, target)
+            merge_latest_principal_rows(
+                con,
+                _TIME_PREFERENCE_MERGE,
+                source=source,
+                target=target,
+            )
+            merge_latest_principal_rows(
+                con,
+                _DAILY_HINT_MERGE,
+                source=source,
+                target=target,
+            )
+
     def prune_invalid_preferences(
         self,
         *,
@@ -452,28 +594,29 @@ class PushUnsubscribeStore:
         con: sqlite3.Connection,
         valid: Mapping[ConversationRef, AbstractSet[str]],
     ) -> int:
+        valid_by_owner: dict[tuple[str, str], set[str]] = {}
+        for conversation, keys in valid.items():
+            valid_by_owner.setdefault(self._owner_values(conversation), set()).update(
+                keys
+            )
         rows = con.execute(
             """
-            SELECT conversation_platform, conversation_account_id,
-                   conversation_kind, conversation_id, subscription_key
+            SELECT principal_kind, principal_id, subscription_key
             FROM push_unsubscriptions
             """
         ).fetchall()
         deleted = 0
-        for platform_value, account_id, kind, target_id, key in rows:
-            conversation = _conversation_from_row(
-                (platform_value, account_id, kind, target_id)
-            )
-            if conversation is not None and str(key) in valid.get(conversation, set()):
+        for principal_kind, principal_id, key in rows:
+            owner = (str(principal_kind), str(principal_id))
+            if str(key) in valid_by_owner.get(owner, set()):
                 continue
             con.execute(
                 """
                 DELETE FROM push_unsubscriptions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND subscription_key = ?
                 """,
-                (platform_value, account_id, kind, target_id, key),
+                (*owner, key),
             )
             deleted += 1
         return deleted
@@ -486,39 +629,38 @@ class PushUnsubscribeStore:
             AbstractSet[PushTimePreferenceIdentity],
         ],
     ) -> int:
+        valid_by_owner: dict[
+            tuple[str, str], set[PushTimePreferenceIdentity]
+        ] = {}
+        for conversation, identities in valid.items():
+            valid_by_owner.setdefault(self._owner_values(conversation), set()).update(
+                identities
+            )
         rows = con.execute(
             """
-            SELECT conversation_platform, conversation_account_id,
-                   conversation_kind, conversation_id, subscription_key,
-                   preference_type
+            SELECT principal_kind, principal_id,
+                   subscription_key, preference_type
             FROM push_time_preferences
             """
         ).fetchall()
         deleted = 0
-        for platform_value, account_id, kind, target_id, key, preference_type in rows:
-            conversation = _conversation_from_row(
-                (platform_value, account_id, kind, target_id)
-            )
+        for principal_kind, principal_id, key, preference_type in rows:
+            owner = (str(principal_kind), str(principal_id))
             identity = (str(key), cast("PushPreferenceType", preference_type))
             if (
-                conversation is not None
-                and preference_type in {"cron_time", "activity_lead_hours"}
-                and identity in valid.get(conversation, set())
+                preference_type in {"cron_time", "activity_lead_hours"}
+                and identity in valid_by_owner.get(owner, set())
             ):
                 continue
             con.execute(
                 """
                 DELETE FROM push_time_preferences
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND subscription_key = ?
                   AND preference_type = ?
                 """,
                 (
-                    platform_value,
-                    account_id,
-                    kind,
-                    target_id,
+                    *owner,
                     key,
                     preference_type,
                 ),
@@ -528,6 +670,10 @@ class PushUnsubscribeStore:
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
         return self._database.connect()
+
+    def _owner_values(self, conversation: ConversationRef) -> tuple[str, str]:
+        principal = self._principal_for(conversation)
+        return principal.kind, principal.id
 
 
 def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str, str]:
@@ -558,6 +704,88 @@ def _time_preference_values(
             value
         )
     return preferences
+
+
+def _migrate_to_principals(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row[1])
+        for row in connection.execute(
+            "PRAGMA table_info(push_unsubscriptions)"
+        ).fetchall()
+    }
+    if "principal_kind" in columns:
+        return
+    for statement in _PRINCIPAL_TABLES:
+        connection.execute(statement)
+    copy_conversation_rows_to_principals(
+        connection,
+        PrincipalTableCopySpec(
+            source_table="push_unsubscriptions",
+            target_table="push_unsubscriptions_v3",
+            value_columns=("subscription_key", "feature", "created_at"),
+        ),
+    )
+    copy_conversation_rows_to_principals(
+        connection,
+        PrincipalTableCopySpec(
+            source_table="push_time_preferences",
+            target_table="push_time_preferences_v3",
+            value_columns=(
+                "subscription_key",
+                "preference_type",
+                "value",
+                "updated_at",
+            ),
+        ),
+    )
+    copy_conversation_rows_to_principals(
+        connection,
+        PrincipalTableCopySpec(
+            source_table="push_daily_hints",
+            target_table="push_daily_hints_v3",
+            value_columns=("hint_key", "delivered_on", "updated_at"),
+        ),
+    )
+    for table in (
+        "push_unsubscriptions",
+        "push_time_preferences",
+        "push_daily_hints",
+    ):
+        connection.execute(f"DROP TABLE {table}")
+        connection.execute(f"ALTER TABLE {table}_v3 RENAME TO {table}")
+    for statement in _PRINCIPAL_INDEXES:
+        connection.execute(statement)
+
+
+def _merge_unsubscriptions(
+    connection: sqlite3.Connection,
+    source: ConversationPrincipal,
+    target: ConversationPrincipal,
+) -> None:
+    rows = connection.execute(
+        """
+        SELECT conversation_platform, conversation_account_id,
+               conversation_kind, conversation_id,
+               subscription_key, feature, created_at
+        FROM push_unsubscriptions
+        WHERE principal_kind = ? AND principal_id = ?
+        """,
+        (source.kind, source.id),
+    ).fetchall()
+    for row in rows:
+        connection.execute(
+            """
+            INSERT INTO push_unsubscriptions (
+                principal_kind, principal_id,
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id,
+                subscription_key, feature, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (principal_kind, principal_id, subscription_key) DO NOTHING
+            """,
+            (target.kind, target.id, *row),
+        )
+    delete_principal_rows(connection, "push_unsubscriptions", source)
 
 
 def _now() -> str:

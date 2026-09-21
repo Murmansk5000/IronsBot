@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from seerapi_models.common import SixAttributes
 
     from ironsbot.services.seer.data import SeerDataAccess
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
 
 PROMPT_MAX_ITEMS = 30
 ATTACK_MARK_THRESHOLD = 54
@@ -64,10 +64,12 @@ class MintmarkQueryService:
         images: SeerImageSource,
         *,
         merge_connected: bool,
+        image_failure_reporter: ImageFailureReporter | None = None,
     ) -> None:
         self._data = data
         self._images = images
         self._merge_connected = merge_connected
+        self._image_failure_reporter = image_failure_reporter
 
     async def search_mintmark(self, arg: str) -> QueryResult[int]:
         if not arg.strip():
@@ -182,6 +184,7 @@ class MintmarkQueryService:
             self._images,
             "mintmark",
             str(reply_data.mintmark_id),
+            self._image_failure_reporter,
         )
         return QueryReply(
             leading_text=f"💮【{reply_data.name}】\n",

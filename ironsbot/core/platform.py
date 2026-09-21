@@ -24,8 +24,18 @@ class Platform(str, Enum):
 
 ConversationKind = Literal["private", "group", "channel", "guild"]
 ActorKind = Literal["user", "member"]
-ActorPrincipalKind = Literal["qq", "official_union", "official_endpoint"]
-ConversationPrincipalKind = Literal["qq_group", "official_group", "conversation"]
+ActorPrincipalKind = Literal[
+    "qq",
+    "configured_user",
+    "official_union",
+    "official_endpoint",
+]
+ConversationPrincipalKind = Literal[
+    "qq_group",
+    "configured_group",
+    "official_group",
+    "conversation",
+]
 
 
 def reference_digest(value: str) -> str:

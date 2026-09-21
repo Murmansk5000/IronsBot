@@ -71,6 +71,7 @@ from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.meeting import meeting_command_contracts
 from ironsbot.services.operations.data_sync import (
@@ -798,6 +799,7 @@ def _official_feature_service(
     superuser: bool = False,
 ) -> FeatureService:
     config = _qq_config(features=enabled)
+    principals = IdentityPrincipalService()
     references = _official_references(
         config,
         users=(
@@ -806,11 +808,18 @@ def _official_feature_service(
             else None
         ),
     )
+    if superuser:
+        principals.register_configured_actor(
+            alias="admin",
+            onebot_qq_id=None,
+            official_endpoints=(("example-app", "opaque-admin"),),
+        )
     return build_feature_service(
         FeatureConfig(),
         ("admin",) if superuser else (),
         qq_official=config,
         references=references,
+        principals=principals,
     )
 
 
@@ -1208,6 +1217,12 @@ def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
 
 def test_qq_official_user_identity_applies_to_group_member() -> None:
     config = _qq_config(features=[])
+    principals = IdentityPrincipalService()
+    principals.register_configured_actor(
+        alias="owner",
+        onebot_qq_id=None,
+        official_endpoints=(("example-app", "opaque-member"),),
+    )
     references = _official_references(
         config,
         users={"owner": {"official": {"example_bot": "opaque-member"}}},
@@ -1217,6 +1232,7 @@ def test_qq_official_user_identity_applies_to_group_member() -> None:
         ("owner",),
         qq_official=config,
         references=references,
+        principals=principals,
     )
     member = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -1243,6 +1259,22 @@ def test_qq_official_user_identity_applies_to_group_member() -> None:
 
 def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> None:
     config = _qq_config(features=[])
+    principals = IdentityPrincipalService()
+    principals.register_configured_group(
+        alias="admin",
+        onebot_group_id="1001",
+        official_endpoints=(("example-app", "opaque-group"),),
+    )
+    principals.register_configured_actor(
+        alias="owner",
+        onebot_qq_id="2002",
+        official_endpoints=(("example-app", "opaque-user"),),
+    )
+    principals.register_configured_actor(
+        alias="pjx",
+        onebot_qq_id="3003",
+        official_endpoints=(("example-app", "opaque-member"),),
+    )
     references = _official_references(
         config,
         groups={"admin": {"qq": 1001, "official": {"example_bot": "opaque-group"}}},
@@ -1265,6 +1297,7 @@ def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> Non
         ("owner",),
         qq_official=config,
         references=references,
+        principals=principals,
     )
 
     assert set(features.conversations_for_feature("seer_rank")) == {
@@ -2946,6 +2979,12 @@ async def test_portable_router_applies_official_superuser_bypass_in_group() -> N
         superusers=frozenset({superuser}),
         superuser_bypass=True,
         platform_default_features={Platform.QQ_OFFICIAL: frozenset()},
+        principals=(principals := IdentityPrincipalService()),
+    )
+    principals.register_configured_actor(
+        alias="owner",
+        onebot_qq_id=None,
+        official_endpoints=(("example-app", "owner-openid"),),
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(),

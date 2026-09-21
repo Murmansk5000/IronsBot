@@ -81,6 +81,7 @@ from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankServ
 from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.external_references import SeerInfoReferences
+from ironsbot.services.seer.image_failure_notice import AdminImageFailureReporter
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 from ironsbot.services.seer.lucky_skin_window_delivery import (
@@ -127,6 +128,8 @@ if TYPE_CHECKING:
     from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.cache_paths import CachePaths
+    from ironsbot.services.identity_principals import IdentityPrincipalService
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
@@ -152,6 +155,10 @@ class SeerComponents:
     pet_config: PetConfigQueryService
     player_id_resolver: PlayerIdResolver
     player_query_quotas: PlayerQueryQuotaService
+    player_query_limit_store: SqlitePlayerQueryLimitStore
+    lucky_skin_preference_store: SqliteLuckySkinWatchPreferenceStore
+    rank_display_store: SqliteRankDisplayStore
+    team_resource_store: TeamResourceSubscriptionStore
     player_requests: PlayerRequestProtectionService
     player_detail_extensions: PlayerDetailExtensionRegistry
     lineup_render_session: PlayerLineupRenderSessionFactory
@@ -169,6 +176,8 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     headless: HeadlessService,
     headless_sessions: HeadlessSessionFactory,
     player_bindings: SqlitePlayerBindingStore,
+    identity_principals: IdentityPrincipalService,
+    admin_notices: AdminNoticeService,
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -192,9 +201,14 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             include_private=True,
         )
 
+    team_resource_store = TeamResourceSubscriptionStore(
+        settings.paths.qq_state,
+        conversation_principal_for=identity_principals.conversation_principal,
+        actor_principal_for=identity_principals.actor_principal,
+    )
     team_resource = TeamResourceService(
         settings.seer.team_resource,
-        TeamResourceSubscriptionStore(settings.paths.qq_state),
+        team_resource_store,
         headless,
         features,
         TeamResourceOutboundSender(proactive_delivery),
@@ -222,6 +236,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         seer_database,
         spawn=task_owner.create,
     )
+    image_failure_reporter = AdminImageFailureReporter(admin_notices)
 
     async def render_pet(pet_id: int) -> bytes:
         with render_sessions.open() as inputs:
@@ -231,6 +246,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 inputs.images,
                 render_coordinator.render,
                 pet_id,
+                image_failure_reporter=image_failure_reporter,
             )
 
     @contextmanager
@@ -338,6 +354,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         cache_paths.http_dir() / "weekly_preview",
         spawn=task_owner.create,
     )
+    lucky_skin_preference_store = SqliteLuckySkinWatchPreferenceStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.actor_principal,
+    )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -349,16 +369,20 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         headless_sessions,
         seer_database,
         player_bindings,
-        SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
+        lucky_skin_preference_store,
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
         renderer=render_window,
+    )
+    player_query_limit_store = SqlitePlayerQueryLimitStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.actor_principal,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
         player_bindings,
         features,
-        SqlitePlayerQueryLimitStore(settings.paths.qq_state),
+        player_query_limit_store,
     )
     player_requests = PlayerRequestProtectionService(
         settings.seer.player.request_protection,
@@ -384,6 +408,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         rank.exclusion_policy,
     )
     local_rank.remove_excluded_samples()
+    rank_display_store = SqliteRankDisplayStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.conversation_principal,
+    )
     rank_display = RankDisplayService(
         settings.seer.rank,
         {
@@ -396,7 +424,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 ),
             )
         },
-        SqliteRankDisplayStore(settings.paths.qq_state),
+        rank_display_store,
     )
     rank_page_refresh = RankPageRefreshService(
         settings.seer.rank.page_refresh,
@@ -472,12 +500,22 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     autocard_sanctuary = AutocardSanctuaryService(
         PublishedAutocardSanctuaryRepository(seer_database)
     )
-    equipment = EquipmentQueryService(seer_database, images)
-    pet = PetQueryService(seer_database, images, render_pet)
+    equipment = EquipmentQueryService(
+        seer_database,
+        images,
+        image_failure_reporter,
+    )
+    pet = PetQueryService(
+        seer_database,
+        images,
+        render_pet,
+        image_failure_reporter,
+    )
     mintmark = MintmarkQueryService(
         seer_database,
         images,
         merge_connected=settings.seer.mintmark.merge_connected,
+        image_failure_reporter=image_failure_reporter,
     )
     external_references = SeerInfoReferences(settings.seer.external_references)
     return SeerComponents(
@@ -487,6 +525,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 weekly_preview_images,
                 settings.seer.season,
                 NewContentService(PublishedNewContentRepository(seer_database)),
+                image_failure_reporter,
             ),
             CountermarkStatRankService(seer_database),
             autocard,
@@ -497,7 +536,11 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             TypeQueryService(
                 type_render_session,
             ),
-            BattleEffectQueryService(seer_database, images),
+            BattleEffectQueryService(
+                seer_database,
+                images,
+                image_failure_reporter,
+            ),
             pet,
             PeakQueryService(
                 PublishedPeakRepository(seer_database),
@@ -522,6 +565,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         pet_config=pet_config,
         player_id_resolver=player_id_resolver,
         player_query_quotas=player_query_quotas,
+        player_query_limit_store=player_query_limit_store,
+        lucky_skin_preference_store=lucky_skin_preference_store,
+        rank_display_store=rank_display_store,
+        team_resource_store=team_resource_store,
         player_requests=player_requests,
         player_detail_extensions=player_detail_extensions,
         lineup_render_session=lineup_render_session,

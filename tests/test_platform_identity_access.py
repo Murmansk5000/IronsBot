@@ -18,6 +18,8 @@ from ironsbot.core.platform import (
 )
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.identity_link_store import OfficialIdentity
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 from tests.helpers.fake_official_platform import (
@@ -83,8 +85,8 @@ def test_supported_context_keeps_group_and_private_access(platform: Platform) ->
     )
 
 
-def test_feature_service_exposes_linked_onebot_principal() -> None:
-    policy = FeatureService({}, {}, frozenset())
+def test_identity_principal_service_exposes_linked_onebot_actor() -> None:
+    principals = IdentityPrincipalService()
     official = ActorRef(
         Platform.QQ_OFFICIAL,
         "member-openid",
@@ -92,13 +94,12 @@ def test_feature_service_exposes_linked_onebot_principal() -> None:
         "group-openid",
         account_id="app-id",
     )
-    policy.register_identity_link(
-        official_app_id="app-id",
-        official_openid="member-openid",
+    principals.register_official_link(
         onebot_qq_id="10001",
+        official=OfficialIdentity("app-id", "member", "member-openid"),
     )
 
-    assert policy.canonical_actor(official) == ActorRef(Platform.ONEBOT, "10001")
+    assert principals.onebot_actor(official) == ActorRef(Platform.ONEBOT, "10001")
 
 
 @pytest.mark.asyncio

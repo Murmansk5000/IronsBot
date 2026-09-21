@@ -84,6 +84,55 @@ def test_confirmed_qq_link_becomes_business_principal() -> None:
     assert service.actor_principal(second) == expected
 
 
+def test_revoked_qq_link_restores_union_principal() -> None:
+    service = IdentityPrincipalService()
+    first = _official_actor("app-a", "openid-a")
+    second = _official_actor("app-b", "openid-b")
+    evidence = OfficialUnionIdentity(union_openid="union-a")
+    service.observe_union_identity(actor=first, evidence=evidence)
+    service.observe_union_identity(actor=second, evidence=evidence)
+    link = CrossPlatformIdentityLink(
+        "123456",
+        OfficialIdentity("app-a", "user", "openid-a"),
+        1.0,
+    )
+    service.register_identity_link(link)
+
+    service.unregister_identity_link(link)
+
+    first_principal = service.actor_principal(first)
+    assert first_principal.kind == "official_union"
+    assert service.actor_principal(second) == first_principal
+    assert service.onebot_actor(first) is None
+
+
+def test_revoking_one_of_two_confirmed_links_preserves_qq_principal() -> None:
+    service = IdentityPrincipalService()
+    first = _official_actor("app-a", "openid-a")
+    second = _official_actor("app-b", "openid-b")
+    evidence = OfficialUnionIdentity(union_openid="union-a")
+    service.observe_union_identity(actor=first, evidence=evidence)
+    service.observe_union_identity(actor=second, evidence=evidence)
+    first_link = CrossPlatformIdentityLink(
+        "123456",
+        OfficialIdentity("app-a", "user", "openid-a"),
+        1.0,
+    )
+    second_link = CrossPlatformIdentityLink(
+        "123456",
+        OfficialIdentity("app-b", "user", "openid-b"),
+        2.0,
+    )
+    service.register_identity_link(first_link)
+    service.register_identity_link(second_link)
+
+    service.unregister_identity_link(first_link)
+
+    expected = ActorPrincipal("qq", "123456")
+    assert service.actor_principal(first) == expected
+    assert service.actor_principal(second) == expected
+
+
 def test_group_link_uses_non_addressable_logical_group() -> None:
     service = IdentityPrincipalService()
     official = ConversationRef(
@@ -104,6 +153,33 @@ def test_group_link_uses_non_addressable_logical_group() -> None:
         "qq_group",
         "654321",
     )
+
+
+def test_configured_group_reports_each_endpoint_principal_merge() -> None:
+    service = IdentityPrincipalService()
+
+    merges = service.register_configured_group(
+        alias="shared",
+        onebot_group_id="654321",
+        official_endpoints=(
+            ("app-a", "group-a"),
+            ("app-b", "group-b"),
+        ),
+    )
+
+    assert {merge.source.kind for merge in merges} == {"official_group"}
+    assert {merge.target for merge in merges} == {
+        ConversationPrincipal("qq_group", "654321")
+    }
+    for app_id, group_openid in (("app-a", "group-a"), ("app-b", "group-b")):
+        assert service.conversation_principal(
+            ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                group_openid,
+                account_id=app_id,
+            )
+        ) == ConversationPrincipal("qq_group", "654321")
 
 
 def test_unlinked_transport_endpoints_remain_distinct() -> None:

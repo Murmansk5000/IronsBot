@@ -33,7 +33,10 @@ class QueryReply:
         if self.image is not None:
             parts.append(BinaryImagePart(self.image, "image/png"))
         elif self.image_error:
-            parts.append(TextPart(self.image_error))
+            image_error = self.image_error
+            if self.text and not image_error.endswith("\n"):
+                image_error += "\n"
+            parts.append(TextPart(image_error))
         if self.text:
             parts.append(TextPart(self.text))
         return OutboundMessage(tuple(parts))

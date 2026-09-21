@@ -146,7 +146,7 @@ def _command_starts(value: object) -> list[str]:
 class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    help_hint: int = Field(default=0, ge=0)
+    poke_reply: int = Field(default=0, ge=0)
     server_status: int = Field(default=1, ge=0)
     server_status_admin: int = Field(default=2, ge=0)
     bilibili: int = Field(default=3, ge=0)
@@ -175,7 +175,18 @@ class MatcherPriorityConfig(BaseModel):
     pet_config: int = Field(default=109, ge=0)
     seer_pet: int = Field(default=110, ge=0)
     seer_query: int = Field(default=120, ge=0)
+    mention_reply: int = Field(default=190, ge=0)
     ai_chat: int = Field(default=200, ge=0)
+
+    @model_validator(mode="after")
+    def validate_mention_reply_order(self) -> MatcherPriorityConfig:
+        if not self.seer_query < self.mention_reply < self.ai_chat:
+            msg = (
+                "bot.matcher_priority.mention_reply must run after seer_query "
+                "and before ai_chat"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class LoggingConfig(BaseModel):
@@ -712,11 +723,26 @@ class Settings(BaseModel):
                 action.at_user_ids,
                 location=f"messaging.keyword_replies[{index}].at_user_ids",
             )
+        self._validate_mention_reply_references(platform_references)
         for index, action in enumerate(self.messaging.schedules):
             references.resolve_users(
                 action.at_user_ids,
                 location=f"messaging.schedules[{index}].at_user_ids",
             )
+
+    def _validate_mention_reply_references(
+        self,
+        platform_references: PlatformReferenceResolver,
+    ) -> None:
+        for index, action in enumerate(self.messaging.mention_replies):
+            for user_index, user in enumerate(action.users):
+                location = (
+                    f"messaging.mention_replies[{index}].users[{user_index}]"
+                )
+                if user not in self.identities.users:
+                    msg = f"{location} references unknown identity user alias: {user}"
+                    raise SettingsReferenceError(msg)
+                platform_references.actor_refs(user, location=location)
 
     @staticmethod
     def _validate_mapping_refs(

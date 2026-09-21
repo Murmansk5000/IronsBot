@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -98,6 +99,10 @@ if TYPE_CHECKING:
 
 
 class PortableCommandRouterError(ValueError):
+    @classmethod
+    def missing_identity_principals(cls) -> PortableCommandRouterError:
+        return cls("lucky skin window requires identity principals")
+
     @classmethod
     def missing_ai_intent_executor(cls) -> PortableCommandRouterError:
         return cls("portable AI intent commands require an action executor")
@@ -126,6 +131,7 @@ class PortableCommandRouter:
         ai_intent_actions: AiIntentActionExecutor | None = None,
         ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
+        messaging: MessagingService | None = None,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
         unknown = set(operations) - catalog.command_ids
@@ -151,6 +157,7 @@ class PortableCommandRouter:
         self._ai_intent_actions = ai_intent_actions
         self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
+        self._messaging = messaging
         self._query_sessions = query_sessions or PortableQuerySessions()
 
     def recognizes(
@@ -172,6 +179,10 @@ class PortableCommandRouter:
                 )
                 is not None
             )
+            or (
+                self._messaging is not None
+                and self._messaging.match_mention_reply(context) is not None
+            )
             or self._ai_input_routing.decide(
                 context,
                 command_context,
@@ -179,7 +190,7 @@ class PortableCommandRouter:
             ).recognized
         )
 
-    async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
+    async def dispatch(  # noqa: C901, PLR0911 - explicit routing precedence
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
@@ -210,6 +221,17 @@ class PortableCommandRouter:
             context=command_context,
         )
         if contract is None:
+            if self._messaging is not None:
+                mention_reply = self._messaging.match_mention_reply(context)
+                if mention_reply is not None:
+                    messages = tuple(
+                        OutboundMessage.from_text(message)
+                        for message in mention_reply.messages
+                    )
+                    return PortableReply(
+                        messages[0],
+                        additional_messages=messages[1:],
+                    )
             return await self._fallback_reply(context, command_context, command)
         try:
             result = await self._operations[contract.id](command, context)
@@ -313,7 +335,7 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if decision.offer_help_hint and self._addressed_input_hints.admit(context):
+        if decision.offer_addressed_hint and self._addressed_input_hints.admit(context):
             return PortableReply(
                 OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
             )
@@ -336,6 +358,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     identity_links: IdentityLinkCommands,
     features: FeatureService,
     ai: AiService,
+    identity_principals: IdentityPrincipalService | None = None,
     ai_intent_actions: AiIntentActionExecutor | None = None,
     addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
@@ -385,20 +408,19 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         catalog,
         build_portable_identity_link_operations(identity_links),
     )
-    lucky_skin_operations = _catalog_operations(
-        catalog,
-        (
-            {}
-            if lucky_skin_window is None
-            else build_portable_lucky_skin_operations(
-                lucky_skin_window,
-                seer.pet_query,
-                features,
-                sessions,
-                player_id_resolver,
-            )
-        ),
-    )
+    raw_lucky_skin_operations: dict[str, PortableOperation] = {}
+    if lucky_skin_window is not None:
+        if identity_principals is None:
+            raise PortableCommandRouterError.missing_identity_principals()
+        raw_lucky_skin_operations = build_portable_lucky_skin_operations(
+            lucky_skin_window,
+            seer.pet_query,
+            features,
+            sessions,
+            player_id_resolver,
+            identity_principals,
+        )
+    lucky_skin_operations = _catalog_operations(catalog, raw_lucky_skin_operations)
     rank_operations = _catalog_operations(
         catalog,
         build_portable_rank_operations(
@@ -575,6 +597,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         ai_intent_actions=ai_intent_actions,
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
+        messaging=messaging,
         query_sessions=sessions,
     )
 

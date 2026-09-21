@@ -95,8 +95,15 @@ def test_manifest_fire_manual_ad_owns_its_feature() -> None:
     assert contribution.commands == ()
 
 
-def test_manifest_help_hint_owns_its_passive_matcher() -> None:
-    contribution = DEFINITIONS_BY_ID["help_hint"]
+def test_manifest_poke_reply_owns_its_passive_matcher() -> None:
+    contribution = DEFINITIONS_BY_ID["poke_reply"]
+
+    assert contribution.features == frozenset()
+    assert contribution.commands == ()
+
+
+def test_manifest_addressed_hint_owns_its_fallback_matcher() -> None:
+    contribution = DEFINITIONS_BY_ID["addressed_input_hint"]
 
     assert contribution.features == frozenset()
     assert contribution.commands == ()
@@ -457,6 +464,18 @@ def test_internal_plugins_use_only_the_matcher_factory() -> None:
                     / "onebot"
                     / "messaging"
                     / "red_packet.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "poke.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "addressed_hint.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"

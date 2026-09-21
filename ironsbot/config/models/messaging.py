@@ -18,6 +18,7 @@ from ironsbot.core.time import normalize_daily_time_with_seconds
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
+ENABLED_MENTION_USERS_REQUIRED_ERROR = "已启用的提及回复必须配置 users"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
 COMMAND_MESSAGES_EMPTY_ERROR = "messages 中的消息内容不能为空"
 COMMAND_ID_FORMAT_ERROR = (
@@ -306,6 +307,41 @@ class MessageKeywordReplyAction(MessageReplyAction):
         return self
 
 
+class MessageMentionReplyAction(BaseModel):
+    """Reply sequence triggered when one configured user mentions the bot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str = ""
+    enabled: bool = True
+    users: NormalizedStringList = Field(default_factory=list)
+    messages: list[str] = Field(min_length=1)
+
+    @field_validator("id", "name")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: list[str]) -> list[str]:
+        messages = [message.strip() for message in value]
+        if any(not message for message in messages):
+            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
+        return messages
+
+    @model_validator(mode="after")
+    def validate_action(self) -> Self:
+        if not self.id:
+            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
+        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
+            raise ValueError(COMMAND_ID_FORMAT_ERROR)
+        if self.enabled and not self.users:
+            raise ValueError(ENABLED_MENTION_USERS_REQUIRED_ERROR)
+        return self
+
+
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
     at_user_ids: OneBotReferenceList = Field(default_factory=list)
@@ -502,6 +538,7 @@ class MessageConfig(BaseModel):
     )
     commands: list[MessageCommandAction] = Field(default_factory=list)
     keyword_replies: list[MessageKeywordReplyAction] = Field(default_factory=list)
+    mention_replies: list[MessageMentionReplyAction] = Field(default_factory=list)
     schedules: list[MessageScheduledAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
     team_audit_welcome: TeamAuditWelcomeConfig = Field(

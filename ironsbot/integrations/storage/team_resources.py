@@ -4,8 +4,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from ironsbot.core.platform import (
+    ActorPrincipal,
+    ActorRef,
+    ConversationPrincipal,
+    ConversationRef,
+)
+from ironsbot.integrations.storage.conversation_principal_rows import (
+    PrincipalRowMergeSpec,
+    delete_principal_rows,
+    merge_latest_principal_rows,
+)
 from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
@@ -14,6 +25,10 @@ from ironsbot.integrations.storage.sqlite import (
     SqliteDatabase,
     SqliteMigration,
     require_sqlite_columns,
+)
+from ironsbot.services.identity_principals import (
+    default_actor_principal,
+    default_conversation_principal,
 )
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourcePrivateSubscription,
@@ -24,11 +39,13 @@ from ironsbot.services.team.resource_subscriptions import (
 )
 
 if TYPE_CHECKING:
+    import sqlite3
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
     from pathlib import Path
     from typing import Any
 
-    from ironsbot.core.platform import ActorRef, ConversationRef
-
+    from ironsbot.core.platform import ConversationPrincipalKind
 
 _SCHEMA = (
     """
@@ -124,6 +141,166 @@ _SCHEMA = (
     )
     """,
 )
+_PRINCIPAL_SCHEMA = (
+    """
+    CREATE TABLE team_resource_subscriptions_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        team_id INTEGER NOT NULL,
+        team_name TEXT NOT NULL DEFAULT '',
+        threshold INTEGER NOT NULL,
+        created_by_platform TEXT NOT NULL,
+        created_by_account_id TEXT NOT NULL DEFAULT '',
+        created_by_kind TEXT NOT NULL,
+        created_by_id TEXT NOT NULL,
+        created_by_scope_id TEXT NOT NULL DEFAULT '',
+        updated_by_platform TEXT NOT NULL,
+        updated_by_account_id TEXT NOT NULL DEFAULT '',
+        updated_by_kind TEXT NOT NULL,
+        updated_by_id TEXT NOT NULL,
+        updated_by_scope_id TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (principal_kind, principal_id, team_id)
+    )
+    """,
+    """
+    CREATE TABLE team_resource_subscription_mentions_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        team_id INTEGER NOT NULL,
+        actor_platform TEXT NOT NULL,
+        actor_account_id TEXT NOT NULL DEFAULT '',
+        actor_kind TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_scope_id TEXT NOT NULL DEFAULT '',
+        position INTEGER NOT NULL,
+        PRIMARY KEY (
+            principal_kind, principal_id, team_id,
+            actor_platform, actor_account_id, actor_kind, actor_id, actor_scope_id
+        )
+    )
+    """,
+    """
+    CREATE TABLE team_resource_private_subscriptions_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        actor_platform TEXT NOT NULL,
+        actor_account_id TEXT NOT NULL DEFAULT '',
+        actor_kind TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        actor_scope_id TEXT NOT NULL DEFAULT '',
+        team_id INTEGER NOT NULL,
+        team_name TEXT NOT NULL DEFAULT '',
+        threshold INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (principal_kind, principal_id, team_id)
+    )
+    """,
+    """
+    CREATE TABLE team_resource_subscription_prompts_v3 (
+        principal_kind TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        team_id INTEGER NOT NULL,
+        team_name TEXT NOT NULL DEFAULT '',
+        prompted_by_platform TEXT NOT NULL,
+        prompted_by_account_id TEXT NOT NULL DEFAULT '',
+        prompted_by_kind TEXT NOT NULL,
+        prompted_by_id TEXT NOT NULL,
+        prompted_by_scope_id TEXT NOT NULL DEFAULT '',
+        prompted_at TEXT NOT NULL,
+        handled_by_platform TEXT,
+        handled_by_account_id TEXT,
+        handled_by_kind TEXT,
+        handled_by_id TEXT,
+        handled_by_scope_id TEXT,
+        handled_at TEXT,
+        accepted INTEGER,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (principal_kind, principal_id)
+    )
+    """,
+)
+_PRIVATE_MERGE = PrincipalRowMergeSpec(
+    table="team_resource_private_subscriptions",
+    value_columns=(
+        "actor_platform",
+        "actor_account_id",
+        "actor_kind",
+        "actor_id",
+        "actor_scope_id",
+        "team_id",
+        "team_name",
+        "threshold",
+        "created_at",
+        "updated_at",
+    ),
+    identity_columns=("team_id",),
+    order_columns=("updated_at",),
+)
+_PROMPT_MERGE = PrincipalRowMergeSpec(
+    table="team_resource_subscription_prompts",
+    value_columns=(
+        "conversation_platform",
+        "conversation_account_id",
+        "conversation_kind",
+        "conversation_id",
+        "team_id",
+        "team_name",
+        "prompted_by_platform",
+        "prompted_by_account_id",
+        "prompted_by_kind",
+        "prompted_by_id",
+        "prompted_by_scope_id",
+        "prompted_at",
+        "handled_by_platform",
+        "handled_by_account_id",
+        "handled_by_kind",
+        "handled_by_id",
+        "handled_by_scope_id",
+        "handled_at",
+        "accepted",
+        "updated_at",
+    ),
+    identity_columns=(),
+    order_columns=("updated_at",),
+)
+
+
+def _migrate_team_resource_principals(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row[1])
+        for row in connection.execute(
+            "PRAGMA table_info(team_resource_subscriptions)"
+        ).fetchall()
+    }
+    if "principal_kind" in columns:
+        return
+    for statement in _PRINCIPAL_SCHEMA:
+        connection.execute(statement)
+    _copy_group_subscriptions_to_principals(connection)
+    _copy_group_mentions_to_principals(connection)
+    _copy_private_subscriptions_to_principals(connection)
+    _copy_prompts_to_principals(connection)
+    for table in (
+        "team_resource_subscription_mentions",
+        "team_resource_subscriptions",
+        "team_resource_private_subscriptions",
+        "team_resource_subscription_prompts",
+    ):
+        connection.execute(f"DROP TABLE {table}")
+        connection.execute(f"ALTER TABLE {table}_v3 RENAME TO {table}")
+
+
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
     SqliteMigration(
@@ -137,17 +314,30 @@ _MIGRATIONS = (
             },
         ),
     ),
+    SqliteMigration(3, callback=_migrate_team_resource_principals),
 )
 MIGRATION_NAMESPACE = "team_resources"
 
 
 class TeamResourceSubscriptionStore:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        conversation_principal_for: Callable[
+            [ConversationRef], ConversationPrincipal
+        ] = default_conversation_principal,
+        actor_principal_for: Callable[[ActorRef], ActorPrincipal] = (
+            default_actor_principal
+        ),
+    ) -> None:
         self._database = SqliteDatabase(
             path,
             migrations=_MIGRATIONS,
             migration_namespace=MIGRATION_NAMESPACE,
         )
+        self._conversation_principal_for = conversation_principal_for
+        self._actor_principal_for = actor_principal_for
 
     def list_all(self) -> list[TeamResourceSubscription]:
         with self._connect() as conn:
@@ -166,22 +356,23 @@ class TeamResourceSubscriptionStore:
             rows = conn.execute(
                 _GROUP_SUBSCRIPTION_SELECT
                 + """
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                 ORDER BY team_id
                 """,
-                _conversation_values(conversation),
+                self._conversation_owner_values(conversation),
             ).fetchall()
             return [_subscription_from_row(conn, row) for row in rows]
 
     def upsert(self, update: TeamResourceSubscriptionUpdate) -> None:
         conversation_values = _conversation_values(update.conversation)
+        owner_values = self._conversation_owner_values(update.conversation)
         operator_values = _actor_values(update.operator)
         now = _now_text()
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO team_resource_subscriptions (
+                    principal_kind, principal_id,
                     conversation_platform, conversation_account_id,
                     conversation_kind, conversation_id,
                     team_id, team_name, threshold,
@@ -189,11 +380,14 @@ class TeamResourceSubscriptionStore:
                     created_by_id, created_by_scope_id,
                     updated_by_platform, updated_by_account_id, updated_by_kind,
                     updated_by_id, updated_by_scope_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(
-                    conversation_platform, conversation_account_id,
-                    conversation_kind, conversation_id, team_id
-                ) DO UPDATE SET
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                ON CONFLICT(principal_kind, principal_id, team_id) DO UPDATE SET
+                    conversation_platform = excluded.conversation_platform,
+                    conversation_account_id = excluded.conversation_account_id,
+                    conversation_kind = excluded.conversation_kind,
+                    conversation_id = excluded.conversation_id,
                     team_name = excluded.team_name,
                     threshold = excluded.threshold,
                     updated_by_platform = excluded.updated_by_platform,
@@ -204,6 +398,7 @@ class TeamResourceSubscriptionStore:
                     updated_at = excluded.updated_at
                 """,
                 (
+                    *owner_values,
                     *conversation_values,
                     update.team_id,
                     update.team_name.strip(),
@@ -217,15 +412,13 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 DELETE FROM team_resource_subscription_mentions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
-                  AND team_id = ?
+                WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
                 """,
-                (*conversation_values, update.team_id),
+                (*owner_values, update.team_id),
             )
             _insert_mentions(
                 conn,
-                update.conversation,
+                self._conversation_principal_for(update.conversation),
                 update.team_id,
                 update.mention_actors,
             )
@@ -252,11 +445,10 @@ class TeamResourceSubscriptionStore:
                        actor_scope_id,
                        team_id, team_name, threshold, created_at, updated_at
                 FROM team_resource_private_subscriptions
-                WHERE actor_platform = ? AND actor_account_id = ?
-                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                 ORDER BY team_id
                 """,
-                _actor_values(actor),
+                self._actor_owner_values(actor),
             ).fetchall()
         return [_private_subscription_from_row(row) for row in rows]
 
@@ -266,19 +458,23 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 INSERT INTO team_resource_private_subscriptions (
+                    principal_kind, principal_id,
                     actor_platform, actor_account_id, actor_kind, actor_id,
                     actor_scope_id,
                     team_id, team_name, threshold, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(
-                    actor_platform, actor_account_id, actor_kind, actor_id,
-                    actor_scope_id, team_id
-                ) DO UPDATE SET
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(principal_kind, principal_id, team_id) DO UPDATE SET
+                    actor_platform = excluded.actor_platform,
+                    actor_account_id = excluded.actor_account_id,
+                    actor_kind = excluded.actor_kind,
+                    actor_id = excluded.actor_id,
+                    actor_scope_id = excluded.actor_scope_id,
                     team_name = excluded.team_name,
                     threshold = excluded.threshold,
                     updated_at = excluded.updated_at
                 """,
                 (
+                    *self._actor_owner_values(update.actor),
                     *_actor_values(update.actor),
                     update.team_id,
                     update.team_name.strip(),
@@ -293,10 +489,9 @@ class TeamResourceSubscriptionStore:
             row = conn.execute(
                 """
                 SELECT 1 FROM team_resource_subscription_prompts
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                 """,
-                _conversation_values(conversation),
+                self._conversation_owner_values(conversation),
             ).fetchone()
         return row is not None
 
@@ -315,11 +510,10 @@ class TeamResourceSubscriptionStore:
                        handled_by_kind, handled_by_id, handled_by_scope_id,
                        handled_at, accepted
                 FROM team_resource_subscription_prompts
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND handled_at IS NULL
                 """,
-                _conversation_values(conversation),
+                self._conversation_owner_values(conversation),
             ).fetchone()
         return _prompt_from_row(row) if row is not None else None
 
@@ -331,23 +525,27 @@ class TeamResourceSubscriptionStore:
         team_name: str,
         prompted_by: ActorRef,
     ) -> None:
+        now = _now_text()
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO team_resource_subscription_prompts (
+                    principal_kind, principal_id,
                     conversation_platform, conversation_account_id,
                     conversation_kind, conversation_id, team_id, team_name,
                     prompted_by_platform, prompted_by_account_id,
                     prompted_by_kind, prompted_by_id, prompted_by_scope_id,
-                    prompted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    prompted_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    *self._conversation_owner_values(conversation),
                     *_conversation_values(conversation),
                     team_id,
                     team_name.strip(),
                     *_actor_values(prompted_by),
-                    _now_text(),
+                    now,
+                    now,
                 ),
             )
 
@@ -358,22 +556,24 @@ class TeamResourceSubscriptionStore:
         handled_by: ActorRef,
         accepted: bool,
     ) -> None:
+        now = _now_text()
         with self._connect() as conn:
             conn.execute(
                 """
                 UPDATE team_resource_subscription_prompts
                 SET handled_by_platform = ?, handled_by_account_id = ?,
                     handled_by_kind = ?, handled_by_id = ?,
-                    handled_by_scope_id = ?, handled_at = ?, accepted = ?
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
+                    handled_by_scope_id = ?, handled_at = ?, accepted = ?,
+                    updated_at = ?
+                WHERE principal_kind = ? AND principal_id = ?
                   AND handled_at IS NULL
                 """,
                 (
                     *_actor_values(handled_by),
-                    _now_text(),
+                    now,
                     int(accepted),
-                    *_conversation_values(conversation),
+                    now,
+                    *self._conversation_owner_values(conversation),
                 ),
             )
 
@@ -391,14 +591,12 @@ class TeamResourceSubscriptionStore:
                 """
                 UPDATE team_resource_subscriptions
                 SET team_name = ?, updated_at = ?
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
-                  AND team_id = ?
+                WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
                 """,
                 (
                     team_name.strip(),
                     _now_text(),
-                    *_conversation_values(conversation),
+                    *self._conversation_owner_values(conversation),
                     team_id,
                 ),
             )
@@ -408,20 +606,16 @@ class TeamResourceSubscriptionStore:
             cursor = conn.execute(
                 """
                 DELETE FROM team_resource_subscriptions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
-                  AND team_id = ?
+                WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
                 """,
-                (*_conversation_values(conversation), team_id),
+                (*self._conversation_owner_values(conversation), team_id),
             )
             conn.execute(
                 """
                 DELETE FROM team_resource_subscription_mentions
-                WHERE conversation_platform = ? AND conversation_account_id = ?
-                  AND conversation_kind = ? AND conversation_id = ?
-                  AND team_id = ?
+                WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
                 """,
-                (*_conversation_values(conversation), team_id),
+                (*self._conversation_owner_values(conversation), team_id),
             )
             return cursor.rowcount > 0
 
@@ -439,14 +633,12 @@ class TeamResourceSubscriptionStore:
                 """
                 UPDATE team_resource_private_subscriptions
                 SET team_name = ?, updated_at = ?
-                WHERE actor_platform = ? AND actor_account_id = ?
-                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
-                  AND team_id = ?
+                WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
                 """,
                 (
                     team_name.strip(),
                     _now_text(),
-                    *_actor_values(actor),
+                    *self._actor_owner_values(actor),
                     team_id,
                 ),
             )
@@ -456,20 +648,63 @@ class TeamResourceSubscriptionStore:
             cursor = conn.execute(
                 """
                 DELETE FROM team_resource_private_subscriptions
-                WHERE actor_platform = ? AND actor_account_id = ?
-                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
-                  AND team_id = ?
+                WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
                 """,
-                (*_actor_values(actor), team_id),
+                (*self._actor_owner_values(actor), team_id),
             )
             return cursor.rowcount > 0
 
-    def _connect(self):
+    def merge_conversation_principals(
+        self,
+        source: ConversationPrincipal,
+        target: ConversationPrincipal,
+    ) -> None:
+        if source == target:
+            return
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            _merge_group_subscriptions(connection, source, target)
+            merge_latest_principal_rows(
+                connection,
+                _PROMPT_MERGE,
+                source=source,
+                target=target,
+            )
+
+    def merge_actor_principals(
+        self,
+        source: ActorPrincipal,
+        target: ActorPrincipal,
+    ) -> None:
+        if source == target:
+            return
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            merge_latest_principal_rows(
+                connection,
+                _PRIVATE_MERGE,
+                source=source,
+                target=target,
+            )
+
+    def _conversation_owner_values(
+        self,
+        conversation: ConversationRef,
+    ) -> tuple[str, str]:
+        principal = self._conversation_principal_for(conversation)
+        return principal.kind, principal.id
+
+    def _actor_owner_values(self, actor: ActorRef) -> tuple[str, str]:
+        principal = self._actor_principal_for(actor)
+        return principal.kind, principal.id
+
+    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
         return self._database.connect()
 
 
 _GROUP_SUBSCRIPTION_SELECT = """
-    SELECT conversation_platform, conversation_account_id, conversation_kind,
+    SELECT principal_kind, principal_id,
+           conversation_platform, conversation_account_id, conversation_kind,
            conversation_id, team_id, team_name, threshold,
            created_by_platform, created_by_account_id, created_by_kind,
            created_by_id, created_by_scope_id,
@@ -483,19 +718,23 @@ def _subscription_from_row(
     connection: Any,
     row: tuple[Any, ...],
 ) -> TeamResourceSubscription:
-    conversation = ConversationIdentityColumns(*row[:4]).to_conversation()
-    created_by = ActorIdentityColumns(*row[7:12]).to_actor()
-    updated_by = ActorIdentityColumns(*row[12:17]).to_actor()
+    owner = ConversationPrincipal(
+        cast("ConversationPrincipalKind", str(row[0])),
+        str(row[1]),
+    )
+    conversation = ConversationIdentityColumns(*row[2:6]).to_conversation()
+    created_by = ActorIdentityColumns(*row[9:14]).to_actor()
+    updated_by = ActorIdentityColumns(*row[14:19]).to_actor()
     return TeamResourceSubscription(
         conversation=conversation,
-        team_id=int(row[4]),
-        team_name=str(row[5] or ""),
-        threshold=int(row[6]),
-        mention_actors=_mention_actors(connection, conversation, int(row[4])),
+        team_id=int(row[6]),
+        team_name=str(row[7] or ""),
+        threshold=int(row[8]),
+        mention_actors=_mention_actors(connection, owner, int(row[6])),
         created_by=created_by,
         updated_by=updated_by,
-        created_at=str(row[17]),
-        updated_at=str(row[18]),
+        created_at=str(row[19]),
+        updated_at=str(row[20]),
     )
 
 
@@ -528,13 +767,14 @@ def _prompt_from_row(row: tuple[Any, ...]) -> TeamResourceSubscriptionPrompt:
 
 def _insert_mentions(
     connection: Any,
-    conversation: ConversationRef,
+    principal: ConversationPrincipal,
     team_id: int,
     actors: tuple[ActorRef, ...],
 ) -> None:
     values = [
         (
-            *_conversation_values(conversation),
+            principal.kind,
+            principal.id,
             team_id,
             *_actor_values(actor),
             position,
@@ -545,11 +785,10 @@ def _insert_mentions(
         connection.executemany(
             """
             INSERT INTO team_resource_subscription_mentions (
-                conversation_platform, conversation_account_id,
-                conversation_kind, conversation_id, team_id,
+                principal_kind, principal_id, team_id,
                 actor_platform, actor_account_id, actor_kind, actor_id,
                 actor_scope_id, position
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )
@@ -557,7 +796,7 @@ def _insert_mentions(
 
 def _mention_actors(
     connection: Any,
-    conversation: ConversationRef,
+    principal: ConversationPrincipal,
     team_id: int,
 ) -> tuple[ActorRef, ...]:
     rows = connection.execute(
@@ -565,13 +804,236 @@ def _mention_actors(
         SELECT actor_platform, actor_account_id, actor_kind, actor_id,
                actor_scope_id
         FROM team_resource_subscription_mentions
-        WHERE conversation_platform = ? AND conversation_account_id = ?
-          AND conversation_kind = ? AND conversation_id = ? AND team_id = ?
+        WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
         ORDER BY position
         """,
-        (*_conversation_values(conversation), team_id),
+        (principal.kind, principal.id, team_id),
     ).fetchall()
     return tuple(ActorIdentityColumns(*row).to_actor() for row in rows)
+
+
+_GROUP_SUBSCRIPTION_VALUE_COLUMNS = (
+    "conversation_platform",
+    "conversation_account_id",
+    "conversation_kind",
+    "conversation_id",
+    "team_id",
+    "team_name",
+    "threshold",
+    "created_by_platform",
+    "created_by_account_id",
+    "created_by_kind",
+    "created_by_id",
+    "created_by_scope_id",
+    "updated_by_platform",
+    "updated_by_account_id",
+    "updated_by_kind",
+    "updated_by_id",
+    "updated_by_scope_id",
+    "created_at",
+    "updated_at",
+)
+
+
+def _merge_group_subscriptions(
+    connection: sqlite3.Connection,
+    source: ConversationPrincipal,
+    target: ConversationPrincipal,
+) -> None:
+    rows_by_owner = {
+        (owner.kind, owner.id): _group_subscription_rows(connection, owner)
+        for owner in (target, source)
+    }
+    selected: dict[
+        int,
+        tuple[tuple[str, str], tuple[object, ...]],
+    ] = {}
+    for owner in (target, source):
+        owner_key = (owner.kind, owner.id)
+        for row in rows_by_owner[owner_key]:
+            team_id = int(str(row[4]))
+            previous = selected.get(team_id)
+            if previous is None or str(row[-1]) > str(previous[1][-1]):
+                selected[team_id] = (owner_key, row)
+    mentions = {
+        (*owner_key, team_id): _raw_mentions(
+            connection,
+            ConversationPrincipal(
+                cast("ConversationPrincipalKind", owner_key[0]),
+                owner_key[1],
+            ),
+            team_id,
+        )
+        for team_id, (owner_key, _row) in selected.items()
+    }
+    for owner in (source, target):
+        delete_principal_rows(
+            connection,
+            "team_resource_subscription_mentions",
+            owner,
+        )
+        delete_principal_rows(connection, "team_resource_subscriptions", owner)
+    columns = ", ".join(
+        ("principal_kind", "principal_id", *_GROUP_SUBSCRIPTION_VALUE_COLUMNS)
+    )
+    placeholders = ", ".join(
+        "?" for _ in range(len(_GROUP_SUBSCRIPTION_VALUE_COLUMNS) + 2)
+    )
+    for team_id, (owner_key, row) in selected.items():
+        connection.execute(
+            f"INSERT INTO team_resource_subscriptions ({columns}) "
+            f"VALUES ({placeholders})",
+            (target.kind, target.id, *row),
+        )
+        _insert_raw_mentions(
+            connection,
+            target,
+            team_id,
+            mentions[(*owner_key, team_id)],
+        )
+
+
+def _group_subscription_rows(
+    connection: sqlite3.Connection,
+    principal: ConversationPrincipal,
+) -> list[tuple[object, ...]]:
+    columns = ", ".join(_GROUP_SUBSCRIPTION_VALUE_COLUMNS)
+    return [
+        tuple(row)
+        for row in connection.execute(
+            f"SELECT {columns} FROM team_resource_subscriptions "
+            "WHERE principal_kind = ? AND principal_id = ?",
+            (principal.kind, principal.id),
+        ).fetchall()
+    ]
+
+
+def _raw_mentions(
+    connection: sqlite3.Connection,
+    principal: ConversationPrincipal,
+    team_id: int,
+) -> tuple[tuple[object, ...], ...]:
+    return tuple(
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT actor_platform, actor_account_id, actor_kind, actor_id,
+                   actor_scope_id, position
+            FROM team_resource_subscription_mentions
+            WHERE principal_kind = ? AND principal_id = ? AND team_id = ?
+            ORDER BY position
+            """,
+            (principal.kind, principal.id, team_id),
+        ).fetchall()
+    )
+
+
+def _insert_raw_mentions(
+    connection: sqlite3.Connection,
+    principal: ConversationPrincipal,
+    team_id: int,
+    rows: tuple[tuple[object, ...], ...],
+) -> None:
+    connection.executemany(
+        """
+        INSERT INTO team_resource_subscription_mentions (
+            principal_kind, principal_id, team_id,
+            actor_platform, actor_account_id, actor_kind, actor_id,
+            actor_scope_id, position
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ((principal.kind, principal.id, team_id, *row) for row in rows),
+    )
+
+
+def _copy_group_subscriptions_to_principals(
+    connection: sqlite3.Connection,
+) -> None:
+    rows = connection.execute(
+        f"SELECT {', '.join(_GROUP_SUBSCRIPTION_VALUE_COLUMNS)} "
+        "FROM team_resource_subscriptions"
+    ).fetchall()
+    placeholders = ", ".join(
+        "?" for _ in range(len(_GROUP_SUBSCRIPTION_VALUE_COLUMNS) + 2)
+    )
+    for row in rows:
+        conversation = ConversationIdentityColumns(
+            *(str(value) for value in row[:4])
+        ).to_conversation()
+        principal = default_conversation_principal(conversation)
+        connection.execute(
+            "INSERT INTO team_resource_subscriptions_v3 VALUES "
+            f"({placeholders})",
+            (principal.kind, principal.id, *row),
+        )
+
+
+def _copy_group_mentions_to_principals(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT conversation_platform, conversation_account_id,
+               conversation_kind, conversation_id, team_id,
+               actor_platform, actor_account_id, actor_kind, actor_id,
+               actor_scope_id, position
+        FROM team_resource_subscription_mentions
+        """
+    ).fetchall()
+    for row in rows:
+        conversation = ConversationIdentityColumns(
+            *(str(value) for value in row[:4])
+        ).to_conversation()
+        principal = default_conversation_principal(conversation)
+        connection.execute(
+            "INSERT INTO team_resource_subscription_mentions_v3 "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (principal.kind, principal.id, *row[4:]),
+        )
+
+
+def _copy_private_subscriptions_to_principals(
+    connection: sqlite3.Connection,
+) -> None:
+    rows = connection.execute(
+        """
+        SELECT actor_platform, actor_account_id, actor_kind, actor_id,
+               actor_scope_id, team_id, team_name, threshold, created_at,
+               updated_at
+        FROM team_resource_private_subscriptions
+        """
+    ).fetchall()
+    for row in rows:
+        actor = ActorIdentityColumns(*(str(value) for value in row[:5])).to_actor()
+        principal = default_actor_principal(actor)
+        connection.execute(
+            "INSERT INTO team_resource_private_subscriptions_v3 "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (principal.kind, principal.id, *row),
+        )
+
+
+def _copy_prompts_to_principals(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT conversation_platform, conversation_account_id,
+               conversation_kind, conversation_id, team_id, team_name,
+               prompted_by_platform, prompted_by_account_id, prompted_by_kind,
+               prompted_by_id, prompted_by_scope_id, prompted_at,
+               handled_by_platform, handled_by_account_id, handled_by_kind,
+               handled_by_id, handled_by_scope_id, handled_at, accepted
+        FROM team_resource_subscription_prompts
+        """
+    ).fetchall()
+    for row in rows:
+        conversation = ConversationIdentityColumns(
+            *(str(value) for value in row[:4])
+        ).to_conversation()
+        principal = default_conversation_principal(conversation)
+        updated_at = str(row[17] or row[11])
+        connection.execute(
+            "INSERT INTO team_resource_subscription_prompts_v3 VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (principal.kind, principal.id, *row, updated_at),
+        )
 
 
 def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str, str]:
@@ -589,4 +1051,4 @@ def _optional_actor(values: tuple[Any, ...]) -> ActorRef | None:
 
 
 def _now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat()

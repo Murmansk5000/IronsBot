@@ -39,6 +39,11 @@ class ConversationPrincipalMerge:
     target: ConversationPrincipal
 
 
+class IdentityPrincipalConflictError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("official identity component has conflicting principals")
+
+
 @dataclass(slots=True)
 class IdentityPrincipalService:
     """Own endpoint-to-principal equivalence without changing send addresses."""
@@ -48,6 +53,13 @@ class IdentityPrincipalService:
         default_factory=dict
     )
     _union_principals: dict[tuple[str, str], ActorPrincipal] = field(
+        default_factory=dict
+    )
+    _union_identifiers_by_endpoint: dict[
+        tuple[str, str], set[tuple[str, str]]
+    ] = field(default_factory=dict)
+    _explicit_qq_links: dict[tuple[str, str], str] = field(default_factory=dict)
+    _configured_actor_principals: dict[tuple[str, str], ActorPrincipal] = field(
         default_factory=dict
     )
     _conversation_principals: dict[ConversationRef, ConversationPrincipal] = field(
@@ -63,8 +75,10 @@ class IdentityPrincipalService:
         if existing is not None:
             self._actor_principals[actor] = existing
             return existing
-        principal = ActorPrincipal("official_endpoint", _actor_endpoint_id(actor))
+        principal = default_actor_principal(actor)
         self._actor_principals[actor] = principal
+        if actor.account_id is not None:
+            self._official_principals[(actor.account_id, actor.id)] = principal
         return principal
 
     def conversation_principal(
@@ -76,13 +90,7 @@ class IdentityPrincipalService:
         existing = self._conversation_principals.get(conversation)
         if existing is not None:
             return existing
-        kind: ConversationPrincipalKind = (
-            "official_group"
-            if conversation.platform is Platform.QQ_OFFICIAL
-            and conversation.kind == "group"
-            else "conversation"
-        )
-        principal = ConversationPrincipal(kind, _conversation_endpoint_id(conversation))
+        principal = default_conversation_principal(conversation)
         self._conversation_principals[conversation] = principal
         return principal
 
@@ -95,14 +103,16 @@ class IdentityPrincipalService:
         if actor.platform is not Platform.QQ_OFFICIAL:
             return ()
         identifiers = _union_identifiers(evidence)
+        endpoint = _official_endpoint(actor)
+        self._union_identifiers_by_endpoint.setdefault(endpoint, set()).update(
+            identifiers
+        )
         candidates = {
             principal
             for identifier in identifiers
             if (principal := self._union_principals.get(identifier)) is not None
         }
-        endpoint_principal = self._actor_principals.get(actor)
-        if endpoint_principal is not None:
-            candidates.add(endpoint_principal)
+        candidates.add(self.actor_principal(actor))
         target = _select_actor_principal(candidates, identifiers)
         merges = self._replace_actor_principals(candidates, target)
         self._actor_principals[actor] = target
@@ -128,6 +138,7 @@ class IdentityPrincipalService:
         official: OfficialIdentity,
     ) -> tuple[ActorPrincipalMerge, ...]:
         endpoint = (official.app_id, official.openid)
+        self._explicit_qq_links[endpoint] = onebot_qq_id
         current = self._official_principals.get(endpoint)
         target = ActorPrincipal("qq", onebot_qq_id)
         merges = self._replace_actor_principals(
@@ -139,6 +150,71 @@ class IdentityPrincipalService:
             if actor.account_id == official.app_id and actor.id == official.openid:
                 self._actor_principals[actor] = target
         return merges
+
+    def register_configured_actor(
+        self,
+        *,
+        alias: str,
+        onebot_qq_id: str | None,
+        official_endpoints: Iterable[tuple[str, str]],
+    ) -> None:
+        target = (
+            ActorPrincipal("qq", onebot_qq_id)
+            if onebot_qq_id is not None
+            else ActorPrincipal("configured_user", alias)
+        )
+        for endpoint in official_endpoints:
+            self._configured_actor_principals[endpoint] = target
+            self._official_principals[endpoint] = target
+
+    def unregister_identity_link(
+        self,
+        link: CrossPlatformIdentityLink,
+    ) -> None:
+        endpoint = (link.official.app_id, link.official.openid)
+        if self._explicit_qq_links.get(endpoint) != link.onebot_qq_id:
+            return
+        self._explicit_qq_links.pop(endpoint)
+        component = self._official_component(endpoint)
+        target = self._component_target(component)
+        for member in component:
+            self._official_principals[member] = target
+        for actor in tuple(self._actor_principals):
+            if _official_endpoint(actor) in component:
+                self._actor_principals[actor] = target
+        for member in component:
+            for identifier in self._union_identifiers_by_endpoint.get(member, set()):
+                self._union_principals[identifier] = target
+
+    def register_configured_group(
+        self,
+        *,
+        alias: str,
+        onebot_group_id: str | None,
+        official_endpoints: Iterable[tuple[str, str]],
+    ) -> tuple[ConversationPrincipalMerge, ...]:
+        target = (
+            ConversationPrincipal("qq_group", onebot_group_id)
+            if onebot_group_id is not None
+            else ConversationPrincipal("configured_group", alias)
+        )
+        sources: set[ConversationPrincipal] = set()
+        for app_id, group_openid in official_endpoints:
+            conversation = ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                group_openid,
+                account_id=app_id,
+            )
+            sources.add(self.conversation_principal(conversation))
+            self._conversation_principals[conversation] = target
+        return tuple(
+            ConversationPrincipalMerge(source, target)
+            for source in sorted(
+                sources - {target},
+                key=lambda item: (item.kind, item.id),
+            )
+        )
 
     def register_group_link(
         self,
@@ -156,6 +232,27 @@ class IdentityPrincipalService:
         if current == target:
             return ()
         return (ConversationPrincipalMerge(current, target),)
+
+    def onebot_actor(self, actor: ActorRef) -> ActorRef | None:
+        principal = self.actor_principal(actor)
+        if principal.kind != "qq":
+            return None
+        return ActorRef(Platform.ONEBOT, principal.id)
+
+    def conversation_endpoints(
+        self,
+        principal: ConversationPrincipal,
+    ) -> tuple[ConversationRef, ...]:
+        endpoints = [
+            conversation
+            for conversation, resolved in self._conversation_principals.items()
+            if resolved == principal
+        ]
+        if principal.kind == "qq_group":
+            onebot = ConversationRef(Platform.ONEBOT, "group", principal.id)
+            if onebot not in endpoints:
+                endpoints.insert(0, onebot)
+        return tuple(endpoints)
 
     def _replace_actor_principals(
         self,
@@ -178,6 +275,63 @@ class IdentityPrincipalService:
             ActorPrincipalMerge(source, target)
             for source in sorted(replaced, key=lambda item: (item.kind, item.id))
         )
+
+    def _official_component(
+        self,
+        endpoint: tuple[str, str],
+    ) -> set[tuple[str, str]]:
+        component = {endpoint}
+        identifiers = set(self._union_identifiers_by_endpoint.get(endpoint, set()))
+        changed = True
+        while changed:
+            changed = False
+            for candidate, candidate_identifiers in (
+                self._union_identifiers_by_endpoint.items()
+            ):
+                if candidate in component or not identifiers.intersection(
+                    candidate_identifiers
+                ):
+                    continue
+                component.add(candidate)
+                identifiers.update(candidate_identifiers)
+                changed = True
+        return component
+
+    def _component_target(
+        self,
+        component: set[tuple[str, str]],
+    ) -> ActorPrincipal:
+        configured = {
+            principal
+            for endpoint in component
+            if (principal := self._configured_actor_principals.get(endpoint))
+            is not None
+        }
+        explicit = {
+            ActorPrincipal("qq", qq_id)
+            for endpoint in component
+            if (qq_id := self._explicit_qq_links.get(endpoint)) is not None
+        }
+        authoritative = configured | explicit
+        if len(authoritative) > 1:
+            raise IdentityPrincipalConflictError
+        if authoritative:
+            return next(iter(authoritative))
+        identifiers = tuple(
+            sorted(
+                {
+                    identifier
+                    for endpoint in component
+                    for identifier in self._union_identifiers_by_endpoint.get(
+                        endpoint, set()
+                    )
+                }
+            )
+        )
+        if identifiers:
+            return ActorPrincipal("official_union", _union_principal_id(identifiers))
+        endpoint = next(iter(component))
+        return ActorPrincipal("official_endpoint", _official_endpoint_id(endpoint))
 
 
 def _select_actor_principal(
@@ -228,6 +382,14 @@ def _actor_endpoint_id(actor: ActorRef) -> str:
     )
 
 
+def _official_endpoint(actor: ActorRef) -> tuple[str, str]:
+    return (actor.account_id or "", actor.id)
+
+
+def _official_endpoint_id(endpoint: tuple[str, str]) -> str:
+    return json.dumps(endpoint, ensure_ascii=True, separators=(",", ":"))
+
+
 def _conversation_endpoint_id(conversation: ConversationRef) -> str:
     return json.dumps(
         (
@@ -239,3 +401,27 @@ def _conversation_endpoint_id(conversation: ConversationRef) -> str:
         ensure_ascii=True,
         separators=(",", ":"),
     )
+
+
+def default_actor_principal(actor: ActorRef) -> ActorPrincipal:
+    """Return the standalone principal before trusted links are observed."""
+
+    if actor.platform is Platform.ONEBOT:
+        return ActorPrincipal("qq", actor.id)
+    return ActorPrincipal("official_endpoint", _actor_endpoint_id(actor))
+
+
+def default_conversation_principal(
+    conversation: ConversationRef,
+) -> ConversationPrincipal:
+    """Return the standalone conversation owner before trusted links are observed."""
+
+    if conversation.platform is Platform.ONEBOT and conversation.kind == "group":
+        return ConversationPrincipal("qq_group", conversation.id)
+    kind: ConversationPrincipalKind = (
+        "official_group"
+        if conversation.platform is Platform.QQ_OFFICIAL
+        and conversation.kind == "group"
+        else "conversation"
+    )
+    return ConversationPrincipal(kind, _conversation_endpoint_id(conversation))

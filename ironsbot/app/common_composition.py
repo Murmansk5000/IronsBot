@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
+    from ironsbot.services.identity_principals import IdentityPrincipalService
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +59,7 @@ class CommonComponents:
 def build_common_components(
     settings: Settings,
     task_owner: TaskOwner,
+    identity_principals: IdentityPrincipalService,
     *,
     http_client: AsyncClient,
     cache_root: Path,
@@ -74,24 +76,17 @@ def build_common_components(
             else None
         ),
         references=settings.platform_references,
+        principals=identity_principals,
     )
-    for target in settings.identities.users.values():
-        if target.qq is None:
-            continue
-        for alias, openid in target.official.items():
-            account = settings.bot.qq_official.enabled_accounts.get(alias)
-            if account is not None:
-                features.register_identity_link(
-                    official_app_id=account.app_id,
-                    official_openid=openid,
-                    onebot_qq_id=str(target.qq),
-                )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
         features,
         task_owner.create,
     )
-    subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
+    subscriptions = PushUnsubscribeStore(
+        settings.paths.qq_state,
+        principal_for=identity_principals.conversation_principal,
+    )
     bot_router = BotRouter(
         settings.messaging.bot_routing,
         settings.onebot_references,

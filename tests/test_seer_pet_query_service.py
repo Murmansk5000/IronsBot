@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -161,6 +162,38 @@ async def test_avatar_uses_pet_head_resource_without_holding_data_session() -> N
     assert result.reply.leading_text == "【雷伊】（70）"
     assert images.requests == [("pet_head", "70")]
     assert not data.session_active
+
+
+@pytest.mark.asyncio
+async def test_pet_image_failure_is_redacted_and_reported() -> None:
+    data = FakeData()
+    reporter = AsyncMock()
+    failure = ImageSourceError("private source detail")
+
+    class FailedImages:
+        async def fetch(
+            self,
+            _kind: object,
+            _key: str,
+            *,
+            fallback: bool = True,
+        ) -> bytes:
+            assert fallback is False
+            raise failure
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FailedImages()),
+        cast("Any", object()),
+        reporter,
+    )
+
+    result = await service.select_image(PetImageSelection(1400466, "沸腾乐章·萨特"))
+
+    assert result.reply is not None
+    assert result.reply.image_error == "图片素材获取失败，暂时无法显示。"
+    assert "private source detail" not in result.reply.image_error
+    reporter.assert_awaited_once_with("pet_body", "1400466", failure)
 
 
 @pytest.mark.asyncio

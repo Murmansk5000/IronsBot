@@ -62,6 +62,7 @@ async def test_union_service_registers_propagated_links(tmp_path: Path) -> None:
         store,
         cast("AdminNoticeService", _AdminNotices()),
         IdentityPrincipalService(),
+        lambda _merge: None,
         linked.append,
         clock=lambda: 100.0,
     )
@@ -97,6 +98,7 @@ async def test_union_service_reports_conflict_without_exposing_ids(
         store,
         cast("AdminNoticeService", notices),
         IdentityPrincipalService(),
+        lambda _merge: None,
         lambda _link: None,
         clock=lambda: 100.0,
     )

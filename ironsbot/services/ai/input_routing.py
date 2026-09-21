@@ -22,11 +22,11 @@ class AiInputDecision:
 
     try_intent: bool = False
     try_chat: bool = False
-    offer_help_hint: bool = False
+    offer_addressed_hint: bool = False
 
     @property
     def recognized(self) -> bool:
-        return self.try_intent or self.try_chat or self.offer_help_hint
+        return self.try_intent or self.try_chat or self.offer_addressed_hint
 
 
 class AiInputRoutingService:
@@ -68,11 +68,11 @@ class AiInputRoutingService:
         available = self._available_ai_commands(command_context)
         if message.kind is MessageInputKind.BOT_MENTION:
             if not message.text.strip():
-                return AiInputDecision(offer_help_hint=True)
+                return AiInputDecision(offer_addressed_hint=True)
             chat = "ai_chat.group" in available
             return AiInputDecision(
                 try_chat=chat,
-                offer_help_hint=not chat,
+                offer_addressed_hint=not chat,
             )
 
         if message.kind is not MessageInputKind.DIRECT:

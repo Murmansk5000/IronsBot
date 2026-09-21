@@ -23,7 +23,10 @@ if TYPE_CHECKING:
         CrossPlatformIdentityLink,
         IdentityLinkStore,
     )
-    from ironsbot.services.identity_principals import IdentityPrincipalService
+    from ironsbot.services.identity_principals import (
+        ActorPrincipalMerge,
+        IdentityPrincipalService,
+    )
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
 logger = logging.getLogger(__name__)
@@ -34,6 +37,7 @@ class OfficialUnionIdentityService:
     store: IdentityLinkStore
     admin_notices: AdminNoticeService
     principals: IdentityPrincipalService
+    on_merge: Callable[[ActorPrincipalMerge], None]
     on_link: Callable[[CrossPlatformIdentityLink], None]
     clock: Callable[[], float] = time.time
 
@@ -61,9 +65,14 @@ class OfficialUnionIdentityService:
         except (UnionIdentityConflictError, UnionIdentityEvidenceChangedError) as error:
             await self._report_conflict(incoming, error)
             return False
-        self.principals.observe_union_identity(actor=actor, evidence=evidence)
+        for merge in self.principals.observe_union_identity(
+            actor=actor,
+            evidence=evidence,
+        ):
+            self.on_merge(merge)
         for link in links:
-            self.principals.register_identity_link(link)
+            for merge in self.principals.register_identity_link(link):
+                self.on_merge(merge)
             self.on_link(link)
         return bool(links)
 
@@ -75,13 +84,13 @@ class OfficialUnionIdentityService:
         actor = incoming.actor
         account = actor.account_id or "missing"
         logger.error(
-            "QQ Official union identity conflict: account=%s actor=%s error_type=%s",
+            "official union identity conflict: account=%s actor=%s error_type=%s",
             reference_digest(account),
             reference_digest(actor.id),
             type(error).__name__,
         )
         await self.admin_notices.send(
-            "⚠️ QQ 官方统一身份关联冲突\n"
+            "⚠️ 官方统一身份关联冲突\n"
             "已拒绝自动合并，不会覆盖现有账号关联。\n"
             f"账号摘要：{reference_digest(account)}\n"
             f"用户摘要：{reference_digest(actor.id)}\n"
@@ -90,5 +99,5 @@ class OfficialUnionIdentityService:
                 "official_union_identity_conflict:"
                 f"{reference_digest(account)}:{reference_digest(actor.id)}"
             ),
-            action_name="QQ 官方统一身份冲突告警",
+            action_name="官方统一身份冲突告警",
         )
