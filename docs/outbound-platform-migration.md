@@ -81,7 +81,9 @@ APP_SECRET_10002=
 All accounts with a configured Secret connect independently. `default_account`
 owns private messages and groups without a more specific owner. A logical group
 with exactly one configured official endpoint is assigned to that account;
-`group_routes` selects the responder when a logical group has several endpoints.
+`group_routes` selects the normal responder and the only proactive sender when a
+logical group has several endpoints. A non-selected bot can still return a
+passive reply when a user directly addresses that bot.
 `required` only
 controls whether that account's startup failure aborts the application; it does
 not select a fallback sender. A group feature policy authorizes the logical

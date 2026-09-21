@@ -29,7 +29,9 @@ reply sequences, and outbound routing by the owning AppID.
 - `default_account` owns private messages and groups without an explicit route;
   it is mandatory when several accounts are active.
 - `group_routes` maps logical group aliases to the only account allowed to handle
-  inbound commands for that group.
+  normal inbound commands and proactive outbound delivery for that group. A
+  directly addressed event may still receive its passive reply through the bot
+  that received it.
 - A logical group with exactly one configured official endpoint is owned by that
   account automatically; `group_routes` resolves only multi-endpoint overrides.
 - `[bot.qq_official.accounts.<alias>]` owns one account. Aliases contain only
