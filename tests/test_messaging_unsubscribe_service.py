@@ -1,3 +1,4 @@
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -5,8 +6,11 @@ import pytest
 
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.push_subscriptions import (
+    PUSH_SUBSCRIPTION_SCHEMA,
     PushUnsubscribeStore,
 )
+from ironsbot.services.identity_link_store import CrossPlatformGroupLink
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
@@ -31,6 +35,15 @@ def _private(user_id: int) -> ConversationRef:
 
 def _group(group_id: int) -> ConversationRef:
     return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _official_group(app_id: str, group_openid: str) -> ConversationRef:
+    return ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        group_openid,
+        account_id=app_id,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +166,146 @@ def test_store_daily_hint_marker_is_per_target_and_day(tmp_path: Path) -> None:
         "push_subscription_hint",
         today="2026-07-10",
     )
+
+
+def test_group_principal_merge_unifies_push_state_and_preserves_endpoint(
+    tmp_path: Path,
+) -> None:
+    principals = IdentityPrincipalService()
+    path = tmp_path / "unsubscribe.sqlite"
+    store = PushUnsubscribeStore(
+        path,
+        principal_for=principals.conversation_principal,
+    )
+    onebot = _group(2001)
+    official_a = _official_group("app-a", "group-a")
+    official_b = _official_group("app-b", "group-b")
+
+    store.unsubscribe(onebot, "onebot-only", "text_push")
+    store.unsubscribe(official_a, "official-only", "bili_push")
+    store.set_time_preference(
+        onebot,
+        "daily",
+        CRON_TIME_PREFERENCE,
+        "21:00",
+    )
+    store.set_time_preference(
+        official_a,
+        "daily",
+        CRON_TIME_PREFERENCE,
+        "22:00",
+    )
+    assert store.mark_daily_hint_sent(
+        onebot,
+        "push_subscription_hint",
+        today="2026-07-09",
+    )
+    assert store.mark_daily_hint_sent(
+        official_a,
+        "push_subscription_hint",
+        today="2026-07-10",
+    )
+
+    for link in (
+        CrossPlatformGroupLink("2001", "app-a", "group-a", 1.0),
+        CrossPlatformGroupLink("2001", "app-b", "group-b", 2.0),
+    ):
+        for merge in principals.register_group_link(link):
+            store.merge_principals(merge.source, merge.target)
+
+    for conversation in (onebot, official_a, official_b):
+        assert store.unsubscribed_keys(conversation) == {
+            "onebot-only",
+            "official-only",
+        }
+        assert (
+            store.get_time_preference(
+                conversation,
+                "daily",
+                CRON_TIME_PREFERENCE,
+            )
+            == "22:00"
+        )
+        assert not store.mark_daily_hint_sent(
+            conversation,
+            "push_subscription_hint",
+            today="2026-07-10",
+        )
+
+    preferences = store.all_time_preferences(
+        subscription_key="daily",
+        preference_type=CRON_TIME_PREFERENCE,
+    )
+    assert len(preferences) == 1
+    assert preferences[0].conversation == official_a
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM push_unsubscriptions "
+            "WHERE principal_kind = 'official_group'"
+        ).fetchone() == (0,)
+        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+
+
+def test_v2_push_state_migrates_to_principal_ownership(tmp_path: Path) -> None:
+    path = tmp_path / "unsubscribe.sqlite"
+    with sqlite3.connect(path) as connection:
+        for statement in PUSH_SUBSCRIPTION_SCHEMA:
+            connection.execute(statement)
+        connection.execute(
+            """
+            CREATE TABLE ironsbot_schema_migrations (
+                namespace TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO ironsbot_schema_migrations VALUES "
+            "('push_subscriptions', 2, '2026-07-09T00:00:00+00:00')"
+        )
+        connection.execute(
+            "INSERT INTO push_unsubscriptions VALUES "
+            "('onebot', '', 'group', '2001', 'daily', 'text_push', "
+            "'2026-07-09T00:00:00+00:00')"
+        )
+        connection.execute(
+            "INSERT INTO push_time_preferences VALUES "
+            "('onebot', '', 'group', '2001', 'daily', 'cron_time', '22:30', "
+            "'2026-07-09T00:00:00+00:00')"
+        )
+        connection.execute(
+            "INSERT INTO push_daily_hints VALUES "
+            "('onebot', '', 'group', '2001', 'hint', '2026-07-09', "
+            "'2026-07-09T00:00:00+00:00')"
+        )
+
+    store = PushUnsubscribeStore(path)
+
+    assert store.is_unsubscribed(_group(2001), "daily")
+    assert (
+        store.get_time_preference(
+            _group(2001),
+            "daily",
+            CRON_TIME_PREFERENCE,
+        )
+        == "22:30"
+    )
+    assert not store.mark_daily_hint_sent(
+        _group(2001),
+        "hint",
+        today="2026-07-09",
+    )
+    with sqlite3.connect(path) as connection:
+        columns = {
+            str(row[1])
+            for row in connection.execute(
+                "PRAGMA table_info(push_unsubscriptions)"
+            ).fetchall()
+        }
+        assert {"principal_kind", "principal_id"} <= columns
+        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
 
 
 def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:

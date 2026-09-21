@@ -10,6 +10,7 @@ from ironsbot.services.ai import intent
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import AiService
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from tests.helpers.ai import FakeAiCompletionClient, configured_ai_config
 from tests.helpers.runtime import build_test_runtime
 
@@ -107,6 +108,7 @@ def _service(
         runtime.features,
         runtime.admin_notices,
         ("战队",),
+        IdentityPrincipalService(),
         FakeAiCompletionClient(config, request_completion),
     )
 
