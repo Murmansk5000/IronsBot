@@ -430,7 +430,7 @@ def _format_player_detail_menu_item(
     selection: tuple[str, str],
     label: str,
 ) -> str:
-    return f"{selection[0]}.【{label}】"
+    return f"{selection[0]}. 【{label}】"
 
 
 def _unique_commands(commands: Iterable[str]) -> tuple[str, ...]:
