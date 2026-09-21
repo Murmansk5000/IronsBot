@@ -14,7 +14,7 @@ def test_format_selection_menu_numbers_items() -> None:
     assert "请选择：" in text
     assert "1. 苹果" in text
     assert "2. 香蕉" in text
-    assert "0.【退出】" in text
+    assert "0. 【退出】" in text
     assert "💬 输入序号选择" in text
 
 
@@ -53,5 +53,5 @@ def test_format_selection_menu_supports_prefix_and_detail_lines() -> None:
     assert "   👤 赛尔号（UID：1310714247）" in text
     assert "   📝 测试动态" in text
     assert " ↳ 3. 子项" in text
-    assert "0.【退出】" in text
+    assert "0. 【退出】" in text
     assert "✅ 已订阅 · ❌ 已退订，输入序号切换" in text

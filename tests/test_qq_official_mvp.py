@@ -1583,6 +1583,41 @@ def test_qq_official_renderer_emits_scoped_member_mentions() -> None:
     )
 
 
+def test_qq_official_renderer_keeps_exit_item_in_markdown_list_layout() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                MentionPart(member),
+                TextPart(" 1. 【收集】\n2. 【巅峰】\n0. 【退出】"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" /> 1. 【收集】\n'
+            "2. 【巅峰】\n"
+            "0. 【退出】",
+            markdown=True,
+        ),
+    )
+
+
 def test_qq_official_renderer_rejects_cross_group_member_mentions() -> None:
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,

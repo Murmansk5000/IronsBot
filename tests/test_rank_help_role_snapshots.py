@@ -124,3 +124,4 @@ def test_rank_help_group_manager_detail_only_shows_group_setting() -> None:
 
     assert "/榜单显示 20" in detail
     assert "/样本情况" not in detail
+    assert detail.endswith("0. 【退出】")

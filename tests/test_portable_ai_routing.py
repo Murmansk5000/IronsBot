@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.services.ai.actions import AiIntentActionExecutor
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.portable_reply import PortableOperation
 
 ACTOR = ActorRef(Platform.QQ_OFFICIAL, "actor", account_id="app")
 GROUP = ConversationRef(
@@ -147,12 +148,16 @@ def _context(
     )
 
 
-def _router(ai: _Ai) -> PortableCommandRouter:
+def _router(
+    ai: _Ai,
+    *,
+    operation: PortableOperation | None = None,
+) -> PortableCommandRouter:
     catalog = _catalog()
     features = _features()
     return PortableCommandRouter(
         catalog,
-        {"example.query": _run_query},
+        {"example.query": operation or _run_query},
         features,
         ai=cast("AiService", ai),
         ai_intent_actions=cast("AiIntentActionExecutor", _Executor()),
@@ -169,6 +174,13 @@ async def _run_query(
     return "查询结果"
 
 
+async def _run_silent_query(
+    text: str,
+    context: MessageInputContext,
+) -> None:
+    del text, context
+
+
 @pytest.mark.parametrize("input_form", ["direct", "mentioned"])
 @pytest.mark.asyncio
 async def test_group_command_precedes_ai_with_or_without_bot_mention(
@@ -183,6 +195,18 @@ async def test_group_command_precedes_ai_with_or_without_bot_mention(
 
     assert reply is not None
     assert reply.message.parts == (TextPart("查询结果"),)
+    assert ai.intent_calls == []
+    assert ai.chat_calls == []
+
+
+@pytest.mark.asyncio
+async def test_claimed_entity_query_can_stay_silent_after_an_empty_lookup() -> None:
+    ai = _Ai(action=ACTION)
+    router = _router(ai, operation=_run_silent_query)
+    context = _context(GROUP, "查询")
+
+    assert router.recognizes(context)
+    assert await router.dispatch(context) is None
     assert ai.intent_calls == []
     assert ai.chat_calls == []
 

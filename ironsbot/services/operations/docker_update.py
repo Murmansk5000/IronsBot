@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from ironsbot.core.selection import EXIT_SELECTION_LINE
+
 from .docker_formatting import (
     format_docker_image_check_reply,
     format_docker_update_reply,
@@ -76,7 +78,7 @@ def docker_maintenance_menu_text() -> str:
     lines.extend(
         f"{option.key}. {option.label}" for option in DOCKER_MAINTENANCE_OPTIONS
     )
-    lines.extend(("0.【退出】", "", "输入序号后会立即执行。"))
+    lines.extend((EXIT_SELECTION_LINE, "", "输入序号后会立即执行。"))
     return "\n".join(lines)
 
 
