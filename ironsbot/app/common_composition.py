@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ironsbot.config.models.features import build_feature_service
 from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
+from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.onebot.matchers import PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -126,6 +127,7 @@ def build_common_components(
             raise RuntimeError(msg) from error
 
         recipient_state = QQOfficialRecipientStateStore(settings.paths.qq_state)
+        ingress_routing = _build_qq_official_ingress_routing(settings)
         qq_official = QQOfficialRuntime(
             tuple(
                 QQOfficialRuntimeAccount(
@@ -142,6 +144,7 @@ def build_common_components(
             startup_timeout_seconds=settings.bot.qq_official.startup_timeout_seconds,
             recipient_state=recipient_state,
         )
+        qq_official.configure_ingress_routing(ingress_routing)
 
         platform_messengers[Platform.QQ_OFFICIAL] = QQOfficialOutboundMessenger(
             {
@@ -191,6 +194,46 @@ def build_common_components(
             OutboundAdminNoticeSender(proactive_delivery),
         ),
     )
+
+
+def _build_qq_official_ingress_routing(
+    settings: Settings,
+) -> QQOfficialIngressRouting:
+    account_ids = {
+        alias: account.app_id
+        for alias, account in settings.bot.qq_official.enabled_accounts.items()
+    }
+    default_alias = settings.bot.qq_official.resolved_default_account
+    assert default_alias is not None
+    preferred_accounts: dict[str, str] = {}
+    for target in settings.identities.groups.values():
+        account_aliases = [alias for alias in target.official if alias in account_ids]
+        if target.qq is not None and len(account_aliases) == 1:
+            preferred_accounts[str(target.qq)] = account_ids[account_aliases[0]]
+    preferred_accounts.update(
+        {
+            str(settings.identities.groups[group_alias].qq): account_ids[account_alias]
+            for group_alias, account_alias in (
+                settings.bot.qq_official.group_routes.items()
+            )
+        }
+    )
+    routing = QQOfficialIngressRouting(
+        account_ids[default_alias],
+        preferred_accounts,
+    )
+    for target in settings.identities.groups.values():
+        if target.qq is None:
+            continue
+        for account_alias, openid in target.official.items():
+            account_id = account_ids.get(account_alias)
+            if account_id is not None:
+                routing.register_group_endpoint(
+                    account_id=account_id,
+                    official_group_openid=openid,
+                    onebot_group_id=str(target.qq),
+                )
+    return routing
 
 
 def _configure_qq_sdk_api(*, sandbox: bool) -> None:
