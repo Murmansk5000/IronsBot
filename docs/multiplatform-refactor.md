@@ -43,34 +43,65 @@
 
 ```text
 Program  [███████□]  verified phases: 7/8; percentage awaits a weighted acceptance baseline
-Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
+Phase 7  [███████░]  live acceptance milestones: 7/8
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 当前权威状态（2026-09-20）
+## 当前权威状态（2026-09-21）
 
-Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。当前最新公共发布修订为 `812d8bc2`，
-Docker Hub/GHCR 清单 digest 为
-`sha256:bd09d556838daa7fcae4c7cd24aa74e057c807d497c83483b367b819cb999bc3`，
-amd64 压缩层合计 100,671,280 bytes，CI 记录的展开大小为 260,017,194 bytes。较早生产 digest 已记录 Unraid、QQ Official READY、无头
-worker 和“阵容”进度、文字、图片送达；当前公开镜像及本地后续提交仍须按最终精确 digest
-复验。群内请求者定位使用 source `message_reference`，客户端显示原生回复，不再发送会被
-原样显示的 `<qqbot-at-user>` 文本。身份静默观察也读取引用原消息的数字发送者，不再依赖
-可见 @。
+Phase 0 至 Phase 6 已关闭，Phase 7 仍开放。唯一公开开发与发布源是
+`Murmansk5000/IronsBot` 的 `main`。当前生产运行时修订为 `de4bdbbe`，Docker Hub 清单
+digest 为 `sha256:4cd7f3735a0e299f6a207583e332e6b373677449b5c18f279ef0a85e929a7a02`，
+Unraid 展开大小为 260,040,445 bytes；`/app`、Python site-packages 和字体分别为
+3,273,349、102,592,867 和 19,882,302 bytes。发布流水线 `35503424404` 的构建、离线
+smoke、依赖审计、目录与增长门禁均通过。生产 `config_check` 确认 QQ Official 是唯一
+出站平台、OneBot outbound 关闭且 observer 身份验证保持启用；三个独立官方账号均取得
+AccessToken 并进入 READY，OneBot observer、三无头 worker 和共享 Docker 网络健康。
+
+该候选同时包含已验收的成员提及修复：TEXT 不解析 OpenID 提及，而 Markdown 与 source
+`message_reference` 组合会导致部分 QQ 客户端重复正文。正式路径将首条群回复收口为一条
+Markdown：同时包含发令成员提及、换行和正文，并携带被动 `msg_id`/`msg_seq`。该路径不另发单独
+`at` 或 TEXT 正文，不占用第二次回复额度；字面 OpenID 标签为零。新精确 digest 已完成
+启动、三账号隔离和一条公众账号 C2C 被动回复。权限、故障和主动投递的当前可控范围已经
+闭环；AI 独立备用文本 provider 已完成真实 HTTP 401 到备用 HTTP 200 的跨 provider 切换。
+腾讯自然产生的拒收/额度事件作为 External TODO 保留，不能把未发生的平台事件描述为真实通过。
+
+`docs/` 不进入 Docker 构建上下文。后续纯文档提交可能因 OCI revision 标签生成不同
+manifest digest，但不会改变运行时文件；Phase 7 可继续使用上述行为候选，除非实际生产
+部署选择了另一个精确 digest，届时必须在验收记录中固定所部署的值。
+
+最新公开发布候选来自 `2f1dd988`，workflow `35557100608` 已将 Docker Hub/GHCR 的
+`0.5.1.1953` 与 `sha-2f1dd98` 固定到共同 digest
+`sha256:82576bcd9a8ced374acfe3432a89d2629855747daf510cdd0df82d1564dd526b`。镜像展开大小为
+`260083155` bytes，较上一候选增加 `394` bytes；`/app`、site-packages 和字体分别保持在
+`4852 KiB`、`106000 KiB` 和 `19452 KiB`。该候选已经通过构建、离线 smoke、依赖审计、
+目录与增长门禁，但尚未写入生产 Unraid，因此生产状态和 B10 视觉验收仍以上述已部署
+候选证据为准。
+
+主要查询矩阵已在此前生产 runtime tree 上完成 A1-A12：最后缺失的幸运橱窗使用受控
+OneBot 身份完成账号绑定、登录确认、隔离查询、四皮肤持久缓存和最终图片送达。生产专用
+密码只存在于 Unraid 掩码环境变量，不进入 TOML 或仓库。当前精确 digest 已复用相同业务
+树并完成启动验证，但 Phase 7 仍保持开放；当前唯一未关闭的验收里程碑是手机 QQ 对合并
+提及、换行和正文不重复的最终视觉确认。
+
+同一 `667177ea` 生产镜像重新生成幸运橱窗 v2 卡片，客户端收到一张 1040×559 PNG；四个
+皮肤、风尚券图标、钻石图标和中文均正常。字体稳定的 `★` 关注标记另由本地真实 HTML
+渲染检查覆盖。v2 缓存键隔离旧版无图标卡片，资源加载仍在 integration 层，纯
+Presenter/Renderer 边界未回退。
 
 已发布提交 `9aa4ee79` 将命令执行授权与帮助/戳一戳可见性分开：超级管理员可按
 `superuser_bypass` 执行未对群开启的 Feature，普通成员仍受群策略限制，黑名单和命令
-audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级管理员、普通成员、黑名单和
-管理通知不外泄的同一 digest 客户端证据，因此仍是 Phase 7 的待验收项。
+audience 不被绕过。真实客户端已经覆盖超级管理员绕过、普通成员隔离和黑名单优先级；
+管理异常已验证超级管理员私聊通知链及普通群零泄露的真实负向观察。
 
-公开 `origin/main` 与私有预览 `preview/main` 当前都指向 `812d8bc2`，旧的“预览落后
-公开仓库 7 个提交”关系已经结束。当前本地代码候选为 `feeafb77`，比两个发布 main
-领先 26 个提交；运行时差异包括绑定玩家橱窗修复、按官方账号隔离身份观察，以及安全
-回收已经被新镜像取代的旧 Docker 镜像，其余提交收紧测试门禁并记录实机证据。
-后续唯一公开镜像发布源为 `Murmansk5000/IronsBot` 的 main；预览仓库只保留同历史镜像，
-不得重新合入旧 `codex/multiplatform-architecture-v5` 分叉。
+公开 `main` 已包含运行时修订 `851bf5a9` 及其后续验收文档；每轮仍须以实际
+`git rev-list --left-right --count origin/main...HEAD` 结果核对同步状态。完整私有重构
+历史已作为第一父线并入公开主线，公开后续完善历史作为第二父线保留，合并时代码 tree 为
+`e548fa049c2bbf4c4d93e0ef424c024cd5e162e0`。私有 Preview 的全部 refs 均可由公开仓库
+到达，Release 资产哈希一致，仓库已设置为 Archived；活动工作树已移除 `preview` remote。
+后续不得再把私有 Preview 当作开发、同步或发布源。
 
 其余外部门槛包括第二真实 AppID、多账号隔离、腾讯主动消息拒绝/额度、拒收事件、
 自定义键盘权限和腾讯实际重复重投。它们不得被单账号基础查询成功替代，也不阻塞继续
@@ -78,7 +109,7 @@ audience 不被绕过。代码已发布，但生产权限矩阵仍缺少超级�
 
 ### 2026-09-20 三仓联合审计
 
-- IronsBot 本地代码候选 `feeafb77`：全量 `3824 passed, 7 skipped`；Ruff、生产与测试
+- IronsBot 公开 `main` `64058429`：全量 `3826 passed, 7 skipped`；Ruff、生产与测试
   BasedPyright、compileall、静态仓库检查和 diff check 通过。
 - SeerAPI 发布源为 `Murmansk-Seer/seerapi`，远端 main `0c7c9d5`。本地 `main` 已纯快进
   到同一远端提交；全量 `351 passed`、Ruff 通过。远端同一 main 的数据构建 workflow
@@ -379,7 +410,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 模拟能力测试、真实 OneBot WebSocket smoke、QQ Official 群/C2C MVP，以及私有 GHCR 预览镜像的安全构建与离线 smoke 已验收 | 真实 QQ 官方连接 smoke，随后逐功能迁移完整 Seer/AI 流程 | QQ Official 全功能可用或主动推送已获准 |
+| Phase 7 | `in_progress` | 公开 `2e74b9fd` 已关闭管理异常隔离验收；主要查询、权限、AI 主/备切换、推送、官方优先与 NapCat 静默均有真实证据，当前里程碑为 7/8 | 由用户在手机 QQ 确认合并提及、换行和正文不重复；C8 腾讯自然拒收/额度事件保留为 External TODO | 把未发生的腾讯拒绝事件写成已通过，或用模型目录成功替代真实 completion/failover |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除
@@ -2401,7 +2432,7 @@ feature；裸 OpenID 不再作为策略 key；
 对 `tencent-connect/openclaw-qqbot` 多账号实现的审计确认：OpenID 属于具体 AppID，
 多账号不能只扩展凭据列表。目标 `ActorRef` / `ConversationRef` 必须增加账户命名空间，
 并同步覆盖持久化主键、会话键、feature policy、Token/网关、回复序号和出站路由。
-账号别名只用于配置与环境变量命名，运行时以 AppID 作为账户命名空间，避免用字符串
+账号别名只用于配置引用，Secret 环境变量直接以 AppID 为后缀；运行时以 AppID 作为账户命名空间，避免用字符串
 拼接或默认账号回退制造不可逆的身份串号。
 
 账户感知的基础已经实现：核心 `ActorRef` / `ConversationRef` 可携带 `account_id`，
@@ -2425,7 +2456,7 @@ Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 s
 发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
 
 同一条全局 Feature policy 会展开到逻辑目标的所有已声明端点。静默 NapCat 观察使用
-同群、可信官方机器人 QQ、唯一 @ 对象、规范化回复和短时间窗口匹配；两次独立确认后
+同群、可信官方机器人 QQ、唯一 @ 对象、规范化回复和短时间窗口匹配；一次完整匹配后
 把 `member_openid` 与 QQ 号写入状态库。同一官方账号下相同 `member_openid` 跨群共用
 一个身份主体，群只保留为验证证据。普通用户不写入 TOML，静态 owner 等启动前必须
 已知的身份才在 `[identities.users]` 声明。
@@ -2472,7 +2503,7 @@ AccessToken、连接、Session 与 OpenID 命名空间；SDK 负责心跳、Resu
 
 跨平台身份最初实现为显式令牌协议，随后收口为同一身份仓库的三种精确来源：部署配置
 别名、显式短时单次令牌，以及可信官方机器人 source `message_reference` 的静默群观察。
-静默观察由 NapCat 读取被引用原消息的数字发送者，并要求同一逻辑群内两次独立、唯一且
+静默观察由 NapCat 读取被引用原消息的数字发送者，并要求同一逻辑群内一次唯一且
 一致的匹配；歧义、超时、来源不可信和既有冲突均失败关闭。C2C `user_openid` 与群
 `member_openid` 仍是不同身份作用域，一个精确官方身份不能静默改绑。实现不使用昵称、
 头像、模糊内容、裸时间、未引用发言记录或 `union_openid` 猜测。详见
