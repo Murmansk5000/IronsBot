@@ -5,11 +5,14 @@ from datetime import datetime
 import pytest
 
 from ironsbot.core.outbound import (
+    COMMAND_REPLY_TEMPLATE,
     BinaryImagePart,
     DeliveryFailureKind,
+    MentionPart,
     OutboundMessage,
     RemoteImagePart,
     ReplyContext,
+    ReplyTemplate,
     SendResult,
     TextPart,
     format_outbound_message,
@@ -118,3 +121,57 @@ def test_reply_rejects_empty_sequence() -> None:
             "event",
             sequence=" ",
         )
+
+
+def test_command_reply_template_references_and_mentions_group_sender() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-openid",
+        account_id="app-id",
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        kind="member",
+        scope_id=conversation.id,
+        account_id=conversation.account_id,
+    )
+    incoming = IncomingMessageRef(
+        Platform.QQ_OFFICIAL,
+        actor,
+        conversation,
+        "message-id",
+        "help",
+    )
+
+    prepared = COMMAND_REPLY_TEMPLATE.prepare(
+        incoming,
+        OutboundMessage.from_text("result"),
+    )
+
+    assert prepared.context == ReplyContext.from_message(incoming)
+    assert prepared.message.parts == (
+        MentionPart(actor),
+        TextPart("\n"),
+        TextPart("result"),
+    )
+
+
+def test_reply_template_can_disable_reference_and_sender_mention() -> None:
+    conversation = ConversationRef(Platform.ONEBOT, "group", "456")
+    incoming = IncomingMessageRef(
+        Platform.ONEBOT,
+        ActorRef(Platform.ONEBOT, "123", kind="member", scope_id="456"),
+        conversation,
+        "3",
+        "help",
+    )
+
+    prepared = ReplyTemplate(
+        include_reply=False,
+        mention_sender=False,
+    ).prepare(incoming, OutboundMessage.from_text("result"))
+
+    assert prepared.context is None
+    assert prepared.message == OutboundMessage.from_text("result")

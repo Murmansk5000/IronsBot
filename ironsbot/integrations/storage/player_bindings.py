@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity_link_store import CrossPlatformIdentityLink
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_bindings (
@@ -82,6 +83,69 @@ class SqlitePlayerBindingStore:
             bool(row[2]),
             _parse_datetime(row[3]),
         )
+
+    def reconcile_identity_link(self, link: CrossPlatformIdentityLink) -> None:
+        """Move a direct official binding onto its linked OneBot principal."""
+
+        with self._database.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            onebot = conn.execute(
+                """
+                SELECT player_id FROM player_bindings
+                WHERE actor_platform = 'onebot' AND actor_account_id = ''
+                  AND actor_kind = 'user' AND actor_id = ? AND actor_scope_id = ''
+                """,
+                (link.onebot_qq_id,),
+            ).fetchone()
+            official_rows = conn.execute(
+                """
+                SELECT player_id, player_nick, choice_completed, last_changed_at,
+                       created_at, updated_at
+                FROM player_bindings
+                WHERE actor_platform = 'qq_official' AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ?
+                ORDER BY updated_at DESC
+                """,
+                (
+                    link.official.app_id,
+                    link.official.kind,
+                    link.official.openid,
+                ),
+            ).fetchall()
+            source = next((row for row in official_rows if row[0] is not None), None)
+            if (onebot is None or onebot[0] is None) and source is not None:
+                conn.execute(
+                    """
+                    INSERT INTO player_bindings(
+                        actor_platform, actor_account_id, actor_kind, actor_id,
+                        actor_scope_id, player_id, player_nick, choice_completed,
+                        last_changed_at, created_at, updated_at
+                    ) VALUES ('onebot', '', 'user', ?, '', ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(
+                        actor_platform, actor_account_id, actor_kind, actor_id,
+                        actor_scope_id
+                    ) DO UPDATE SET
+                        player_id = excluded.player_id,
+                        player_nick = excluded.player_nick,
+                        choice_completed = excluded.choice_completed,
+                        last_changed_at = excluded.last_changed_at,
+                        updated_at = excluded.updated_at
+                    """,
+                    (link.onebot_qq_id, *source),
+                )
+            if official_rows:
+                conn.execute(
+                    """
+                    DELETE FROM player_bindings
+                    WHERE actor_platform = 'qq_official' AND actor_account_id = ?
+                      AND actor_kind = ? AND actor_id = ?
+                    """,
+                    (
+                        link.official.app_id,
+                        link.official.kind,
+                        link.official.openid,
+                    ),
+                )
 
     def bind(
         self,
