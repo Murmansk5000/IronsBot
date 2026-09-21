@@ -2874,7 +2874,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
 
 
 @pytest.mark.asyncio
-async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
+async def test_portable_router_prompts_for_command_after_empty_group_mention() -> None:
     features = build_feature_service(
         FeatureConfig(),
         (),
@@ -2910,7 +2910,7 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
 
     assert reply is not None
     assert cast("TextPart", reply.message.parts[0]).text == (
-        "你想聊什么？可以直接写问题。"
+        DIRECT_COMMAND_HELP_HINT_TEXT
     )
     assert ai.calls == []
 

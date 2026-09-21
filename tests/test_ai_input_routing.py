@@ -123,6 +123,14 @@ def test_group_bot_mention_only_tries_chat() -> None:
     assert not decision.offer_help_hint
 
 
+def test_empty_group_bot_mention_offers_help_even_when_chat_is_enabled() -> None:
+    decision = _decide(_input(GROUP, "", mentions_bot=True))
+
+    assert not decision.try_intent
+    assert not decision.try_chat
+    assert decision.offer_help_hint
+
+
 def test_private_direct_input_tries_intent_then_chat() -> None:
     decision = _decide(_input(PRIVATE, "聊聊"))
 
