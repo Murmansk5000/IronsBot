@@ -262,6 +262,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless_sessions,
         player_bindings,
         identity_principals,
+        admin_notices,
     )
     _apply_conversation_merges(
         configured_conversation_merges,

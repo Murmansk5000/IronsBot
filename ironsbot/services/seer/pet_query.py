@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from seerapi_models import PetORM, PetSkinORM
 
     from ironsbot.services.seer.data import SeerDataAccess
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
 
 logger = logging.getLogger(__name__)
 PET_PROMPT_MAX_ITEMS = 20
@@ -51,10 +51,12 @@ class PetQueryService:
         data: SeerDataAccess,
         images: SeerImageSource,
         render_info: PetInfoRenderer,
+        image_failure_reporter: ImageFailureReporter | None = None,
     ) -> None:
         self._data = data
         self._images = images
         self._render_info = render_info
+        self._image_failure_reporter = image_failure_reporter
 
     async def search_image(
         self,
@@ -157,6 +159,7 @@ class PetQueryService:
             self._images,
             "pet_head",
             str(pet.resource_id),
+            self._image_failure_reporter,
         )
         return QueryReply(
             leading_text=f"【{pet.name}】（{pet.pet_id}）",
@@ -188,6 +191,7 @@ class PetQueryService:
                 self._images,
                 "pet_body",
                 str(body_resource_id),
+                self._image_failure_reporter,
             )
             image_data = image.data
             image_error = image.error
