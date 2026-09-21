@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.htmlkit import (
@@ -17,10 +19,14 @@ from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
 from ironsbot.integrations.storage.seer_assets import build_seer_asset_store
+from ironsbot.services.seer.images import ImageSourceError
+from ironsbot.services.seer.render_assets import RenderAssetSession
 from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
 
 FINAL_RENDER_CACHE_INPUTS = (
+    Path(__file__),
+    SEER_RENDERING_PATH.parent / "render_assets.py",
     SEER_RENDERING_PATH,
     SEER_RENDERING_PATH.parent / "type_calc.py",
     SEER_RENDERING_PATH.parent / "type_query.py",
@@ -37,7 +43,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.seer_data.database import SeerDatabase, SeerReadSnapshot
     from ironsbot.integrations.storage.seer_assets import SeerAssetStore
     from ironsbot.runtime.cache_paths import CachePaths
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
     from ironsbot.services.seer.render_cache import RenderCache
 
 
@@ -55,13 +61,14 @@ class SeerRenderSessions:
     assets: SeerAssetStore
     cache: FileRenderCache
     versions: RenderCacheVersion
+    spawn: TaskSpawner
+    image_failure_reporter: ImageFailureReporter | None = None
 
     @contextmanager
     def open(self) -> Iterator[SeerRenderInputs]:
         with self.database.read_snapshot() as snapshot:
             publication = snapshot.publication
-            yield SeerRenderInputs(
-                snapshot,
+            assets = RenderAssetSession(
                 self.assets.bind(
                     HttpSeerImageSource(
                         self.clients, asset_snapshot_getter=lambda: publication.assets
@@ -72,6 +79,37 @@ class SeerRenderSessions:
                     publication.category_available,
                 ),
             )
+            try:
+                yield SeerRenderInputs(snapshot, assets, assets)
+            finally:
+                if assets.failures and self.image_failure_reporter is not None:
+                    failures = tuple(
+                        (kind, key, error)
+                        for (kind, key), error in assets.failures.items()
+                    )
+                    self.spawn(
+                        _report_render_asset_failures(
+                            self.image_failure_reporter, failures, None
+                        ),
+                        name="render-asset-failure-notice",
+                    )
+
+
+async def _report_render_asset_failures(
+    reporter: ImageFailureReporter,
+    failures: tuple[tuple[str, str, ImageSourceError], ...],
+    identity: object | None,
+) -> None:
+    del identity
+    if not failures:
+        return
+    try:
+        detail = "; ".join(f"{kind}:{key}: {error}" for kind, key, error in failures)
+        await reporter("render_batch", str(len(failures)), ImageSourceError(detail))
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "asset failure notice failed; continuing partial render"
+        )
 
 
 def build_seer_rendering_components(
@@ -106,5 +144,5 @@ def build_seer_rendering_components(
             render_html_template,
             render_config.native_timeout_seconds,
         ),
-        SeerRenderSessions(seer_database, http_clients, images, cache, versions),
+        SeerRenderSessions(seer_database, http_clients, images, cache, versions, spawn),
     )

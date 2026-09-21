@@ -115,6 +115,4 @@ async def test_weekly_preview_reports_source_failure() -> None:
         fail=True,
     )
 
-    assert await service.weekly_preview() == (
-        "❌获取图片失败！原因：primary: ConnectError"
-    )
+    assert await service.weekly_preview() == "图片素材获取失败，暂时无法显示。"

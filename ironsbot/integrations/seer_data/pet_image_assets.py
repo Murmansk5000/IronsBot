@@ -7,6 +7,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.images import to_data_uri
+from ironsbot.services.seer.render_assets import RenderAssetSession
 from ironsbot.services.seer.rendering.pet_image_assets import PetImageAssets
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ async def load_pet_image_assets(
     head_values = values[: len(distinct_resource_ids)]
     type_values = values[len(distinct_resource_ids) :]
     return PetImageAssets(
+        complete=not isinstance(images, RenderAssetSession) or images.complete,
         pet_heads=tuple(
             (resource_id, to_data_uri(value))
             for resource_id, value in zip(

@@ -19,12 +19,14 @@ from ironsbot.services.seer.images import (
     ImageSourceError,
     PublishedAssetRepository,
     PublishedRenderAssetSnapshot,
+    to_data_uri,
 )
 
 HTTP_NOT_FOUND = 404
 HTTP_OK = 200
 MAX_ASSET_FETCH_CONCURRENCY = 4
 PINNED_ASSET_SOURCE_COUNT = 2
+from tests.helpers.image_fixtures import png_fixture as _png
 
 
 def _asset_snapshot() -> PublishedRenderAssetSnapshot:
@@ -57,7 +59,7 @@ class _ConcurrentDetectingClient(httpx.AsyncClient):
         self.in_flight -= 1
         return httpx.Response(
             200,
-            content=b"image",
+            content=_png("image"),
             request=httpx.Request("GET", url),
         )
 
@@ -73,7 +75,7 @@ class _ItemFallbackClient(httpx.AsyncClient):
         status_code = HTTP_NOT_FOUND if "/doodle/" in url else HTTP_OK
         return httpx.Response(
             status_code,
-            content=b"item-image" if status_code == HTTP_OK else b"",
+            content=_png("item-image") if status_code == HTTP_OK else b"",
             request=httpx.Request("GET", url),
         )
 
@@ -153,7 +155,7 @@ def test_image_fetches_use_bounded_asset_store_concurrency(tmp_path: Path) -> No
 def test_item_image_tries_known_asset_categories() -> None:
     data, urls = asyncio.run(_fetch_item_from_fallback_source())
 
-    assert data == b"item-image"
+    assert data == _png("item-image")
     assert "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[0]
     assert "/item/doodle/icon/1726710.png" in urls[0]
     assert "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[1]
@@ -164,7 +166,7 @@ def test_item_image_tries_known_asset_categories() -> None:
 def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
     data, urls = asyncio.run(_fetch_sign_buff())
 
-    assert data == b"item-image"
+    assert data == _png("item-image")
     assert urls == [
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
@@ -175,7 +177,7 @@ def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
 def test_battle_effect_image_uses_the_published_asset_revision() -> None:
     data, urls = asyncio.run(_fetch_battle_effect())
 
-    assert data == b"item-image"
+    assert data == _png("item-image")
     assert urls == [
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
@@ -194,14 +196,16 @@ async def test_pinned_asset_retries_same_revision_through_cdn() -> None:
             if request.url.host == "raw.githubusercontent.com"
             else HTTP_OK
         )
-        return httpx.Response(status, content=b"item-image")
+        return httpx.Response(status, content=_png("item-image"))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
             asset_snapshot_getter=_asset_snapshot,
         )
-        assert await source.fetch("sign_buff", "33", fallback=False) == b"item-image"
+        assert await source.fetch("sign_buff", "33", fallback=False) == _png(
+            "item-image"
+        )
 
     assert len(urls) == PINNED_ASSET_SOURCE_COUNT
     assert "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[0]
@@ -224,14 +228,14 @@ async def test_mount_uses_its_generated_repository_revision() -> None:
     def respond(request: httpx.Request) -> httpx.Response:
         urls.append(str(request.url))
         status = HTTP_NOT_FOUND if "seer-unity-assets" in request.url.path else HTTP_OK
-        return httpx.Response(status, content=b"mount")
+        return httpx.Response(status, content=_png("mount"))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
             asset_snapshot_getter=lambda: snapshot,
         )
-        assert await source.fetch("mount", "1301170", fallback=False) == b"mount"
+        assert await source.fetch("mount", "1301170", fallback=False) == _png("mount")
 
     assert urls == [
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
@@ -268,14 +272,14 @@ async def test_autocard_uses_the_published_asset_revision(
 
     def respond(request: httpx.Request) -> httpx.Response:
         urls.append(str(request.url))
-        return httpx.Response(HTTP_OK, content=b"autocard")
+        return httpx.Response(HTTP_OK, content=_png("autocard"))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
             asset_snapshot_getter=_asset_snapshot,
         )
-        assert await source.fetch(kind, key, fallback=False) == b"autocard"  # type: ignore[arg-type]
+        assert await source.fetch(kind, key, fallback=False) == _png("autocard")  # type: ignore[arg-type]
 
     assert len(urls) == 1
     assert f"/{'a' * 40}/" in urls[0]
@@ -295,14 +299,16 @@ async def test_mount_prefers_existing_unity_equipment_image() -> None:
 
     def respond(request: httpx.Request) -> httpx.Response:
         urls.append(str(request.url))
-        return httpx.Response(HTTP_OK, content=b"unity-mount")
+        return httpx.Response(HTTP_OK, content=_png("unity-mount"))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
             asset_snapshot_getter=lambda: snapshot,
         )
-        assert await source.fetch("mount", "1301170", fallback=False) == b"unity-mount"
+        assert await source.fetch("mount", "1301170", fallback=False) == _png(
+            "unity-mount"
+        )
 
     assert len(urls) == 1
     assert "seer-unity-assets" in urls[0]
@@ -326,7 +332,9 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
         urls.append(str(request.url))
         if request.url.host == "dummyimage.com":
             return httpx.Response(200, content=b"placeholder")
-        return httpx.Response(failure_status if failing else 200, content=b"real-art")
+        return httpx.Response(
+            failure_status if failing else 200, content=_png("real-art")
+        )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         clients = HttpClients(cache=client, origin=client)
@@ -346,9 +354,9 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
             await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
         assert all("dummyimage.com" not in url for url in urls)
         failing = False
-        assert await store.fetch("pet_head", "70") == b"real-art"
+        assert await store.fetch("pet_head", "70") == _png("real-art")
         recovered = await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
-        assert recovered.pet_heads == ((70, "data:image/png;base64,cmVhbC1hcnQ="),)
+        assert recovered.pet_heads == ((70, to_data_uri(_png("real-art"))),)
         request_count = len(urls)
         assert (
             await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
@@ -436,7 +444,7 @@ async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) 
 
     def respond(request: httpx.Request) -> httpx.Response:
         urls.append(str(request.url))
-        return httpx.Response(200, content=request.url.path.encode())
+        return httpx.Response(200, content=_png(request.url.path))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         store = SeerAssetStore(
