@@ -18,6 +18,10 @@ from ironsbot.integrations.storage.player_query_limits import (
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
+from ironsbot.services.identity_link_store import (
+    CrossPlatformIdentityLink,
+    OfficialIdentity,
+)
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourceSubscriptionUpdate,
 )
@@ -107,6 +111,60 @@ def test_player_binding_uses_canonical_cross_platform_actor(tmp_path: Path) -> N
 
     assert canonical.get(official_actor).player_id == _PLAYER_A
     canonical.bind(actor=official_actor, player_id=_PLAYER_B, player_nick="B")
+    assert bindings.get(onebot_actor).player_id == _PLAYER_B
+
+
+def test_identity_link_reuses_legacy_binding_and_removes_duplicate(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "qq_state.sqlite"
+    onebot_actor = ActorRef(Platform.ONEBOT, "10001")
+    official_actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "group-openid",
+        account_id="app-id",
+    )
+    bindings = SqlitePlayerBindingStore(path)
+    bindings.bind(actor=onebot_actor, player_id=_PLAYER_A, player_nick="legacy")
+    bindings.bind(actor=official_actor, player_id=_PLAYER_B, player_nick="duplicate")
+
+    bindings.reconcile_identity_link(
+        CrossPlatformIdentityLink(
+            "10001",
+            OfficialIdentity("app-id", "member", "member-openid"),
+            1.0,
+        )
+    )
+
+    assert bindings.get(onebot_actor).player_id == _PLAYER_A
+    assert SqlitePlayerBindingStore(path).get(official_actor).player_id is None
+
+
+def test_identity_link_preserves_official_rebinding_when_legacy_is_missing(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "qq_state.sqlite"
+    onebot_actor = ActorRef(Platform.ONEBOT, "10001")
+    official_actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "group-openid",
+        account_id="app-id",
+    )
+    bindings = SqlitePlayerBindingStore(path)
+    bindings.bind(actor=official_actor, player_id=_PLAYER_B, player_nick="official")
+
+    bindings.reconcile_identity_link(
+        CrossPlatformIdentityLink(
+            "10001",
+            OfficialIdentity("app-id", "member", "member-openid"),
+            1.0,
+        )
+    )
+
     assert bindings.get(onebot_actor).player_id == _PLAYER_B
 
 

@@ -183,6 +183,11 @@ features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet"
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
 数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
+`default_account` 是未分配群和私聊的唯一响应账号；启用多个官方账号时必须明确填写，
+不按 TOML 书写顺序猜测。`group_routes` 使用 `[identities.groups]` 的逻辑群别名，
+把特殊群交给指定账号；同一逻辑群中的其他官方账号保持静默。
+若逻辑群只声明了一个已启用官方账号的 OpenID，该账号会自动成为该群响应者，
+不必在 `group_routes` 重复填写；一个逻辑群声明多个官方账号时才需显式选择。
 `features` 是该账号对所有入站会话开放的默认功能，不表示账号优先级，也不按 TOML
 书写顺序选择“默认机器人”。面向公众的账号可配置完整默认功能；专用账号应使用
 `features = []`，再通过账号策略或 `[features]` 下基于逻辑身份的策略只开放特殊目标。
@@ -252,7 +257,7 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 不需要手工写入 TOML。设置 `identity_verification = true` 后，NapCat 只观察
 `trusted_official_bots` 中的官方机器人群消息。官方回复通过 `message_reference`
 引用触发它的成员消息，NapCat 从引用来源读取数字 QQ；程序再使用同一逻辑群、
-规范化消息内容和短时间窗口建立候选。只有两次独立、唯一且一致的观察才关联
+规范化消息内容和短时间窗口建立候选。一次完全匹配的回执即可关联
 `member_openid ↔ QQ号`。同一官方账号中的相同 member_openid 跨群视为同一主体；
 群只用于验证消息来源，不进入身份主键。歧义、超时、非可信来源和已存在冲突都不会
 建立或覆盖映射。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
