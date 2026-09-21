@@ -106,8 +106,9 @@ services:
       ONEBOT_SEND_MESSAGES: "true"
       ONEBOT_IDENTITY_VERIFICATION: "false"
       # ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT: "123456789"
-      # Optional AppSecret; declare app_id in TOML and replace <AppID> below.
-      # APP_SECRET_<AppID>: "<APP_SECRET>"
+      # Optional QQ Official AppSecret. The numeric suffix is the public app_id
+      # declared under [bot.qq_official.accounts.<alias>].
+      # APP_SECRET_10001: "change-me"
     restart: always
 
   napcat:
@@ -274,7 +275,7 @@ ONEBOT_ENABLED=true
 ONEBOT_SEND_MESSAGES=true
 ONEBOT_IDENTITY_VERIFICATION=false
 ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT=
-# APP_SECRET_<AppID>=  # Replace <AppID> with the TOML app_id.
+APP_SECRET_10001=
 AI_KEY_DEEPSEEK=
 # Add one variable for each additional [ai.providers.<alias>].
 # AI_KEY_FUMIN=
@@ -297,7 +298,7 @@ DOCKER_REGISTRY_TOKEN=
 | `ONEBOT_SEND_MESSAGES` | Optional deployment override for OneBot outbound. It is ignored when official credentials are active because NapCat is then forced silent. |
 | `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation through official source-message references seen by NapCat. |
 | `ONEBOT_TRUSTED_OFFICIAL_BOT_<ACCOUNT_ALIAS>` | Numeric QQ of the declared official account as seen by NapCat. Required for each active account when identity observation is enabled. |
-| `APP_SECRET_<AppID>` | AppSecret for a nonempty TOML account app_id (not alias); absent Secret leaves the account dormant. TOML secret and nonempty retired QQ_OFFICIAL_* variables are rejected. No account enabled field exists. |
+| `APP_SECRET_<AppID>` | AppSecret for the public `app_id` declared in one `[bot.qq_official.accounts.<alias>]`; its presence activates that account and makes QQ Official the only outbound platform. Each account obtains and refreshes its own AccessToken. |
 | `AI_KEY_<PROVIDER_ALIAS>` | API key for one declared `[ai.providers.<alias>]`. Providers and their models are tried in TOML order. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
@@ -525,13 +526,3 @@ If a token or meeting link has ever been pushed to a public repository, treat it
 ## License
 
 This image follows the licensing terms of the repository. See `LICENSING.md` in the source repository for details.
-
-### 本版本 Unraid 官方账号变量
-
-此版本自带模板仍显示退休的 `QQ_OFFICIAL_APP_ID_EXAMPLE_BOT` 和
-`QQ_OFFICIAL_SECRET_EXAMPLE_BOT` 控件；不要在其中填写值（非空旧变量会阻止
-配置加载）。手动添加与 TOML 非空 `app_id` 配对的 `APP_SECRET_<AppID>`。
-`<AppID>` 必须替换为该应用的实际 AppID；Secret 不写入模板或 TOML。
-本版本没有账号 `enabled` 字段；声明了 AppID 但不提供 Secret 的账号不激活。
-这里只修正文档，不改变模板已有控件或容器环境绑定。
-
