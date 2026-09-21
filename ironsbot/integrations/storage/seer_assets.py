@@ -81,7 +81,7 @@ class SeerAssetStore:
     ) -> bytes:
         request = source.prepare(kind, key, fallback=fallback)
         cache_key = _cache_key(
-            "prepared-image-v2",
+            "prepared-image-v3-decoded",
             request.identity,
             kind,
             key,

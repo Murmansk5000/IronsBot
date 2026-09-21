@@ -93,6 +93,7 @@ class PlayerLineupRenderServices:
         return PlayerLineupImageAssets(
             pet_heads=assets.pet_heads,
             type_icons=assets.type_icons,
+            complete=assets.complete,
         )
 
     def request_cache_key(

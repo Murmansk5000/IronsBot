@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from seerapi_models import BattleEffectORM
 
     from ironsbot.services.seer.data import SeerDataAccess
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
 
 PROMPT_MAX_ITEMS = 20
 
@@ -31,9 +31,11 @@ class BattleEffectQueryService:
         self,
         data: SeerDataAccess,
         images: SeerImageSource,
+        image_failure_reporter: ImageFailureReporter | None = None,
     ) -> None:
         self._data = data
         self._images = images
+        self._image_failure_reporter = image_failure_reporter
 
     async def search(self, arg: str) -> QueryResult[int]:
         with self._data.resolve(self._data.battle_effect, arg) as values:
@@ -91,6 +93,7 @@ class BattleEffectQueryService:
             self._images,
             "battle_effect",
             str(reply_data.effect_id),
+            self._image_failure_reporter,
         )
         return QueryReply(
             text=reply_data.text,

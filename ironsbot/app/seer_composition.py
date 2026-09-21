@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -81,6 +81,7 @@ from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankServ
 from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.external_references import SeerInfoReferences
+from ironsbot.services.seer.image_failure_notice import AdminImageFailureReporter
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 from ironsbot.services.seer.lucky_skin_window_delivery import (
@@ -128,6 +129,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.cache_paths import CachePaths
     from ironsbot.services.identity_principals import IdentityPrincipalService
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
@@ -175,6 +177,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     headless_sessions: HeadlessSessionFactory,
     player_bindings: SqlitePlayerBindingStore,
     identity_principals: IdentityPrincipalService,
+    admin_notices: AdminNoticeService,
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -233,6 +236,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         seer_database,
         spawn=task_owner.create,
     )
+    image_failure_reporter = AdminImageFailureReporter(admin_notices)
+    render_sessions = replace(
+        render_sessions, image_failure_reporter=image_failure_reporter
+    )
 
     async def render_pet(pet_id: int) -> bytes:
         with render_sessions.open() as inputs:
@@ -242,6 +249,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 inputs.images,
                 render_coordinator.render,
                 pet_id,
+                image_failure_reporter=image_failure_reporter,
             )
 
     @contextmanager
@@ -495,12 +503,22 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     autocard_sanctuary = AutocardSanctuaryService(
         PublishedAutocardSanctuaryRepository(seer_database)
     )
-    equipment = EquipmentQueryService(seer_database, images)
-    pet = PetQueryService(seer_database, images, render_pet)
+    equipment = EquipmentQueryService(
+        seer_database,
+        images,
+        image_failure_reporter,
+    )
+    pet = PetQueryService(
+        seer_database,
+        images,
+        render_pet,
+        image_failure_reporter,
+    )
     mintmark = MintmarkQueryService(
         seer_database,
         images,
         merge_connected=settings.seer.mintmark.merge_connected,
+        image_failure_reporter=image_failure_reporter,
     )
     external_references = SeerInfoReferences(settings.seer.external_references)
     return SeerComponents(
@@ -510,6 +528,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 weekly_preview_images,
                 settings.seer.season,
                 NewContentService(PublishedNewContentRepository(seer_database)),
+                image_failure_reporter,
             ),
             CountermarkStatRankService(seer_database),
             autocard,
@@ -520,7 +539,11 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             TypeQueryService(
                 type_render_session,
             ),
-            BattleEffectQueryService(seer_database, images),
+            BattleEffectQueryService(
+                seer_database,
+                images,
+                image_failure_reporter,
+            ),
             pet,
             PeakQueryService(
                 PublishedPeakRepository(seer_database),

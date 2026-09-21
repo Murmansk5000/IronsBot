@@ -42,6 +42,7 @@ from ironsbot.services.seer.new_content import (
     NewContentService,
     NewContentSnapshotChangedError,
 )
+from tests.helpers.image_fixtures import png_fixture as _png
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -730,7 +731,9 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
 
     def respond(request: Request) -> Response:
         requests.append(str(request.url))
-        return Response(200, content=b"old" if "a" * 40 in request.url.path else b"new")
+        return Response(
+            200, content=_png("old") if "a" * 40 in request.url.path else _png("new")
+        )
 
     async with AsyncClient(transport=MockTransport(respond)) as client:
         clients = HttpClients(cache=client, origin=client)
@@ -744,7 +747,9 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
         )
         versions = RenderCacheVersion(data.version, ())
         cache = FileRenderCache(tmp_path / "renders", 1024, version_getter=versions)
-        sessions = SeerRenderSessions(data, clients, assets, cache, versions)
+        sessions = SeerRenderSessions(
+            data, clients, assets, cache, versions, TaskOwner().create
+        )
         try:
             await _check_bound_render_inputs(
                 sessions, engine, databases, source, category=category, kind=kind
@@ -752,7 +757,9 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
             before = len(requests)
             with sessions.open() as restored:
                 assert restored.cache.entry(category, "1").get() == b"old-render"
-                assert await restored.images.fetch(kind, "1", fallback=False) == b"old"
+                assert await restored.images.fetch(kind, "1", fallback=False) == _png(
+                    "old"
+                )
             assert len(requests) == before
             assert any("b" * 40 in url for url in requests)
         finally:
@@ -838,14 +845,14 @@ async def _check_bound_render_inputs(  # noqa: PLR0913 - publication test inputs
     with sessions.open() as old:
         old_entry = old.cache.entry(category, "1")
         assert old_entry.get() is None
-        assert await old.images.fetch(kind, "1", fallback=False) == b"old"
+        assert await old.images.fetch(kind, "1", fallback=False) == _png("old")
         _update_asset_release(engine, "b" * 40, "assets-v2")
         await asyncio.to_thread(databases.load_from_file, "seerapi", str(source))
         with sessions.open() as fresh:
             fresh_entry = fresh.cache.entry(category, "1")
             assert fresh_entry.get() is None
-            assert await fresh.images.fetch(kind, "1", fallback=False) == b"new"
-            assert await old.images.fetch(kind, "2", fallback=False) == b"old"
+            assert await fresh.images.fetch(kind, "1", fallback=False) == _png("new")
+            assert await old.images.fetch(kind, "2", fallback=False) == _png("old")
             fresh_entry.put(b"new-render")
             old_entry.put(b"old-render")
             assert fresh_entry.get() == b"new-render"
