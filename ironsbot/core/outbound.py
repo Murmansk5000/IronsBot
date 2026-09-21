@@ -194,6 +194,85 @@ class ReplyContext:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedReply:
+    """A message plus the source-reference selected by a reply template."""
+
+    message: OutboundMessage
+    context: ReplyContext | None
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyPresentation:
+    """Transport-neutral addressing decisions for one command response."""
+
+    context: ReplyContext | None
+    mention_actor: ActorRef | None
+    mention_separator: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyTemplate:
+    """Apply one addressing policy to command replies on every platform."""
+
+    include_reply: bool = True
+    mention_sender: bool = True
+    mention_text_only: bool = True
+    mention_separator: str = "\n"
+
+    def prepare(
+        self,
+        incoming: IncomingMessageRef,
+        message: OutboundMessage,
+    ) -> PreparedReply:
+        presentation = self.presentation(
+            incoming,
+            has_text=any(isinstance(part, TextPart) for part in message.parts),
+            has_mention=any(isinstance(part, MentionPart) for part in message.parts),
+        )
+        if presentation.mention_actor is None:
+            return PreparedReply(message, presentation.context)
+        addressed = OutboundMessage(
+            (
+                MentionPart(presentation.mention_actor),
+                TextPart(presentation.mention_separator),
+                *message.parts,
+            ),
+            prompt=message.prompt,
+        )
+        return PreparedReply(addressed, presentation.context)
+
+    def presentation(
+        self,
+        incoming: IncomingMessageRef,
+        *,
+        has_text: bool,
+        has_mention: bool,
+    ) -> ReplyPresentation:
+        mention_sender = (
+            self.mention_sender
+            and incoming.conversation.kind == "group"
+            and incoming.actor.platform is incoming.conversation.platform
+            and (
+                incoming.actor.kind == "user"
+                or incoming.actor.scope_id == incoming.conversation.id
+            )
+            and incoming.actor.account_id == incoming.conversation.account_id
+            and not has_mention
+            and (not self.mention_text_only or has_text)
+        )
+        return ReplyPresentation(
+            context=(
+                ReplyContext.from_message(incoming) if self.include_reply else None
+            ),
+            mention_actor=incoming.actor if mention_sender else None,
+            mention_separator=self.mention_separator,
+        )
+
+
+COMMAND_REPLY_TEMPLATE = ReplyTemplate()
+
+
+@dataclass(frozen=True, slots=True)
 class DeliveryCapabilities:
     can_reply_to_event: bool
     can_send_proactively: bool
