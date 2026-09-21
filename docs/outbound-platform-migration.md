@@ -113,13 +113,15 @@ first learns `(AppID, group_openid) -> numeric group` from any uniquely matched
 normal command reply in a numeric group declared by `[identities.groups].qq`.
 The mapping is persisted in the QQ state database and restored on restart, so
 the diagnostic `官方身份` command and a duplicate TOML OpenID are not required.
-It links a group `member_openid` to a QQ number after one exact, unique and
-consistent trusted reply observation in that logical group. NapCat reads the
-single numeric QQ mentioned by the official bot; source-message sender metadata
-remains a fallback. The AppID, trusted bot QQ, logical group, normalized reply
-text, time window and pending reply must all agree. Existing OneBot player
-bindings then remain authoritative, while official-only rebindings are merged
-into that principal. Ambiguous, expired,
+It first correlates exact copies of a claimed command or explicit bot mention seen
+by both transports. The official event contributes the sender and ordered mentioned
+`member_openid` values; NapCat contributes the sender and ordered mentioned QQ
+numbers. The logical group, AppID, normalized text, mention count and time window
+must agree. NapCat may deliberately send `@官方机器人 @目标用户` to establish the
+target link without a command; a self-sent message lacking either mention is
+ignored. Trusted official replies remain a fallback observation path. Existing
+OneBot player bindings then remain authoritative, while official-only rebindings
+are merged into that principal. Ambiguous, expired,
 untrusted, or conflicting observations do not create or overwrite a link.
 NapCat sends no verification messages. C2C `user_openid` values are not inferred
 and remain explicit TOML aliases.

@@ -467,6 +467,11 @@ class QQOfficialRuntime:
             context.kind.value,
             recognized,
         )
+        if self._identity_observer is not None and (recognized or mentions_bot):
+            await self._identity_observer.observe_official_message(
+                incoming,
+                explicitly_addressed=mentions_bot,
+            )
         if not recognized:
             return
         try:
@@ -625,9 +630,7 @@ async def deliver_qq_official_reply(
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
-    from ironsbot.core.outbound import OutboundMessage, ReplyContext
-
-    context = ReplyContext.from_message(incoming)
+    from ironsbot.core.outbound import COMMAND_REPLY_TEMPLATE, OutboundMessage
 
     def on_sent(stage: DeliveryStage, result: SendResult) -> None:
         if result.delivered:
@@ -655,8 +658,12 @@ async def deliver_qq_official_reply(
             if identity_observer is not None
             else None
         )
-        delivery_message = _address_group_reply(incoming, message)
-        result = await messenger.reply(context, delivery_message)
+        prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, message)
+        result = (
+            await messenger.reply(prepared.context, prepared.message)
+            if prepared.context is not None
+            else await messenger.send(incoming.conversation, prepared.message)
+        )
         if (
             not result.delivered
             and observation is not None
@@ -670,29 +677,6 @@ async def deliver_qq_official_reply(
         send,
         on_sent=on_sent,
         on_follow_up_error=on_follow_up_error,
-    )
-
-
-def _address_group_reply(
-    incoming: IncomingMessageRef,
-    message: OutboundMessage,
-) -> OutboundMessage:
-    from ironsbot.core.outbound import MentionPart, TextPart
-
-    if (
-        incoming.conversation.kind != "group"
-        or incoming.actor.kind != "member"
-        or incoming.actor.scope_id != incoming.conversation.id
-        or incoming.actor.account_id != incoming.conversation.account_id
-    ):
-        return message
-    if not any(isinstance(part, TextPart) for part in message.parts):
-        return message
-    if any(isinstance(part, MentionPart) for part in message.parts):
-        return message
-    return OutboundMessage(
-        (MentionPart(incoming.actor), *message.parts),
-        prompt=message.prompt,
     )
 
 

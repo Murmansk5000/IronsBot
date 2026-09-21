@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, ClassVar, cast
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from unittest.mock import AsyncMock
 
 import httpx
@@ -89,6 +90,12 @@ class _CountingRouter:
 
     async def dispatch(self, _context: object) -> None:
         self.dispatch_count += 1
+
+
+class _RejectingRouter(_CountingRouter):
+    def recognizes(self, context: object) -> bool:
+        self.contexts.append(context)
+        return False
 
 
 def _install_fake_sdk(monkeypatch: pytest.MonkeyPatch, *, ready: bool) -> None:
@@ -499,6 +506,134 @@ def test_runtime_treats_full_group_self_mention_as_addressed_input(
             assert context.text == "帮助"
             assert context.mentions_bot
             assert context.automatic_fallback_allowed
+
+    asyncio.run(run())
+
+
+def test_runtime_observes_claimed_group_message_for_identity_linking(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("private-app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _CountingRouter()
+            observe = AsyncMock(return_value=False)
+            observer = SimpleNamespace(observe_official_message=observe)
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                identity_observer=cast("Any", observer),
+            )
+            raw = {
+                "id": "message-id",
+                "content": "@bot 米米号 @target",
+                "timestamp": "2026-09-21T12:00:00+08:00",
+                "group_openid": "group-openid",
+                "author": {"member_openid": "sender-openid"},
+                "mentions": [
+                    {"is_you": True, "member_openid": "bot-openid"},
+                    {"member_openid": "target-openid", "username": "target"},
+                ],
+            }
+
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_MESSAGE_CREATE",
+                raw,
+            )
+
+            observe.assert_awaited_once()
+            await_args = observe.await_args
+            assert await_args is not None
+            assert await_args.kwargs == {"explicitly_addressed": True}
+            incoming = await_args.args[0]
+            assert incoming.actor.id == "sender-openid"
+            assert tuple(actor.id for actor in incoming.direct_mentions) == (
+                "target-openid",
+            )
+
+    asyncio.run(run())
+
+
+def test_runtime_ignores_unclaimed_member_mention_without_bot_mention(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("private-app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _RejectingRouter()
+            observe = AsyncMock(return_value=False)
+            observer = SimpleNamespace(observe_official_message=observe)
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                identity_observer=cast("Any", observer),
+            )
+
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_MESSAGE_CREATE",
+                {
+                    "id": "message-id",
+                    "content": "@target",
+                    "timestamp": "2026-09-21T12:00:00+08:00",
+                    "group_openid": "group-openid",
+                    "author": {"member_openid": "sender-openid"},
+                    "mentions": [
+                        {"member_openid": "target-openid", "username": "target"}
+                    ],
+                },
+            )
+
+            observe.assert_not_awaited()
+            assert router.dispatch_count == 0
+
+    asyncio.run(run())
+
+
+def test_runtime_observes_unclaimed_bot_and_member_mentions(tmp_path: Path) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("private-app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _RejectingRouter()
+            observe = AsyncMock(return_value=False)
+            observer = SimpleNamespace(observe_official_message=observe)
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                identity_observer=cast("Any", observer),
+            )
+
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_MESSAGE_CREATE",
+                {
+                    "id": "message-id",
+                    "content": "@bot @target",
+                    "timestamp": "2026-09-21T12:00:00+08:00",
+                    "group_openid": "group-openid",
+                    "author": {"member_openid": "napcat-openid"},
+                    "mentions": [
+                        {"is_you": True, "member_openid": "bot-openid"},
+                        {"member_openid": "target-openid", "username": "target"},
+                    ],
+                },
+            )
+
+            observe.assert_awaited_once()
+            assert router.dispatch_count == 0
 
     asyncio.run(run())
 

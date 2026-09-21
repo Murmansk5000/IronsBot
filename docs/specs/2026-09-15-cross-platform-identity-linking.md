@@ -16,10 +16,11 @@ separate identities for each source.
 1. A deployment-owned `[identities]` alias explicitly names the OneBot and QQ
    Official endpoints of one trusted principal.
 2. A user completes the explicit challenge flow below.
-3. Silent group observation matches an official `member_openid` to the numeric
-   sender of the source message referenced by the trusted official bot's reply.
-   The official bot and NapCat must share a configured logical group, and two
-   independent, unique, consistent observations are required.
+3. Silent group observation matches the same structured group message received
+   by QQ Official and NapCat. The official event supplies the sender and ordered
+   mentioned `member_openid` values; NapCat supplies the sender and ordered
+   mentioned QQ numbers. A trusted official reply remains a fallback observation
+   path for transports that do not expose the original message on both sides.
 
 Before member correlation, any normal command reply may establish the logical
 group itself. The official inbound event supplies `(AppID, group_openid)` and
@@ -35,6 +36,23 @@ Silent observation fails closed on ambiguity, expiry, untrusted bot origin, or
 an existing conflicting link. It never overwrites a link. C2C `user_openid`
 does not participate because NapCat cannot authenticate its private-message
 sender through a group source reference.
+
+For original-message correlation, a claimed command or explicit bot mention may
+provide the official-side observation. Normalized text, logical group, owning
+AppID, time window and mention count must agree. Known official bot QQ numbers are
+removed before the remaining QQ mentions are paired positionally with structured
+official member mentions. The sender is paired separately. An unknown group may
+be learned only when the OneBot copy explicitly mentions that AppID's configured
+official bot and the numeric group is an allowed candidate. A NapCat self-sent
+message is accepted only when it mentions that configured official bot and at
+least one target member; this is the explicit silent verification action.
+Messages sent by trusted official bot accounts are never treated as user identity
+evidence.
+
+A group member's empty `@机器人` is also an explicit sender observation: the
+official event identifies that member while NapCat identifies the numeric sender.
+It may link the sender but has no target-member side effect. An unaddressed empty
+message remains invalid evidence.
 
 ## Explicit Challenge Contract
 
@@ -80,8 +98,9 @@ a conversation identity is not an actor identity.
   inputs while status and revocation remain shared.
 - Offline platform-state migration preserves existing explicit links and their
   migration namespace.
-- Trusted observation requires two matches and covers ambiguity, conflict,
-  expiry and untrusted-source rejection.
+- Trusted observation covers both original commands and official replies,
+  including either arrival order, ordered member targets, ambiguity, conflict,
+  expiry, self-message and untrusted-source rejection.
 - Group discovery accepts a normal command reply, requires a unique trusted-bot
   match in a configured numeric group, persists across restarts, projects the
   existing group feature policy, and rejects either-side conflicts.

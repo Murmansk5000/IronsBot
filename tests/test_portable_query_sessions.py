@@ -211,6 +211,28 @@ def _text(message: OutboundMessage | None) -> str:
 
 
 @pytest.mark.asyncio
+async def test_empty_entity_result_can_be_declared_silent() -> None:
+    sessions = PortableQuerySessions()
+
+    async def search(_argument: str) -> QueryResult[int]:
+        return QueryResult()
+
+    result = await sessions.begin(
+        _context("member-openid"),
+        argument="missing",
+        spec=QueryOperationSpec(
+            parser=lambda text: text,
+            search=search,
+            select=AsyncMock(),
+            prompt_title="choose",
+            not_found_message=None,
+        ),
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
     sessions = PortableQuerySessions()
 

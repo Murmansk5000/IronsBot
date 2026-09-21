@@ -1667,7 +1667,7 @@ def test_qq_official_renderer_emits_scoped_member_mentions() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-&quot;openid" />\nresult',
+            '<qqbot-at-user id="member-&quot;openid" />\n\nresult',
             markdown=True,
         ),
     )
@@ -1700,7 +1700,7 @@ def test_qq_official_renderer_keeps_exit_item_in_markdown_list_layout() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" />\n1\\. 【收集】\n'
+            '<qqbot-at-user id="member-openid" />\n\n1\\. 【收集】\n'
             "2\\. 【巅峰】\n"
             "0\\. 【退出】",
             markdown=True,
@@ -1735,7 +1735,7 @@ def test_qq_official_renderer_only_escapes_line_start_menu_numbers() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" />\n版本 1.2\n '
+            '<qqbot-at-user id="member-openid" />\n\n版本 1.2\n '
             "↳ 3\\. 子项\n"
             "0\\. 【退出】",
             markdown=True,
@@ -1834,17 +1834,17 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
     assert [call[2] for call in bot.calls] == [
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" />\nfirst', markdown=True
+                '<qqbot-at-user id="opaque-user" />\n\nfirst', markdown=True
             ),
         ),
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" />\nsecond', markdown=True
+                '<qqbot-at-user id="opaque-user" />\n\nsecond', markdown=True
             ),
         ),
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" />\nthird', markdown=True
+                '<qqbot-at-user id="opaque-user" />\n\nthird', markdown=True
             ),
         ),
     ]
@@ -1876,7 +1876,7 @@ async def test_qq_official_delivery_does_not_add_mention_only_image_message() ->
     expected_payloads = [
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" />\nsummary', markdown=True
+                '<qqbot-at-user id="opaque-user" />\n\nsummary', markdown=True
             ),
         ),
         (QQOfficialImagePayload(content=b"image", filename="ironsbot.png"),),
@@ -1917,7 +1917,7 @@ async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
 
     assert bot.calls[0][2] == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="target-openid" />\nresult',
+            '<qqbot-at-user id="target-openid" />\n\nresult',
             markdown=True,
         ),
     )
@@ -1953,7 +1953,7 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
     payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
     assert payloads == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" />\nresult',
+            '<qqbot-at-user id="member-openid" />\n\nresult',
             markdown=True,
         ),
     )

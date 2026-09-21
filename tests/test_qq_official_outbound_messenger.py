@@ -431,7 +431,7 @@ async def test_group_member_mention_is_one_markdown_passive_reply() -> None:
     assert result.delivered
     assert bot.calls[0][2] == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" />\nresult',
+            '<qqbot-at-user id="member-openid" />\n\nresult',
             markdown=True,
         ),
     )

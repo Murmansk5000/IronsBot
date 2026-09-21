@@ -20,6 +20,8 @@ Scope: `legacy/napcat-main-2026-09-16` 与当前公开 `main`
 | 新增内容根图 | 竞技池变化使用 4x4 矩阵；专家池显示进出池；大师池显示竞技点变化；精灵头像直接出现在根图 | `c9df414f` 拆 renderer 后丢失 `pool_preview`，后续同步提交未迁回，分类只剩标题 | `b13e42ac` 增加纯 `PoolChangePreview` 文档与批量素材装配，恢复三类池变化；缺图时不缓存残缺结果 |
 | 固定口令与会议目标成员 | “口令 @成员”只把结果发给明确目标；没有目标时回复发送者；关键词自动回复不能借成员 @触发 | 重构后的 OneBot matcher 退回 `explicit_command`，便携执行器丢弃 `member_mentions`，会议回复也只指向发送者 | 统一使用 `MessageInputContext.member_mentions` 和 `MentionPart`；OneBot 只在精确口令启用成员目标，QQ Official 保留明确目标而不额外 @发送者 |
 | QQ 官方玩家目标成员 | “米米号/收集/巅峰/群星牌/阵容 + @成员”由统一玩家解析器读取被提及成员的绑定 | 官方事件已生成 `direct_mentions`，但正文仍残留成员 @ 标记，命令目录把它误当作别名后缀并拒绝认领 | 仅在 QQ 官方适配边界移除有结构化 `mentions` 佐证的成员标记，保留类型化目标；未结构化的普通 `@文本` 不删除 |
+| 精灵、刻印等实体查询未命中 | 只有精确实体或明确候选才回复；普通聊天中偶然出现“精灵”“刻印”等词时保持静默 | QQ Official 便携查询把空 `QueryResult` 一律改写成“未找到”，导致“一个刻印”等普通群聊被机器人插话 | `374ef4d5` 在共用 `PortableQuerySessions` 中加入显式静默空结果策略，精灵、立绘、头像、刻印和宝石共用同一路径；OneBot 与 QQ Official 均不回复，也不把已认领查询交给 AI |
+| B站正文与图片失败告警 | 同一动态、同一目标的一次推送失败只产生一条管理告警 | 正文和图片分别投递并各自立即告警，两者都失败时超级管理员收到两条完全相同的消息 | `c9b989ba` 在整条动态处理结束后汇总并稳定去重失败目标，再通过唯一 `AdminNoticeService` 出口发送一次告警 |
 
 前两项的共同原因不是旧代码未进入 Git 历史，而是重构时用较早或较小的 view model
 替换了原实现，后续只验证了“能渲染图片”，没有锁定最终图片中的字段和布局。后两项
@@ -62,8 +64,10 @@ BasedPyright、compileall、`scripts/check_repo.py --static` 和 diff check 全�
 
 - `docs/specs/2026-09-15-command-parity.md` 中配置型文本/图片仍需按实际生产配置逐项核对。
 - 玩家二级菜单、榜单全部参数组合和私有扩展仍以真实客户端矩阵为最终证据。
-- Phase 7 尚缺普通群管理异常不泄漏、真实 AI 备用 provider failover，以及官方平台主动
-  消息拒绝/额度/receive-reject 证据；本审计不把这些外部门槛标成通过。
+- 普通群管理异常隔离和真实 AI 备用 provider failover 已在后续精确候选上关闭；详见
+  `2026-09-15-official-usability-acceptance.md`。Phase 7 当前只等待 B10 手机 QQ 最终视觉
+  确认。腾讯自然产生的主动消息拒绝、额度或 receive/reject 事件继续作为 External TODO，
+  本审计不把尚未发生的平台事件伪报为通过。
 
 ## 防回归规则
 

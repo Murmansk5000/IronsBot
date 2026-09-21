@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11 import Event, GroupMessageEvent
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 
-from ironsbot.services.identity_observation import OneBotReplyObservation
+from ironsbot.services.identity_observation import OneBotGroupMessageObservation
 
 if TYPE_CHECKING:
     from ironsbot.services.identity_observation import (
@@ -31,11 +31,13 @@ class OneBotIngressPolicy:
             GroupMessageEvent,
         ):
             await self.identity_observer.observe_onebot(
-                OneBotReplyObservation(
+                OneBotGroupMessageObservation(
                     sender_id=event.user_id,
+                    self_id=event.self_id,
                     group_id=event.group_id,
                     mentioned_qq_ids=_mentioned_qq_ids(event),
                     text=event.get_plaintext(),
+                    message_id=str(event.message_id),
                 )
             )
         if not self.messages_enabled:

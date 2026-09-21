@@ -253,6 +253,31 @@ async def test_content_failure_after_shared_policy_notifies_admins(
 
 
 @pytest.mark.asyncio
+async def test_text_and_image_failures_share_one_admin_notice(
+    tmp_path: Path,
+) -> None:
+    delivery = _RecordingDelivery(content_failures=2)
+    admin_notices = _RecordingAdminNotices()
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+        admin_notices=admin_notices,  # type: ignore[arg-type]
+    )
+
+    await sender.send(
+        _item(),
+        PUB_TS,
+        AUTHOR_MID,
+        _targets(full_users=(2001,)),
+    )
+
+    assert len(delivery.content_calls) == delivery.content_failures
+    assert len(admin_notices.messages) == 1
+    message, _kwargs = admin_notices.messages[0]
+    assert message.count("私聊：2001") == 1
+
+
+@pytest.mark.asyncio
 async def test_content_failure_without_admin_notices_redacts_target_ids(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from nonebot.exception import FinishedException
 
 from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.core.semantic_requests import ActionDefinition
@@ -34,6 +35,32 @@ if TYPE_CHECKING:
 
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+
+
+@pytest.mark.asyncio
+async def test_onebot_adapter_finishes_silently_for_empty_query_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = PortableQuerySessions()
+    sent = AsyncMock()
+    monkeypatch.setattr(portable_queries, "send_portable_event_reply", sent)
+    monkeypatch.setattr(
+        portable_queries,
+        "queued_conversation_is_cancelled",
+        lambda _: False,
+    )
+
+    async def operation(
+        text: str,
+        context: MessageInputContext,
+    ) -> None:
+        del text, context
+
+    handler = portable_queries.make_portable_query_handler(operation, sessions)
+    with pytest.raises(FinishedException):
+        await handler(cast("Matcher", Mock()), {}, group_message_event("刻印"))
+
+    sent.assert_not_awaited()
 
 
 @pytest.mark.asyncio

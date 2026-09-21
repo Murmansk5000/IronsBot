@@ -122,14 +122,15 @@ def _operations(
 async def test_unlinked_official_identity_uses_its_player_binding_for_query() -> None:
     service, pet, identity, sessions, _ = _dependencies(linked=False)
     service.cached_query.side_effect = LuckySkinWindowAccessError(
-        "只能查询你本人已配置的幸运橱窗账号。"
+        "该账号今日尚未缓存，只有 TOML 授权用户可以登录查询。"
     )
     operations = _operations(service, pet, identity, sessions)
     context = _context()
 
     reply = await operations["seer.lucky_skin_window.query"]("橱窗", context)
 
-    assert "只能查询你本人" in _text(reply)
+    assert "只有 TOML 授权用户可以登录查询" in _text(reply)
+    assert sessions.active_prompt(context) is None
     service.cached_query.assert_called_once_with(
         LuckySkinQuery(context.message.actor, None, 90002)
     )

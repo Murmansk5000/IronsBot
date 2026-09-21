@@ -42,11 +42,13 @@ class IdentityObservationAccount:
 
 
 @dataclass(frozen=True, slots=True)
-class OneBotReplyObservation:
+class OneBotGroupMessageObservation:
     sender_id: int
+    self_id: int
     group_id: int
     mentioned_qq_ids: tuple[str, ...]
     text: str
+    message_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +62,20 @@ class _PendingReply:
     source_message_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingOfficialMessage:
+    incoming: IncomingMessageRef
+    target_members: tuple[OfficialIdentity, ...]
+    text: str
+    created_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingOneBotMessage:
+    observation: OneBotGroupMessageObservation
+    created_at: float
+
+
 @dataclass(slots=True)
 class SilentIdentityObservationService:
     store: IdentityLinkStore
@@ -70,6 +86,14 @@ class SilentIdentityObservationService:
     on_link: Callable[[str, OfficialIdentity], None] | None = None
     on_group_link: Callable[[CrossPlatformGroupLink], None] | None = None
     _pending: list[_PendingReply] = field(default_factory=list, init=False)
+    _pending_official_messages: list[_PendingOfficialMessage] = field(
+        default_factory=list,
+        init=False,
+    )
+    _pending_onebot_messages: list[_PendingOneBotMessage] = field(
+        default_factory=list,
+        init=False,
+    )
     _confirmations: dict[tuple[OfficialIdentity, str], set[str]] = field(
         default_factory=dict,
         init=False,
@@ -143,16 +167,73 @@ class SilentIdentityObservationService:
             return
         self._pending = [item for item in self._pending if item.token != token]
 
-    async def observe_onebot(self, observation: OneBotReplyObservation) -> bool:
-        now = self.clock()
-        self._prune(now)
-        match = self._match_onebot(observation, now=now)
-        if match is None:
+    async def observe_official_message(
+        self,
+        incoming: IncomingMessageRef,
+        *,
+        explicitly_addressed: bool = False,
+    ) -> bool:
+        """Correlate one claimed official group message with its OneBot copy."""
+
+        pending = self._official_message(
+            incoming,
+            explicitly_addressed=explicitly_addressed,
+        )
+        if pending is None:
             return False
-        matched, qq_id = match
-        self.discard_official_reply(matched.token)
-        group_discovered = False
         async with self._lock:
+            now = self.clock()
+            self._prune(now)
+            matches = [
+                item
+                for item in self._pending_onebot_messages
+                if self._original_messages_match(
+                    pending,
+                    item.observation,
+                    now=now,
+                )
+            ]
+            if len(matches) != 1:
+                self._remember_official_message(pending)
+                return False
+            matched = matches[0]
+            self._pending_onebot_messages.remove(matched)
+            return await self._link_original_message(
+                pending,
+                matched.observation,
+                now=now,
+            )
+
+    async def observe_onebot(
+        self,
+        observation: OneBotGroupMessageObservation,
+    ) -> bool:
+        async with self._lock:
+            now = self.clock()
+            self._prune(now)
+            original_matches = [
+                item
+                for item in self._pending_official_messages
+                if self._original_messages_match(item, observation, now=now)
+            ]
+            if len(original_matches) == 1:
+                original = original_matches[0]
+                self._pending_official_messages.remove(original)
+                return await self._link_original_message(
+                    original,
+                    observation,
+                    now=now,
+                )
+
+            if self._is_original_message_candidate(observation):
+                self._remember_onebot_message(observation, now=now)
+
+            match = self._match_onebot_reply(observation, now=now)
+            if match is None:
+                return False
+            matched, qq_id = match
+            self.discard_official_reply(matched.token)
+            group_discovered = False
             if matched.onebot_group_id is None:
                 try:
                     group_link = await self.store.link_group_verified(
@@ -182,32 +263,173 @@ class SilentIdentityObservationService:
                 return group_discovered
             return await self._link_member(matched, qq_id=qq_id, now=now)
 
-    async def _link_member(
+    def _official_message(
         self,
-        pending: _PendingReply,
+        incoming: IncomingMessageRef,
         *,
-        qq_id: str,
+        explicitly_addressed: bool,
+    ) -> _PendingOfficialMessage | None:
+        if (
+            incoming.platform is not Platform.QQ_OFFICIAL
+            or incoming.conversation.kind != "group"
+            or incoming.actor.kind != "member"
+            or incoming.actor.account_id is None
+            or incoming.actor.scope_id != incoming.conversation.id
+            or incoming.actor.account_id not in self.accounts
+        ):
+            return None
+        account_id = incoming.actor.account_id
+        conversation_id = incoming.conversation.id
+        targets: list[OfficialIdentity] = []
+        for actor in incoming.direct_mentions:
+            if (
+                actor.platform is not Platform.QQ_OFFICIAL
+                or actor.kind != "member"
+                or actor.account_id != account_id
+                or actor.scope_id != conversation_id
+            ):
+                return None
+            targets.append(
+                canonical_official_identity(
+                    OfficialIdentity(
+                        account_id,
+                        "member",
+                        actor.id,
+                        conversation_id,
+                    )
+                )
+            )
+        text = _normalize_text(incoming.text)
+        if not text and not incoming.direct_mentions and not explicitly_addressed:
+            return None
+        return _PendingOfficialMessage(
+            incoming,
+            tuple(targets),
+            text,
+            self.clock(),
+        )
+
+    def _original_messages_match(
+        self,
+        official: _PendingOfficialMessage,
+        observation: OneBotGroupMessageObservation,
+        *,
         now: float,
     ) -> bool:
-        existing = await self.store.for_official(pending.official)
+        account_id = official.incoming.actor.account_id
+        if account_id is None:
+            return False
+        account = self.accounts[account_id]
+        if observation.sender_id == account.trusted_onebot_sender_id:
+            return False
+        known_group = account.groups.get(official.incoming.conversation.id)
+        mentions_account_bot = str(account.trusted_onebot_sender_id) in (
+            observation.mentioned_qq_ids
+        )
+        target_qq_ids = self._member_mention_qq_ids(observation)
+        if observation.sender_id == observation.self_id and not (
+            mentions_account_bot and target_qq_ids
+        ):
+            return False
+        group_matches = known_group == observation.group_id or (
+            known_group is None
+            and mentions_account_bot
+            and observation.group_id in account.candidate_onebot_group_ids
+        )
+        if not group_matches or now - official.created_at > self.match_window_seconds:
+            return False
+        return _normalize_text(observation.text) == official.text and len(
+            target_qq_ids
+        ) == len(official.target_members)
+
+    async def _link_original_message(
+        self,
+        official: _PendingOfficialMessage,
+        observation: OneBotGroupMessageObservation,
+        *,
+        now: float,
+    ) -> bool:
+        account_id = official.incoming.actor.account_id
+        if account_id is None:
+            return False
+        account = self.accounts[account_id]
+        changed = False
+        if account.groups.get(official.incoming.conversation.id) is None:
+            try:
+                group_link = await self.store.link_group_verified(
+                    onebot_group_id=str(observation.group_id),
+                    official_app_id=account_id,
+                    official_group_openid=official.incoming.conversation.id,
+                    now=now,
+                )
+            except GroupLinkConflictError:
+                return False
+            self.register_group_link(group_link)
+            if self.on_group_link is not None:
+                self.on_group_link(group_link)
+            changed = True
+
+        source_message_id = f"{official.incoming.message_id}:{observation.message_id}"
+        sender = canonical_official_identity(
+            OfficialIdentity(
+                account_id,
+                "member",
+                official.incoming.actor.id,
+                official.incoming.conversation.id,
+            )
+        )
+        changed = (
+            await self._link_identity(
+                sender,
+                qq_id=str(observation.sender_id),
+                source_message_id=source_message_id,
+                now=now,
+            )
+            or changed
+        )
+        for target, qq_id in zip(
+            official.target_members,
+            self._member_mention_qq_ids(observation),
+            strict=True,
+        ):
+            changed = (
+                await self._link_identity(
+                    target,
+                    qq_id=qq_id,
+                    source_message_id=source_message_id,
+                    now=now,
+                )
+                or changed
+            )
+        return changed
+
+    async def _link_identity(
+        self,
+        official: OfficialIdentity,
+        *,
+        qq_id: str,
+        source_message_id: str,
+        now: float,
+    ) -> bool:
+        existing = await self.store.for_official(official)
         if existing is not None:
             return existing.onebot_qq_id == qq_id
-        key = (pending.official, qq_id)
+        key = (official, qq_id)
         confirmations = self._confirmations.setdefault(key, set())
-        confirmations.add(pending.source_message_id)
+        confirmations.add(source_message_id)
         if len(confirmations) < self.confirmation_count:
             return False
         try:
             link = await self.store.link_verified(
                 onebot_qq_id=qq_id,
-                official=pending.official,
+                official=official,
                 now=now,
             )
         except IdentityLinkConflictError:
             _LOGGER.warning(
                 "silent identity link conflict: app=%s member=%s",
-                reference_digest(pending.official.app_id),
-                reference_digest(pending.official.openid),
+                reference_digest(official.app_id),
+                reference_digest(official.openid),
             )
             return False
         if self.on_link is not None:
@@ -215,15 +437,29 @@ class SilentIdentityObservationService:
         self._confirmations.pop(key, None)
         _LOGGER.info(
             "silent identity link confirmed: app=%s member=%s qq=%s",
-            reference_digest(pending.official.app_id),
-            reference_digest(pending.official.openid),
+            reference_digest(official.app_id),
+            reference_digest(official.openid),
             reference_digest(qq_id),
         )
         return True
 
-    def _match_onebot(
+    async def _link_member(
         self,
-        observation: OneBotReplyObservation,
+        pending: _PendingReply,
+        *,
+        qq_id: str,
+        now: float,
+    ) -> bool:
+        return await self._link_identity(
+            pending.official,
+            qq_id=qq_id,
+            source_message_id=pending.source_message_id,
+            now=now,
+        )
+
+    def _match_onebot_reply(
+        self,
+        observation: OneBotGroupMessageObservation,
         *,
         now: float,
     ) -> tuple[_PendingReply, str | None] | None:
@@ -257,9 +493,71 @@ class SilentIdentityObservationService:
             return None
         return matches[0], mentioned[0] if len(mentioned) == 1 else None
 
+    def _member_mention_qq_ids(
+        self,
+        observation: OneBotGroupMessageObservation,
+    ) -> tuple[str, ...]:
+        bot_ids = {
+            str(account.trusted_onebot_sender_id) for account in self.accounts.values()
+        }
+        return tuple(
+            qq_id for qq_id in observation.mentioned_qq_ids if qq_id not in bot_ids
+        )
+
+    def _is_original_message_candidate(
+        self,
+        observation: OneBotGroupMessageObservation,
+    ) -> bool:
+        if not observation.mentioned_qq_ids or any(
+            observation.sender_id == account.trusted_onebot_sender_id
+            for account in self.accounts.values()
+        ):
+            return False
+        if observation.sender_id != observation.self_id:
+            return True
+        mentioned = set(observation.mentioned_qq_ids)
+        return bool(
+            self._member_mention_qq_ids(observation)
+            and any(
+                str(account.trusted_onebot_sender_id) in mentioned
+                for account in self.accounts.values()
+            )
+        )
+
+    def _remember_official_message(self, pending: _PendingOfficialMessage) -> None:
+        self._pending_official_messages = [
+            item
+            for item in self._pending_official_messages
+            if item.incoming.message_id != pending.incoming.message_id
+            or item.incoming.actor.account_id != pending.incoming.actor.account_id
+        ]
+        self._pending_official_messages.append(pending)
+
+    def _remember_onebot_message(
+        self,
+        observation: OneBotGroupMessageObservation,
+        *,
+        now: float,
+    ) -> None:
+        self._pending_onebot_messages = [
+            item
+            for item in self._pending_onebot_messages
+            if item.observation.message_id != observation.message_id
+            or item.observation.self_id != observation.self_id
+        ]
+        self._pending_onebot_messages.append(_PendingOneBotMessage(observation, now))
+
     def _prune(self, now: float) -> None:
         cutoff = now - self.match_window_seconds
         self._pending = [item for item in self._pending if item.created_at >= cutoff]
+        self._pending_official_messages = [
+            item
+            for item in self._pending_official_messages
+            if item.created_at >= cutoff
+        ]
+        self._pending_onebot_messages = [
+            item for item in self._pending_onebot_messages if item.created_at >= cutoff
+        ]
 
 
 def _outbound_text(message: OutboundMessage) -> str:

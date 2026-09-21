@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
@@ -14,7 +15,13 @@ except ValueError:
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY
 from ironsbot.plugins.onebot import pet_config as pet_config_plugin
@@ -32,8 +39,10 @@ from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_seer_commands import build_portable_seer_operations
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from ironsbot.services.seer.query_result import QueryResult
 from tests.helpers.onebot_events import private_message_event
 
 if TYPE_CHECKING:
@@ -41,6 +50,8 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot
     from nonebot.rule import Rule
+
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 _ACTOR = ActorRef(Platform.ONEBOT, "100")
 _PRIVATE = ConversationRef(Platform.ONEBOT, "private", _ACTOR.id)
@@ -79,6 +90,12 @@ def _catalog(image_commands: frozenset[str] = frozenset()) -> CommandCatalog:
         known_features={feature.value for feature in Feature},
     )
     return catalog
+
+
+def _empty_query_service(*names: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        **{name: AsyncMock(return_value=QueryResult()) for name in names}
+    )
 
 
 @pytest.mark.parametrize(
@@ -209,6 +226,68 @@ def test_non_command_input_is_not_claimed(text: str) -> None:
     assert not _catalog().claims_direct_input(
         CommandContext(_ACTOR, _PRIVATE), features, text
     )
+
+
+@pytest.mark.parametrize(
+    "operation_id,text",
+    [
+        ("seer.pet.query", "币斯奥技能"),
+        ("seer.mintmark.query", "什么时候100块一个刻印"),
+        ("seer.mintmark.query", "刻印"),
+        ("seer.mintmark.query", "一个刻印"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_empty_pet_and_mintmark_lookups_stay_silent(
+    operation_id: str,
+    text: str,
+) -> None:
+    resolver = PlayerIdResolver(lambda _text, _conversation: None, lambda _actor: None)
+    features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
+    resources = cast(
+        "SeerQueryResources",
+        SimpleNamespace(
+            data_queries=SimpleNamespace(),
+            team_query=SimpleNamespace(),
+            peak_query=SimpleNamespace(),
+            pet_query=_empty_query_service(
+                "search_info",
+                "select_info",
+                "search_image",
+                "select_image",
+                "search_avatar",
+                "select_avatar",
+            ),
+            mintmark=_empty_query_service(
+                "search_mintmark",
+                "select_mintmark",
+                "search_gem",
+                "select_gem",
+            ),
+            equipment=_empty_query_service("search", "select"),
+            type_query=_empty_query_service("search", "select"),
+            battle_effect=_empty_query_service("search", "select"),
+        ),
+    )
+    operations = build_portable_seer_operations(
+        _catalog(),
+        resources,
+        PortableQuerySessions(),
+        features,
+        resolver,
+    )
+    context = MessageInputContext(
+        IncomingMessageRef(
+            Platform.ONEBOT,
+            _ACTOR,
+            _PRIVATE,
+            "message-1",
+            text,
+        ),
+        mentions_bot=False,
+    )
+
+    assert await operations[operation_id](text, context) is None
 
 
 @pytest.mark.parametrize("text", ["精灵榜", "皮肤榜", "群星牌榜", "刻印攻击榜"])

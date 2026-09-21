@@ -107,10 +107,10 @@ def _join_markdown_mention_and_text(
     mention_text = "".join(mentions)
     if not text:
         return mention_text
-    if text.startswith("\n"):
+    if text.startswith("\n\n"):
         return f"{mention_text}{text}"
-    body = text.lstrip(" \t")
-    return f"{mention_text}\n{body}"
+    body = text.lstrip(" \t\n")
+    return f"{mention_text}\n\n{body}"
 
 
 def _escape_markdown_menu_numbers(text: str) -> str:
