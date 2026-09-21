@@ -51,6 +51,11 @@ ironsbot = ["manifests/*.toml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = [
+    "error",
+    "ignore:Failing to pass a value to the 'type_params' parameter of 'typing\\.ForwardRef\\._evaluate'.*:DeprecationWarning:nonebot\\.typing",
+    "ignore:ForwardRef\\._evaluate is a private API and is retained for compatibility.*:DeprecationWarning:nonebot\\.typing",
+]
 
 [tool.ruff]
 line-length = 88

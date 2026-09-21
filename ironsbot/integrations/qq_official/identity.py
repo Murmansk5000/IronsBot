@@ -14,6 +14,7 @@ from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
     IncomingMessageRef,
+    OfficialUnionIdentity,
     Platform,
 )
 
@@ -83,6 +84,7 @@ def qq_official_incoming_message(
         reply_to_id=_reply_reference(event, raw),
         sequence=_message_sequence(raw),
         reply_deadline=_reply_deadline(event, conversation.kind),
+        official_union_identity=_official_union_identity(raw),
     )
 
 
@@ -208,6 +210,16 @@ def _author_value(raw: Mapping[str, object], key: str) -> str | None:
         return None
     value = str(author.get(key, "")).strip()
     return value or None
+
+
+def _official_union_identity(
+    raw: Mapping[str, object],
+) -> OfficialUnionIdentity | None:
+    union_openid = _author_value(raw, "union_openid")
+    union_user_account = _author_value(raw, "union_user_account")
+    if union_openid is None and union_user_account is None:
+        return None
+    return OfficialUnionIdentity(union_openid, union_user_account)
 
 
 def _reply_reference(

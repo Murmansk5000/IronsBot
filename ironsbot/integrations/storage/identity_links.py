@@ -16,6 +16,9 @@ from ironsbot.services.identity_link_store import (
     IdentityLinkChallengeInvalidError,
     IdentityLinkConflictError,
     OfficialIdentity,
+    OfficialUnionObservation,
+    UnionIdentityConflictError,
+    UnionIdentityEvidenceChangedError,
     canonical_official_identity,
 )
 
@@ -23,7 +26,7 @@ if TYPE_CHECKING:
     import sqlite3
     from pathlib import Path
 
-    from ironsbot.core.platform import ActorKind
+    from ironsbot.core.platform import ActorKind, OfficialUnionIdentity
 
 _MIGRATIONS = (
     SqliteMigration(
@@ -94,6 +97,38 @@ _MIGRATIONS = (
                 PRIMARY KEY (official_app_id, official_group_openid),
                 UNIQUE (official_app_id, onebot_group_id)
             )
+            """,
+        ),
+    ),
+    SqliteMigration(
+        4,
+        statements=(
+            """
+            CREATE TABLE official_union_identities (
+                official_app_id TEXT NOT NULL,
+                official_kind TEXT NOT NULL
+                    CHECK (official_kind IN ('member', 'user')),
+                official_openid TEXT NOT NULL,
+                official_scope_id TEXT NOT NULL DEFAULT '',
+                union_openid TEXT NOT NULL DEFAULT '',
+                union_user_account TEXT NOT NULL DEFAULT '',
+                observed_at REAL NOT NULL,
+                PRIMARY KEY (
+                    official_app_id, official_kind,
+                    official_openid, official_scope_id
+                ),
+                CHECK (union_openid <> '' OR union_user_account <> '')
+            )
+            """,
+            """
+            CREATE INDEX official_union_identities_openid
+            ON official_union_identities (union_openid)
+            WHERE union_openid <> ''
+            """,
+            """
+            CREATE INDEX official_union_identities_account
+            ON official_union_identities (union_user_account)
+            WHERE union_user_account <> ''
             """,
         ),
     ),
@@ -171,6 +206,181 @@ class SqliteIdentityLinkStore:
             self.path,
             migrations=_MIGRATIONS,
             migration_namespace="cross_platform_identity_links",
+        )
+
+    async def observe_union_identity(
+        self,
+        *,
+        official: OfficialIdentity,
+        union_identity: OfficialUnionIdentity,
+        now: float,
+    ) -> tuple[CrossPlatformIdentityLink, ...]:
+        async with self._write_lock:
+            return await asyncio.to_thread(
+                self._observe_union_identity_sync,
+                official,
+                union_identity,
+                now,
+            )
+
+    def _observe_union_identity_sync(
+        self,
+        official: OfficialIdentity,
+        union_identity: OfficialUnionIdentity,
+        now: float,
+    ) -> tuple[CrossPlatformIdentityLink, ...]:
+        official = canonical_official_identity(official)
+        union_openid = union_identity.union_openid or ""
+        union_user_account = union_identity.union_user_account or ""
+        with self._database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                """
+                SELECT union_openid, union_user_account
+                FROM official_union_identities
+                WHERE official_app_id = ? AND official_kind = ?
+                  AND official_openid = ? AND official_scope_id = ?
+                """,
+                _official_values(official),
+            ).fetchone()
+            if current is not None and (
+                (
+                    union_openid
+                    and str(current[0])
+                    and str(current[0]) != union_openid
+                )
+                or (
+                    union_user_account
+                    and str(current[1])
+                    and str(current[1]) != union_user_account
+                )
+            ):
+                raise UnionIdentityEvidenceChangedError
+
+            rows = connection.execute(
+                """
+                SELECT official_app_id, official_kind,
+                       official_openid, official_scope_id
+                FROM official_union_identities
+                WHERE (? <> '' AND union_openid = ?)
+                   OR (? <> '' AND union_user_account = ?)
+                """,
+                (
+                    union_openid,
+                    union_openid,
+                    union_user_account,
+                    union_user_account,
+                ),
+            ).fetchall()
+            endpoints = {
+                _official_values(official),
+                *(tuple(str(value) for value in row) for row in rows),
+            }
+            owners = {
+                str(row[0])
+                for endpoint in endpoints
+                if (
+                    row := connection.execute(
+                        """
+                        SELECT onebot_qq_id
+                        FROM cross_platform_identity_links
+                        WHERE official_app_id = ? AND official_kind = ?
+                          AND official_openid = ? AND official_scope_id = ?
+                        """,
+                        endpoint,
+                    ).fetchone()
+                )
+                is not None
+            }
+            if len(owners) > 1:
+                raise UnionIdentityConflictError(len(owners))
+
+            connection.execute(
+                """
+                INSERT INTO official_union_identities (
+                    official_app_id, official_kind, official_openid,
+                    official_scope_id, union_openid,
+                    union_user_account, observed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (
+                    official_app_id, official_kind,
+                    official_openid, official_scope_id
+                ) DO UPDATE SET
+                    union_openid = CASE
+                        WHEN excluded.union_openid <> ''
+                        THEN excluded.union_openid
+                        ELSE official_union_identities.union_openid
+                    END,
+                    union_user_account = CASE
+                        WHEN excluded.union_user_account <> ''
+                        THEN excluded.union_user_account
+                        ELSE official_union_identities.union_user_account
+                    END,
+                    observed_at = excluded.observed_at
+                """,
+                (*_official_values(official), union_openid, union_user_account, now),
+            )
+            if not owners:
+                return ()
+
+            onebot_qq_id = next(iter(owners))
+            links: list[CrossPlatformIdentityLink] = []
+            for endpoint in endpoints:
+                endpoint_identity = OfficialIdentity(
+                    endpoint[0],
+                    cast("ActorKind", endpoint[1]),
+                    endpoint[2],
+                    endpoint[3],
+                )
+                connection.execute(
+                    """
+                    INSERT INTO cross_platform_identity_links (
+                        official_app_id, official_kind, official_openid,
+                        official_scope_id, onebot_qq_id, linked_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (
+                        official_app_id, official_kind,
+                        official_openid, official_scope_id
+                    ) DO UPDATE SET linked_at = excluded.linked_at
+                    """,
+                    (*endpoint, onebot_qq_id, now),
+                )
+                links.append(
+                    CrossPlatformIdentityLink(onebot_qq_id, endpoint_identity, now)
+                )
+            return tuple(links)
+
+    async def all_union_identities(self) -> tuple[OfficialUnionObservation, ...]:
+        return await asyncio.to_thread(self._all_union_identities_sync)
+
+    def _all_union_identities_sync(self) -> tuple[OfficialUnionObservation, ...]:
+        from ironsbot.core.platform import OfficialUnionIdentity
+
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT official_app_id, official_kind, official_openid,
+                       official_scope_id, union_openid,
+                       union_user_account, observed_at
+                FROM official_union_identities
+                ORDER BY observed_at, official_app_id, official_openid
+                """
+            ).fetchall()
+        return tuple(
+            OfficialUnionObservation(
+                OfficialIdentity(
+                    str(row[0]),
+                    cast("ActorKind", str(row[1])),
+                    str(row[2]),
+                    str(row[3]),
+                ),
+                OfficialUnionIdentity(
+                    union_openid=str(row[4]) or None,
+                    union_user_account=str(row[5]) or None,
+                ),
+                float(row[6]),
+            )
+            for row in rows
         )
 
     async def link_group_verified(
@@ -618,6 +828,15 @@ class SqliteIdentityLinkStore:
                 occurred_at=now,
             )
         return True
+
+
+def _official_values(identity: OfficialIdentity) -> tuple[str, str, str, str]:
+    return (
+        identity.app_id,
+        identity.kind,
+        identity.openid,
+        identity.scope_id,
+    )
 
 
 def _audit(  # noqa: PLR0913 - normalized audit row fields are intentionally explicit

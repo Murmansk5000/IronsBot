@@ -58,13 +58,6 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
     with Session(engine) as session:
         session.execute(
             text(
-                "CREATE TABLE peak_cost_pool (id INTEGER PRIMARY KEY, cost INTEGER, "
-                "start_time TEXT, end_time TEXT)"
-            )
-        )
-        session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
-        session.execute(
-            text(
                 "CREATE TABLE seerapi_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
@@ -147,9 +140,12 @@ def test_master_season_start_uses_latest_published_pool(tmp_path: Path) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "INSERT INTO peak_cost_pool(id, cost, start_time, end_time) VALUES "
-                "(1, 8, '2026-06-05 10:00:00', '2026-08-28 10:00:00'), "
-                "(2, 8, '2026-09-04 10:00:00', '2026-11-27 10:00:00')"
+                "INSERT INTO peak_cost_pool"
+                "(id, cost, name, start_time, end_time) VALUES "
+                "(1, 8, '第一赛季', '2026-06-05 10:00:00', "
+                "'2026-08-28 10:00:00'), "
+                "(2, 8, '第二赛季', '2026-09-04 10:00:00', "
+                "'2026-11-27 10:00:00')"
             )
         )
     databases = DatabaseManager()
@@ -417,13 +413,6 @@ def test_seer_database_rejects_release_without_schema_contract(
     with Session(engine) as session:
         session.execute(
             text(
-                "CREATE TABLE peak_cost_pool (id INTEGER PRIMARY KEY, cost INTEGER, "
-                "start_time TEXT, end_time TEXT)"
-            )
-        )
-        session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
-        session.execute(
-            text(
                 "CREATE TABLE seerapi_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
@@ -580,8 +569,9 @@ def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) 
         )
         connection.execute(
             text(
-                "INSERT INTO peak_cost_pool(id, cost, start_time, end_time) "
-                f"VALUES (1, {master_pool_cost}, '2026-08-01T00:00:00+00:00', "
+                "INSERT INTO peak_cost_pool(id, cost, name, start_time, end_time) "
+                f"VALUES (1, {master_pool_cost}, '测试赛季', "
+                "'2026-08-01T00:00:00+00:00', "
                 "'2026-09-01T00:00:00+00:00')"
             )
         )

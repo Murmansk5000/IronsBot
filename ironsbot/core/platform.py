@@ -24,6 +24,8 @@ class Platform(str, Enum):
 
 ConversationKind = Literal["private", "group", "channel", "guild"]
 ActorKind = Literal["user", "member"]
+ActorPrincipalKind = Literal["qq", "official_union", "official_endpoint"]
+ConversationPrincipalKind = Literal["qq_group", "official_group", "conversation"]
 
 
 def reference_digest(value: str) -> str:
@@ -92,6 +94,14 @@ class PlatformReferenceError(ValueError):
     @classmethod
     def private_conversation_requires_user_actor(cls) -> PlatformReferenceError:
         return cls("private conversation requires an unscoped user actor")
+
+    @classmethod
+    def empty_union_identity(cls) -> PlatformReferenceError:
+        return cls("official union identity must contain at least one identifier")
+
+    @classmethod
+    def union_identity_requires_official_platform(cls) -> PlatformReferenceError:
+        return cls("official union identity requires the QQ Official platform")
 
 
 def _required_id(
@@ -174,6 +184,55 @@ class ConversationRef:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class OfficialUnionIdentity:
+    """Non-addressable cross-application identity evidence from Tencent."""
+
+    union_openid: str | None = None
+    union_user_account: str | None = None
+
+    def __post_init__(self) -> None:
+        union_openid = (self.union_openid or "").strip() or None
+        union_user_account = (self.union_user_account or "").strip() or None
+        if union_openid is None and union_user_account is None:
+            raise PlatformReferenceError.empty_union_identity()
+        object.__setattr__(self, "union_openid", union_openid)
+        object.__setattr__(self, "union_user_account", union_user_account)
+
+
+@dataclass(frozen=True, slots=True)
+class ActorPrincipal:
+    """Non-addressable owner of user-scoped business state."""
+
+    kind: ActorPrincipalKind
+    id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "id",
+            _required_id(self.id, error=PlatformReferenceError.empty_actor_id),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationPrincipal:
+    """Non-addressable owner of conversation-scoped business state."""
+
+    kind: ConversationPrincipalKind
+    id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "id",
+            _required_id(
+                self.id,
+                error=PlatformReferenceError.empty_conversation_id,
+            ),
+        )
+
+
 def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
     """Build the direct-message conversation owned by one user actor."""
 
@@ -229,6 +288,7 @@ class IncomingMessageRef:
     reply_to_id: str | None = None
     sequence: str | None = None
     reply_deadline: datetime | None = None
+    official_union_identity: OfficialUnionIdentity | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -276,3 +336,8 @@ class IncomingMessageRef:
                 ),
             )
         validate_reply_deadline(self.reply_deadline)
+        if (
+            self.official_union_identity is not None
+            and self.platform is not Platform.QQ_OFFICIAL
+        ):
+            raise PlatformReferenceError.union_identity_requires_official_platform()

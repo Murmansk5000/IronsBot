@@ -129,6 +129,7 @@ def bootstrap() -> Application:
             ),
             application.resources.outbound_messenger,
             identity_observer=application.resources.identity_observer,
+            union_identity=application.resources.union_identity,
         )
     application.resources.onebot_ingress.install()
     application.install()

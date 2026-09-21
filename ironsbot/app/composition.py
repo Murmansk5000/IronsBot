@@ -29,6 +29,7 @@ from ironsbot.app.resources import ApplicationResources
 from ironsbot.app.seer_composition import build_seer_components
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.features import Feature
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.extensions.player_lineup import (
     PlayerLineupCacheServices,
@@ -66,8 +67,10 @@ from ironsbot.services.identity_observation import (
     IdentityObservationAccount,
     SilentIdentityObservationService,
 )
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.official_union_identity import OfficialUnionIdentityService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
@@ -99,13 +102,27 @@ async def _start_data_sync_resource(
 
 async def _load_identity_links(  # noqa: PLR0913
     store: SqliteIdentityLinkStore,
+    principals: IdentityPrincipalService,
     features: FeatureService,
     observer: SilentIdentityObservationService | None,
     bili_targets: BiliTargetService,
     player_bindings: SqlitePlayerBindingStore,
     qq_official: QQOfficialRuntime | None,
 ) -> None:
+    for observation in await store.all_union_identities():
+        official = observation.official
+        principals.observe_union_identity(
+            actor=ActorRef(
+                Platform.QQ_OFFICIAL,
+                official.openid,
+                kind=official.kind if official.scope_id else "user",
+                scope_id=official.scope_id or None,
+                account_id=official.app_id,
+            ),
+            evidence=observation.union_identity,
+        )
     for link in await store.all_group_links():
+        principals.register_group_link(link)
         selected_for_outbound = qq_official is None or qq_official.register_group_link(
             link
         )
@@ -123,6 +140,7 @@ async def _load_identity_links(  # noqa: PLR0913
                 onebot_group_id=link.onebot_group_id,
             )
     for link in await store.all_links():
+        principals.register_identity_link(link)
         player_bindings.reconcile_identity_link(link)
         features.register_identity_link(
             official_app_id=link.official.app_id,
@@ -148,6 +166,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     prompt_sessions = common.prompt_sessions
     features = common.features
+    identity_principals = IdentityPrincipalService()
     promotions = common.promotions
     outbound = common.outbound
     subscriptions = common.subscriptions
@@ -284,6 +303,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     identity_store = SqliteIdentityLinkStore(settings.paths.qq_state)
 
     def register_identity_link(link: CrossPlatformIdentityLink) -> None:
+        identity_principals.register_identity_link(link)
         player_bindings.reconcile_identity_link(link)
         features.register_identity_link(
             official_app_id=link.official.app_id,
@@ -307,9 +327,20 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         on_unlink=unregister_identity_link,
     )
     identity_links = IdentityLinkCommands(identity_linking)
+    union_identity = (
+        OfficialUnionIdentityService(
+            identity_store,
+            common.admin_notices,
+            identity_principals,
+            register_identity_link,
+        )
+        if common.qq_official is not None
+        else None
+    )
     identity_observer = _build_identity_observer(
         settings,
         identity_store,
+        identity_principals,
         features,
         bilibili.targets,
         common.qq_official,
@@ -394,7 +425,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         identity_links=identity_links,
         identity_linking=identity_linking,
+        identity_principals=identity_principals,
         identity_observer=identity_observer,
+        union_identity=union_identity,
         onebot_ingress=onebot_ingress,
         private_extensions=private_extensions,
     )
@@ -413,6 +446,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             partial(
                 _load_identity_links,
                 identity_store,
+                identity_principals,
                 features,
                 identity_observer,
                 bilibili.targets,
@@ -471,9 +505,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
 
 
-def _build_identity_observer(
+def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependencies
     settings: Settings,
     store: SqliteIdentityLinkStore,
+    principals: IdentityPrincipalService,
     features: FeatureService,
     bili_targets: BiliTargetService,
     qq_official: QQOfficialRuntime | None,
@@ -500,6 +535,10 @@ def _build_identity_observer(
         )
 
     def register_link(qq_id: str, official: OfficialIdentity) -> None:
+        principals.register_official_link(
+            onebot_qq_id=qq_id,
+            official=official,
+        )
         features.register_identity_link(
             official_app_id=official.app_id,
             official_openid=official.openid,
@@ -507,6 +546,7 @@ def _build_identity_observer(
         )
 
     def register_group_link(link: CrossPlatformGroupLink) -> None:
+        principals.register_group_link(link)
         selected_for_outbound = qq_official is None or qq_official.register_group_link(
             link
         )
