@@ -67,6 +67,8 @@ class AiInputRoutingService:
 
         available = self._available_ai_commands(command_context)
         if message.kind is MessageInputKind.BOT_MENTION:
+            if not message.text.strip():
+                return AiInputDecision(offer_help_hint=True)
             chat = "ai_chat.group" in available
             return AiInputDecision(
                 try_chat=chat,
