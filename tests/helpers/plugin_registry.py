@@ -221,6 +221,7 @@ def build_test_plugin_registry(
                 topics=None,
                 stop_topics=_noop_startup,
                 portable_command_actions=(),
+                has_enabled_mention_replies=False,
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import ironsbot.platform_state_migration as migration
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.identity_links import (
     OfficialIdentity,
     SqliteIdentityLinkStore,
@@ -19,6 +19,10 @@ from ironsbot.integrations.storage.sqlite import SqliteMigrationError
 from ironsbot.platform_state_migration import (
     PlatformStateMigrationError,
     migrate_platform_state_identities,
+)
+from ironsbot.services.identity_principals import (
+    default_actor_principal,
+    default_conversation_principal,
 )
 from ironsbot.state_migration_cli import main as state_migration_main
 
@@ -412,11 +416,10 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
     with sqlite3.connect(data_root / "state/qq_state.sqlite") as connection:
         assert connection.execute(
             """
-            SELECT actor_platform, actor_account_id, actor_kind, actor_id,
-                   actor_scope_id, player_id
+            SELECT principal_kind, principal_id, player_id
             FROM player_bindings
             """
-        ).fetchall() == [("onebot", "", "user", "1001", "", 90001)]
+        ).fetchall() == [("qq", "1001", 90001)]
         assert connection.execute(
             """
             SELECT conversation_kind, conversation_id
@@ -425,11 +428,24 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
         ).fetchall() == [("group", "2001")]
         assert connection.execute(
             """
-            SELECT conversation_platform, conversation_account_id,
+            SELECT principal_kind, principal_id,
+                   conversation_platform, conversation_account_id,
                    conversation_kind, conversation_id, uid, category, muted
             FROM bili_push_category_preferences
             """
-        ).fetchall() == [("onebot", "", "group", "2001", 123, "lottery", 1)]
+        ).fetchall() == [
+            (
+                "qq_group",
+                "2001",
+                "onebot",
+                "",
+                "group",
+                "2001",
+                123,
+                "lottery",
+                1,
+            )
+        ]
         assert connection.execute(
             """
             SELECT actor_id, position
@@ -441,6 +457,7 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
             row[1] for row in connection.execute("PRAGMA table_info(player_bindings)")
         }
     assert "qq_user_id" not in columns
+    assert "principal_kind" in columns
     with sqlite3.connect(data_root / "state/runtime_state.sqlite") as connection:
         assert connection.execute(
             """
@@ -454,10 +471,11 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
     with sqlite3.connect(data_root / "ai_chat/memory.sqlite") as connection:
         assert connection.execute(
             """
-            SELECT actor_id, conversation_kind, conversation_id, content
+            SELECT principal_kind, principal_id,
+                   conversation_kind, conversation_id, content
             FROM messages
             """
-        ).fetchall() == [("1001", "private", "1001", "你好")]
+        ).fetchall() == [("qq", "1001", "private", "1001", "你好")]
 
     repeated = migrate_platform_state_identities(data_root=data_root, apply=True)
     assert repeated.already_migrated
@@ -540,6 +558,14 @@ def test_accountless_qq_official_state_is_scoped_and_allows_same_openid(
     )
 
     assert result.applied
+    expected_group = default_conversation_principal(
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "same-group-openid",
+            account_id="app-a",
+        )
+    )
     with sqlite3.connect(data_root / "state/qq_state.sqlite") as connection:
         assert connection.execute(
             """
@@ -550,10 +576,10 @@ def test_accountless_qq_official_state_is_scoped_and_allows_same_openid(
         ).fetchone() == ("app-a", "app-a", "app-a")
         assert connection.execute(
             """
-            SELECT conversation_account_id, actor_account_id
+            SELECT principal_kind, principal_id, actor_account_id
             FROM team_resource_subscription_mentions
             """
-        ).fetchone() == ("app-a", "app-a")
+        ).fetchone() == (expected_group.kind, expected_group.id, "app-a")
     with sqlite3.connect(data_root / "state/runtime_state.sqlite") as connection:
         assert connection.execute(
             """
@@ -562,11 +588,15 @@ def test_accountless_qq_official_state_is_scoped_and_allows_same_openid(
             """
         ).fetchone() == ("app-a", "app-a")
     with sqlite3.connect(data_root / "ai_chat/memory.sqlite") as connection:
+        expected = default_actor_principal(
+            ActorRef(Platform.QQ_OFFICIAL, "same-openid", account_id="app-a")
+        )
         assert connection.execute(
             """
-            SELECT actor_account_id, conversation_account_id FROM messages
+            SELECT principal_kind, principal_id, conversation_account_id
+            FROM messages
             """
-        ).fetchone() == ("app-a", "app-a")
+        ).fetchone() == (expected.kind, expected.id, "app-a")
     store = SqlitePlayerBindingStore(data_root / "state/qq_state.sqlite")
     actor_a = ActorRef(
         Platform.QQ_OFFICIAL,
