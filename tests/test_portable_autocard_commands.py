@@ -27,6 +27,7 @@ from ironsbot.services.seer.autocard import (
 from ironsbot.services.seer.autocard_sanctuary import (
     AutocardSanctuaryRow,
     AutocardSanctuaryService,
+    SanctuarySearchResult,
 )
 
 if TYPE_CHECKING:
@@ -65,6 +66,16 @@ class _Media:
     ) -> OutboundMessage:
         del include_additional_images
         return entry.to_outbound()
+
+
+class _EmptyAutocardService:
+    def search(self, _text: str) -> AutocardSearchResult:
+        return AutocardSearchResult()
+
+
+class _EmptySanctuaryService:
+    def search(self, _text: str) -> SanctuarySearchResult:
+        return SanctuarySearchResult()
 
 
 class _SanctuaryRows:
@@ -153,6 +164,20 @@ async def test_autocard_query_supports_direct_and_reusable_menu_results() -> Non
     assert _text(menu) == "群星牌候选菜单"
     assert _text(selected) == "卡牌详情:2"
     assert sessions.recognizes_response("1", context)
+
+
+@pytest.mark.asyncio
+async def test_empty_autocard_affix_lookups_stay_silent() -> None:
+    operations = build_portable_autocard_operations(
+        cast("AutocardService", _EmptyAutocardService()),
+        cast("AutocardMediaService", _Media()),
+        cast("AutocardSanctuaryService", _EmptySanctuaryService()),
+        PortableQuerySessions(),
+    )
+    context = _context("聊聊群星牌")
+
+    assert await operations["seer.autocard.query"]("聊聊群星牌", context) is None
+    assert await operations["seer.autocard.sanctuary"]("这个圣域", context) is None
 
 
 @pytest.mark.asyncio

@@ -235,10 +235,15 @@ def test_non_command_input_is_not_claimed(text: str) -> None:
         ("seer.mintmark.query", "什么时候100块一个刻印"),
         ("seer.mintmark.query", "刻印"),
         ("seer.mintmark.query", "一个刻印"),
+        ("seer.equipment.query", "这个套装"),
+        ("seer.equipment.query", "部件有问题"),
+        ("seer.equipment.query", "他有一个称号"),
+        ("seer.type.query", "能不能让他识别属性技能和属性"),
+        ("seer.type.query", "这个异常不应该回复异常"),
     ],
 )
 @pytest.mark.asyncio
-async def test_empty_pet_and_mintmark_lookups_stay_silent(
+async def test_empty_affix_entity_lookups_stay_silent(
     operation_id: str,
     text: str,
 ) -> None:
