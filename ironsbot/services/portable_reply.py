@@ -141,4 +141,6 @@ class PortableOperation(Protocol):
         self,
         text: str,
         context: MessageInputContext,
-    ) -> Awaitable[PortableReply | OutboundMessage | str | DataQueryImageReply]: ...
+    ) -> Awaitable[
+        PortableReply | OutboundMessage | str | DataQueryImageReply | None
+    ]: ...
