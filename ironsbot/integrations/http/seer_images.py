@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from functools import cache, partial
-from io import BytesIO
+from functools import partial
 from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
-from PIL import Image, ImageDraw
 
 from ironsbot.services.seer.images import (
     ImageSourceError,
     ImageSourceStatusError,
     MissingImageRepositoryError,
     PreparedImageRequest,
+    placeholder_image,
+    validate_image_data,
 )
 
 if TYPE_CHECKING:
@@ -64,12 +64,6 @@ _PINNED_ASSET_ROOTS = (
     "https://raw.githubusercontent.com/{repository}/{revision}/",
     "https://cdn.jsdelivr.net/gh/{repository}@{revision}/",
 )
-_FALLBACK_KINDS = frozenset({"mintmark", "pet_body", "pet_head"})
-_FALLBACK_SIZES: dict[ImageKind, int] = {
-    "mintmark": 96,
-    "pet_body": 300,
-    "pet_head": 160,
-}
 
 
 class HttpSeerImageSource:
@@ -111,11 +105,7 @@ class HttpSeerImageSource:
         return PreparedImageRequest(
             identity=snapshot.cache_identity,
             fetch=partial(self._fetch_urls, urls),
-            fallback=(
-                partial(_local_fallback_image, kind)
-                if fallback and kind in _FALLBACK_KINDS
-                else None
-            ),
+            fallback=partial(placeholder_image, kind) if fallback else None,
         )
 
     async def _fetch_urls(
@@ -125,12 +115,19 @@ class HttpSeerImageSource:
         last_error: ImageSourceError | None = None
         for url in urls:
             try:
-                return await self._get(
+                data = await self._get(
                     self._clients.cache,
                     url,
                 )
-            except (HTTPStatusError, RequestError) as error:  # noqa: PERF203
-                last_error = _image_source_error(error)
+                validate_image_data(data)
+            except (HTTPStatusError, RequestError, ImageSourceError) as error:  # noqa: PERF203
+                last_error = (
+                    error
+                    if isinstance(error, ImageSourceError)
+                    else _image_source_error(error)
+                )
+            else:
+                return data
         error = last_error or ImageSourceError("所有图片 URL 均请求失败")
         raise error
 
@@ -177,31 +174,3 @@ def _image_source_error(
         )
     detail = str(error).strip() or type(error).__name__
     return ImageSourceError(f"{detail} ({error.request.url})")
-
-
-@cache
-def _local_fallback_image(kind: ImageKind) -> bytes:
-    """Return a local placeholder, never a replacement for official artwork."""
-    size = _FALLBACK_SIZES[kind]
-    image = Image.new("RGBA", (size, size), (26, 48, 78, 255))
-    draw = ImageDraw.Draw(image)
-    inset = max(3, size // 16)
-    width = max(2, size // 24)
-    draw.rectangle(
-        (inset, inset, size - inset - 1, size - inset - 1),
-        outline=(94, 150, 216, 255),
-        width=width,
-    )
-    draw.line(
-        (inset * 2, inset * 2, size - inset * 2, size - inset * 2),
-        fill=(94, 150, 216, 255),
-        width=width,
-    )
-    draw.line(
-        (size - inset * 2, inset * 2, inset * 2, size - inset * 2),
-        fill=(94, 150, 216, 255),
-        width=width,
-    )
-    output = BytesIO()
-    image.save(output, format="PNG")
-    return output.getvalue()
