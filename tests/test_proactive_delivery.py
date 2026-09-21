@@ -466,9 +466,15 @@ async def test_lucky_skin_sender_uses_typed_private_delivery() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_notice_sender_maps_summary_to_original_recipients() -> None:
+async def test_admin_notice_sender_maps_summary_to_original_recipients(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     delivery, _messenger, _subscriptions = _delivery()
     sender = OutboundAdminNoticeSender(delivery)
+    caplog.set_level(
+        "INFO",
+        logger="ironsbot.services.messaging.admin_notice_delivery",
+    )
 
     summary = await sender.send_admin_notice(
         OutboundMessage((TextPart("同步失败"),)),
@@ -481,6 +487,12 @@ async def test_admin_notice_sender_maps_summary_to_original_recipients() -> None
 
     assert summary.succeeded == (ACTOR, GROUP)
     assert summary.failed == ()
+    assert (
+        "sync notice delivery complete: private_targets=1 group_targets=1 "
+        "succeeded=2 failed=0"
+    ) in caplog.text
+    assert ACTOR.id not in caplog.text
+    assert GROUP.id not in caplog.text
 
 
 @pytest.mark.asyncio
