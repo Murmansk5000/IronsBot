@@ -57,13 +57,23 @@ class OutboundAdminNoticeSender:
             subscription_key=subscription_key,
         )
         recipient_by_conversation = dict(recipients)
-        return AdminNoticeSendSummary(
+        result = AdminNoticeSendSummary(
             tuple(
                 recipient_by_conversation[conversation]
                 for conversation in summary.succeeded
             ),
             (*scoped, *(recipient_by_conversation[item] for item in summary.failed)),
         )
+        _LOGGER.info(
+            "%s delivery complete: private_targets=%d group_targets=%d "
+            "succeeded=%d failed=%d",
+            action_name,
+            len(private_actors),
+            len(group_conversations),
+            len(result.succeeded),
+            len(result.failed),
+        )
+        return result
 
 
 def _notice_recipients(
