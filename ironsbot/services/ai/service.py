@@ -29,9 +29,15 @@ if TYPE_CHECKING:
     from ironsbot.config.models.ai import AiConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.messaging import AiIntentAction
-    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.platform import (
+        ActorPrincipal,
+        ActorRef,
+        ConversationPrincipal,
+        ConversationRef,
+    )
     from ironsbot.services.ai.client import AiCompletionClient
     from ironsbot.services.ai.memory import AiMemoryStore
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
 REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
@@ -62,6 +68,7 @@ class AiService:
         features: FeatureService,
         admin_notices: AdminNoticeService,
         team_resource_commands: tuple[str, ...],
+        principals: IdentityPrincipalService,
         completion: AiCompletionClient,
         memory: AiMemoryStore | None = None,
     ) -> None:
@@ -69,6 +76,7 @@ class AiService:
         self._features = features
         self._admin_notices = admin_notices
         self._team_resource_commands = team_resource_commands
+        self._principals = principals
         self._completion = completion
         self._memory = memory
         self._history: dict[str, list[HistoryMessage]] = {}
@@ -99,7 +107,10 @@ class AiService:
         prompt: str,
         source_context: str | None = None,
     ) -> str | None:
-        key = _chat_key(actor, conversation)
+        key = _chat_key(
+            self._principals.actor_principal(actor),
+            self._principals.conversation_principal(conversation),
+        )
         history = self._history.get(key, [])
         completion = await self._complete(
             prompt,
@@ -405,11 +416,14 @@ class AiService:
         )
 
 
-def _chat_key(actor: ActorRef, conversation: ConversationRef) -> str:
+def _chat_key(
+    actor: ActorPrincipal,
+    conversation: ConversationPrincipal,
+) -> str:
     return json.dumps(
         (
-            (conversation.platform.value, conversation.kind, conversation.id),
-            (actor.platform.value, actor.kind, actor.scope_id, actor.id),
+            (conversation.kind, conversation.id),
+            (actor.kind, actor.id),
         ),
         ensure_ascii=False,
         separators=(",", ":"),

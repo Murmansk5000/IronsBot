@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from ironsbot.services.identity_observation import (
         SilentIdentityObservationService,
     )
+    from ironsbot.services.official_union_identity import OfficialUnionIdentityService
     from ironsbot.services.portable_commands import PortableCommandRouter
     from ironsbot.services.portable_reply import DeliveryStage
 
@@ -268,6 +269,7 @@ class QQOfficialRuntime:
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
         self._identity_observer: SilentIdentityObservationService | None = None
+        self._union_identity: OfficialUnionIdentityService | None = None
         self._recipient_state = recipient_state
         self._ingress_routing: QQOfficialIngressRouting | None = None
         self._connections: dict[str, _Connection] = {}
@@ -353,6 +355,7 @@ class QQOfficialRuntime:
         messenger: OutboundMessenger,
         *,
         identity_observer: SilentIdentityObservationService | None = None,
+        union_identity: OfficialUnionIdentityService | None = None,
     ) -> None:
         if self._router is not None or self._messenger is not None:
             msg = "QQ Official runtime is already bound"
@@ -360,6 +363,7 @@ class QQOfficialRuntime:
         self._router = router
         self._messenger = messenger
         self._identity_observer = identity_observer
+        self._union_identity = union_identity
 
     async def start(self) -> None:
         if self._router is None or self._messenger is None:
@@ -456,6 +460,8 @@ class QQOfficialRuntime:
                 reference_digest(incoming.message_id),
             )
             return
+        if self._union_identity is not None:
+            await self._union_identity.observe(incoming)
         context = MessageInputContext(
             incoming,
             mentions_bot=mentions_bot,

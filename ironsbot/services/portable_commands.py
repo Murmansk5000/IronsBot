@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -98,6 +99,10 @@ if TYPE_CHECKING:
 
 
 class PortableCommandRouterError(ValueError):
+    @classmethod
+    def missing_identity_principals(cls) -> PortableCommandRouterError:
+        return cls("lucky skin window requires identity principals")
+
     @classmethod
     def missing_ai_intent_executor(cls) -> PortableCommandRouterError:
         return cls("portable AI intent commands require an action executor")
@@ -353,6 +358,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     identity_links: IdentityLinkCommands,
     features: FeatureService,
     ai: AiService,
+    identity_principals: IdentityPrincipalService | None = None,
     ai_intent_actions: AiIntentActionExecutor | None = None,
     addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
@@ -402,20 +408,19 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         catalog,
         build_portable_identity_link_operations(identity_links),
     )
-    lucky_skin_operations = _catalog_operations(
-        catalog,
-        (
-            {}
-            if lucky_skin_window is None
-            else build_portable_lucky_skin_operations(
-                lucky_skin_window,
-                seer.pet_query,
-                features,
-                sessions,
-                player_id_resolver,
-            )
-        ),
-    )
+    raw_lucky_skin_operations: dict[str, PortableOperation] = {}
+    if lucky_skin_window is not None:
+        if identity_principals is None:
+            raise PortableCommandRouterError.missing_identity_principals()
+        raw_lucky_skin_operations = build_portable_lucky_skin_operations(
+            lucky_skin_window,
+            seer.pet_query,
+            features,
+            sessions,
+            player_id_resolver,
+            identity_principals,
+        )
+    lucky_skin_operations = _catalog_operations(catalog, raw_lucky_skin_operations)
     rank_operations = _catalog_operations(
         catalog,
         build_portable_rank_operations(

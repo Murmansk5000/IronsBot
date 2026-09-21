@@ -8,6 +8,7 @@ from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
     IncomingMessageRef,
+    OfficialUnionIdentity,
     Platform,
 )
 
@@ -186,4 +187,28 @@ def test_incoming_message_rejects_naive_reply_deadline() -> None:
                 12,
                 tzinfo=timezone.utc,
             ).replace(tzinfo=None),
+        )
+
+
+def test_official_union_identity_normalizes_optional_evidence() -> None:
+    identity = OfficialUnionIdentity(" union-openid ", " union-account ")
+
+    assert identity.union_openid == "union-openid"
+    assert identity.union_user_account == "union-account"
+
+
+def test_official_union_identity_rejects_empty_evidence() -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        OfficialUnionIdentity(" ", None)
+
+
+def test_onebot_message_rejects_official_union_identity() -> None:
+    with pytest.raises(ValueError, match="QQ Official"):
+        IncomingMessageRef(
+            platform=Platform.ONEBOT,
+            actor=ActorRef(Platform.ONEBOT, "1"),
+            conversation=ConversationRef(Platform.ONEBOT, "private", "1"),
+            message_id="message-1",
+            text="hello",
+            official_union_identity=OfficialUnionIdentity("union-openid"),
         )

@@ -13,7 +13,9 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import AiIntentAction
 from ironsbot.core.outbound import OutboundMessage, ReplyContext, TextPart
 from ironsbot.core.platform import (
+    ActorPrincipal,
     ActorRef,
+    ConversationPrincipal,
     ConversationRef,
     IncomingMessageRef,
     Platform,
@@ -24,6 +26,7 @@ from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStor
 from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService, _chat_key
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
@@ -76,13 +79,18 @@ def _service(
         prompts.append(messages)
         return result or AiResponseResult(status_code=200, reply="model answer")
 
+    principals = IdentityPrincipalService()
     return AiService(
         config,
         policy,
         AdminNoticeService(policy, OutboundAdminNoticeSender(delivery)),
         (),
+        principals,
         FakeAiCompletionClient(config, complete),
-        SqliteAiMemoryStore(path / "memory.sqlite"),
+        SqliteAiMemoryStore(
+            path / "memory.sqlite",
+            principal_for=principals.actor_principal,
+        ),
     )
 
 
@@ -113,20 +121,17 @@ async def test_distinct_scoped_actors_cannot_share_short_history(
 
 
 def test_chat_keys_are_structural_stable_and_lossless() -> None:
-    actor = ActorRef(OFFICIAL, '用户:[]"\\', "member", "scope:[]")
-    conversation = ConversationRef(OFFICIAL, "group", actor.scope_id or "")
+    actor = ActorPrincipal("official_union", '用户:[]"\\')
+    conversation = ConversationPrincipal("official_group", "scope:[]")
     assert json.loads(_chat_key(actor, conversation)) == [
-        [OFFICIAL.value, "group", conversation.id],
-        [OFFICIAL.value, "member", actor.scope_id, actor.id],
+        ["official_group", conversation.id],
+        ["official_union", actor.id],
     ]
     identities = (
         (actor, conversation),
         (replace(actor, id="different"), conversation),
-        (replace(actor, scope_id="different"), conversation),
-        (ActorRef(OFFICIAL, actor.id), conversation),
-        (replace(actor, platform=Platform.ONEBOT), conversation),
-        (actor, replace(conversation, platform=Platform.ONEBOT)),
-        (actor, replace(conversation, kind="channel")),
+        (replace(actor, kind="qq"), conversation),
+        (actor, replace(conversation, kind="qq_group")),
         (actor, replace(conversation, id="different")),
     )
     keys = {_chat_key(actor, conversation) for actor, conversation in identities}

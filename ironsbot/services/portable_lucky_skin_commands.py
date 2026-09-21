@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.platform import Platform, reference_digest
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, PortableReply
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
@@ -50,12 +51,13 @@ _LINK_REQUIRED = (
 _Confirmation = Literal["confirm", "cancel"]
 
 
-def build_portable_lucky_skin_operations(
+def build_portable_lucky_skin_operations(  # noqa: PLR0913
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
     sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
+    identity_principals: IdentityPrincipalService,
 ) -> dict[str, PortableOperation]:
     commands = PortableLuckySkinCommands(
         service,
@@ -63,6 +65,7 @@ def build_portable_lucky_skin_operations(
         features,
         sessions,
         resolver,
+        identity_principals,
     )
     return {
         "seer.lucky_skin_window.query": commands.query,
@@ -81,6 +84,7 @@ class PortableLuckySkinCommands:
     features: FeatureService
     sessions: PortableQuerySessions
     resolver: PlayerIdResolver
+    identity_principals: IdentityPrincipalService
 
     async def query(
         self, text: str, context: MessageInputContext
@@ -179,8 +183,7 @@ class PortableLuckySkinCommands:
         return await self._watch_direct(context, self.service.watch_reset_message)
 
     def _account_actor(self, context: MessageInputContext) -> ActorRef | None:
-        actor = self.features.canonical_actor(context.message.actor)
-        return actor if actor.platform is Platform.ONEBOT else None
+        return self.identity_principals.onebot_actor(context.message.actor)
 
     def _confirmation_menu(
         self,
