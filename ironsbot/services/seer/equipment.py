@@ -16,11 +16,12 @@ if TYPE_CHECKING:
     from seerapi_models import AchievementORM, EquipORM, SuitORM, TitlePartORM
 
     from ironsbot.services.seer.data import DataGetter, SeerDataAccess
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
 
 EquipmentKind = Literal["suit", "equip", "title"]
 PROMPT_MAX_ITEMS = 20
 MOUNT_PART_TYPE_ID = 6
+HTTP_NOT_FOUND = 404
 EQUIP_PART_TYPE_MAP = {
     0: "头部",
     1: "眼部",
@@ -45,9 +46,11 @@ class EquipmentQueryService:
         self,
         data: SeerDataAccess,
         images: SeerImageSource,
+        image_failure_reporter: ImageFailureReporter | None = None,
     ) -> None:
         self._data = data
         self._images = images
+        self._image_failure_reporter = image_failure_reporter
 
     async def search(
         self,
@@ -135,8 +138,13 @@ class EquipmentQueryService:
             self._images,
             "mount" if reply_data.is_mount else reply_data.kind,
             str(reply_data.item_id),
+            self._image_failure_reporter,
         )
-        if reply_data.is_mount and image.data is None and "原因：404" in image.error:
+        if (
+            reply_data.is_mount
+            and image.data is None
+            and image.status_code == HTTP_NOT_FOUND
+        ):
             return QueryReply(
                 text=(f"{reply_data.text}\n图片：官方图片暂未上线，暂无法展示。")
             )

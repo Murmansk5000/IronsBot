@@ -182,7 +182,7 @@ async def test_query_reply_preserves_content_order_and_image_failure(
     assert send.await_args is not None
     message = send.await_args.args[0]
     if image is None:
-        assert message.extract_plain_text() == "beforefailedafter"
+        assert message.extract_plain_text() == "beforefailed\nafter"
     else:
         assert [segment.type for segment in message] == ["text", "image", "text"]
         assert message[0].data["text"] == "before"

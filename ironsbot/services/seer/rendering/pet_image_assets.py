@@ -17,6 +17,7 @@ class PetImageAssets:
 
     pet_heads: tuple[tuple[int, str], ...]
     type_icons: tuple[tuple[int, str], ...]
+    complete: bool = True
 
     @property
     def pet_head_by_resource_id(self) -> Mapping[int, str]:

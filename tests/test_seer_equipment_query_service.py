@@ -74,10 +74,10 @@ class MissingImages:
         *,
         fallback: bool = True,
     ) -> bytes:
-        from ironsbot.services.seer.images import ImageSourceError
+        from ironsbot.services.seer.images import ImageSourceStatusError
 
         assert fallback is False
-        raise ImageSourceError(NOT_FOUND_IMAGE_ERROR)
+        raise ImageSourceStatusError(404, "Not Found")
 
 
 def _service(
@@ -265,7 +265,7 @@ async def test_mount_uses_generated_mount_asset_kind() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_mount_missing_image_keeps_existing_error() -> None:
+async def test_non_mount_missing_image_hides_internal_error() -> None:
     data = FakeData()
     data.values[data.equip] = (
         SimpleNamespace(
@@ -281,4 +281,5 @@ async def test_non_mount_missing_image_keeps_existing_error() -> None:
 
     assert result.reply is not None
     assert result.reply.image is None
-    assert "原因：404 Not Found" in result.reply.image_error
+    assert result.reply.image_error == "图片素材获取失败，暂时无法显示。"
+    assert "404" not in result.reply.image_error
