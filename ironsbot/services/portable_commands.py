@@ -126,6 +126,7 @@ class PortableCommandRouter:
         ai_intent_actions: AiIntentActionExecutor | None = None,
         ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
+        messaging: MessagingService | None = None,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
         unknown = set(operations) - catalog.command_ids
@@ -151,6 +152,7 @@ class PortableCommandRouter:
         self._ai_intent_actions = ai_intent_actions
         self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
+        self._messaging = messaging
         self._query_sessions = query_sessions or PortableQuerySessions()
 
     def recognizes(
@@ -172,6 +174,10 @@ class PortableCommandRouter:
                 )
                 is not None
             )
+            or (
+                self._messaging is not None
+                and self._messaging.match_mention_reply(context) is not None
+            )
             or self._ai_input_routing.decide(
                 context,
                 command_context,
@@ -179,7 +185,7 @@ class PortableCommandRouter:
             ).recognized
         )
 
-    async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
+    async def dispatch(  # noqa: C901, PLR0911 - explicit routing precedence
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
@@ -210,6 +216,17 @@ class PortableCommandRouter:
             context=command_context,
         )
         if contract is None:
+            if self._messaging is not None:
+                mention_reply = self._messaging.match_mention_reply(context)
+                if mention_reply is not None:
+                    messages = tuple(
+                        OutboundMessage.from_text(message)
+                        for message in mention_reply.messages
+                    )
+                    return PortableReply(
+                        messages[0],
+                        additional_messages=messages[1:],
+                    )
             return await self._fallback_reply(context, command_context, command)
         try:
             result = await self._operations[contract.id](command, context)
@@ -313,7 +330,7 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if decision.offer_help_hint and self._addressed_input_hints.admit(context):
+        if decision.offer_addressed_hint and self._addressed_input_hints.admit(context):
             return PortableReply(
                 OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
             )
@@ -575,6 +592,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         ai_intent_actions=ai_intent_actions,
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
+        messaging=messaging,
         query_sessions=sessions,
     )
 

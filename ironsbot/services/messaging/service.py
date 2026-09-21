@@ -31,9 +31,12 @@ if TYPE_CHECKING:
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
         MessageConfig,
+        MessageMentionReplyAction,
         MessageReplyAction,
     )
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.platform import ActorPrincipal
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.scheduled_delivery import (
         ScheduledMessageSender,
@@ -88,6 +91,8 @@ class MessagingService:
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
     _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
+    _mention_reply_targets: tuple[tuple[ActorRef, ...], ...] = ()
+    _actor_principal: Callable[[ActorRef], ActorPrincipal] | None = None
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -104,6 +109,10 @@ class MessagingService:
             for action in self._config.commands
             if action.enabled and not action.at_user_ids
         )
+
+    @property
+    def has_enabled_mention_replies(self) -> bool:
+        return any(action.enabled for action in self._config.mention_replies)
 
     def schedule_mentions(
         self,
@@ -142,6 +151,44 @@ class MessagingService:
             self._config.keyword_replies,
             is_allowed=is_allowed,
         )
+
+    def match_mention_reply(
+        self,
+        context: MessageInputContext,
+    ) -> MessageMentionReplyAction | None:
+        """Match a configured actor after command and session routing."""
+
+        message = context.message
+        if (
+            not context.mentions_bot
+            or message.conversation.kind != "group"
+            or self._features.is_message_blocked(
+                message.actor,
+                message.conversation,
+            )
+        ):
+            return None
+        if len(self._mention_reply_targets) != len(self._config.mention_replies):
+            msg = "mention reply targets do not match configured actions"
+            raise RuntimeError(msg)
+        principal_for = self._actor_principal
+        for action, targets in zip(
+            self._config.mention_replies,
+            self._mention_reply_targets,
+            strict=True,
+        ):
+            if not action.enabled:
+                continue
+            if principal_for is None:
+                matched = message.actor in targets
+            else:
+                actor_principal = principal_for(message.actor)
+                matched = any(
+                    principal_for(target) == actor_principal for target in targets
+                )
+            if matched:
+                return action
+        return None
 
     def matches_subscription_command(self, text: str) -> bool:
         return command_text_matches(

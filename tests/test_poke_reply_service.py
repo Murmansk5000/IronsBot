@@ -11,8 +11,8 @@ from ironsbot.core.command_catalog import (
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.help_hint import (
-    OneBotHelpHintService,
+from ironsbot.integrations.onebot.poke_reply import (
+    OneBotPokeReplyService,
     is_onebot_poke_at_bot,
 )
 
@@ -199,7 +199,7 @@ def _service(
     group_aliases: dict[str, int] | None = None,
     user_aliases: dict[str, int] | None = None,
     features: FakeFeatures | None = None,
-) -> OneBotHelpHintService:
+) -> OneBotPokeReplyService:
     catalog = _catalog()
 
     def candidates(
@@ -220,18 +220,18 @@ def _service(
             ignored_plugins=ignored_plugins,
         )
 
-    return OneBotHelpHintService(
+    return OneBotPokeReplyService(
         config=config or HelpConfig(),
         references=OneBotReferenceResolver(
             group_aliases=group_aliases or {},
             user_aliases=user_aliases or {},
         ),
-        poke_hint_candidates=candidates,
+        candidates=candidates,
         chooser=lambda candidates: candidates[0],
     )
 
 
-def test_help_hint_text_mentions_help_command() -> None:
+def test_direct_command_hint_mentions_help_command() -> None:
     assert (
         DIRECT_COMMAND_HELP_HINT_TEXT
         == "请在 @ 后输入指令；不知道指令时发送‘帮助’查看当前可用功能。"
@@ -249,8 +249,10 @@ def test_group_poke_reply_prefers_configured_group_alias() -> None:
         config=HelpConfig(poke_replies={"example": "自定义戳一戳回复"}),
     )
 
-    assert service.get_poke_reply(group_id=987654321, user_id=1) == ("自定义戳一戳回复")
-    assert service.get_poke_reply(group_id=876543210, user_id=1) is None
+    assert service.get_configured_reply(group_id=987654321, user_id=1) == (
+        "自定义戳一戳回复"
+    )
+    assert service.get_configured_reply(group_id=876543210, user_id=1) is None
 
 
 def test_group_poke_reply_accepts_numeric_group_id() -> None:
@@ -258,7 +260,10 @@ def test_group_poke_reply_accepts_numeric_group_id() -> None:
         config=HelpConfig(poke_replies={"987654321": "数字群号回复"}),
     )
 
-    assert service.get_poke_reply(group_id=987654321, user_id=1) == "数字群号回复"
+    assert service.get_configured_reply(
+        group_id=987654321,
+        user_id=1,
+    ) == "数字群号回复"
 
 
 def test_user_poke_reply_accepts_chinese_user_alias() -> None:
@@ -267,8 +272,10 @@ def test_user_poke_reply_accepts_chinese_user_alias() -> None:
         config=HelpConfig(poke_user_replies={"示例昵称": "用户专属回复"}),
     )
 
-    assert service.get_poke_reply(group_id=None, user_id=1234567890) == ("用户专属回复")
-    assert service.get_poke_reply(group_id=None, user_id=9876543210) is None
+    assert service.get_configured_reply(group_id=None, user_id=1234567890) == (
+        "用户专属回复"
+    )
+    assert service.get_configured_reply(group_id=None, user_id=9876543210) is None
 
 
 def test_user_poke_reply_takes_priority_over_group_reply() -> None:
@@ -282,14 +289,16 @@ def test_user_poke_reply_takes_priority_over_group_reply() -> None:
     )
 
     assert (
-        service.get_poke_reply(group_id=987654321, user_id=1234567890) == "用户专属回复"
+        service.get_configured_reply(group_id=987654321, user_id=1234567890)
+        == "用户专属回复"
     )
     assert (
-        service.get_poke_reply(group_id=987654321, user_id=2345678901) == "群专属回复"
+        service.get_configured_reply(group_id=987654321, user_id=2345678901)
+        == "群专属回复"
     )
 
 
-def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
+def test_poke_reply_limiter_allows_three_group_replies_per_minute() -> None:
     service = _service()
     now = 100.0
 
@@ -301,7 +310,7 @@ def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
     assert service.can_send(987654321, now=160.0)
 
 
-def test_help_hint_limiter_counts_groups_independently() -> None:
+def test_poke_reply_limiter_counts_groups_independently() -> None:
     service = _service()
 
     assert service.can_send(1, now=100.0)
@@ -311,13 +320,13 @@ def test_help_hint_limiter_counts_groups_independently() -> None:
     assert service.can_send(2, now=100.0)
 
 
-def test_help_hint_limiter_uses_a_typed_onebot_conversation() -> None:
+def test_poke_reply_limiter_uses_a_typed_onebot_conversation() -> None:
     service = _service()
     group = ConversationRef(Platform.ONEBOT, "group", "1")
     for _ in range(service.config.hint_max_per_window):
         assert (
             service.limiter.hit(
-                "help_hint",
+                "poke_reply",
                 group,
                 window_seconds=service.config.hint_window_seconds,
                 max_events=service.config.hint_max_per_window,
@@ -328,7 +337,7 @@ def test_help_hint_limiter_uses_a_typed_onebot_conversation() -> None:
     assert not service.can_send(1, now=100.0)
     assert (
         service.limiter.hit(
-            "help_hint",
+            "poke_reply",
             ConversationRef(Platform.QQ_OFFICIAL, "group", "1"),
             window_seconds=service.config.hint_window_seconds,
             max_events=service.config.hint_max_per_window,
@@ -346,7 +355,7 @@ def test_default_poke_hint_only_uses_features_enabled_in_group() -> None:
         )
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
+    assert service.get_default_reply(group_id=987654321, user_id=1) == (
         "发送“雷伊配置”查询已收录的精灵配置图。\n发送“帮助”可查看全部指令。"
     )
 
@@ -359,10 +368,10 @@ def test_default_poke_hint_uses_private_feature_policy() -> None:
         )
     )
 
-    assert service.get_default_poke_hint(group_id=None, user_id=1234567890) == (
+    assert service.get_default_reply(group_id=None, user_id=1234567890) == (
         "发送“开服了吗”查询维护状态。\n发送“帮助”可查看全部指令。"
     )
-    assert service.get_default_poke_hint(group_id=None, user_id=1) is None
+    assert service.get_default_reply(group_id=None, user_id=1) is None
 
 
 def test_activity_poke_hint_excludes_superuser_only_command_for_regular_user() -> None:
@@ -373,7 +382,7 @@ def test_activity_poke_hint_excludes_superuser_only_command_for_regular_user() -
         )
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
+    assert service.get_default_reply(group_id=987654321, user_id=1) == (
         "发送“快结束活动”查询即将结束的活动。\n发送“帮助”可查看全部指令。"
     )
 
@@ -386,10 +395,10 @@ def test_team_resource_poke_hint_is_group_only() -> None:
         )
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
+    assert service.get_default_reply(group_id=987654321, user_id=1) == (
         "发送“战队”查看本群战队订阅。\n发送“帮助”可查看全部指令。"
     )
-    assert service.get_default_poke_hint(group_id=None, user_id=1234567890) is None
+    assert service.get_default_reply(group_id=None, user_id=1234567890) is None
 
 
 def test_group_poke_hint_uses_the_poking_users_permission() -> None:
@@ -401,10 +410,10 @@ def test_group_poke_hint_uses_the_poking_users_permission() -> None:
         )
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=100) == (
+    assert service.get_default_reply(group_id=987654321, user_id=100) == (
         "发送“动态”查看订阅动态。\n发送“帮助”可查看全部指令。"
     )
-    assert service.get_default_poke_hint(group_id=987654321, user_id=200) is None
+    assert service.get_default_reply(group_id=987654321, user_id=200) is None
 
 
 def test_default_poke_hint_excludes_ignored_plugins() -> None:
@@ -416,7 +425,7 @@ def test_default_poke_hint_excludes_ignored_plugins() -> None:
         ),
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
+    assert service.get_default_reply(group_id=987654321, user_id=1) == (
         "发送“雷伊配置”查询已收录的精灵配置图。\n发送“帮助”可查看全部指令。"
     )
 
@@ -429,8 +438,8 @@ def test_group_manager_poke_hint_can_include_group_management_command() -> None:
         )
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) is None
-    assert service.get_default_poke_hint(
+    assert service.get_default_reply(group_id=987654321, user_id=1) is None
+    assert service.get_default_reply(
         group_id=987654321,
         user_id=1,
         group_role="owner",
@@ -446,6 +455,6 @@ def test_superuser_poke_hint_can_include_group_management_command() -> None:
         )
     )
 
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
+    assert service.get_default_reply(group_id=987654321, user_id=1) == (
         "发送“/榜单显示 20”设置本群榜单默认显示名次。\n发送“帮助”可查看全部指令。"
     )

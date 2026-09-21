@@ -20,12 +20,14 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
+    finish_message_sequence,
     send_matcher_message,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
+    match_mention_reply,
     match_message_command,
     match_push_subscription_command,
     match_push_time_command,
@@ -34,7 +36,10 @@ from .push_subscription_handlers import handle_push_subscription_menu
 from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.messaging import MessageReplyAction
+    from ironsbot.config.models.messaging import (
+        MessageMentionReplyAction,
+        MessageReplyAction,
+    )
     from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.service import MessagingService, ReplyInteraction
 
@@ -103,6 +108,14 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
 ) -> None:
+    async def handle_mention_reply(
+        matcher: Matcher,
+        event: GroupMessageEvent,
+        state: T_State,
+    ) -> None:
+        action = cast("MessageMentionReplyAction", state[MESSAGE_ACTION_KEY])
+        await finish_message_sequence(matcher, tuple(action.messages), event=event)
+
     routes: tuple[tuple[ReplyInteraction, str, tuple[str, ...]], ...] = (
         ("direct", "message", command_help_ids),
         ("automatic", "message.keyword", keyword_help_ids),
@@ -134,6 +147,15 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
                 references=references,
             )
         )
+
+    if messaging.has_enabled_mention_replies:
+        mention_matcher = registry.on_message(
+            policy=CommandPolicy.exempt("configured mention reply"),
+            rule=Rule(bind(match_mention_reply, messaging=messaging)),
+            priority=registry.priority("mention_reply"),
+            block=True,
+        )
+        mention_matcher.append_handler(handle_mention_reply)
 
     subscription_matcher = registry.on_message(
         policy=CommandPolicy.command(

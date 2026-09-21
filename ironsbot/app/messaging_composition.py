@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 
@@ -55,6 +56,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     outbound: GroupOutboundRateLimitService,
     bili_targets: BiliTargetService,
     lucky_skin_window: LuckySkinWindowService,
+    identity_principals: IdentityPrincipalService,
 ) -> MessagingComponents:
     """Build configuration-backed messaging, image, and team-audit services."""
     from ironsbot.integrations.onebot.lucky_skin_window import (
@@ -81,6 +83,23 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             ),
             _prepare_extra_push_options=bili_targets.prepare_subscription_labels,
             _subscription_submenu_providers=(bili_targets,),
+            _mention_reply_targets=tuple(
+                tuple(
+                    actor
+                    for user_index, user in enumerate(action.users)
+                    for actor in settings.platform_references.actor_refs(
+                        user,
+                        location=(
+                            "messaging.mention_replies"
+                            f"[{action_index}].users[{user_index}]"
+                        ),
+                    )
+                )
+                for action_index, action in enumerate(
+                    settings.messaging.mention_replies
+                )
+            ),
+            _actor_principal=identity_principals.actor_principal,
         ),
         sendpic=SendpicService(
             settings.messaging.sendpic,

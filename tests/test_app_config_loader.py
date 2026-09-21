@@ -21,6 +21,7 @@ from ironsbot.config.models.messaging import (
     CommandCooldownWindowConfig,
     MessageCommandAction,
     MessageConfig,
+    MessageMentionReplyAction,
     MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
@@ -216,6 +217,8 @@ def _assert_default_matcher_priorities(
     assert matcher_priority.pet_config < matcher_priority.seer_pet
     assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
     assert matcher_priority.lucky_skin_window < matcher_priority.seer_pet
+    assert matcher_priority.seer_query < matcher_priority.mention_reply
+    assert matcher_priority.mention_reply < matcher_priority.ai_chat
     priorities = matcher_priority.model_dump()
     non_negative_priorities = [value for value in priorities.values() if value >= 0]
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
@@ -686,6 +689,76 @@ feature = "chuchu_reply"
 
     assert config.messaging.keyword_replies[0].keywords == ["出出"]
     assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
+
+
+def test_mention_reply_actions_use_identity_aliases_and_message_sequences(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[identities.users.example]
+qq = 234567890
+
+[[messaging.mention_replies]]
+id = "example_mention"
+name = "Example mention"
+users = ["example"]
+messages = ["first", "second"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.messaging.mention_replies == [
+        MessageMentionReplyAction(
+            id="example_mention",
+            name="Example mention",
+            users=["example"],
+            messages=["first", "second"],
+        )
+    ]
+
+
+def test_mention_reply_rejects_removed_user_ids_field(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[messaging.mention_replies]]
+id = "legacy"
+user_ids = [123456789]
+messages = ["reply"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
+
+    assert any(
+        error["loc"] == ("messaging", "mention_replies", 0, "user_ids")
+        and error["type"] == "extra_forbidden"
+        for error in exc_info.value.errors()
+    )
+
+
+def test_mention_reply_rejects_raw_ids_instead_of_identity_aliases(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[messaging.mention_replies]]
+id = "raw-id"
+users = ["123456789"]
+messages = ["reply"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="unknown identity user alias"):
+        load_settings(config_path)
 
 
 def test_message_command_feature_registers_for_bundle_and_group_policy(
