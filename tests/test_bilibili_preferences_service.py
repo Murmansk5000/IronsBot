@@ -176,6 +176,14 @@ def test_v3_bili_preferences_migrate_to_principal_ownership(tmp_path: Path) -> N
                 'onebot', '', 'group', '1001', 123456, 'lottery', 1,
                 '2026-07-09T00:00:00+00:00'
             );
+            INSERT INTO bili_push_category_preferences VALUES (
+                'onebot', '', 'group', '1001', 654321, 'lottery', 1,
+                '2026-07-09T00:00:00+00:00'
+            );
+            INSERT INTO bili_push_category_preferences VALUES (
+                'onebot', '', 'group', '1001', 654321, 'winning', 0,
+                '2026-07-10T00:00:00+00:00'
+            );
             """
         )
 
@@ -184,6 +192,9 @@ def test_v3_bili_preferences_migrate_to_principal_ownership(tmp_path: Path) -> N
 
     assert store.get_mode(conversation, 123456) == "full"
     assert store.category_muted(conversation, 123456, "lottery") is True
+    assert store.category_muted(conversation, 123456, "winning") is True
+    assert store.category_muted(conversation, 654321, "lottery") is True
+    assert store.category_muted(conversation, 654321, "winning") is False
     with sqlite3.connect(path) as connection:
         columns = {
             str(row[1])
