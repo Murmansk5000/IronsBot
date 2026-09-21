@@ -24,12 +24,19 @@ from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageConfig,
     MessageKeywordReplyAction,
+    MessageMentionReplyAction,
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.conversations import event_conversation_session_id
 from ironsbot.integrations.onebot.matcher_support import EXPLICIT_COMMAND_STATE_KEY
@@ -50,6 +57,7 @@ from ironsbot.plugins.onebot.messaging.push_management_runtime import (
     PromptFlow,
 )
 from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging import schedules as message_schedules
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.push_time import PushTimeOption
@@ -130,6 +138,8 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     *,
     commands: list[MessageCommandAction] | None = None,
     keyword_replies: list[MessageKeywordReplyAction] | None = None,
+    mention_replies: list[MessageMentionReplyAction] | None = None,
+    mention_reply_targets: tuple[tuple[ActorRef, ...], ...] = (),
     schedules: list[MessageScheduledAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
@@ -143,6 +153,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         push_unsubscribe=PushUnsubscribeConfig(),
         commands=commands or [],
         keyword_replies=keyword_replies or [],
+        mention_replies=mention_replies or [],
         schedules=schedules or [],
     )
     resources = build_test_runtime(
@@ -164,6 +175,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
             resources.onebot_references,
         ),
         (extra_push_options or (lambda _conversation: []),),
+        _mention_reply_targets=mention_reply_targets,
     )
 
 
@@ -558,6 +570,83 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
         assert matches == expected
 
 
+@pytest.mark.asyncio
+async def test_enabled_mention_reply_registers_after_commands_before_ai(
+    tmp_path: Path,
+) -> None:
+    action = MessageMentionReplyAction(
+        id="example",
+        users=["example"],
+        messages=["reply"],
+    )
+    config = MessageConfig(mention_replies=[action])
+    messaging = replace(
+        _messaging_resources(tmp_path / "qq.sqlite"),
+        _config=config,
+        _mention_reply_targets=((_actor(2002),),),
+    )
+    runtime = build_test_runtime()
+    registry = runtime.matcher_factory()
+    contribution = plugin_contribution(
+        config=config,
+        features=runtime.features,
+        references=runtime.onebot_references,
+        service=messaging,
+        activity_service=cast("ActivityService", object()),
+        scheduler=cast("Scheduler", FakeScheduler()),
+    )
+    assert contribution.install is not None
+
+    contribution.install(registry)
+
+    registrations = [
+        registry.cooldown_registration(matcher)
+        for matcher in registry.message_matchers
+    ]
+    assert ("exempt", "configured mention reply") in registrations
+    matcher = next(
+        candidate
+        for candidate in registry.message_matchers
+        if registry.cooldown_registration(candidate)
+        == ("exempt", "configured mention reply")
+    )
+    assert matcher.priority == runtime.matcher_priorities.mention_reply
+    assert runtime.matcher_priorities.message_commands < matcher.priority
+    assert matcher.priority < runtime.matcher_priorities.ai_chat
+
+    event = group_message_event(
+        user_id=2002,
+        group_id=1001,
+        self_id=1,
+        message=Message([MessageSegment.at(1)]),
+    )
+    state = dict(matcher._default_state)
+    assert await matcher.rule(cast("Bot", None), event, state)
+
+
+def test_mention_reply_respects_conversation_blacklist(tmp_path: Path) -> None:
+    configured = _actor(2002)
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        mention_replies=[
+            MessageMentionReplyAction(
+                id="example",
+                users=["example"],
+                messages=["reply"],
+            )
+        ],
+        mention_reply_targets=((configured,),),
+        group_policy={"1001": ["blacklist"]},
+    )
+
+    assert (
+        messaging.match_mention_reply(
+            _mention_context(configured, _group(1001))
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize("flow", [PUSH_SUBSCRIPTION_FLOW, PUSH_TIME_FLOW])
 def test_push_menu_reply_ownership_stays_local_to_its_session(flow: PromptFlow) -> None:
     event = group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002)
@@ -815,6 +904,138 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     )
     assert exact_action.id == "exact_reply"
     assert keyword_action.id == "keyword_reply"
+
+
+def _mention_context(
+    actor: ActorRef,
+    conversation: ConversationRef,
+    *,
+    mentions_bot: bool = True,
+) -> MessageInputContext:
+    return MessageInputContext(
+        IncomingMessageRef(
+            actor.platform,
+            actor,
+            conversation,
+            "message-1",
+            "",
+        ),
+        mentions_bot=mentions_bot,
+    )
+
+
+def test_mention_reply_requires_the_configured_actor_and_bot_mention(
+    tmp_path: Path,
+) -> None:
+    configured = _actor(2002)
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        mention_replies=[
+            MessageMentionReplyAction(
+                id="example",
+                users=["example"],
+                messages=["first", "second"],
+            )
+        ],
+        mention_reply_targets=((configured,),),
+    )
+    conversation = _group(1001)
+
+    action = messaging.match_mention_reply(
+        _mention_context(configured, conversation)
+    )
+
+    assert action is not None
+    assert action.messages == ["first", "second"]
+    assert (
+        messaging.match_mention_reply(
+            _mention_context(_actor(2003), conversation)
+        )
+        is None
+    )
+    assert (
+        messaging.match_mention_reply(
+            _mention_context(configured, conversation, mentions_bot=False)
+        )
+        is None
+    )
+
+
+def test_onebot_mention_rule_uses_shared_mention_reply_matcher(
+    tmp_path: Path,
+) -> None:
+    configured = _actor(2002)
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        mention_replies=[
+            MessageMentionReplyAction(
+                id="example",
+                users=["example"],
+                messages=["reply"],
+            )
+        ],
+        mention_reply_targets=((configured,),),
+    )
+    state: dict[str, object] = {}
+    event = group_message_event(
+        user_id=2002,
+        group_id=1001,
+        self_id=1,
+        message=Message([MessageSegment.at(1)]),
+    )
+
+    assert matcher_rules.match_mention_reply(event, state, messaging=messaging)
+    action = cast(
+        "MessageMentionReplyAction",
+        state[matcher_rules.MESSAGE_ACTION_KEY],
+    )
+    assert action.id == "example"
+
+
+def test_mention_reply_matches_the_same_principal_across_official_accounts(
+    tmp_path: Path,
+) -> None:
+    principals = IdentityPrincipalService()
+    principals.register_configured_actor(
+        alias="example",
+        onebot_qq_id="2002",
+        official_endpoints=(("app-a", "member-a"), ("app-b", "member-b")),
+    )
+    target = _actor(2002)
+    messaging = replace(
+        _messaging_resources(
+            tmp_path / "unsubscribe.sqlite",
+            mention_replies=[
+                MessageMentionReplyAction(
+                    id="example",
+                    users=["example"],
+                    messages=["shared reply"],
+                )
+            ],
+            mention_reply_targets=((target,),),
+        ),
+        _actor_principal=principals.actor_principal,
+    )
+    official_actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-b",
+        "member",
+        "group-b",
+        account_id="app-b",
+    )
+    official_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-b",
+        account_id="app-b",
+    )
+
+    action = messaging.match_mention_reply(
+        _mention_context(official_actor, official_group)
+    )
+
+    assert action is not None
+    assert action.id == "example"
 
 
 def test_unified_schedule_delivers_to_private_and_group_targets(
