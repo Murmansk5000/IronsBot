@@ -183,7 +183,7 @@ class QQOfficialOutboundMessenger:
         )
 
     def _selected_for_proactive(self, conversation: ConversationRef) -> bool:
-        if self.group_routing is None:
+        if self.group_routing is None or conversation.kind != "group":
             return True
         account_id = conversation.account_id
         return account_id is not None and self.group_routing.allows(
