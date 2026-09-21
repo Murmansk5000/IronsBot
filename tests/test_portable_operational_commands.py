@@ -316,7 +316,7 @@ async def test_portable_docker_restart_runs_only_after_preparation_reply() -> No
         "选择机器人维护操作：\n"
         "1. 仅重启机器人\n"
         "2. 检查并更新镜像后重启\n"
-        "0.【退出】\n\n"
+        "0. 【退出】\n\n"
         "输入序号后会立即执行。"
     )
     prepared = await sessions.select("1", context, allow_deferred=True)
