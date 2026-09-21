@@ -125,12 +125,13 @@ class BilibiliDynamicOutboundSender:
             content_message = render_dynamic_text_message(item, content_override)
         else:
             content_message = None
+        failed_conversations: list[ConversationRef] = []
         if content_message is not None:
-            await self._send_content(
-                item,
-                author_mid,
-                content_message,
-                text_targets,
+            failed_conversations.extend(
+                await self._send_content(
+                    content_message,
+                    text_targets,
+                )
             )
 
         image_targets = self._subscribed_full_targets(
@@ -139,11 +140,17 @@ class BilibiliDynamicOutboundSender:
         )
         image_message = render_dynamic_image_message(item)
         if image_message is not None and image_targets.has_targets:
-            await self._send_content(
+            failed_conversations.extend(
+                await self._send_content(
+                    image_message,
+                    image_targets,
+                )
+            )
+        if failed_conversations:
+            await self._notify_content_delivery_failure(
                 item,
                 author_mid,
-                image_message,
-                image_targets,
+                tuple(dict.fromkeys(failed_conversations)),
             )
 
     async def _send_link_message(  # noqa: PLR0913 - separate target collections
@@ -176,11 +183,9 @@ class BilibiliDynamicOutboundSender:
 
     async def _send_content(
         self,
-        item: dict[str, Any],
-        author_mid: int,
         content_message: OutboundMessage,
         targets: BiliPushTargets,
-    ) -> None:
+    ) -> tuple[ConversationRef, ...]:
         conversations = (
             *targets.full_group_conversations,
             *targets.full_private_conversations,
@@ -191,12 +196,7 @@ class BilibiliDynamicOutboundSender:
             action_name=FULL_DYNAMIC_PUSH_ACTION,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
         )
-        if summary.failed:
-            await self._notify_content_delivery_failure(
-                item,
-                author_mid,
-                summary.failed,
-            )
+        return summary.failed
 
     async def _notify_content_delivery_failure(
         self,
