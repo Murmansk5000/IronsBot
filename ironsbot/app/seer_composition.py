@@ -352,7 +352,6 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
-        player_accounts=player_accounts,
         renderer=render_window,
     )
     player_query_quotas = PlayerQueryQuotaService(
