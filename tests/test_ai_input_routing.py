@@ -112,7 +112,7 @@ def test_group_direct_input_only_tries_intent() -> None:
 
     assert decision.try_intent
     assert not decision.try_chat
-    assert not decision.offer_help_hint
+    assert not decision.offer_addressed_hint
 
 
 def test_group_bot_mention_only_tries_chat() -> None:
@@ -120,7 +120,7 @@ def test_group_bot_mention_only_tries_chat() -> None:
 
     assert not decision.try_intent
     assert decision.try_chat
-    assert not decision.offer_help_hint
+    assert not decision.offer_addressed_hint
 
 
 def test_empty_group_bot_mention_offers_help_even_when_chat_is_enabled() -> None:
@@ -128,7 +128,7 @@ def test_empty_group_bot_mention_offers_help_even_when_chat_is_enabled() -> None
 
     assert not decision.try_intent
     assert not decision.try_chat
-    assert decision.offer_help_hint
+    assert decision.offer_addressed_hint
 
 
 def test_private_direct_input_tries_intent_then_chat() -> None:
@@ -186,7 +186,7 @@ def test_reply_member_mention_and_blacklist_never_enter_ai() -> None:
     assert not _decide(_input(PRIVATE, "聊聊"), blocked=True).recognized
 
 
-def test_unavailable_group_chat_offers_help_hint() -> None:
+def test_unavailable_group_chat_offers_addressed_hint() -> None:
     features = FeatureService({}, {}, frozenset(), superuser_bypass=False)
     context = _input(GROUP, "不会处理", mentions_bot=True)
     decision = AiInputRoutingService(features, _catalog()).decide(
@@ -195,4 +195,4 @@ def test_unavailable_group_chat_offers_help_hint() -> None:
     )
 
     assert not decision.try_chat
-    assert decision.offer_help_hint
+    assert decision.offer_addressed_hint
