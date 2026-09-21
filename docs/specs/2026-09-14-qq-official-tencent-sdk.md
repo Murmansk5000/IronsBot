@@ -35,9 +35,12 @@ ordinary application resources.
 ## Known Platform Boundary
 
 The SDK release supports C2C and `GROUP_AT_MESSAGE_CREATE`. Receiving ordinary
-`GROUP_MESSAGE_CREATE` depends on both platform authorization and SDK support;
-it is not inferred from group configuration. Real AppID, group permission,
-passive reply, image upload, and proactive quota behavior remain external gates.
+`GROUP_MESSAGE_CREATE` depends on platform authorization; IronsBot's SDK boundary
+forwards that newer event without adding a second transport. The same boundary
+forwards Tencent recipient-management events that SDK 1.2.2 does not yet expose.
+Receive/reject and add/remove state is persisted and enforced before proactive
+delivery. Real AppID, group permission, passive reply, image upload, and proactive
+quota behavior remain external gates.
 
 ## Acceptance
 
