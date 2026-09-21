@@ -29,11 +29,13 @@ if TYPE_CHECKING:
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.identity_observation import SilentIdentityObservationService
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.official_union_identity import OfficialUnionIdentityService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.headless import HeadlessService
@@ -92,6 +94,8 @@ class ApplicationResources:
     addressed_input_hints: AddressedInputHintService
     identity_links: IdentityLinkCommands
     identity_linking: IdentityLinkingService
+    identity_principals: IdentityPrincipalService
     identity_observer: SilentIdentityObservationService | None
+    union_identity: OfficialUnionIdentityService | None
     onebot_ingress: OneBotIngressPolicy
     private_extensions: PrivateExtensionCatalog

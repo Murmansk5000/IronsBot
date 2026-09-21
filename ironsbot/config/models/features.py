@@ -30,6 +30,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import QQOfficialConfig
+    from ironsbot.core.feature_policy import IdentityPrincipalResolver
 
 _PROTECTED_FEATURES: Final[frozenset[str]] = frozenset(
     {
@@ -445,6 +446,7 @@ def build_feature_service(  # noqa: PLR0913
     schedule_features: Iterable[str] = (),
     qq_official: QQOfficialConfig | None = None,
     references: PlatformReferenceResolver | None = None,
+    principals: IdentityPrincipalResolver | None = None,
 ) -> FeatureService:
     """Compile platform configuration into typed policy facts."""
 
@@ -523,6 +525,7 @@ def build_feature_service(  # noqa: PLR0913
         ),
         superuser_bypass=config.superuser_bypass,
         account_default_features=qq_account_defaults,
+        principals=principals,
     )
 
 

@@ -10,7 +10,12 @@ import pytest
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    OfficialUnionIdentity,
+    Platform,
+)
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.qq_official import runtime as runtime_module
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
@@ -98,6 +103,15 @@ class _RejectingRouter(_CountingRouter):
         return False
 
 
+class _UnionIdentityObserver:
+    def __init__(self) -> None:
+        self.messages: list[object] = []
+
+    async def observe(self, incoming: object) -> bool:
+        self.messages.append(incoming)
+        return True
+
+
 def _install_fake_sdk(monkeypatch: pytest.MonkeyPatch, *, ready: bool) -> None:
     _FakeWebSocket.connect_on_start = ready
     _FakeWebSocket.instances.clear()
@@ -121,6 +135,8 @@ def test_official_sdk_parser_feeds_opaque_group_identity() -> None:
         "author": {
             "member_openid": "member-openid",
             "member_role": "admin",
+            "union_openid": "union-openid",
+            "union_user_account": "union-account",
         },
     }
 
@@ -143,6 +159,10 @@ def test_official_sdk_parser_feeds_opaque_group_identity() -> None:
         "app-id",
     )
     assert incoming.group_role == "admin"
+    assert incoming.official_union_identity == OfficialUnionIdentity(
+        "union-openid",
+        "union-account",
+    )
 
 
 def test_runtime_keeps_clients_isolated_by_app_id(tmp_path: Path) -> None:
@@ -282,9 +302,11 @@ def test_runtime_claims_message_before_business_dispatch(
                 session_root=tmp_path,
             )
             router = _CountingRouter()
+            union_identity = _UnionIdentityObserver()
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
+                union_identity=cast("Any", union_identity),
             )
             raw = {
                 "id": "message-id",
@@ -307,6 +329,7 @@ def test_runtime_claims_message_before_business_dispatch(
             )
 
             assert router.dispatch_count == 1
+            assert len(union_identity.messages) == 1
             assert "account=preview" in caplog.text
             assert "input_kind=bot_mention recognized=True" in caplog.text
             assert "private-app-id" not in caplog.text
