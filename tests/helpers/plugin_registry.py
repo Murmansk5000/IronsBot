@@ -218,6 +218,7 @@ def build_test_plugin_registry(
                 account_for_actor=lambda _actor: None,
             ),
             messaging=SimpleNamespace(
+                has_enabled_mention_replies=False,
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),
