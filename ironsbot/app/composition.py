@@ -40,13 +40,13 @@ from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
-from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import MatcherFactory
+from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyService
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
@@ -216,6 +216,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         outbound,
         bilibili.targets,
         lucky_skin_window,
+        identity_principals,
     )
     messaging = messaging_components.messaging
     sendpic = messaging_components.sendpic
@@ -321,7 +322,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         identity_observer=identity_observer,
     )
 
-    def poke_hint_candidates(
+    def poke_reply_candidates(
         group_id: int | None,
         user_id: int,
         group_role: str | None,
@@ -383,10 +384,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         scheduled_restart=operations.scheduled_restart,
         commands=command_catalog,
         contribution_catalog=contribution_catalog,
-        help_hint=OneBotHelpHintService(
+        poke_reply=OneBotPokeReplyService(
             settings.features.help,
             settings.onebot_references,
-            poke_hint_candidates,
+            poke_reply_candidates,
         ),
         addressed_input_hints=AddressedInputHintService(
             window_seconds=settings.features.help.hint_window_seconds,

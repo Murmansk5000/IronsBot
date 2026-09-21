@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""OneBot-specific poke hints and their numeric target configuration."""
+"""OneBot poke replies and their numeric target configuration."""
 
 from __future__ import annotations
 
@@ -21,23 +21,12 @@ class CommandHintCandidate(Protocol):
 
 
 class OneBotPokeEvent(Protocol):
-    """Small OneBot event view sufficient to decide whether the bot was poked."""
-
     self_id: int
     target_id: int
 
 
-class OneBotHelpHintPort(Protocol):
-    """OneBot-only hint policy exposed to the passive poke matcher."""
-
-    def get_poke_reply(
-        self,
-        *,
-        group_id: int | None,
-        user_id: int,
-    ) -> str | None: ...
-
-    def get_default_poke_hint(
+class OneBotPokeReplyPort(Protocol):
+    def get_reply(
         self,
         *,
         group_id: int | None,
@@ -48,22 +37,19 @@ class OneBotHelpHintPort(Protocol):
     def can_send(self, group_id: int | None, *, now: float | None = None) -> bool: ...
 
 
-def is_onebot_poke_at_bot(event: OneBotPokeEvent) -> bool:
-    """Return whether one OneBot poke event explicitly targets this bot."""
-
-    return event.target_id == event.self_id
-
-
 CommandHintCandidates = Callable[
     [int | None, int, str | None, tuple[str, ...]],
     Sequence[CommandHintCandidate],
 ]
 
+POKE_REPLY_HELP_SUFFIX = "发送“帮助”可查看全部指令。"
 
-POKE_HINT_HELP_SUFFIX = "发送“帮助”可查看全部指令。"
+
+def is_onebot_poke_at_bot(event: OneBotPokeEvent) -> bool:
+    return event.target_id == event.self_id
 
 
-def _get_poke_reply(
+def _configured_reply(
     target_id: int | None,
     *,
     resolve: Callable[..., int],
@@ -72,7 +58,6 @@ def _get_poke_reply(
 ) -> str | None:
     if target_id is None:
         return None
-
     for raw_target, message in replies.items():
         if resolve(raw_target, location=f"{location}.{raw_target}") == target_id:
             return message
@@ -80,38 +65,57 @@ def _get_poke_reply(
 
 
 @dataclass(slots=True)
-class OneBotHelpHintService:
-    """Select and rate-limit OneBot poke hints without leaking into services."""
-
+class OneBotPokeReplyService:
     config: HelpConfig
     references: OneBotReferenceResolver
-    poke_hint_candidates: CommandHintCandidates | None = None
+    candidates: CommandHintCandidates | None = None
     chooser: Callable[[Sequence[CommandHintCandidate]], CommandHintCandidate] = choice
     limiter: SlidingWindowRateLimiter = field(default_factory=SlidingWindowRateLimiter)
 
-    def get_poke_reply(self, *, group_id: int | None, user_id: int) -> str | None:
-        return _get_poke_reply(
-            user_id,
-            resolve=self.references.resolve_user,
-            replies=self.config.poke_user_replies,
-            location="features.help.poke_user_replies",
-        ) or _get_poke_reply(
-            group_id,
-            resolve=self.references.resolve_group,
-            replies=self.config.poke_replies,
-            location="features.help.poke_replies",
-        )
-
-    def get_default_poke_hint(
+    def get_reply(
         self,
         *,
         group_id: int | None,
         user_id: int,
         group_role: str | None = None,
     ) -> str | None:
-        if self.poke_hint_candidates is None:
+        return self.get_configured_reply(
+            group_id=group_id,
+            user_id=user_id,
+        ) or self.get_default_reply(
+            group_id=group_id,
+            user_id=user_id,
+            group_role=group_role,
+        )
+
+    def get_configured_reply(
+        self,
+        *,
+        group_id: int | None,
+        user_id: int,
+    ) -> str | None:
+        return _configured_reply(
+            user_id,
+            resolve=self.references.resolve_user,
+            replies=self.config.poke_user_replies,
+            location="features.help.poke_user_replies",
+        ) or _configured_reply(
+            group_id,
+            resolve=self.references.resolve_group,
+            replies=self.config.poke_replies,
+            location="features.help.poke_replies",
+        )
+
+    def get_default_reply(
+        self,
+        *,
+        group_id: int | None,
+        user_id: int,
+        group_role: str | None = None,
+    ) -> str | None:
+        if self.candidates is None:
             return None
-        candidates = self.poke_hint_candidates(
+        candidates = self.candidates(
             group_id,
             user_id,
             group_role,
@@ -119,15 +123,14 @@ class OneBotHelpHintService:
         )
         if not candidates:
             return None
-        selected = self.chooser(candidates)
-        return f"{selected.poke_text()}\n{POKE_HINT_HELP_SUFFIX}"
+        return f"{self.chooser(candidates).poke_text()}\n{POKE_REPLY_HELP_SUFFIX}"
 
     def can_send(self, group_id: int | None, *, now: float | None = None) -> bool:
         if group_id is None:
             return True
         return (
             self.limiter.hit(
-                "help_hint",
+                "poke_reply",
                 ConversationRef(Platform.ONEBOT, "group", str(group_id)),
                 window_seconds=self.config.hint_window_seconds,
                 max_events=self.config.hint_max_per_window,
