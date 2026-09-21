@@ -97,12 +97,44 @@ def qq_official_event_mentions_bot(event: InboundEvent) -> bool:
 
 def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
     text = event.content.strip()
-    if event.event_type != GROUP_MESSAGE_CREATE:
+    if event.event_type == GROUP_MESSAGE_CREATE:
+        mention = _bot_mention(raw)
+        if mention is not None:
+            text = _remove_leading_self_mention(text, mention, raw)
+    return _remove_direct_member_mention_markers(text, raw).strip()
+
+
+def _remove_direct_member_mention_markers(
+    text: str,
+    raw: Mapping[str, object],
+) -> str:
+    """Remove only markers backed by structured member-mention metadata."""
+
+    mentions = raw.get("mentions")
+    if not isinstance(mentions, Sequence) or isinstance(mentions, (str, bytes)):
         return text
-    mention = _bot_mention(raw)
-    if mention is None:
-        return text
-    return _remove_leading_self_mention(text, mention, raw).strip()
+    for mention in mentions:
+        if not isinstance(mention, Mapping):
+            continue
+        if bool(mention.get("is_you")) or bool(mention.get("bot")):
+            continue
+        markers: list[str] = []
+        member_openid = str(mention.get("member_openid", "")).strip()
+        if member_openid:
+            markers.extend((f"<@{member_openid}>", f"<@!{member_openid}>"))
+        username = str(mention.get("username", "")).strip()
+        if username:
+            markers.extend((f"@{username}", f"＠{username}"))
+        positions = tuple(
+            (position, marker)
+            for marker in markers
+            if (position := text.find(marker)) >= 0
+        )
+        if not positions:
+            continue
+        position, marker = min(positions, key=lambda item: item[0])
+        text = f"{text[:position]} {text[position + len(marker) :]}"
+    return text
 
 
 def _bot_mention(raw: Mapping[str, object]) -> Mapping[str, object] | None:

@@ -13,7 +13,12 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
 
-from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage, SendResult
+from ironsbot.core.outbound import (
+    COMMAND_REPLY_TEMPLATE,
+    DeliveryFailureKind,
+    OutboundMessage,
+    SendResult,
+)
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
@@ -34,11 +39,13 @@ def render_text(text: str) -> str:
 def build_message(
     text: ReplyMessage,
     at_user_ids: Iterable[int] = (),
+    *,
+    mention_separator: str = " ",
 ) -> Message:
     message = Message()
     for user_id in dict.fromkeys(at_user_ids):
         message += MessageSegment.at(user_id)
-        message += MessageSegment.text(" ")
+        message += MessageSegment.text(mention_separator)
     message += (
         text
         if isinstance(text, (Message, MessageSegment))
@@ -81,10 +88,18 @@ async def send_matcher_message(
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
 ) -> None:
-    del event
     if queued_conversation_is_cancelled(matcher):
         return
-    await matcher.send(build_message(message, at_user_ids=at_user_ids))
+    rendered = build_message(
+        message,
+        at_user_ids=at_user_ids,
+        mention_separator=(
+            COMMAND_REPLY_TEMPLATE.mention_separator if event is not None else " "
+        ),
+    )
+    await matcher.send(
+        build_event_reply_message(event, rendered) if event is not None else rendered
+    )
 
 
 async def finish_matcher_message(
@@ -94,10 +109,18 @@ async def finish_matcher_message(
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
 ) -> None:
-    del event
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
-    await matcher.finish(build_message(message, at_user_ids=at_user_ids))
+    rendered = build_message(
+        message,
+        at_user_ids=at_user_ids,
+        mention_separator=(
+            COMMAND_REPLY_TEMPLATE.mention_separator if event is not None else " "
+        ),
+    )
+    await matcher.finish(
+        build_event_reply_message(event, rendered) if event is not None else rendered
+    )
 
 
 async def send_event_reply(
@@ -105,12 +128,7 @@ async def send_event_reply(
     event: MessageEvent,
     message: ReplyMessage,
 ) -> None:
-    await send_matcher_message(
-        matcher,
-        message,
-        at_user_ids=event_sender_at_user_ids(event),
-        event=event,
-    )
+    await send_matcher_message(matcher, message, event=event)
 
 
 async def finish_event_reply(
@@ -118,12 +136,7 @@ async def finish_event_reply(
     event: MessageEvent,
     message: ReplyMessage,
 ) -> None:
-    await finish_matcher_message(
-        matcher,
-        message,
-        at_user_ids=event_sender_at_user_ids(event),
-        event=event,
-    )
+    await finish_matcher_message(matcher, message, event=event)
 
 
 async def send_portable_event_reply(
@@ -137,17 +150,17 @@ async def send_portable_event_reply(
             error_code="conversation_cancelled",
             failure_kind=DeliveryFailureKind.PERMANENT,
         )
+    incoming = message_input_context(event).message
+    prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, message)
     rendered = render_onebot_outbound_message(
-        message,
-        conversation=message_input_context(event).message.conversation,
+        prepared.message,
+        conversation=incoming.conversation,
+        reply_to_id=(
+            prepared.context.message_id if prepared.context is not None else None
+        ),
     )
     try:
-        result = await matcher.send(
-            build_message(
-                rendered,
-                at_user_ids=event_sender_at_user_ids(event),
-            )
-        )
+        result = await matcher.send(rendered)
     except ActionFailed as error:
         return SendResult(
             delivered=False,
@@ -166,6 +179,34 @@ async def send_portable_event_reply(
     return SendResult(delivered=True, message_id=message_id)
 
 
+def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Message:
+    """Render legacy OneBot command output with the shared reply policy."""
+
+    incoming = message_input_context(event).message
+    native_message = Message(message)
+    presentation = COMMAND_REPLY_TEMPLATE.presentation(
+        incoming,
+        has_text=isinstance(message, str)
+        or any(
+            segment.type == "text" and bool(str(segment.data.get("text", "")))
+            for segment in native_message
+        ),
+        has_mention=any(segment.type == "at" for segment in native_message),
+    )
+    rendered = Message()
+    if presentation.context is not None:
+        rendered += MessageSegment.reply(int(presentation.context.message_id))
+    if presentation.mention_actor is not None:
+        rendered += MessageSegment.at(int(presentation.mention_actor.id))
+        rendered += MessageSegment.text(presentation.mention_separator)
+    rendered += (
+        message
+        if isinstance(message, (Message, MessageSegment))
+        else MessageSegment.text(render_text(message))
+    )
+    return rendered
+
+
 async def finish_message_sequence(
     matcher: Any,
     messages: Sequence[ReplyMessage],
@@ -176,13 +217,10 @@ async def finish_message_sequence(
     if not messages:
         return
 
-    at_user_ids = event_sender_at_user_ids(event)
-
     for message in messages[:-1]:
         await send_matcher_message(
             matcher,
             message,
-            at_user_ids=at_user_ids,
             event=event,
         )
         await asyncio.sleep(interval_seconds)
@@ -190,6 +228,5 @@ async def finish_message_sequence(
     await finish_matcher_message(
         matcher,
         messages[-1],
-        at_user_ids=at_user_ids,
         event=event,
     )
