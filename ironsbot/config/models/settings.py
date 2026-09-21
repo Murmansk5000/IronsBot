@@ -104,6 +104,19 @@ class QQOfficialConfigError(ValueError):
     def empty_target_openid(cls) -> QQOfficialConfigError:
         return cls("QQ Official target OpenID must not be empty")
 
+    @classmethod
+    def missing_default_account(cls) -> QQOfficialConfigError:
+        return cls(
+            "bot.qq_official.default_account is required when multiple "
+            "official accounts are active"
+        )
+
+    @classmethod
+    def inactive_default_account(cls) -> QQOfficialConfigError:
+        return cls(
+            "bot.qq_official.default_account must name an active official account"
+        )
+
 
 def _command_starts(value: object) -> list[str]:
     if value is None:
@@ -273,7 +286,28 @@ class QQOfficialConfig(BaseModel):
 
     sandbox: bool = False
     startup_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    default_account: str = ""
+    group_routes: dict[str, str] = Field(default_factory=dict)
     accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
+
+    @field_validator("default_account", mode="before")
+    @classmethod
+    def normalize_default_account(cls, value: object) -> str:
+        return str(value or "").strip()
+
+    @field_validator("group_routes", mode="before")
+    @classmethod
+    def normalize_group_routes(cls, value: object) -> dict[str, str]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_target_policy()
+        routes: dict[str, str] = {}
+        for raw_group, raw_account in value.items():
+            group = str(raw_group).strip()
+            account = str(raw_account).strip()
+            if not group or not account:
+                raise QQOfficialConfigError.invalid_target_policy()
+            routes[group] = account
+        return routes
 
     @model_validator(mode="after")
     def validate_accounts(self) -> QQOfficialConfig:
@@ -305,6 +339,15 @@ class QQOfficialConfig(BaseModel):
             for name, account in self.accounts.items()
             if account.app_id and account.secret
         }
+
+    @property
+    def resolved_default_account(self) -> str | None:
+        enabled = self.enabled_accounts
+        if self.default_account:
+            return self.default_account
+        if len(enabled) == 1:
+            return next(iter(enabled))
+        return None
 
 
 class BotConfig(BaseModel):
@@ -420,6 +463,43 @@ class Settings(BaseModel):
                 unknown
             )
             raise ValueError(msg)
+        active = set(self.bot.qq_official.enabled_accounts)
+        default_account = self.bot.qq_official.resolved_default_account
+        if len(active) > 1 and default_account is None:
+            raise QQOfficialConfigError.missing_default_account()
+        if active and default_account is not None and default_account not in active:
+            raise QQOfficialConfigError.inactive_default_account()
+        unknown_groups = sorted(
+            set(self.bot.qq_official.group_routes) - set(self.identities.groups)
+        )
+        if unknown_groups:
+            raise ValueError(
+                "bot.qq_official.group_routes reference unknown groups: "
+                + ", ".join(unknown_groups)
+            )
+        groups_without_qq = sorted(
+            alias
+            for alias in self.bot.qq_official.group_routes
+            if self.identities.groups[alias].qq is None
+        )
+        if groups_without_qq:
+            raise ValueError(
+                "bot.qq_official.group_routes require groups with QQ IDs: "
+                + ", ".join(groups_without_qq)
+            )
+        route_accounts = set(self.bot.qq_official.group_routes.values())
+        unknown_route_accounts = sorted(route_accounts - declared)
+        if unknown_route_accounts:
+            raise ValueError(
+                "bot.qq_official.group_routes reference undeclared accounts: "
+                + ", ".join(unknown_route_accounts)
+            )
+        inactive_route_accounts = sorted(route_accounts - active) if active else []
+        if inactive_route_accounts:
+            raise ValueError(
+                "bot.qq_official.group_routes reference inactive accounts: "
+                + ", ".join(inactive_route_accounts)
+            )
 
     def _validate_platform_selection(self) -> None:
         onebot = self.bot.onebot

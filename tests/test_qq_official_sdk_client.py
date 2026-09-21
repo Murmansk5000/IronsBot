@@ -146,7 +146,7 @@ async def test_sdk_client_sends_member_mentions_as_markdown() -> None:
         "group-openid",
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="member-openid" /> result',
+                '<qqbot-at-user id="member-openid" />\nresult',
                 markdown=True,
             ),
         ),
@@ -158,7 +158,7 @@ async def test_sdk_client_sends_member_mentions_as_markdown() -> None:
     assert message.msg_type == QQMessageType.MARKDOWN
     assert message.content == ""
     assert message.markdown is not None
-    assert message.markdown.content == ('<qqbot-at-user id="member-openid" /> result')
+    assert message.markdown.content == ('<qqbot-at-user id="member-openid" />\nresult')
     assert message.msg_id == "incoming-id"
     assert message.msg_seq == PASSIVE_SEQUENCE
 

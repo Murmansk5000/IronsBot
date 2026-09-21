@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import NamedLifecycleHook
+    from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.identity_link_store import (
         CrossPlatformGroupLink,
@@ -96,11 +97,13 @@ async def _start_data_sync_resource(
     )
 
 
-async def _load_identity_links(
+async def _load_identity_links(  # noqa: PLR0913
     store: SqliteIdentityLinkStore,
     features: FeatureService,
     observer: SilentIdentityObservationService | None,
     bili_targets: BiliTargetService,
+    player_bindings: SqlitePlayerBindingStore,
+    qq_official: QQOfficialRuntime | None,
 ) -> None:
     for link in await store.all_group_links():
         features.register_group_link(
@@ -115,7 +118,10 @@ async def _load_identity_links(
             official_group_openid=link.official_group_openid,
             onebot_group_id=link.onebot_group_id,
         )
+        if qq_official is not None:
+            qq_official.register_group_link(link)
     for link in await store.all_links():
+        player_bindings.reconcile_identity_link(link)
         features.register_identity_link(
             official_app_id=link.official.app_id,
             official_openid=link.official.openid,
@@ -276,6 +282,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     identity_store = SqliteIdentityLinkStore(settings.paths.qq_state)
 
     def register_identity_link(link: CrossPlatformIdentityLink) -> None:
+        player_bindings.reconcile_identity_link(link)
         features.register_identity_link(
             official_app_id=link.official.app_id,
             official_openid=link.official.openid,
@@ -303,6 +310,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         identity_store,
         features,
         bilibili.targets,
+        common.qq_official,
     )
     onebot_ingress = OneBotIngressPolicy(
         messages_enabled=(
@@ -406,6 +414,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 features,
                 identity_observer,
                 bilibili.targets,
+                player_bindings,
+                common.qq_official,
             ),
         ),
         (
@@ -464,6 +474,7 @@ def _build_identity_observer(
     store: SqliteIdentityLinkStore,
     features: FeatureService,
     bili_targets: BiliTargetService,
+    qq_official: QQOfficialRuntime | None,
 ) -> SilentIdentityObservationService | None:
     if not settings.bot.onebot.identity_verification:
         return None
@@ -504,6 +515,8 @@ def _build_identity_observer(
             official_group_openid=link.official_group_openid,
             onebot_group_id=link.onebot_group_id,
         )
+        if qq_official is not None:
+            qq_official.register_group_link(link)
 
     return SilentIdentityObservationService(
         store,
