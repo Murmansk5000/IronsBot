@@ -38,20 +38,23 @@ from ironsbot.plugins.onebot.headless_seer_runtime import (
     plugin_contribution as headless_runtime_plugin_contribution,
 )
 from ironsbot.plugins.onebot.help import plugin_contribution as help_plugin_contribution
-from ironsbot.plugins.onebot.help.hint import (
-    plugin_contribution as help_hint_plugin_contribution,
-)
 from ironsbot.plugins.onebot.lucky_skin_window import (
     plugin_contribution as lucky_skin_window_plugin_contribution,
 )
 from ironsbot.plugins.onebot.messaging import (
     plugin_contribution as messaging_plugin_contribution,
 )
+from ironsbot.plugins.onebot.messaging.addressed_hint import (
+    plugin_contribution as addressed_hint_plugin_contribution,
+)
 from ironsbot.plugins.onebot.messaging.blacklist import (
     plugin_contribution as blacklist_plugin_contribution,
 )
 from ironsbot.plugins.onebot.messaging.meeting import (
     plugin_contribution as meeting_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.poke import (
+    plugin_contribution as poke_reply_plugin_contribution,
 )
 from ironsbot.plugins.onebot.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
@@ -346,7 +349,7 @@ def build_test_plugin_registry(
             commands=commands,
             contribution_catalog=PluginContributionCatalog(),
             query_sessions=PortableQuerySessions(),
-            help_hint=object(),
+            poke_reply=object(),
             addressed_input_hints=AddressedInputHintService(),
             identity_links=SimpleNamespace(service=object()),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
@@ -425,8 +428,10 @@ def build_test_plugin_registry(
             admin_notices=runtime.admin_notices,
         ),
         fire_manual_ad_plugin_contribution(),
-        help_hint_plugin_contribution(
-            service=resources.help_hint,
+        poke_reply_plugin_contribution(
+            service=resources.poke_reply,
+        ),
+        addressed_hint_plugin_contribution(
             input_routing=resources.ai_input_routing,
             addressed_input_hints=resources.addressed_input_hints,
         ),
