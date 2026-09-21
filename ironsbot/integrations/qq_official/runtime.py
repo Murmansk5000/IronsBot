@@ -324,13 +324,18 @@ class QQOfficialRuntime:
         connection = self._connections.get(app_id)
         return connection.sender if connection is not None else None
 
-    def register_group_link(self, link: CrossPlatformGroupLink) -> None:
+    def register_group_link(self, link: CrossPlatformGroupLink) -> bool:
         if self._ingress_routing is None:
-            return
+            return False
         self._ingress_routing.register_group_endpoint(
             account_id=link.official_app_id,
             official_group_openid=link.official_group_openid,
             onebot_group_id=link.onebot_group_id,
+        )
+        return self._ingress_routing.allows(
+            account_id=link.official_app_id,
+            conversation_kind="group",
+            conversation_id=link.official_group_openid,
         )
 
     def configure_ingress_routing(self, routing: QQOfficialIngressRouting) -> None:
