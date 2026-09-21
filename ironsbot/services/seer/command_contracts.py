@@ -83,7 +83,7 @@ def seer_command_contracts(
                 (
                     "seer.player.query",
                     ("米米号123456", "查询玩家信息123456"),
-                    "查询玩家基础信息；随后按提示回复数字查看详情",
+                    "查询玩家基础信息；可填写米米号/玩家别名，群聊可直接 @已绑定成员",
                     {
                         "show_in_poke": True,
                         "routing_matcher": player_query_input,
@@ -92,7 +92,8 @@ def seer_command_contracts(
                 (
                     "seer.player.default",
                     ("米米号", "收集", "巅峰", "群星牌"),
-                    "查询已绑定默认米米号的对应数据；未绑定时使用“米米号+完整米米号”",
+                    "查询默认或指定玩家数据；可追加米米号/玩家别名，"
+                    "群聊可直接 @已绑定成员",
                     {"routing_matcher": player_shortcut_input},
                 ),
                 (

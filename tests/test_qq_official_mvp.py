@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
@@ -854,6 +855,7 @@ def test_qq_official_config_loads_independent_accounts(
     path.write_text(
         """
 [bot.qq_official]
+default_account = "example_a"
 
 [bot.qq_official.accounts.example_a]
 app_id = "10001"
@@ -882,6 +884,34 @@ features = ["about"]
         ("example_a", "10001", "secret-a"),
         ("example_b", "10002", "secret-b"),
     ]
+
+
+def test_multiple_official_accounts_require_explicit_default(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.qq_official.accounts.example_a]
+app_id = "10001"
+
+[bot.qq_official.accounts.example_b]
+app_id = "10002"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="default_account is required",
+    ):
+        load_settings(
+            path,
+            env={
+                "APP_SECRET_10001": "secret-a",
+                "APP_SECRET_10002": "secret-b",
+            },
+        )
 
 
 def test_onebot_deployment_environment_overrides_toml(tmp_path: Path) -> None:
@@ -1387,7 +1417,7 @@ def test_group_at_or_structured_self_mention_is_classified_as_bot_mention() -> N
     assert qq_official_event_mentions_bot(at_message)
 
 
-def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -> None:
+def test_full_group_mentions_are_removed_without_dropping_member_targets() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
         chat_scope="group",
@@ -1411,7 +1441,7 @@ def test_full_group_self_mention_is_removed_without_dropping_member_mentions() -
 
     incoming = qq_official_incoming_message(event, account_id="example-app")
 
-    assert incoming.text == "@target 战队"
+    assert incoming.text == "战队"
     assert incoming.direct_mentions == (
         ActorRef(
             Platform.QQ_OFFICIAL,
@@ -1471,7 +1501,7 @@ def test_full_group_self_mention_removes_official_structured_marker(
     assert incoming.text == "战队订阅"
 
 
-def test_full_group_later_self_mention_preserves_leading_member_mention() -> None:
+def test_full_group_later_self_mention_survives_member_marker_normalization() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
         chat_scope="group",
@@ -1494,7 +1524,67 @@ def test_full_group_later_self_mention_preserves_leading_member_mention() -> Non
 
     incoming = qq_official_incoming_message(event, account_id="example-app")
 
-    assert incoming.text == "@target @无极圣武 战队"
+    assert incoming.text == "@无极圣武 战队"
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "阵容 @target",
+        "阵容＠target",
+        "阵容 <@target-openid>",
+        "阵容 <@!target-openid>",
+        "@target 阵容",
+    ),
+)
+@pytest.mark.parametrize(
+    "event_type",
+    ("GROUP_MESSAGE_CREATE", "GROUP_AT_MESSAGE_CREATE"),
+)
+def test_group_member_mention_marker_is_not_part_of_command_text(
+    content: str,
+    event_type: str,
+) -> None:
+    event = _sdk_event(
+        event_type=event_type,
+        chat_scope="group",
+        chat_id="group-openid",
+        content=content,
+        raw={
+            "mentions": [
+                {
+                    "is_you": False,
+                    "member_openid": "target-openid",
+                    "username": "target",
+                }
+            ]
+        },
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "阵容"
+    assert incoming.direct_mentions == (
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            "group-openid",
+            account_id="example-app",
+        ),
+    )
+
+
+def test_unstructured_at_text_is_not_removed_from_official_command_text() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        content="阵容 @ordinary-text",
+        raw={},
+    )
+
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.text == "阵容 @ordinary-text"
 
 
 def test_full_group_foreign_bot_mention_does_not_address_this_bot() -> None:
@@ -1577,7 +1667,7 @@ def test_qq_official_renderer_emits_scoped_member_mentions() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-&quot;openid" /> result',
+            '<qqbot-at-user id="member-&quot;openid" />\n\nresult',
             markdown=True,
         ),
     )
@@ -1610,9 +1700,44 @@ def test_qq_official_renderer_keeps_exit_item_in_markdown_list_layout() -> None:
 
     assert rendered == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" /> 1. 【收集】\n'
-            "2. 【巅峰】\n"
-            "0. 【退出】",
+            '<qqbot-at-user id="member-openid" />\n\n1\\. 【收集】\n'
+            "2\\. 【巅峰】\n"
+            "0\\. 【退出】",
+            markdown=True,
+        ),
+    )
+
+
+def test_qq_official_renderer_only_escapes_line_start_menu_numbers() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                MentionPart(member),
+                TextPart(" 版本 1.2\n ↳ 3. 子项\n0. 【退出】"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" />\n\n版本 1.2\n '
+            "↳ 3\\. 子项\n"
+            "0\\. 【退出】",
             markdown=True,
         ),
     )
@@ -1709,12 +1834,55 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
     assert [call[2] for call in bot.calls] == [
         (
             QQOfficialTextPayload(
-                '<qqbot-at-user id="opaque-user" /> first', markdown=True
+                '<qqbot-at-user id="opaque-user" />\n\nfirst', markdown=True
             ),
         ),
-        (QQOfficialTextPayload("second"),),
-        (QQOfficialTextPayload("third"),),
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" />\n\nsecond', markdown=True
+            ),
+        ),
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" />\n\nthird', markdown=True
+            ),
+        ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_qq_official_delivery_does_not_add_mention_only_image_message() -> None:
+    event = _sdk_event(
+        event_type="GROUP_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="opaque-user",
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    reply = PortableReply(
+        OutboundMessage.from_text("summary"),
+        additional_messages=(
+            OutboundMessage((BinaryImagePart(b"image", "image/png"),)),
+        ),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    expected_payloads = [
+        (
+            QQOfficialTextPayload(
+                '<qqbot-at-user id="opaque-user" />\n\nsummary', markdown=True
+            ),
+        ),
+        (QQOfficialImagePayload(content=b"image", filename="ironsbot.png"),),
+    ]
+    assert bot.sent == len(expected_payloads)
+    assert [call[2] for call in bot.calls] == expected_payloads
 
 
 @pytest.mark.asyncio
@@ -1749,7 +1917,7 @@ async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
 
     assert bot.calls[0][2] == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="target-openid" /> result',
+            '<qqbot-at-user id="target-openid" />\n\nresult',
             markdown=True,
         ),
     )
@@ -1785,7 +1953,7 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
     payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
     assert payloads == (
         QQOfficialTextPayload(
-            '<qqbot-at-user id="member-openid" /> result',
+            '<qqbot-at-user id="member-openid" />\n\nresult',
             markdown=True,
         ),
     )
