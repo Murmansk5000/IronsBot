@@ -53,3 +53,7 @@ class AffixCommand:
             suffix.group() if suffix else "",
             text[start:end],
         )
+
+    def parse_argument(self, text: str) -> str | None:
+        parsed = self(text)
+        return None if parsed is None else parsed.argument
