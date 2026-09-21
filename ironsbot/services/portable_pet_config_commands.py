@@ -6,10 +6,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.services.pet_config_commands import pet_config_input
-from ironsbot.services.portable_query_sessions import (
-    QueryOperationSpec,
-    build_query_operation,
-)
+from ironsbot.services.portable_query_operations import build_query_operation
+from ironsbot.services.portable_query_sessions import QueryOperationSpec
 
 if TYPE_CHECKING:
     from ironsbot.services.pet_config import PetConfigQueryService
@@ -29,12 +27,9 @@ def build_portable_pet_config_operation(
     return build_query_operation(
         sessions,
         QueryOperationSpec(
-            parser=lambda text: (
-                None if (parsed := parser(text)) is None else parsed.argument
-            ),
+            parser=parser.parse_argument,
             search=service.search,
             select=service.select,
             prompt_title="请问你想查询哪只精灵的配置？",
-            not_found_message="未找到对应精灵。",
         ),
     )
