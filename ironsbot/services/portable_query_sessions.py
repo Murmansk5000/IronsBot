@@ -44,7 +44,7 @@ _SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
 class PortableQueryOperation(Protocol):
     def __call__(
         self, text: str, context: MessageInputContext
-    ) -> Awaitable[OutboundMessage]: ...
+    ) -> Awaitable[OutboundMessage | None]: ...
 
 
 class PortableQuerySessionError(ValueError):
@@ -71,7 +71,7 @@ class QueryOperationSpec(Generic[_T]):
     search: QuerySearch[_T]
     select: QuerySelect[_T]
     prompt_title: str
-    not_found_message: str
+    not_found_message: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +114,7 @@ class _PendingSelection:
     choices: tuple[object, ...]
     select: _UntypedMenuSelect
     prompt_title: str
-    not_found_message: str
+    not_found_message: str | None
     expires_at: float
     shared_select: _UntypedMenuSelect | None = None
     semantic_request: (
@@ -254,7 +254,7 @@ class PortableQuerySessions:
         *,
         argument: str,
         spec: QueryOperationSpec[_T],
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | None:
         async def select_untyped(
             value: object,
             _context: MessageInputContext,
@@ -287,13 +287,15 @@ class PortableQuerySessions:
         ) -> QueryResult[Any]:
             return await select(cast("_T", value))
 
-        return self._present(
+        message = self._present(
             context,
             result,
             select=select_untyped,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
         )
+        assert message is not None
+        return message
 
     def offer_menu(
         self,
@@ -561,7 +563,7 @@ class PortableQuerySessions:
         pending: _PendingSelection,
         choice: PromptChoice,
         allow_deferred: bool,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         index = int(choice.id)
         if index == 0:
             self._pending.pop(key, None)
@@ -606,8 +608,8 @@ class PortableQuerySessions:
         *,
         select: _UntypedMenuSelect,
         prompt_title: str,
-        not_found_message: str,
-    ) -> OutboundMessage:
+        not_found_message: str | None,
+    ) -> OutboundMessage | None:
         key = self._key(context)
         if result.message:
             self._pending.pop(key, None)
@@ -617,7 +619,11 @@ class PortableQuerySessions:
             return result.reply.to_outbound()
         if not result.choices:
             self._pending.pop(key, None)
-            return OutboundMessage.from_text(not_found_message)
+            return (
+                OutboundMessage.from_text(not_found_message)
+                if not_found_message is not None
+                else None
+            )
 
         session = self._new_session(
             context,
@@ -777,7 +783,10 @@ def build_query_operation(
 ) -> PortableQueryOperation:
     """Adapt one QueryResult service without duplicating its command grammar."""
 
-    async def execute(text: str, context: MessageInputContext) -> OutboundMessage:
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage | None:
         argument = spec.parser(text)
         if argument is None:
             msg = f"catalog accepted input that its query parser rejected: {text!r}"

@@ -129,6 +129,8 @@ class _OneBotPortableQueryAdapter:
             return
         if queued_conversation_is_cancelled(matcher):
             raise FinishedException
+        if result is None:
+            raise FinishedException
         if await _deliver(matcher, event, result):
             await self._continue_pending_session(matcher, event, context)
 

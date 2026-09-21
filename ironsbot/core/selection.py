@@ -7,7 +7,7 @@ from typing import TypeAlias
 DEFAULT_SELECTION_FOOTER = "💬 输入序号选择"
 HELP_SELECTION_FOOTER = "💬 直接发送序号查看详细帮助"
 TOGGLE_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，输入序号切换"
-EXIT_SELECTION_LINE = "0.【退出】"
+EXIT_SELECTION_LINE = "0. 【退出】"
 
 
 @dataclass(frozen=True, slots=True)

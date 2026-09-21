@@ -41,3 +41,27 @@ def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> Non
     assert "自动响应" in detail
     assert "暂无可直接输入的命令" not in detail
     assert "keyword" in detail
+    assert detail.endswith("0. 【退出】")
+
+
+def test_detail_without_available_commands_keeps_exit_as_final_item() -> None:
+    commands = SimpleNamespace(available_for_context=lambda *_args, **_kwargs: ())
+    entry = HelpMenuEntry(
+        key="example",
+        name="Example",
+        description="Example plugin",
+        group="other",
+        order=1,
+        notes=(),
+    )
+
+    detail = format_plugin_detail(
+        entry,
+        command_context(private_message_event(user_id=1)),
+        cast("Any", object()),
+        cast("Any", commands),
+        ignored_plugins=(),
+    )
+
+    assert "暂无可直接输入的命令" in detail
+    assert detail.endswith("0. 【退出】")
