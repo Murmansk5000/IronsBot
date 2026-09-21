@@ -10,11 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from ironsbot.integrations.storage.platform_state_copy import PlatformStateDataError
 from ironsbot.integrations.storage.platform_state_schema import (
     AI_IDENTITY_TABLES,
     QQ_IDENTITY_TABLES,
     RUNTIME_IDENTITY_TABLES,
-    PlatformStateDataError,
     copy_ai_memory,
     copy_passthrough_tables,
     copy_qq_state,

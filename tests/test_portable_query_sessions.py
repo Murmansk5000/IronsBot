@@ -20,13 +20,13 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     singleton_target,
 )
+from ironsbot.services.portable_query_operations import build_query_operation
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessionError,
     PortableQuerySessions,
     PortableTextInputSpec,
     QueryOperationSpec,
-    build_query_operation,
 )
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult

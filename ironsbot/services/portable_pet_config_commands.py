@@ -6,10 +6,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.services.pet_config_commands import pet_config_input
-from ironsbot.services.portable_query_sessions import (
-    QueryOperationSpec,
-    build_query_operation,
-)
+from ironsbot.services.portable_query_operations import build_query_operation
+from ironsbot.services.portable_query_sessions import QueryOperationSpec
 
 if TYPE_CHECKING:
     from ironsbot.services.pet_config import PetConfigQueryService
