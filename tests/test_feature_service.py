@@ -12,6 +12,12 @@ from ironsbot.core.features import (
     SEER_FEATURES,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.services.identity_link_store import (
+    CrossPlatformGroupLink,
+    CrossPlatformIdentityLink,
+    OfficialIdentity,
+)
+from ironsbot.services.identity_principals import IdentityPrincipalService
 
 _ACTOR = ActorRef(Platform.ONEBOT, "999")
 
@@ -55,12 +61,14 @@ def test_user_policy_applies_to_the_same_actor_in_group_chat() -> None:
 
 
 def test_verified_official_identity_inherits_onebot_user_policy() -> None:
+    principals = IdentityPrincipalService()
     feature_service = build_feature_service(
         FeatureConfig(
             user_policy={"456": ["ai_chat"]},
             superuser_bypass=True,
         ),
         (456,),
+        principals=principals,
     )
     official_member = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -70,28 +78,28 @@ def test_verified_official_identity_inherits_onebot_user_policy() -> None:
         "app-id",
     )
 
-    feature_service.register_identity_link(
-        official_app_id="app-id",
-        official_openid="member-openid",
-        onebot_qq_id="456",
+    link = CrossPlatformIdentityLink(
+        "456",
+        OfficialIdentity("app-id", "member", "member-openid"),
+        1.0,
     )
+    principals.register_identity_link(link)
 
     assert feature_service.actor_has_feature(official_member, "ai_chat")
     assert feature_service.is_actor_superuser(official_member)
 
-    feature_service.unregister_identity_link(
-        official_app_id="app-id",
-        official_openid="member-openid",
-    )
+    principals.unregister_identity_link(link)
 
     assert not feature_service.actor_has_feature(official_member, "ai_chat")
     assert not feature_service.is_actor_superuser(official_member)
 
 
 def test_discovered_official_group_inherits_onebot_group_policy() -> None:
+    principals = IdentityPrincipalService()
     feature_service = build_feature_service(
         FeatureConfig(group_policy={"123": ["seer"]}),
         (),
+        principals=principals,
     )
     official_group = ConversationRef(
         Platform.QQ_OFFICIAL,
@@ -100,10 +108,8 @@ def test_discovered_official_group_inherits_onebot_group_policy() -> None:
         account_id="app-id",
     )
 
-    feature_service.register_group_link(
-        official_app_id="app-id",
-        official_group_openid="group-openid",
-        onebot_group_id="123",
+    principals.register_group_link(
+        CrossPlatformGroupLink("123", "app-id", "group-openid", 1.0)
     )
 
     assert feature_service.conversation_has_feature(official_group, "seer_pet")

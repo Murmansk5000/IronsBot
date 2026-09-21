@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorKind
+    from ironsbot.core.platform import ActorKind, OfficialUnionIdentity
 
 
 class IdentityLinkStoreError(RuntimeError):
@@ -31,6 +31,17 @@ class IdentityLinkConflictError(IdentityLinkStoreError):
 class GroupLinkConflictError(IdentityLinkStoreError):
     def __init__(self) -> None:
         super().__init__("group identity is already linked")
+
+
+class UnionIdentityConflictError(IdentityLinkStoreError):
+    def __init__(self, owner_count: int) -> None:
+        self.owner_count = owner_count
+        super().__init__("union identity connects conflicting confirmed principals")
+
+
+class UnionIdentityEvidenceChangedError(IdentityLinkStoreError):
+    def __init__(self) -> None:
+        super().__init__("official endpoint reported conflicting union identity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +79,24 @@ class CrossPlatformGroupLink:
     linked_at: float
 
 
+@dataclass(frozen=True, slots=True)
+class OfficialUnionObservation:
+    official: OfficialIdentity
+    union_identity: OfficialUnionIdentity
+    observed_at: float
+
+
 class IdentityLinkStore(Protocol):
+    async def observe_union_identity(
+        self,
+        *,
+        official: OfficialIdentity,
+        union_identity: OfficialUnionIdentity,
+        now: float,
+    ) -> tuple[CrossPlatformIdentityLink, ...]: ...
+
+    async def all_union_identities(self) -> tuple[OfficialUnionObservation, ...]: ...
+
     async def link_group_verified(
         self,
         *,
