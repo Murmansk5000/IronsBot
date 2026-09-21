@@ -81,11 +81,11 @@ enabled = true
 #     只要存在完整官方凭据，NapCat 就会被强制静默。
 send_messages = true
 # Default: false
-# EN: Silently correlate official group member OpenIDs with QQ numbers from the
-#     source-message references observed by NapCat. Requires active official
-#     credentials and trusted bot IDs below.
-# ZH: 由 NapCat 读取官方群回复所引用的原消息发送者，静默关联群 member_openid 与 QQ 号；
-#     需要完整官方凭据以及下方可信官方机器人 QQ 号。
+# EN: Learn official group OpenIDs from normal command replies and silently
+#     correlate member OpenIDs with QQ numbers from source-message references
+#     observed by NapCat. Candidate numeric groups come from identities.groups.
+# ZH: 由普通命令回复自动学习官方群 OpenID，并由 NapCat 读取回复所引用的原消息发送者，
+#     静默关联群 member_openid 与 QQ 号；候选数字群来自 identities.groups。
 identity_verification = false
 
 [bot.onebot.trusted_official_bots]
@@ -100,50 +100,59 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
+# EN: The default account handles private messages and groups without an explicit
+#     route. Required when more than one official account is active.
+# ZH: 默认账号处理私聊和未显式分配的群；启用多个官方账号时必填。
+default_account = "example_bot"
+
+# EN: Optional logical group alias -> account alias ownership. The selected account
+#     is the only responder when multiple official bots share that logical group.
+# ZH: 可选的“逻辑群别名 -> 官方账号别名”归属；多个机器人同群时只允许指定账号响应。
+[bot.qq_official.group_routes]
+# example_official_group = "example_bot"
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
-#     A complete AppID and AppSecret environment pair activates the account and
+#     A TOML AppID plus APP_SECRET_<AppID> activates the account and
 #     makes QQ Official the only outbound platform. No TOML enabled flag exists.
 # ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
-#     OpenID 命名空间、权限和发送路由。完整的 AppID 与 AppSecret 环境变量
+#     OpenID 命名空间、权限和发送路由。TOML AppID 与 APP_SECRET_<AppID>
 #     会激活该账号，并使 QQ 官方成为唯一出站平台；TOML 不再使用 enabled。
-# Optional official-account template: account and scoped endpoints below are commented together.
-# To restore, uncomment all matching blocks, fill app_id, and supply APP_SECRET_<AppID> in env.
-# <APP_ID> is an instruction placeholder, not a default or activation credential.
-# [bot.qq_official.accounts.example_bot]
-# app_id = "<APP_ID>"  # Replace before restoring this optional official account.
-# # EN: A required account prevents application startup when it cannot become ready.
-# #     Optional accounts remain observable as degraded and may recover later.
-# # ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
-# required = false
-# # EN: Allow official proactive sends such as schedules and Bilibili pushes.
-# #     Users may disable proactive messages in QQ; platform rate limits apply.
-# # ZH: 允许官方机器人发送定时提醒、B站动态等主动消息；用户可在 QQ
-# #     客户端关闭主动消息，并且发送仍受平台频率限制。
-# proactive_messages = false
-# # EN: Enable custom command keyboards only after Tencent grants the account's
-# #     invite-only custom-button capability. Text choices always remain available.
-# # ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
-# custom_keyboards = false
-# # EN: Account-level defaults apply to every message received by this bot. Use an
-# #     empty list for a special-purpose bot and grant features only through the
-# #     account policies or the shared logical identity policies below. ai_chat
-# #     also requires at least one AI_KEY_<PROVIDER>.
-# # ZH: 账号级默认功能会应用于该机器人收到的所有消息。专用机器人应设为空列表，
-# #     再通过账号策略或下方共享逻辑身份策略只向特定目标授权；查询候选项使用数字
-# #     选择，0 退出；ai_chat 还需至少一个 AI_KEY_<PROVIDER>。
-# features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-# # EN: Optional account-scoped targets keyed by aliases declared under identities.
-# #     Raw OpenIDs are rejected. Declaring a target also enables these extra features
-# #     there; global features remain active.
-# # ZH: 可选的账号级目标，键必须是 identities 中声明的群/用户别名，不接受裸 OpenID；
-# #     声明后会在该目标额外启用这些功能，全局 features 仍然有效。
-# [bot.qq_official.accounts.example_bot.group_policy]
-# # example_official_group = ["seer_activity_push", "bili_push"]
+[bot.qq_official.accounts.example_bot]
+# EN: Public AppID. The matching Secret comes from APP_SECRET_<AppID>.
+# ZH: 公开的 AppID；对应密钥从 APP_SECRET_<AppID> 环境变量读取。
+app_id = "10001"
+# EN: A required account prevents application startup when it cannot become ready.
+#     Optional accounts remain observable as degraded and may recover later.
+# ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
+required = false
+# EN: Allow official proactive sends such as schedules and Bilibili pushes.
+#     Users may disable proactive messages in QQ; platform rate limits apply.
+# ZH: 允许官方机器人发送定时提醒、B站动态等主动消息；用户可在 QQ
+#     客户端关闭主动消息，并且发送仍受平台频率限制。
+proactive_messages = false
+# EN: Enable custom command keyboards only after Tencent grants the account's
+#     invite-only custom-button capability. Text choices always remain available.
+# ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
+custom_keyboards = false
+# EN: Account-level defaults apply to every message received by this bot. Use an
+#     empty list for a special-purpose bot and grant features only through the
+#     account policies or the shared logical identity policies below. ai_chat
+#     also requires at least one AI_KEY_<PROVIDER>.
+# ZH: 账号级默认功能会应用于该机器人收到的所有消息。专用机器人应设为空列表，
+#     再通过账号策略或下方共享逻辑身份策略只向特定目标授权；查询候选项使用数字
+#     选择，0 退出；ai_chat 还需至少一个 AI_KEY_<PROVIDER>。
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
+# EN: Optional account-scoped targets keyed by aliases declared under identities.
+#     Raw OpenIDs are rejected. Declaring a target also enables these extra features
+#     there; global features remain active.
+# ZH: 可选的账号级目标，键必须是 identities 中声明的群/用户别名，不接受裸 OpenID；
+#     声明后会在该目标额外启用这些功能，全局 features 仍然有效。
+[bot.qq_official.accounts.example_bot.group_policy]
+# example_official_group = ["seer_activity_push", "bili_push"]
 
-# [bot.qq_official.accounts.example_bot.user_policy]
-# # example_official_user = ["seer_activity_push", "bili_push"]
+[bot.qq_official.accounts.example_bot.user_policy]
+# example_official_user = ["seer_activity_push", "bili_push"]
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
@@ -222,8 +231,8 @@ runtime_state = "data/state/runtime_state.sqlite"
 [identities.groups.group_a]
 qq = 987654321
 
-# [identities.groups.group_a.official]
-# example_bot = "example-group-openid-a"
+[identities.groups.group_a.official]
+example_bot = "example-group-openid-a"
 
 [identities.groups.group_b]
 qq = 876543210
@@ -231,8 +240,8 @@ qq = 876543210
 [identities.users.owner]
 qq = 1234567890
 
-# [identities.users.owner.official]
-# example_bot = "example-user-openid-owner"
+[identities.users.owner.official]
+example_bot = "example-user-openid-owner"
 
 [identities.users.user_a]
 qq = 2345678901
@@ -1090,7 +1099,8 @@ timeout_seconds = 15.0
 # 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 可填写
 # 皮肤表 ID 或 140xxxx 资源 ID，仅在首次使用时初始化关注列表；之后可通过 QQ 指令
 # 修改。关注只标记 ★，不会过滤每日四个皮肤。用户策略还需启用
-# lucky_skin_window；群聊还需要在该群策略中启用。
+# lucky_skin_window；群聊还需要在该群策略中启用。超级管理员可以代查本列表中的账号，
+# 但不能登录只存在于 seer.player_accounts、未列入本列表的账号。
 #
 # [[seer.lucky_skin_window.accounts]]
 # user = "owner"
