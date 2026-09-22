@@ -69,9 +69,7 @@ async def test_union_service_registers_propagated_links(tmp_path: Path) -> None:
 
     assert await service.observe(_incoming("app-a", "user-a"))
     assert await service.observe(_incoming("app-b", "user-b"))
-    propagated = await store.for_official(
-        OfficialIdentity("app-b", "user", "user-b")
-    )
+    propagated = await store.for_official(OfficialIdentity("app-b", "user", "user-b"))
 
     assert propagated is not None
     assert propagated.onebot_qq_id == "10001"

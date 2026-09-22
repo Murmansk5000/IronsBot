@@ -55,9 +55,9 @@ class IdentityPrincipalService:
     _union_principals: dict[tuple[str, str], ActorPrincipal] = field(
         default_factory=dict
     )
-    _union_identifiers_by_endpoint: dict[
-        tuple[str, str], set[tuple[str, str]]
-    ] = field(default_factory=dict)
+    _union_identifiers_by_endpoint: dict[tuple[str, str], set[tuple[str, str]]] = field(
+        default_factory=dict
+    )
     _explicit_qq_links: dict[tuple[str, str], str] = field(default_factory=dict)
     _configured_actor_principals: dict[tuple[str, str], ActorPrincipal] = field(
         default_factory=dict
@@ -239,6 +239,37 @@ class IdentityPrincipalService:
             return None
         return ActorRef(Platform.ONEBOT, principal.id)
 
+    def register_private_link(
+        self,
+        link: CrossPlatformIdentityLink,
+    ) -> tuple[ConversationPrincipalMerge, ...]:
+        if link.official.kind != "user":
+            return ()
+        endpoint = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            link.official.openid,
+            account_id=link.official.app_id,
+        )
+        source = self.conversation_principal(endpoint)
+        target = self.conversation_principal(
+            ConversationRef(Platform.ONEBOT, "private", link.onebot_qq_id)
+        )
+        self._conversation_principals[endpoint] = target
+        return () if source == target else (ConversationPrincipalMerge(source, target),)
+
+    def unregister_private_link(self, link: CrossPlatformIdentityLink) -> None:
+        if link.official.kind == "user":
+            self._conversation_principals.pop(
+                ConversationRef(
+                    Platform.QQ_OFFICIAL,
+                    "private",
+                    link.official.openid,
+                    account_id=link.official.app_id,
+                ),
+                None,
+            )
+
     def conversation_endpoints(
         self,
         principal: ConversationPrincipal,
@@ -285,9 +316,10 @@ class IdentityPrincipalService:
         changed = True
         while changed:
             changed = False
-            for candidate, candidate_identifiers in (
-                self._union_identifiers_by_endpoint.items()
-            ):
+            for (
+                candidate,
+                candidate_identifiers,
+            ) in self._union_identifiers_by_endpoint.items():
                 if candidate in component or not identifiers.intersection(
                     candidate_identifiers
                 ):
