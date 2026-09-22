@@ -54,6 +54,9 @@ async def execute_rank_lookup(  # noqa: PLR0913
             ),
             fetch_rank_page=service.fetch_page_result,
             anchor_only=anchor_only,
+            recent_cache_max_age_seconds=service.config.player_lookup.recent_cache_max_age_seconds,
+            recent_cache_anchor_timeout_seconds=service.config.player_lookup.recent_cache_anchor_timeout_seconds,
+            parallelism=service.page_parallelism,
         )
         if cached is not None or limit <= 0 or anchor_only:
             return await finalize_visible_lookup(
@@ -79,6 +82,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 score_search_probe_limit=service._probe_limit,
                 score_search_tie_page_limit=service._tie_page_limit,
                 fetch_rank_page=service.fetch_page_result,
+                parallelism=service.page_parallelism,
             )
         else:
             result.cost.used_full_scan = True
@@ -91,6 +95,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 page_size=page_size,
                 result=result,
                 fetch_rank_page=service.fetch_page_result,
+                parallelism=service.page_parallelism,
             )
     except (TimeoutError, asyncio.TimeoutError):
         if fallback_item is not None:
