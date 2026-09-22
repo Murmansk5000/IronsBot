@@ -201,6 +201,16 @@ class HeadlessRequestDispatcher:
         )
 
     @property
+    def rank_page_parallelism(self) -> int:
+        priority = current_headless_request_priority().priority
+        if any(
+            not request.future.done() and request.priority_state.priority < priority
+            for request in self._pending
+        ):
+            return 1
+        return max(1, min(3, self.idle_worker_count))
+
+    @property
     def pending_request_counts(self) -> dict[HeadlessRequestPriority, int]:
         counts = dict.fromkeys(HeadlessRequestPriority, 0)
         for request in self._pending:

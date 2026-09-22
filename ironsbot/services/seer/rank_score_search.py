@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from itertools import pairwise
 from typing import TYPE_CHECKING
 
+from ironsbot.core.rank_lookup_context import RankPagePolicy, rank_page_policy
 from ironsbot.services.seer.rank_pagination import RankPageConflictError
 
 if TYPE_CHECKING:
@@ -39,11 +41,46 @@ class _ScoreProbe:
         self,
         fetch_score: Callable[[int], Awaitable[int | None]],
         probe_count: int,
+        parallelism: Callable[[], int] | None = None,
     ) -> None:
         self._fetch_score = fetch_score
         self._probe_count = max(0, probe_count)
         self._remaining = self._probe_count
         self._cache: dict[int, int | None] = {}
+        self._parallelism = parallelism or (lambda: 1)
+
+    async def boundary(self, low: int, high: int, target: int, *, strict: bool) -> int:
+        while low < high:
+            count = min(
+                max(1, self._parallelism()), 3, high - low, max(1, self._remaining)
+            )
+            points = tuple(
+                dict.fromkeys(
+                    low + ((index + 1) * (high - low)) // (count + 1)
+                    for index in range(count)
+                )
+            )
+            token = rank_page_policy.set(RankPagePolicy("score_probe", parallel=True))
+            try:
+                outcomes = await asyncio.gather(
+                    *(self.score_at(point) for point in points), return_exceptions=True
+                )
+                scores: list[int | None] = []
+                for outcome in outcomes:
+                    if isinstance(outcome, BaseException):
+                        raise outcome
+                    scores.append(outcome)
+            finally:
+                rank_page_policy.reset(token)
+            previous = low - 1
+            for point, score in zip(points, scores, strict=True):
+                if score is None or (score < target if strict else score <= target):
+                    low, high = previous + 1, point
+                    break
+                previous = point
+            else:
+                low = points[-1] + 1
+        return low
 
     def reset_budget(self) -> None:
         self._remaining = self._probe_count
@@ -138,11 +175,11 @@ async def _locate_matches(
     tie_fallback_size: int,
 ) -> DescendingScoreRange:
     try:
-        insertion_index = await _find_first_at_most(
+        insertion_index = await probe.boundary(
             search_range.start,
             search_range.stop,
             target_score,
-            probe.score_at,
+            strict=False,
         )
         if insertion_index >= search_range.stop:
             return replace(base_result, insertion_index=insertion_index)
@@ -155,11 +192,11 @@ async def _locate_matches(
 
     probe.reset_budget()
     try:
-        match_end = await _find_first_below(
+        match_end = await probe.boundary(
             insertion_index,
             search_range.stop,
             target_score,
-            probe.score_at,
+            strict=True,
         )
     except _ProbeBudgetExhaustedError:
         return replace(
@@ -182,19 +219,20 @@ async def _locate_matches(
     )
 
 
-async def locate_descending_score_range(
+async def locate_descending_score_range(  # noqa: PLR0913 - bounded search policy
     start_index: int,
     end_index: int,
     target_score: int,
     fetch_score: Callable[[int], Awaitable[int | None]],
     *,
     limits: DescendingScoreSearchLimits,
+    parallelism: Callable[[], int] | None = None,
 ) -> DescendingScoreRange:
     """Locate a score range in a descending leaderboard with bounded probes."""
     if end_index <= start_index:
         return DescendingScoreRange()
 
-    probe = _ScoreProbe(fetch_score, limits.probe_count)
+    probe = _ScoreProbe(fetch_score, limits.probe_count, parallelism)
 
     try:
         last_index, boundary_score = await _find_last_existing_index(
