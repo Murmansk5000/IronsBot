@@ -51,6 +51,7 @@ class ProactiveDeliverySummary:
     succeeded: tuple[ConversationRef, ...]
     failed: tuple[ConversationRef, ...]
     uncertain: tuple[ConversationRef, ...] = ()
+    results: tuple[tuple[ConversationRef, SendResult], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +67,7 @@ class _DeliveryState:
     succeeded: set[ConversationRef] = field(default_factory=set)
     failed: set[ConversationRef] = field(default_factory=set)
     uncertain: set[ConversationRef] = field(default_factory=set)
+    results: dict[ConversationRef, SendResult] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +90,7 @@ class ProactiveMessageDelivery:
         interval_seconds: float = 1.5,
         subscription_key: str | None = None,
         include_promotions: bool = False,
+        max_attempts: int | None = None,
     ) -> ProactiveDeliverySummary:
         """Deliver one message to many conversations with shared push policy."""
 
@@ -100,9 +103,10 @@ class ProactiveMessageDelivery:
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
             include_promotions=include_promotions,
+            max_attempts=max_attempts,
         )
 
-    async def send_many(
+    async def send_many(  # noqa: PLR0913 - per-call delivery policy
         self,
         requests: Iterable[ProactiveDeliveryRequest],
         *,
@@ -110,6 +114,7 @@ class ProactiveMessageDelivery:
         interval_seconds: float = 1.5,
         subscription_key: str | None = None,
         include_promotions: bool = False,
+        max_attempts: int | None = None,
     ) -> ProactiveDeliverySummary:
         """Deliver per-conversation messages without exposing adapter targets."""
 
@@ -121,7 +126,8 @@ class ProactiveMessageDelivery:
 
         pending = list(selected)
         state = _DeliveryState()
-        for attempt in range(1, self.policy.max_attempts + 1):
+        attempts = max(1, max_attempts or self.policy.max_attempts)
+        for attempt in range(1, attempts + 1):
             if not pending:
                 break
             if attempt > 1 and self.policy.retry_delay_seconds > 0:
@@ -144,7 +150,7 @@ class ProactiveMessageDelivery:
             )
             if transport_unavailable:
                 break
-            if attempt == self.policy.max_attempts:
+            if attempt == attempts:
                 state.failed.update(request.conversation for request in next_pending)
                 break
             pending = next_pending
@@ -164,6 +170,7 @@ class ProactiveMessageDelivery:
                 for request in selected
                 if request.conversation in state.uncertain
             ),
+            tuple(state.results.items()),
         )
 
     async def _run_attempt(  # noqa: PLR0913 - explicit delivery controls
@@ -193,13 +200,7 @@ class ProactiveMessageDelivery:
                     for index, request in enumerate(batch)
                 )
             )
-            if not self._record_batch(batch, results, state, next_pending):
-                continue
-            state.failed.update(request.conversation for request in next_pending)
-            state.failed.update(
-                request.conversation for request in pending[start + len(batch) :]
-            )
-            return [], True
+            self._record_batch(batch, results, state, next_pending)
         return next_pending, False
 
     @staticmethod
@@ -211,6 +212,7 @@ class ProactiveMessageDelivery:
     ) -> bool:
         transport_unavailable = False
         for request, result in zip(batch, results, strict=True):
+            state.results[request.conversation] = result
             kind = result.failure_kind or DeliveryFailureKind.PERMANENT
             if result.delivered:
                 state.succeeded.add(request.conversation)

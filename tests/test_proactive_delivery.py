@@ -298,7 +298,7 @@ async def test_proactive_delivery_does_not_retry_uncertain_delivery() -> None:
 
 
 @pytest.mark.asyncio
-async def test_proactive_delivery_stops_after_transport_becomes_unavailable() -> None:
+async def test_proactive_delivery_continues_other_targets_after_offline() -> None:
     second = ConversationRef(Platform.ONEBOT, "group", "3004")
     messenger = FakeMessenger(
         scripted_results=[
@@ -324,8 +324,12 @@ async def test_proactive_delivery_stops_after_transport_becomes_unavailable() ->
         interval_seconds=0,
     )
 
-    assert summary.failed == (GROUP, second)
-    assert [conversation for conversation, _message in messenger.calls] == [GROUP]
+    assert summary.failed == (GROUP,)
+    assert summary.succeeded == (second,)
+    assert [conversation for conversation, _message in messenger.calls] == [
+        GROUP,
+        second,
+    ]
 
 
 @pytest.mark.asyncio
