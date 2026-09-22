@@ -10,7 +10,6 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
@@ -56,7 +55,9 @@ def install(
     async def handle_hint(matcher: Matcher, event: GroupMessageEvent) -> None:
         if not addressed_input_hints.admit(message_input_context(event)):
             await matcher.finish()
-        await finish_event_reply(matcher, event, DIRECT_COMMAND_HELP_HINT_TEXT)
+        await finish_event_reply(
+            matcher, event, addressed_input_hints.reply(command_context(event))
+        )
 
     matcher = registry.on_message(
         policy=CommandPolicy.exempt("unclaimed direct mention hint"),

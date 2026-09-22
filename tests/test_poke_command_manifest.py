@@ -37,7 +37,7 @@ def test_manifest_generator_marks_sanctuary_command_after_baseline(
     manifest = json.loads(output_path.read_text(encoding="utf-8"))
     assert manifest["baseline_commit"] == "b97cb3ec"
     assert "seer.autocard.sanctuary" in manifest["commands"]
-    assert "help" in manifest["commands"]
+    assert "help" not in manifest["commands"]
 
 
 def test_manifest_generator_scans_git_history_once(monkeypatch: MonkeyPatch) -> None:

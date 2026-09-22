@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from argparse import ArgumentParser
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
 BASELINE_COMMIT = "b97cb3ec"
+ARCHIVE_COMMIT = "55a39fd12c8b562f8ac3eb8b95d5a71325e8981f"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -43,7 +45,10 @@ def _command_ids() -> tuple[str, ...]:
     return tuple(sorted(application.resources.commands.command_ids))
 
 
-def _introduced_timestamps(command_ids: Iterable[str]) -> dict[str, str]:
+def _introduced_timestamps(
+    command_ids: Iterable[str],
+    revision: str | None = None,
+) -> dict[str, str]:
     """Find all command introductions with one chronological Git history scan."""
 
     wanted = set(command_ids)
@@ -58,7 +63,7 @@ def _introduced_timestamps(command_ids: Iterable[str]) -> dict[str, str]:
             "-p",
             "--no-ext-diff",
             "--unified=0",
-            f"{BASELINE_COMMIT}..HEAD",
+            revision or f"{BASELINE_COMMIT}..HEAD",
             "--",
             "ironsbot",
         ],
@@ -84,10 +89,21 @@ def _introduced_timestamps(command_ids: Iterable[str]) -> dict[str, str]:
 
 def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
     _git_lines("merge-base", "--is-ancestor", BASELINE_COMMIT, "HEAD")
-    commands = _introduced_timestamps(command_ids)
+    ids = tuple(command_ids)
+    commands = _introduced_timestamps(ids)
+    # The archived history is authoritative for pre-refactor command IDs.
+    # Failing the build on a missing archive is safer than promoting every moved ID.
+    archived = _introduced_timestamps(ids, ARCHIVE_COMMIT)
+    baseline_time = _git_lines("show", "-s", "--format=%aI", BASELINE_COMMIT)[0]
+    for command_id, introduced in archived.items():
+        if datetime.fromisoformat(introduced) <= datetime.fromisoformat(baseline_time):
+            commands.pop(command_id, None)
+        else:
+            commands[command_id] = introduced
     return {
         "schema_version": 1,
         "baseline_commit": BASELINE_COMMIT,
+        "archive_commit": ARCHIVE_COMMIT,
         "commands": commands,
     }
 
