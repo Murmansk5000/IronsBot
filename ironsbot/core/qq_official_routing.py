@@ -37,7 +37,7 @@ class QQOfficialIngressRouting:
         explicitly_addressed: bool = False,
     ) -> bool:
         if conversation_kind != "group":
-            return account_id == self.default_account_id
+            return True
         onebot_group_id = self._onebot_groups_by_endpoint.get(
             (account_id, conversation_id)
         )
