@@ -64,10 +64,10 @@ BasedPyright、compileall、`scripts/check_repo.py --static` 和 diff check 全�
 
 - `docs/specs/2026-09-15-command-parity.md` 中配置型文本/图片仍需按实际生产配置逐项核对。
 - 玩家二级菜单、榜单全部参数组合和私有扩展仍以真实客户端矩阵为最终证据。
-- 普通群管理异常隔离和真实 AI 备用 provider failover 已在后续精确候选上关闭；详见
-  `2026-09-15-official-usability-acceptance.md`。Phase 7 当前只等待 B10 手机 QQ 最终视觉
-  确认。腾讯自然产生的主动消息拒绝、额度或 receive/reject 事件继续作为 External TODO，
-  本审计不把尚未发生的平台事件伪报为通过。
+- 普通群管理异常隔离、真实 AI 备用 provider failover 和 B10 手机 QQ 最终视觉均已在
+  后续精确候选上关闭；详见 `2026-09-15-official-usability-acceptance.md`。腾讯自然产生的
+  主动消息拒绝、额度或 receive/reject 事件继续作为非阻塞 External TODO，本审计不把
+  尚未发生的平台事件伪报为通过。
 
 ## 防回归规则
 
