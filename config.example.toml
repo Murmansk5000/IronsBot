@@ -3,6 +3,8 @@
 # Copy to config/ironsbot.toml or /config/ironsbot.toml and edit values there.
 # Keep secrets and credentials in environment variables, not in this file.
 # See README.md "Feature 对照表" for every feature key and its meaning.
+# 未知或已删除字段会记录完整路径 warning 后忽略，不会作为兼容字段继续生效；
+# 已知字段的类型、取值、必填项和引用错误仍会阻止启动。
 #
 # 快速阅读顺序：
 # 1. [identities.groups.*] / [identities.users.*]
@@ -188,6 +190,9 @@ seer_mintmark = 100
 pet_config = 109
 seer_pet = 110
 seer_query = 120
+# EN: Configured user mention replies run after all commands and before AI chat.
+# ZH: 指定用户提及回复在全部命令之后、AI 聊天之前执行。
+mention_reply = 190
 ai_chat = 200
 
 [bot.logging]
@@ -736,6 +741,24 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # keywords = ["出出"]
 # messages = ["第一条回复", "第二条回复"]
 # feature = "chuchu_reply"
+
+# Default: []
+# EN: Reply when one configured user explicitly mentions the bot in a group.
+# `users` contains aliases from `[identities.users]`; the same logical user is
+# recognized through OneBot and every configured QQ Official endpoint. Commands
+# and active menus win first, while this reply wins over AI chat. Blacklists
+# still apply. Every `messages` entry is sent in order.
+# ZH: 指定用户在群聊中明确 @机器人时回复。`users` 只能填写
+# `[identities.users]` 中的用户别名；同一真实用户通过 OneBot 或任意已配置的
+# QQ 官方机器人端点触发时共用此规则。有效命令和会话菜单优先，本回复优先于
+# AI 聊天，并继续遵守黑名单。`messages` 中的内容按顺序逐条发送。
+#
+# [[messaging.mention_replies]]
+# id = "example_user_mention"
+# name = "示例用户提及回复"
+# enabled = true
+# users = ["example_user"]
+# messages = ["示例回复"]
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
