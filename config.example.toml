@@ -3,6 +3,8 @@
 # Copy to config/ironsbot.toml or /config/ironsbot.toml and edit values there.
 # Keep secrets and credentials in environment variables, not in this file.
 # See README.md "Feature 对照表" for every feature key and its meaning.
+# 未知或已删除字段会记录完整路径 warning 后忽略，不会作为兼容字段继续生效；
+# 已知字段的类型、取值、必填项和引用错误仍会阻止启动。
 #
 # 快速阅读顺序：
 # 1. [identities.groups.*] / [identities.users.*]

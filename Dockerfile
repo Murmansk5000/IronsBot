@@ -25,6 +25,18 @@ RUN set -eu; \
 # their metadata a second time.
 RUN python -m pip wheel --no-deps --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
 
+# The builder resolves the VCS dependency once and produces a local wheel. The
+# runtime stage is offline, so make its requirement select that wheel instead of
+# trying to clone the repository again.
+RUN set -eu; \
+    model_wheel="$(find /wheel -maxdepth 1 -type f -name 'seerapi_models-*.whl' -printf '%f\n')"; \
+    test -n "$model_wheel"; \
+    test "$(printf '%s\n' "$model_wheel" | wc -l)" -eq 1; \
+    model_version="${model_wheel#seerapi_models-}"; \
+    model_version="${model_version%%-*}"; \
+    sed -i "s|^seerapi-models @ git+.*$|seerapi-models==${model_version}|" /wheel/requirements.txt; \
+    grep -Fx "seerapi-models==${model_version}" /wheel/requirements.txt
+
 RUN python - <<'PY'
 import io
 from pathlib import Path
