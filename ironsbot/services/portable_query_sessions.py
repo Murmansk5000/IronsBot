@@ -784,26 +784,3 @@ class PortableQuerySessions:
             choices=(*choices, exit_choice),
             expires_at=self._now() + self._ttl_seconds,
         )
-
-
-def build_query_operation(
-    sessions: PortableQuerySessions,
-    spec: QueryOperationSpec[_T],
-) -> PortableQueryOperation:
-    """Adapt one QueryResult service without duplicating its command grammar."""
-
-    async def execute(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage | None:
-        argument = spec.parser(text)
-        if argument is None:
-            msg = f"catalog accepted input that its query parser rejected: {text!r}"
-            raise ValueError(msg)
-        return await sessions.begin(
-            context,
-            argument=argument,
-            spec=spec,
-        )
-
-    return execute

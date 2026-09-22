@@ -67,8 +67,9 @@ def test_config_check_redacts_secret_from_validation_error(tmp_path: Path) -> No
     config_path = tmp_path / "invalid.toml"
     config_path.write_text(
         '[ai]\nprovider_order = ["missing"]\n'
+        'timeout = "secret-value-that-must-not-leak"\n'
         '[ai.providers.missing]\nbase_url = "https://example.invalid"\n'
-        'models = ["model"]\nunknown = "secret-value-that-must-not-leak"\n',
+        'models = ["model"]\n',
         encoding="utf-8",
     )
 
@@ -93,7 +94,7 @@ def test_config_check_redacts_secret_from_validation_error(tmp_path: Path) -> No
 
     assert result.returncode == CONFIG_ERROR_EXIT_CODE
     assert "IronsBot configuration invalid" in result.stderr
-    assert "unknown" in result.stderr
+    assert "timeout" in result.stderr
     assert secret not in result.stderr
     assert "Traceback" not in result.stderr
 
