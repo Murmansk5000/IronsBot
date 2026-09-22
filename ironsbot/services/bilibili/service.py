@@ -42,6 +42,7 @@ if TYPE_CHECKING:
         DynamicHistoryRecord,
     )
     from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.messaging.image_collage import ImageCollageService
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ class BilibiliService:
     fetch_detail: DynamicDetailFetcher
     spawn: Callable[..., asyncio.Task[Any]]
     content_compactor: DynamicContentCompactor | None = None
+    image_collage: ImageCollageService | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)

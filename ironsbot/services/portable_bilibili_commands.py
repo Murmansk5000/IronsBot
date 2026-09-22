@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
 from ironsbot.services.bilibili.outbound_delivery import (
-    render_dynamic_content_message,
+    prepare_dynamic_content_messages,
 )
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -116,7 +117,7 @@ def build_portable_bilibili_operations(
 async def _dynamic_detail(
     service: BilibiliService,
     dynamic_id: str,
-) -> OutboundMessage:
+) -> OutboundMessage | PortableReply:
     try:
         selection = service.select_dynamic([dynamic_id], "1")
         if selection.status != "ok" or selection.record is None:
@@ -126,10 +127,15 @@ async def _dynamic_detail(
         detail = await service.prepare_dynamic_detail(
             cast("DynamicHistoryRecord", selection.record)
         )
-        return render_dynamic_content_message(
+        messages = await prepare_dynamic_content_messages(
             detail.item,
             detail.content_override,
-        ) or OutboundMessage.from_text("❌ 动态详情解析失败。")
+            service.image_collage,
+            combine_images=service.config.push.combine_images,
+        )
+        if not messages:
+            return OutboundMessage.from_text("❌ 动态详情解析失败。")
+        return PortableReply(messages[0], additional_messages=messages[1:])
     except Exception:
         _LOGGER.exception("portable Bilibili dynamic detail failed")
         return OutboundMessage.from_text("❌ 动态详情解析失败。")

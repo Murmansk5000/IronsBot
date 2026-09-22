@@ -25,7 +25,7 @@ from ironsbot.integrations.onebot.replies import (
 from ironsbot.services.bilibili.commands import is_dynamic_selection
 from ironsbot.services.bilibili.menu import DYNAMIC_IDS_STATE_KEY
 from ironsbot.services.bilibili.outbound_delivery import (
-    render_dynamic_content_message,
+    prepare_dynamic_content_messages,
 )
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
@@ -130,7 +130,7 @@ async def handle_dynamic_menu_action(
         )
 
 
-async def handle_dynamic_select_action(
+async def handle_dynamic_select_action(  # noqa: C901 - menu outcomes plus ordered text/image delivery
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -179,22 +179,25 @@ async def handle_dynamic_select_action(
 
         if selection.record is not None:
             detail = await service.prepare_dynamic_detail(selection.record)
-            message = render_dynamic_content_message(
+            messages = await prepare_dynamic_content_messages(
                 detail.item,
                 detail.content_override,
+                service.image_collage,
+                combine_images=service.config.push.combine_images,
             )
-            if message is None:
+            if not messages:
                 await finish_event_reply(
                     matcher,
                     event,
                     "❌ 动态详情解析失败。",
                 )
                 return
-            await send_event_reply(
-                matcher,
-                event,
-                render_onebot_outbound_message(message),
-            )
+            for message in messages:
+                await send_event_reply(
+                    matcher,
+                    event,
+                    render_onebot_outbound_message(message),
+                )
 
         await wait_dynamic_select(matcher, event, service)
 
