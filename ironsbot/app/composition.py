@@ -21,6 +21,7 @@ from ironsbot.app.common_composition import build_common_components
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.messaging_composition import build_messaging_components
+from ironsbot.app.official_address_composition import build_official_addresses
 from ironsbot.app.operations_composition import build_operations_components
 from ironsbot.app.private_extensions import (
     load_private_extension_catalog,
@@ -62,6 +63,10 @@ from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.identity_link_commands import IdentityLinkCommands
+from ironsbot.services.identity_link_store import (
+    CrossPlatformIdentityLink,
+    OfficialIdentity,
+)
 from ironsbot.services.identity_linking import IdentityLinkingService, OfficialAccount
 from ironsbot.services.identity_observation import (
     IdentityObservationAccount,
@@ -85,13 +90,12 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.identity_link_store import (
         CrossPlatformGroupLink,
-        CrossPlatformIdentityLink,
-        OfficialIdentity,
     )
     from ironsbot.services.identity_principals import (
         ActorPrincipalMerge,
         ConversationPrincipalMerge,
     )
+    from ironsbot.services.official_addresses import OfficialAddressService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.startup import StartupNoticeService
 
@@ -113,6 +117,7 @@ def _register_configured_identity_principals(
     principals: IdentityPrincipalService,
 ) -> tuple[ConversationPrincipalMerge, ...]:
     accounts = settings.bot.qq_official.enabled_accounts
+    merges: list[ConversationPrincipalMerge] = []
     for alias, target in settings.identities.users.items():
         principals.register_configured_actor(
             alias=alias,
@@ -123,7 +128,18 @@ def _register_configured_identity_principals(
                 if (account := accounts.get(account_alias)) is not None
             ),
         )
-    merges: list[ConversationPrincipalMerge] = []
+        if target.qq is not None:
+            for account_alias, openid in target.official.items():
+                if (account := accounts.get(account_alias)) is not None:
+                    merges.extend(
+                        principals.register_private_link(
+                            CrossPlatformIdentityLink(
+                                str(target.qq),
+                                OfficialIdentity(account.app_id, "user", openid),
+                                0,
+                            )
+                        )
+                    )
     for alias, target in settings.identities.groups.items():
         endpoints: list[tuple[str, str]] = []
         for account_alias, openid in target.official.items():
@@ -156,6 +172,7 @@ async def _load_identity_links(  # noqa: PLR0913
     on_principal_merge: Callable[[ActorPrincipalMerge], None],
     on_conversation_merge: Callable[[ConversationPrincipalMerge], None],
     qq_official: QQOfficialRuntime | None,
+    addresses: OfficialAddressService | None = None,
 ) -> None:
     for observation in await store.all_union_identities():
         official = observation.official
@@ -185,9 +202,12 @@ async def _load_identity_links(  # noqa: PLR0913
                 official_group_openid=link.official_group_openid,
                 onebot_group_id=link.onebot_group_id,
             )
-    for link in await store.all_links():
+    links = await store.all_links()
+    for link in links:
         for merge in principals.register_identity_link(link):
             on_principal_merge(merge)
+    if addresses is not None:
+        await addresses.load(links)
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
@@ -252,6 +272,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.activity.notice_timeout_seconds,
         ),
     )
+    query_sessions = PortableQuerySessions()
     seer_components = build_seer_components(
         settings,
         http_clients,
@@ -266,6 +287,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
         identity_principals,
         admin_notices,
+        query_sessions,
+        common.private_routes,
     )
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -289,6 +312,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions,
         task_owner,
         identity_principals,
+        common.private_routes,
     )
     bilibili = bilibili_components.service
     bilibili_login = bilibili_components.login
@@ -411,12 +435,21 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             merge.target,
         )
 
+    addresses = build_official_addresses(
+        settings,
+        identity_principals,
+        bilibili_components.service.targets,
+        merge_conversation_principal,
+    )
+
     def register_identity_link(link: CrossPlatformIdentityLink) -> None:
         for merge in identity_principals.register_identity_link(link):
             merge_actor_principal(merge)
+        addresses.accept_link(link)
 
     def unregister_identity_link(link: CrossPlatformIdentityLink) -> None:
         identity_principals.unregister_identity_link(link)
+        addresses.refresh()
 
     identity_linking = IdentityLinkingService(
         identity_store,
@@ -435,6 +468,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             identity_principals,
             merge_actor_principal,
             register_identity_link,
+            addresses=addresses,
         )
         if common.qq_official is not None
         else None
@@ -447,6 +481,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         merge_actor_principal,
         merge_conversation_principal,
         common.qq_official,
+        addresses=addresses,
     )
     onebot_ingress = OneBotIngressPolicy(
         messages_enabled=(
@@ -472,7 +507,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             ignored_plugins=ignored_plugins,
         )
 
-    query_sessions = PortableQuerySessions()
     from ironsbot.services.portable_menu_access import (
         explicit_command_resolver,
         menu_access_resolver,
@@ -569,6 +603,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 merge_actor_principal,
                 merge_conversation_principal,
                 common.qq_official,
+                addresses,
             ),
         ),
         (
@@ -636,6 +671,7 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
     on_principal_merge: Callable[[ActorPrincipalMerge], None],
     on_conversation_merge: Callable[[ConversationPrincipalMerge], None],
     qq_official: QQOfficialRuntime | None,
+    addresses: OfficialAddressService | None = None,
 ) -> SilentIdentityObservationService | None:
     if not settings.bot.onebot.identity_verification:
         return None
@@ -664,6 +700,8 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
             official=official,
         ):
             on_principal_merge(merge)
+        if addresses is not None:
+            addresses.refresh()
 
     def register_group_link(link: CrossPlatformGroupLink) -> None:
         for merge in principals.register_group_link(link):

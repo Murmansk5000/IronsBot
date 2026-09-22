@@ -26,6 +26,7 @@ from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
     ProactiveMessageDelivery,
 )
+from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,6 +55,7 @@ class CommonComponents:
     qq_official: QQOfficialRuntime | None
     proactive_delivery: ProactiveMessageDelivery
     admin_notices: AdminNoticeService
+    private_routes: PrivateConversationRoutes
 
 
 def build_common_components(
@@ -179,6 +181,13 @@ def build_common_components(
         ),
     )
     install_outbound_rate_limit_hooks(outbound)
+    accounts = settings.bot.qq_official.enabled_accounts
+    default = accounts.get(settings.bot.qq_official.resolved_default_account or "")
+    private_routes = PrivateConversationRoutes(
+        onebot_enabled=platform_selection.onebot_outbound_enabled,
+        official_accounts=frozenset(account.app_id for account in accounts.values()),
+        default_account=None if default is None else default.app_id,
+    )
     return CommonComponents(
         prompt_sessions=PromptSessionManager(),
         features=features,
@@ -191,8 +200,9 @@ def build_common_components(
         proactive_delivery=proactive_delivery,
         admin_notices=AdminNoticeService(
             features,
-            OutboundAdminNoticeSender(proactive_delivery),
+            OutboundAdminNoticeSender(proactive_delivery, private_routes),
         ),
+        private_routes=private_routes,
     )
 
 

@@ -106,7 +106,7 @@ class LuckySkinWindowNotificationSender(Protocol):
     async def send_daily_notice(
         self,
         actor: ActorRef,
-        message: str,
+        message: str | LuckySkinWindowResult,
         *,
         day: str,
     ) -> bool: ...
@@ -398,7 +398,7 @@ class LuckySkinWindowService:
             account = configured.player_account
             try:
                 result = await self._check(account, background=True)
-                message = self.format_result(result, actor=actor)
+                message: str | LuckySkinWindowResult = result
             except Exception:
                 logger.exception(
                     "lucky skin window scheduled check failed: player_id=%s",

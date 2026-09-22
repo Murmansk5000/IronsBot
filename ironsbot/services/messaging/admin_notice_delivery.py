@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import private_conversation_for_actor, reference_digest
@@ -12,6 +12,7 @@ from ironsbot.services.messaging.admin_notice import (
     AdminNoticeRecipient,
     AdminNoticeSendSummary,
 )
+from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage
@@ -26,6 +27,9 @@ class OutboundAdminNoticeSender:
     """Deliver notices through the configured platform-neutral push service."""
 
     delivery: ProactiveMessageDelivery
+    private_routes: PrivateConversationRoutes = field(
+        default_factory=PrivateConversationRoutes
+    )
 
     async def send_admin_notice(  # noqa: PLR0913
         self,
@@ -48,6 +52,12 @@ class OutboundAdminNoticeSender:
         recipients = _notice_recipients(
             tuple(actor for actor in private_actors if actor.kind == "user"),
             group_conversations,
+        )
+        recipients = tuple(
+            {
+                self.private_routes.resolve(conversation): recipient
+                for conversation, recipient in recipients
+            }.items()
         )
         summary = await self.delivery.send(
             message,

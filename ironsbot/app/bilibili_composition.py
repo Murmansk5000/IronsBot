@@ -38,6 +38,7 @@ from ironsbot.services.bilibili.delivery_recovery import BiliStartupRecovery
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.login_notice import send_bili_login_notice
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
+from ironsbot.services.bilibili.private_routes import BiliPrivateRoutes
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
@@ -72,6 +73,7 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
     subscriptions: PushSubscriptionRepository,
     task_owner: TaskOwner,
     identity_principals: IdentityPrincipalService,
+    private_routes: BiliPrivateRoutes | None = None,
 ) -> BilibiliComponents:
     """Build Bilibili services and compile configured delivery targets."""
     data_dir = settings.bilibili.storage.data_dir
@@ -80,6 +82,7 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
         settings.paths.qq_state,
         principal_for=identity_principals.conversation_principal,
     )
+    routes = private_routes or _private_routes(settings)
     service = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -92,6 +95,7 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
             preferences,
             subscriptions,
             BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
+            private_routes=routes,
         ),
         cookie_store=cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -115,6 +119,16 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
             spawn=task_owner.create,
         ),
         preferences=preferences,
+    )
+
+
+def _private_routes(settings: Settings) -> BiliPrivateRoutes:
+    accounts = settings.bot.qq_official.enabled_accounts
+    default = accounts.get(settings.bot.qq_official.resolved_default_account or "")
+    return BiliPrivateRoutes(
+        onebot_enabled=settings.outbound_platform_selection.onebot_outbound_enabled,
+        official_accounts=frozenset(account.app_id for account in accounts.values()),
+        default_account=None if default is None else default.app_id,
     )
 
 

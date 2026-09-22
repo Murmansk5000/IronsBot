@@ -57,6 +57,7 @@ from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_ma
 from ironsbot.integrations.seer_data.type_matchup_repository import (
     PublishedTypeMatchupRepository,
 )
+from ironsbot.integrations.storage.daily_delivery import SqliteDailyDeliveryStore
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
@@ -74,6 +75,7 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.services.pet_config import PetConfigQueryService
+from ironsbot.services.portable_lucky_skin_result import lucky_skin_result_menu
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.autocard_media import AutocardMediaService
 from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
@@ -135,6 +137,8 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
     from ironsbot.services.seer.lucky_skin_window import (
         LuckySkinWindowOffer,
         LuckySkinWindowResult,
@@ -180,6 +184,8 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     player_bindings: SqlitePlayerBindingStore,
     identity_principals: IdentityPrincipalService,
     admin_notices: AdminNoticeService,
+    query_sessions: PortableQuerySessions,
+    private_routes: PrivateConversationRoutes,
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -370,6 +376,14 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         settings.paths.qq_state,
         principal_for=identity_principals.actor_principal,
     )
+    lucky_sender = LuckySkinWindowOutboundSender(
+        proactive_delivery,
+        subscriptions,
+        SqliteDailyDeliveryStore(settings.paths.runtime_state),
+        private_routes,
+        query_sessions,
+        identity_principals.actor_principal,
+    )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -383,7 +397,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player_bindings,
         lucky_skin_preference_store,
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
-        LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
+        lucky_sender,
         renderer=render_window,
     )
     player_query_limit_store = SqlitePlayerQueryLimitStore(
@@ -530,6 +544,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         image_failure_reporter=image_failure_reporter,
     )
     external_references = SeerInfoReferences(settings.seer.external_references)
+    lucky_sender.render = lambda context, actor, result: lucky_skin_result_menu(
+        lucky_skin_window, pet, features, query_sessions, context, actor, result
+    )
     return SeerComponents(
         seer=SeerQueryResources(
             SeerDataQueryService(
