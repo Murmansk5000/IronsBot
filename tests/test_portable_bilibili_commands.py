@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
 from ironsbot.core.platform import (
@@ -21,6 +22,7 @@ from ironsbot.services.portable_bilibili_commands import (
     build_portable_bilibili_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
@@ -30,6 +32,8 @@ if TYPE_CHECKING:
 
 class _FakeBilibiliService:
     status = "ok"
+    config = BiliConfig()
+    image_collage = None
 
     def __init__(self) -> None:
         self.targets = _FakeBiliTargets()
@@ -129,12 +133,12 @@ async def test_portable_bilibili_menu_reuses_numeric_session() -> None:
     context = _context("动态")
 
     menu = cast("OutboundMessage", await operation("动态", context))
-    detail = await sessions.select("2", context)
+    detail = await sessions.select("2", context, allow_deferred=True)
 
     assert cast("TextPart", menu.parts[0]).text == "动态菜单"
-    assert detail is not None
-    assert cast("TextPart", detail.parts[0]).text == "正文:dynamic-2"
-    assert isinstance(detail.parts[1], RemoteImagePart)
+    assert isinstance(detail, PortableReply)
+    assert cast("TextPart", detail.message.parts[0]).text == "正文:dynamic-2"
+    assert isinstance(detail.additional_messages[0].parts[0], RemoteImagePart)
     assert sessions.recognizes_response("1", context)
     exited = await sessions.select("0", context)
     assert exited is not None
