@@ -9,10 +9,8 @@ from typing import TYPE_CHECKING
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.services.portable_query_sessions import (
-    QueryOperationSpec,
-    build_query_operation,
-)
+from ironsbot.services.portable_query_operations import build_query_operation
+from ironsbot.services.portable_query_sessions import QueryOperationSpec
 from ironsbot.services.seer.data_query_commands import (
     DATA_VERSION_COMMANDS,
     SEASON_COUNTDOWN_COMMANDS,
