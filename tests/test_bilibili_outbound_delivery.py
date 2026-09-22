@@ -247,8 +247,10 @@ async def test_content_failure_after_shared_policy_notifies_admins(
     assert len(delivery.content_calls) == 1
     assert len(admin_notices.messages) == 1
     message, kwargs = admin_notices.messages[0]
-    assert "群：1001" in message
-    assert "私聊：2001" in message
+    assert "群 1001" in message
+    assert "私聊 2001" in message
+    assert "执行机器人：未确定" in message
+    assert "不自动补发" in message
     assert kwargs["action_name"] == "Bilibili dynamic content delivery failure"
 
 
@@ -274,7 +276,7 @@ async def test_text_and_image_failures_share_one_admin_notice(
     assert len(delivery.content_calls) == delivery.content_failures
     assert len(admin_notices.messages) == 1
     message, _kwargs = admin_notices.messages[0]
-    assert message.count("私聊：2001") == 1
+    assert message.count("私聊 2001") == 1
 
 
 @pytest.mark.asyncio
