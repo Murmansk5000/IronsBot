@@ -178,9 +178,24 @@ class _PortableNewContentOperations:
             PortableMenuSpec(
                 choices=tuple(choice.action for choice in menu.choices),
                 labels=tuple(choice.name for choice in menu.choices),
+                text_inputs=tuple(
+                    frozenset({choice.key}) if choice.key else frozenset()
+                    for choice in menu.choices
+                ),
                 select=select,
                 prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),
                 keep_open=True,
+                shareable=True,
+                can_select=lambda action, responder: (
+                    action.category
+                    in available_new_content_categories(
+                        lambda feature: self.features.is_feature_allowed(
+                            responder.message.actor,
+                            responder.message.conversation,
+                            feature,
+                        )
+                    )
+                ),
                 exit_message="已退出新增内容查询。",
             ),
         )

@@ -198,7 +198,7 @@ def test_manifest_ai_chat_owns_its_features_and_commands() -> None:
     contribution = DEFINITIONS_BY_ID["ai_chat"]
 
     assert contribution.features == frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE})
-    assert contribution.commands == ()
+    assert contribution.commands == ai_chat_command_contracts(enabled=False)
     assert {
         command.plugin_id for command in ai_chat_command_contracts(enabled=True)
     } == {"ai_chat"}
@@ -464,12 +464,7 @@ def test_internal_plugins_use_only_the_matcher_factory() -> None:
                     / "onebot"
                     / "messaging"
                     / "red_packet.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "messaging"
-                    / "poke.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "messaging" / "poke.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"

@@ -25,7 +25,7 @@ def test_explicit_command_preprocessor_closes_active_conversations(
 
     asyncio.run(invoke_preprocessor())
 
-    manager.invalidate.assert_called_once_with("group_1_user_2")
+    manager.invalidate.assert_called_once_with("bot::group_1_user_2")
     manager.invalidate_event_conversations.assert_called_once_with(event)
 
 

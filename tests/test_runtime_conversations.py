@@ -32,13 +32,15 @@ def _private_event(text: str = "帮助"):
 
 def test_event_conversation_session_id_includes_group_context() -> None:
     assert (
-        event_conversation_session_id("menu", _group_event()) == "menu:group:4:user:2"
+        event_conversation_session_id("menu", _group_event())
+        == "menu:bot:1:group:4:user:2"
     )
 
 
 def test_event_conversation_session_id_uses_private_context() -> None:
     assert (
-        event_conversation_session_id("menu", _private_event()) == "menu:private:user:2"
+        event_conversation_session_id("menu", _private_event())
+        == f"menu:bot:{_private_event().self_id}:private:user:2"
     )
 
 

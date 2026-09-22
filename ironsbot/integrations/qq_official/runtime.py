@@ -39,7 +39,7 @@ from ironsbot.integrations.qq_official.token_lifecycle import QQOfficialTokenObs
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from httpx import AsyncClient
@@ -440,13 +440,6 @@ class QQOfficialRuntime:
             return
         incoming = qq_official_incoming_message(event, account_id=app_id)
         mentions_bot = qq_official_event_mentions_bot(event)
-        if not self._accepts_incoming(
-            app_id,
-            event_type,
-            incoming,
-            explicitly_addressed=mentions_bot,
-        ):
-            return
         if not await self._inbound_deduplicator.claim(
             app_id=app_id,
             event_type=message_event_family(event_type),
@@ -462,6 +455,13 @@ class QQOfficialRuntime:
             return
         if self._union_identity is not None:
             await self._union_identity.observe(incoming)
+        if not self._accepts_incoming(
+            app_id,
+            event_type,
+            incoming,
+            explicitly_addressed=mentions_bot,
+        ):
+            return
         context = MessageInputContext(
             incoming,
             mentions_bot=mentions_bot,
@@ -511,6 +511,9 @@ class QQOfficialRuntime:
                 reply,
                 account_label=self._connections[app_id].lifecycle.account,
                 identity_observer=self._identity_observer,
+                on_menu_sent=lambda message, result: router.record_menu_delivery(
+                    context, message, result
+                ),
             )
 
     def _accepts_incoming(
@@ -634,13 +637,14 @@ async def _start_connection(
     return connection.lifecycle.snapshot().state is QQOfficialConnectionState.READY
 
 
-async def deliver_qq_official_reply(
+async def deliver_qq_official_reply(  # noqa: PLR0913 - platform delivery hooks
     messenger: OutboundMessenger,
     incoming: IncomingMessageRef,
     reply: PortableReply,
     *,
     account_label: str = "official-account",
     identity_observer: SilentIdentityObservationService | None = None,
+    on_menu_sent: Callable[[OutboundMessage, SendResult], None] | None = None,
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
@@ -678,6 +682,8 @@ async def deliver_qq_official_reply(
             if prepared.context is not None
             else await messenger.send(incoming.conversation, prepared.message)
         )
+        if on_menu_sent is not None:
+            on_menu_sent(message, result)
         if (
             not result.delivered
             and observation is not None

@@ -405,6 +405,16 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 ),
             ),
             shared_select=shared_select,
+            access=lambda responder: features.is_feature_allowed(
+                responder.message.actor, responder.message.conversation, "seer_player"
+            ),
+            can_select=lambda command, responder: features.is_feature_allowed(
+                responder.message.actor,
+                responder.message.conversation,
+                command.feature
+                if isinstance(command, PlayerDetailExtensionAction)
+                else "seer_player",
+            ),
             semantic_request=semantic_request,
             shared_choice_indexes=frozenset(
                 range(1, len(requests) + len(extension_actions) + 1)

@@ -473,6 +473,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         )
 
     query_sessions = PortableQuerySessions()
+    from ironsbot.services.portable_menu_access import (
+        explicit_command_resolver,
+        menu_access_resolver,
+    )
+
+    query_sessions.access_resolver = menu_access_resolver(command_catalog, features)
+    query_sessions.explicit_command = explicit_command_resolver(
+        command_catalog, features
+    )
     resources = ApplicationResources(
         about=AboutService.from_version_file(Path("__version__")),
         query_sessions=query_sessions,
@@ -546,6 +555,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.messaging.command_cooldown,
         ),
     )
+    query_sessions.interactions.request_service = matcher_factory.in_flight_requests
+    query_sessions.interactions.cooldown = matcher_factory.cooldown
     resource_startup_hooks: list[NamedLifecycleHook] = [
         (
             "identity_links",

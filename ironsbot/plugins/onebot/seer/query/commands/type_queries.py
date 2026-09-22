@@ -28,6 +28,7 @@ def install(group: SeerMatcherGroup) -> None:
             type_service.select,
             "请问你想查询的属性是……",
             ActionDefinition("seer_type_query", "属性查询"),
+            sessions=group.query_sessions,
         )
     )
 
@@ -48,5 +49,6 @@ def install(group: SeerMatcherGroup) -> None:
             effect_service.select,
             "请问你想查询的异常状态是……",
             ActionDefinition("seer_battle_effect_query", "异常状态查询"),
+            sessions=group.query_sessions,
         )
     )

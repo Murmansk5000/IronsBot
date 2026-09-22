@@ -35,6 +35,7 @@ from ironsbot.services.portable_countermark_commands import (
 from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
+from ironsbot.services.portable_menu_access import menu_access_resolver
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.outbound import SendResult
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
@@ -161,6 +163,17 @@ class PortableCommandRouter:
         self._addressed_input_hints = addressed_input_hints
         self._messaging = messaging
         self._query_sessions = query_sessions or PortableQuerySessions()
+        self._query_sessions.access_resolver = menu_access_resolver(catalog, features)
+        from ironsbot.services.portable_menu_access import explicit_command_resolver
+
+        self._query_sessions.explicit_command = explicit_command_resolver(
+            catalog, features
+        )
+
+    def record_menu_delivery(
+        self, context: MessageInputContext, message: OutboundMessage, result: SendResult
+    ) -> None:
+        self._query_sessions.record_delivery(context, message, result)
 
     def recognizes(
         self,
@@ -201,20 +214,20 @@ class PortableCommandRouter:
         raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
+        is_menu_reply = self._query_sessions.recognizes_response(command, context)
         try:
-            selected = await self._query_sessions.select(
+            selected = await self._query_sessions.interactions.select(
                 command,
                 context,
-                allow_deferred=True,
             )
         except DataUnavailableError:
             return PortableReply(
                 OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
             )
-        if selected is not None:
+        if is_menu_reply:
             return (
                 selected
-                if isinstance(selected, PortableReply)
+                if isinstance(selected, PortableReply) or selected is None
                 else PortableReply(selected)
             )
         contract = self._matching_input_contract(
@@ -236,7 +249,9 @@ class PortableCommandRouter:
                     )
             return await self._fallback_reply(context, command_context, command)
         try:
-            result = await self._operations[contract.id](command, context)
+            result = await self._query_sessions.interactions.execute(
+                self._operations[contract.id], command, context
+            )
         except DataUnavailableError:
             return PortableReply(
                 OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
@@ -331,6 +346,7 @@ class PortableCommandRouter:
                 actor=message.actor,
                 conversation=message.conversation,
                 prompt=prompt,
+                source_context=format_ai_source_context(context),
             )
             return (
                 None

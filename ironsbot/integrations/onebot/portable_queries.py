@@ -1,186 +1,127 @@
 # SPDX-License-Identifier: MIT
-"""Run portable query sessions through OneBot's durable input queue."""
+"""OneBot transport for the shared, account-scoped menu coordinator."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves at runtime
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves annotations
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves annotations
+from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves annotations
 
-from ironsbot.integrations.onebot.conversations import (
-    enter_event_reply_conversation,
-)
-from ironsbot.integrations.onebot.matcher_support import (
-    bind,
-    bind_async,
-    get_prompt_session_manager,
-)
-from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.conversations import is_self_message_event
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.prompt_sessions import (
-    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
+    COMMAND_COOLDOWN_TOKEN_STATE_KEY,
+    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
 )
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
-from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
+from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
-    from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.core.outbound import OutboundMessage
-    from ironsbot.core.semantic_requests import SemanticRequest
+    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.outbound import OutboundMessage, SendResult
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation
-    from ironsbot.services.seer.data_queries import DataQueryImageReply
+    from ironsbot.services.portable_reply import PortableOperation, PortableReply
 
-_PORTABLE_QUERY_NAMESPACE = "portable_query"
 PortableQueryHandler = Callable[["Matcher", "T_State", "Event"], Awaitable[None]]
+
+
+def release_query_menu_admission(
+    matcher: Matcher, sessions: PortableQuerySessions
+) -> None:
+    """Searching for choices is not a second charge for the selected query."""
+    for service, key in (
+        (sessions.interactions.cooldown, COMMAND_COOLDOWN_TOKEN_STATE_KEY),
+        (sessions.interactions.request_service, IN_FLIGHT_REQUEST_TOKEN_STATE_KEY),
+    ):
+        token = matcher.state.pop(key, None)
+        if service is not None and token is not None:
+            service.release(token)
 
 
 def make_portable_query_handler(
     operation: PortableOperation,
     sessions: PortableQuerySessions,
 ) -> PortableQueryHandler:
-    return _OneBotPortableQueryAdapter(operation, sessions).handle
-
-
-@dataclass(slots=True)
-class _OneBotPortableQueryAdapter:
-    operation: PortableOperation
-    sessions: PortableQuerySessions
-
-    def session_response(self, event: MessageEvent) -> bool:
-        context = message_input_context(event)
-        return self.sessions.recognizes_response(context.text, context)
-
-    async def resolve_selection(
-        self,
-        owner_context: MessageInputContext,
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        context = message_input_context(event)
-        if state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY):
-            get_prompt_session_manager(matcher).detach_queued_conversation(state)
-            result = await self.sessions.select_shared(
-                context.text,
-                owner_context,
-                context,
-                allow_deferred=True,
-            )
-        else:
-            result = await self.sessions.select(
-                context.text,
-                context,
-                allow_deferred=True,
-            )
-        if queued_conversation_is_cancelled(matcher):
-            raise FinishedException
-        if result is None:
-            raise FinishedException
-        if await _deliver(matcher, event, result):
-            await self._continue_pending_session(matcher, event, context)
-
-    def shared_session_response(
-        self,
-        owner_context: MessageInputContext,
-        event: MessageEvent,
-    ) -> bool:
-        context = message_input_context(event)
-        return self.sessions.recognizes_shared_response(
-            context.text,
-            owner_context,
-            context,
-        )
-
-    def menu_semantic_request(
-        self,
-        owner_context: MessageInputContext,
-        event: MessageEvent,
-        state: T_State,
-    ) -> SemanticRequest | None:
-        context = message_input_context(event)
-        return self.sessions.resolve_semantic_request(
-            context.text,
-            owner_context,
-            context if state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY) else None,
-        )
-
-    async def handle(
-        self,
-        matcher: Matcher,
-        _state: T_State,
-        event: Event,
-    ) -> None:
-        if not isinstance(event, MessageEvent):
+    async def handle(matcher: Matcher, _state: T_State, event: Event) -> None:
+        if not isinstance(event, MessageEvent) or is_self_message_event(event):
             raise FinishedException
         context = message_input_context(event)
         try:
-            result = await self.operation(context.text, context)
+            reply = await sessions.interactions.execute(
+                operation, context.text, context
+            )
         except DataUnavailableError:
             await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
             return
-        if queued_conversation_is_cancelled(matcher):
-            raise FinishedException
-        if result is None:
-            raise FinishedException
-        if await _deliver(matcher, event, result):
-            await self._continue_pending_session(matcher, event, context)
+        if reply is not None:
+            await _deliver(matcher, event, reply, sessions)
 
-    async def _continue_pending_session(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-        context: MessageInputContext,
-    ) -> None:
-        if not self.sessions.has_active_session(context):
+    return handle
+
+
+def install_portable_menu_router(
+    factory: MatcherFactory,
+    sessions: PortableQuerySessions,
+    features: FeatureService,
+) -> None:
+    """Permanent rules see the live store, not matcher-default state."""
+    from ironsbot.integrations.onebot.matchers import CommandPolicy
+
+    factory.close_portable_session = lambda event: sessions.discard(
+        message_input_context(event)
+    )
+    sessions.interactions.request_service = factory.in_flight_requests
+    sessions.interactions.cooldown = factory.cooldown
+
+    async def matches(event: Event) -> bool:
+        if not isinstance(event, MessageEvent) or is_self_message_event(event):
+            return False
+        context = message_input_context(event)
+        return not features.is_message_blocked(
+            context.message.actor, context.message.conversation
+        ) and sessions.recognizes_response(context.text, context)
+
+    async def handle(matcher: Matcher, event: Event) -> None:
+        if not isinstance(event, MessageEvent):
             return
-        await enter_event_reply_conversation(
-            matcher,
-            event,
-            namespace=_PORTABLE_QUERY_NAMESPACE,
-            handlers=[bind_async(self.resolve_selection, context)],
-            reply_check=self.session_response,
-            group_reply_check=lambda reply: self.shared_session_response(
-                context, reply
-            ),
-            allow_group_reply_exit=True,
-            queue_semantic_request_resolver=bind(
-                self.menu_semantic_request,
-                context,
-            ),
-        )
+        context = message_input_context(event)
+        try:
+            reply = await sessions.interactions.select(context.text, context)
+        except DataUnavailableError:
+            await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+            return
+        if reply is not None:
+            await _deliver(matcher, event, reply, sessions)
+
+    matcher = factory.on_message(
+        policy=CommandPolicy.exempt("portable menu input"),
+        rule=Rule(matches),
+        priority=-31,
+        block=True,
+    )
+    matcher.append_handler(handle)
 
 
 async def _deliver(
     matcher: Matcher,
     event: MessageEvent,
-    result: OutboundMessage | PortableReply | DataQueryImageReply | str,
+    reply: PortableReply,
+    sessions: PortableQuerySessions,
 ) -> bool:
-    return await deliver_portable_reply(
-        _as_portable_reply(result),
-        lambda message: send_portable_event_reply(matcher, event, message),
-    )
+    context = message_input_context(event)
 
-
-def _as_portable_reply(
-    result: OutboundMessage | PortableReply | DataQueryImageReply | str,
-) -> PortableReply:
-    from ironsbot.services.seer.data_queries import DataQueryImageReply
-
-    if isinstance(result, PortableReply):
+    async def send(message: OutboundMessage) -> SendResult:
+        result = await send_portable_event_reply(matcher, event, message)
+        sessions.record_delivery(context, message, result)
         return result
-    if isinstance(result, DataQueryImageReply):
-        return PortableReply(result.to_outbound())
-    if isinstance(result, str):
-        from ironsbot.core.outbound import OutboundMessage
 
-        return PortableReply(OutboundMessage.from_text(result))
-    return PortableReply(result)
+    return await deliver_portable_reply(reply, send)

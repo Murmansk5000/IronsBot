@@ -209,6 +209,8 @@ def build_test_plugin_registry(
                 notify_required=_noop_bili_login_notice,
             ),
             bilibili_monitor=SimpleNamespace(
+                notify_auth_invalid=_noop_bili_login_notice,
+                manual_refresh=_noop_bili_login_notice,
                 check_on_connect=_noop_startup,
                 register_job=_noop_startup,
             ),
@@ -364,6 +366,7 @@ def build_test_plugin_registry(
         ),
         bilibili_plugin_contribution(
             service=resources.bilibili,
+            query_sessions=resources.query_sessions,
             features=runtime.features,
             monitor=resources.bilibili_monitor,
             scheduler=SchedulerFacade(),

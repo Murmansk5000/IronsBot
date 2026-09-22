@@ -294,7 +294,14 @@ class QQOfficialOutboundMessenger:
                 attempted=True,
             )
         return SendResult(
-            delivered=True, message_id=result_id, execution_identity=identity
+            delivered=True,
+            message_id=result_id,
+            execution_identity=identity,
+            reply_anchor_ids=tuple(
+                item
+                for item in getattr(result, "reply_anchor_ids", ())
+                if isinstance(item, str) and item
+            ),
         )
 
 

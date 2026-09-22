@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -323,7 +323,7 @@ async def test_shareable_group_choice_clones_session_for_quoted_responder() -> N
     owner = _context("owner")
     responder = _context("responder", reply_to_id="current-menu")
     selected = AsyncMock(return_value=OutboundMessage.from_text("selected"))
-    sessions.offer_menu(
+    message = sessions.offer_menu(
         owner,
         PortableMenuSpec(
             choices=("read-only", "owner-only"),
@@ -335,6 +335,9 @@ async def test_shareable_group_choice_clones_session_for_quoted_responder() -> N
         ),
     )
 
+    sessions.record_delivery(
+        owner, message, SendResult(delivered=True, message_id="current-menu")
+    )
     assert sessions.recognizes_shared_response("1", owner, responder)
     assert not sessions.recognizes_shared_response("2", owner, responder)
     assert not sessions.recognizes_shared_response("1", owner, _context("responder"))
@@ -369,10 +372,9 @@ async def test_shared_group_exit_does_not_close_owner_menu() -> None:
         ),
     )
 
-    assert sessions.recognizes_shared_response("0", owner, responder)
+    assert not sessions.recognizes_shared_response("0", owner, responder)
     result = await sessions.select_shared("0", owner, responder)
-    assert isinstance(result, OutboundMessage)
-    assert _text(result) == "responder exited"
+    assert result is None
     assert sessions.has_active_session(owner)
     assert not sessions.has_active_session(responder)
 
@@ -394,7 +396,7 @@ def test_menu_semantic_request_uses_responder_without_consuming_choice() -> None
             SemanticRequestSource.MENU,
         )
 
-    sessions.offer_menu(
+    message = sessions.offer_menu(
         owner,
         PortableMenuSpec(
             choices=("read-only", "owner-only"),
@@ -406,6 +408,9 @@ def test_menu_semantic_request_uses_responder_without_consuming_choice() -> None
         ),
     )
 
+    sessions.record_delivery(
+        owner, message, SendResult(delivered=True, message_id="current-menu")
+    )
     owner_request = sessions.resolve_semantic_request("2", owner)
     shared_request = sessions.resolve_semantic_request("1", owner, responder)
 

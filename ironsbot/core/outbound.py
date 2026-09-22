@@ -313,6 +313,7 @@ class SendResult:
     failure_kind: DeliveryFailureKind | None = None
     execution_identity: ExecutionIdentity | None = None
     attempted: bool = True
+    reply_anchor_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.delivered and not (self.message_id or "").strip():

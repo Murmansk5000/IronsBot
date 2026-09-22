@@ -159,7 +159,7 @@ async def test_async_prompt_message_reserves_input_before_rendering(
 
     class PromptSessions:
         def acquire(self, session_id: str) -> int:
-            assert session_id == "group_4_2"
+            assert session_id == f"bot:{group_message_event().self_id}:group_4_2"
             return 1
 
         def make_rule(
@@ -169,7 +169,10 @@ async def test_async_prompt_message_reserves_input_before_rendering(
             input_check: object,
         ) -> object:
             del input_check
-            assert (session_id, version) == ("group_4_2", 1)
+            assert (session_id, version) == (
+                f"bot:{group_message_event().self_id}:group_4_2",
+                1,
+            )
             return object()
 
         def cancel_queued_conversation(self, state: dict[str, object]) -> None:

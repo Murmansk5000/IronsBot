@@ -38,9 +38,8 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, PortableReply
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
-    from ironsbot.services.seer.pet_query import PetImageSelection, PetQueryService
+    from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-    from ironsbot.services.seer.query_result import QueryChoice
 
 logger = logging.getLogger(__name__)
 _LINK_REQUIRED = (
@@ -333,30 +332,10 @@ class PortableLuckySkinCommands:
         actor: ActorRef | None,
         result: LuckySkinWindowResult,
     ) -> OutboundMessage:
-        choices = self.service.detail_choices(result)
-        result_message = await self.service.result_message(result, actor=actor)
-        if not choices:
-            return result_message
+        from ironsbot.services.portable_lucky_skin_result import lucky_skin_result_menu
 
-        async def select(
-            choice: QueryChoice[PetImageSelection],
-            _context: MessageInputContext,
-        ) -> OutboundMessage:
-            selected = await self.pet.select_image(choice.value)
-            if selected.reply is not None:
-                return selected.reply.to_outbound()
-            if selected.message:
-                return OutboundMessage.from_text(selected.message)
-            return OutboundMessage.from_text("❌ 皮肤详情暂时不可用。")
-
-        return self.sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=choices,
-                select=select,
-                prompt=result_message,
-                labels=tuple(choice.name for choice in choices),
-            ),
+        return await lucky_skin_result_menu(
+            self.service, self.pet, self.features, self.sessions, context, actor, result
         )
 
 
