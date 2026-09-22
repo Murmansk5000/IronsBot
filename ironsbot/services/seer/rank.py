@@ -173,6 +173,7 @@ class RankService(RankCacheQueryMixin):
     master_season_start: Callable[[], datetime | None]
     fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
     exclusions: RankExclusionPolicy | None = field(default=None)
+    page_parallelism: Callable[[], int] = field(default=lambda: 1)
 
     def __post_init__(self) -> None:
         if self.exclusions is None:
@@ -511,6 +512,7 @@ class RankService(RankCacheQueryMixin):
             score_search_tie_page_limit=self._tie_page_limit,
             fetch_rank_page_result=self.fetch_page_result,
             score_miss_proof_from_page=score_miss_proof_from_page,
+            parallelism=self.page_parallelism,
         )
         return await fetch_rank_score_segment_online(
             game,
