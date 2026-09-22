@@ -70,6 +70,8 @@ plugin_manifest = "full"
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
+# 超管权限只用于主动操作；通知必须在 features.user_policy / group_policy
+# 中显式授予 admin_notice，all 和 superuser_bypass 均不会自动订阅通知或推送。
 
 [bot.onebot]
 # Default: true
@@ -139,24 +141,8 @@ proactive_messages = true
 #     invite-only custom-button capability. Text choices always remain available.
 # ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
 custom_keyboards = false
-# EN: Account-level defaults apply to every message received by this bot. Use an
-#     empty list for a special-purpose bot and grant features only through the
-#     account policies or the shared logical identity policies below. ai_chat
-#     also requires at least one AI_KEY_<PROVIDER>.
-# ZH: 账号级默认功能会应用于该机器人收到的所有消息。专用机器人应设为空列表，
-#     再通过账号策略或下方共享逻辑身份策略只向特定目标授权；查询候选项使用数字
-#     选择，0 退出；ai_chat 还需至少一个 AI_KEY_<PROVIDER>。
-features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-# EN: Optional account-scoped targets keyed by aliases declared under identities.
-#     Raw OpenIDs are rejected. Declaring a target also enables these extra features
-#     there; global features remain active.
-# ZH: 可选的账号级目标，键必须是 identities 中声明的群/用户别名，不接受裸 OpenID；
-#     声明后会在该目标额外启用这些功能，全局 features 仍然有效。
-[bot.qq_official.accounts.example_bot.group_policy]
-# example_official_group = ["seer_activity_push", "bili_push"]
-
-[bot.qq_official.accounts.example_bot.user_policy]
-# example_official_user = ["seer_activity_push", "bili_push"]
+# EN: Grant business features through features.group_policy / user_policy only.
+# ZH: 业务功能只通过 features.group_policy / user_policy 授权，与机器人账号无关。
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
@@ -235,28 +221,17 @@ runtime_state = "data/state/runtime_state.sqlite"
 # Existing deployments must migrate the old small state databases while the
 # bot is stopped. See README "状态库迁移"; do not move files by hand.
 
-[identities.groups.group_a]
-qq = 987654321
+[identities.groups]
+group_a = { qq = 987654321, official = { example_bot = "example-group-openid-a" } }
+group_b = { qq = 876543210 }
 
-[identities.groups.group_a.official]
-example_bot = "example-group-openid-a"
-
-[identities.groups.group_b]
-qq = 876543210
-
-[identities.users.owner]
-qq = 1234567890
-
-[identities.users.owner.official]
-example_bot = "example-user-openid-owner"
-
-[identities.users.user_a]
-qq = 2345678901
+[identities.users]
+owner = { qq = 1234567890, official = { example_bot = "example-user-openid-owner" } }
+user_a = { qq = 2345678901 }
 
 # Example automated account. Add the same alias to user_policy with blacklist so
 # its messages never trigger commands or AI handling.
-# [identities.users.blocked_bot]
-# qq = 3456789012
+# blocked_bot = { qq = 3456789012 }
 
 [features]
 # Default: true
@@ -1564,8 +1539,8 @@ reconnect_delay = 5.0
 # Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
 reconnect_delay_max = 120.0
 [operations.headless_notice]
-# EN: Notices are sent to superusers and admin_notice groups.
-# ZH: 这些通知会发送给超级管理员和 admin_notice 管理群。
+# EN: Notices require explicit admin_notice authorization.
+# ZH: 这些通知只发送给显式开启 admin_notice 的用户和群，仍遵循 TD 退订。
 # Default: true; EN: Send startup login failure notice. ZH: 启动时发送无头登录失败通知。
 login_notice = true
 # Default: built-in; EN: Startup login failure notice template. ZH: 启动登录失败通知模板。
