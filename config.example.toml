@@ -128,11 +128,13 @@ app_id = "10001"
 #     Optional accounts remain observable as degraded and may recover later.
 # ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
 required = false
+# Default: true
 # EN: Allow official proactive sends such as schedules and Bilibili pushes.
 #     Users may disable proactive messages in QQ; platform rate limits apply.
 # ZH: 允许官方机器人发送定时提醒、B站动态等主动消息；用户可在 QQ
-#     客户端关闭主动消息，并且发送仍受平台频率限制。
-proactive_messages = false
+#     客户端关闭主动消息，并且发送仍受平台频率限制。默认开启；仅在该账号
+#     明确不应承担任何主动投递时设为 false。
+proactive_messages = true
 # EN: Enable custom command keyboards only after Tencent grants the account's
 #     invite-only custom-button capability. Text choices always remain available.
 # ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
