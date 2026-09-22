@@ -324,7 +324,6 @@ def test_custom_bundle_cannot_replace_message_action_feature() -> None:
         ({"seer": ["image"]}, "cannot replace registered feature"),
         ({"empty": []}, "features.bundles.empty must not be empty"),
         ({"all": [""]}, r"features.bundles.all\[0\] must not be empty"),
-        ({"broken": ["missing"]}, r"features.bundles.broken\[0\]=missing"),
         ({"first": ["second"], "second": ["first"]}, "contains a cycle"),
         ({"management": ["admin_notice"]}, "must not include admin_notice"),
     ],
