@@ -73,6 +73,12 @@ class QueryOperationSpec(Generic[_T]):
     prompt_title: str
     not_found_message: str | None = None
     keep_open: bool = True
+    contextual_search: (
+        Callable[[str, MessageInputContext], Awaitable[QueryResult[_T]]] | None
+    ) = None
+    contextual_select: (
+        Callable[[_T, MessageInputContext], Awaitable[QueryResult[Any]]] | None
+    ) = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,9 +266,15 @@ class PortableQuerySessions:
             value: object,
             _context: MessageInputContext,
         ) -> QueryResult[Any]:
+            if spec.contextual_select is not None:
+                return await spec.contextual_select(cast("_T", value), _context)
             return await spec.select(cast("_T", value))
 
-        result = await spec.search(argument)
+        result = (
+            await spec.contextual_search(argument, context)
+            if spec.contextual_search
+            else await spec.search(argument)
+        )
         return self._present(
             context,
             result,

@@ -23,9 +23,37 @@ async def test_image_failure_notice_is_restricted_to_admin_delivery() -> None:
 
     admin_notices.send.assert_awaited_once_with(
         "⚠️ 赛尔图片素材获取失败\n"
+        "执行机器人：未确定\n"
         "素材类型：pet_body\n"
         "资源标识：1400466\n"
         "异常：ImageSourceError: network detail",
         subscription_key="render_crash_notice",
         action_name="Seer image source failure notice",
     )
+
+
+@pytest.mark.asyncio
+async def test_batch_notice_lists_all_failed_assets_before_execution_identity() -> (
+    None
+):
+    notices = AsyncMock()
+    reporter = AdminImageFailureReporter(cast("AdminNoticeService", notices))
+    await reporter.report_batch(
+        (
+            ("pet_head", "4354", ImageSourceError("timeout")),
+            ("item", "20", ImageSourceError("unavailable")),
+        ),
+        degraded=True,
+    )
+    notices.send.assert_awaited_once()
+    text = notices.send.await_args.args[0]
+    assert "pet_head" in text and "item" in text
+    assert "本次结果不写入缓存" in text
+
+
+@pytest.mark.asyncio
+async def test_notice_failure_does_not_abort_partial_render() -> None:
+    notices = AsyncMock()
+    notices.send.side_effect = RuntimeError("notice offline")
+    reporter = AdminImageFailureReporter(cast("AdminNoticeService", notices))
+    await reporter.report_batch((("pet_head", "1", ImageSourceError("timeout")),))
