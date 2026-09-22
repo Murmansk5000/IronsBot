@@ -995,6 +995,33 @@ it must point back to the target contracts and transition inventory above. Keep
 long-lived responsibility rules here; keep phase-local progress, estimates and
 verified evidence in the work-breakdown record or task report.
 
+## Commit And History Policy
+
+Repository history records complete engineering intentions rather than every
+intermediate edit. A commit must leave the branch coherent, reviewable, and
+independently testable.
+
+- Use an English Conventional Commit subject and add a concise Chinese
+  explanation in the commit body. The two languages must describe the same
+  change; neither may introduce scope absent from the diff.
+- Keep independent features, architecture changes, configuration migrations,
+  data migrations, and release infrastructure in separate commits.
+- Fold implementation, immediate corrections, focused tests, documentation,
+  and acceptance evidence for one continuous goal into the same commit.
+- Do not preserve repeated micro-fixes, zero-net-change detours, compatibility
+  experiments, or "fix the previous commit" noise after the final design is
+  known. Rewrite them into the complete functional commit before publication.
+- Preserve external authorship and meaningful integration merges. History
+  cleanup must prove that the final file tree and public behaviour remain
+  unchanged unless the task explicitly requests a product change.
+
+提交历史应表达完整的工程意图，而不是记录每一次中间编辑。英文标题使用
+Conventional Commit 格式，正文提供含义一致的中文说明。同一目标下连续产生的
+实现、即时修复、测试、文档和验收记录应在发布前收口为一个可独立审查的提交；
+不同功能、架构调整、配置或数据迁移、发布基础设施仍需分开。不得保留净变化为
+零的绕路、重复微补丁或仅用于修正上一提交的噪声，同时必须保留外部作者署名和
+真正有意义的合并历史。
+
 ## Work Execution And Progress Reporting
 
 Architecture work is performed as a hierarchy of **program -> phase -> task**.
