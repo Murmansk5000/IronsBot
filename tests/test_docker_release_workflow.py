@@ -606,6 +606,7 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     login = next(s for s in steps if s["name"] == "Login to GitHub Container Registry")
     assert steps.index(audit) < steps.index(upload) < steps.index(login)
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
+    assert "--no-emit-package seerapi-models" in audit["run"]
     assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
     assert audit["timeout-minutes"] == PIP_AUDIT_TIMEOUT_MINUTES
