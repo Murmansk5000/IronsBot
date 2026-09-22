@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import tomllib
+from pydantic import ValidationError
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.commands import normalize_command_text
@@ -16,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 TOMLDecodeError = tomllib.TOMLDecodeError
+logger = logging.getLogger(__name__)
 
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
@@ -401,4 +404,37 @@ def load_settings(
     _inject_onebot_deployment_settings(data, env=values)
     _inject_qq_official_credentials(data, env=values)
     _inject_player_account_passwords(data, env=values)
-    return Settings.model_validate(data)
+    return _validate_settings(data)
+
+
+def _validate_settings(data: dict[str, Any]) -> Settings:
+    """Ignore unknown TOML fields visibly while keeping known fields strict."""
+
+    try:
+        return Settings.model_validate(data)
+    except ValidationError as error:
+        unknown_paths = tuple(
+            _format_config_path(item["loc"])
+            for item in error.errors()
+            if item["type"] == "extra_forbidden"
+        )
+        if not unknown_paths:
+            raise
+
+    logger.warning(
+        "已忽略不会生效的未知配置字段：%s。请核对拼写或从 TOML 删除旧字段。",
+        ", ".join(unknown_paths),
+    )
+    return Settings.model_validate(data, extra="ignore")
+
+
+def _format_config_path(location: Sequence[str | int]) -> str:
+    result = ""
+    for part in location:
+        if isinstance(part, int):
+            result += f"[{part}]"
+        elif result:
+            result += f".{part}"
+        else:
+            result = part
+    return result
