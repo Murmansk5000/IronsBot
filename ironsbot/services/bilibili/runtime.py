@@ -11,6 +11,8 @@ from ironsbot.services.bilibili.schedule import boost_schedule_entries
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.services.bilibili.monitor import (
         AuthInvalidHandler,
         DynamicPushSender,
@@ -32,6 +34,7 @@ class BilibiliMonitorService:
     _on_auth_invalid: AuthInvalidHandler
     _send_push: DynamicPushSender
     check_second: int | None = None
+    startup_recovery: Callable[[str], Awaitable[None]] | None = None
 
     async def notify_auth_invalid(self, reason: str) -> None:
         await self._on_auth_invalid(reason)
@@ -89,4 +92,6 @@ class BilibiliMonitorService:
     async def check_on_connect(self, bot_id: str) -> None:
         logger.info("Bilibili monitor saw bot connected: %s", bot_id)
         await asyncio.sleep(2)
+        if self.startup_recovery is not None:
+            await self.startup_recovery(bot_id)
         await self.check(is_startup_check=True)
