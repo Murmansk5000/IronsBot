@@ -234,7 +234,7 @@ class QQOfficialAccountConfig(BaseModel):
     required: bool = False
     app_id: str = ""
     secret: str = Field(default="", exclude=True, repr=False)
-    proactive_messages: bool = False
+    proactive_messages: bool = True
     custom_keyboards: bool = False
     features: list[str] = Field(
         default_factory=lambda: [
