@@ -425,6 +425,10 @@ class PlayerRankLookupConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     page_timeout_seconds: float = Field(default=8, gt=0)
+    recent_cache_max_age_seconds: float = Field(default=600, ge=0, allow_inf_nan=False)
+    recent_cache_anchor_timeout_seconds: float = Field(
+        default=5, gt=0, allow_inf_nan=False
+    )
     total_timeout_seconds: float = Field(default=60, gt=0)
     page_retry_count: int = Field(default=1, ge=0, le=3)
 

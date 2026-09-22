@@ -9,12 +9,16 @@ import time
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generic, NoReturn, TypeVar
 
 from anyio import create_task_group
 
-from ironsbot.core.rank_lookup_context import rank_page_request_timeout
+from ironsbot.core.rank_lookup_context import (
+    RankPagePolicy,
+    rank_page_policy,
+    rank_page_request_timeout,
+)
 from ironsbot.services.seer.rank_models import RankLookupResult
 
 if TYPE_CHECKING:
@@ -24,6 +28,7 @@ if TYPE_CHECKING:
 
 
 _LOGGER = logging.getLogger("ironsbot.seer.rank_player_scheduler")
+_MAX_ACTIVE_PAGES = 3
 _CURRENT_SCHEDULER: ContextVar["PlayerRankPageScheduler | None"] = ContextVar(
     "player_rank_page_scheduler",
     default=None,
@@ -58,6 +63,7 @@ class _PageRequest(Generic[T]):
     operation: Callable[[], Awaitable[T]]
     future: asyncio.Future[T]
     attempt: int = 0
+    policy: RankPagePolicy = field(default_factory=RankPagePolicy)
 
 
 @dataclass(slots=True)
@@ -76,7 +82,7 @@ class PlayerRankPageScheduler:
         self._queue_ready = asyncio.Event()
         self._closed = False
         self._stats: dict[str, _LookupStats] = {}
-        self._active_lookup_ids: set[str] = set()
+        self._active_lookup_ids: dict[str, int] = {}
         self._active_pages = 0
 
     @contextmanager
@@ -101,6 +107,7 @@ class PlayerRankPageScheduler:
                 title=title,
                 operation=operation,
                 future=future,
+                policy=rank_page_policy.get() or RankPagePolicy(),
             )
         )
         self._queue_ready.set()
@@ -127,7 +134,9 @@ class PlayerRankPageScheduler:
                     self._expire_pending_requests()
                     continue
                 while request := self._next_ready_request():
-                    self._active_lookup_ids.add(request.lookup_id)
+                    self._active_lookup_ids[request.lookup_id] = (
+                        self._active_lookup_ids.get(request.lookup_id, 0) + 1
+                    )
                     self._active_pages += 1
                     task_group.start_soon(
                         self._process_request,
@@ -136,8 +145,19 @@ class PlayerRankPageScheduler:
                     )
 
     def _next_ready_request(self) -> _PageRequest[Any] | None:
+        if self._active_pages >= _MAX_ACTIVE_PAGES:
+            return None
+        self._queue = deque(
+            sorted(
+                (request for request in self._queue if not request.future.done()),
+                key=lambda request: request.policy.priority,
+            )
+        )
         for index, request in enumerate(self._queue):
-            if request.lookup_id not in self._active_lookup_ids:
+            if (
+                request.policy.parallel
+                or request.lookup_id not in self._active_lookup_ids
+            ):
                 del self._queue[index]
                 return request
         return None
@@ -147,19 +167,31 @@ class PlayerRankPageScheduler:
         stats.page_requests += 1
         if self._deadline is None:
             self._deadline = time.monotonic() + self._config.total_timeout_seconds
-        timeout_token = rank_page_request_timeout.set(self._config.page_timeout_seconds)
+        page_timeout = request.policy.timeout or self._config.page_timeout_seconds
+        timeout_token = rank_page_request_timeout.set(page_timeout)
+        started = time.monotonic()
         try:
             remaining_seconds = self._deadline - time.monotonic()
             if remaining_seconds <= 0:
                 self._raise_total_timeout()
             result = await asyncio.wait_for(
                 request.operation(),
-                timeout=remaining_seconds,
+                timeout=(
+                    min(remaining_seconds, page_timeout)
+                    if request.policy.timeout is not None
+                    else remaining_seconds
+                ),
             )
         except (TimeoutError, asyncio.TimeoutError) as error:
             timeout_error = TimeoutError(str(error) or "玩家榜单页查询超时")
             if (
-                request.attempt < self._config.page_retry_count
+                request.attempt
+                < (
+                    self._config.page_retry_count
+                    if request.policy.retries is None
+                    else request.policy.retries
+                )
+                and not request.future.done()
                 and not self._closed
                 and not self._timed_out()
             ):
@@ -189,10 +221,27 @@ class PlayerRankPageScheduler:
             if not request.future.done():
                 request.future.set_result(result)
         finally:
+            _LOGGER.info(
+                "player rank page finished: lookup=%s page=%s phase=%s "
+                "priority=%s elapsed=%.3f attempt=%s",
+                request.lookup_id,
+                request.title,
+                request.policy.phase,
+                request.policy.priority,
+                time.monotonic() - started,
+                request.attempt,
+            )
             rank_page_request_timeout.reset(timeout_token)
-            self._active_lookup_ids.discard(request.lookup_id)
-            self._active_pages = max(0, self._active_pages - 1)
-            self._queue_ready.set()
+            self._release_active_page(request.lookup_id)
+
+    def _release_active_page(self, lookup_id: str) -> None:
+        active = self._active_lookup_ids.get(lookup_id, 1) - 1
+        if active:
+            self._active_lookup_ids[lookup_id] = active
+        else:
+            self._active_lookup_ids.pop(lookup_id, None)
+        self._active_pages = max(0, self._active_pages - 1)
+        self._queue_ready.set()
 
     def _timed_out(self) -> bool:
         return self._deadline is not None and time.monotonic() >= self._deadline
