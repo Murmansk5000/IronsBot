@@ -115,7 +115,9 @@ jobs:
               shell: bash
               env:
                   APP_CONFIG_PATH: config.example.toml
-              run: python -m uv run --no-sync python scripts/generate_poke_command_introductions.py
+              run: |
+                  git fetch --no-tags https://github.com/Murmansk5000/IronsBot-History-Archive.git 55a39fd12c8b562f8ac3eb8b95d5a71325e8981f
+                  python -m uv run --no-sync python scripts/generate_poke_command_introductions.py
 
             - name: Build runtime candidate
               id: candidate
