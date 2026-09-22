@@ -1103,7 +1103,7 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
     )
 
     assert result.items == []
-    assert requested_pages[-2:] == [(20, 29), (10, 19)]
+    assert sorted(requested_pages[-2:]) == [(10, 19), (20, 29)]
     assert result.higher_gap is not None
     assert result.higher_gap.score == ONLINE_GAP_UPPER_SCORE
     assert result.higher_gap.start_rank == ONLINE_GAP_UPPER_START_RANK

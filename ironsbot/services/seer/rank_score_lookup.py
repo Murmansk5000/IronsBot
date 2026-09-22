@@ -3,6 +3,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
+from ironsbot.services.seer.rank_page_batches import (
+    RankProbePages,
+    ordered_page_batches,
+)
 from ironsbot.services.seer.rank_pagination import (
     RankPageConflictError,
     RankPageSequence,
@@ -27,11 +31,11 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
     score_search_probe_limit: Callable[[int], int],
     score_search_tie_page_limit: Callable[[], int],
     fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
+    parallelism: Callable[[], int] | None = None,
 ) -> RankLookupResult:
     result.score = target_score
 
-    async def fetch_score(index: int) -> int | None:
-        start = index // page_size * page_size
+    async def fetch_probe(start: int) -> RankPageResult:
         page = await fetch_rank_page(
             game,
             key=key,
@@ -40,6 +44,13 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
             end=start + page_size - 1,
         )
         result.record_page(start, page)
+        return page
+
+    probe_pages = RankProbePages(fetch_probe)
+
+    async def fetch_score(index: int) -> int | None:
+        start = index // page_size * page_size
+        page = await probe_pages(start)
         offset = index - start
         item = page.items[offset] if offset < len(page.items) else None
         return None if item is None else int(item.score)
@@ -51,6 +62,7 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
             limit,
             target_score,
             fetch_score,
+            parallelism=parallelism,
             limits=DescendingScoreSearchLimits(
                 probe_count=score_search_probe_limit(limit),
                 tie_fallback_size=page_size * tie_page_limit,
@@ -71,17 +83,26 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
 
     tie_end = score_range.match_end
     start = score_range.match_start
+    next_start = start
     remaining_tie_pages = tie_page_limit
     sequence = RankPageSequence()
-    while start < tie_end and remaining_tie_pages > 0:
-        end = min(start + page_size - 1, tie_end - 1)
-        page = await fetch_rank_page(
+
+    async def fetch_tie_page(start: int) -> RankPageResult:
+        return await fetch_rank_page(
             game,
             key=key,
             sub_key=sub_key,
             start=start,
-            end=end,
+            end=min(start + page_size - 1, tie_end - 1),
         )
+
+    starts = range(
+        start, min(tie_end, start + remaining_tie_pages * page_size), page_size
+    )
+    async for start, page in ordered_page_batches(
+        starts, fetch_tie_page, parallelism, phase="score_tie"
+    ):
+        end = min(start + page_size - 1, tie_end - 1)
         result.record_page(start, page)
         items = page.items
         try:
@@ -108,9 +129,9 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
             break
 
         remaining_tie_pages -= 1
-        start = end + 1
+        next_start = end + 1
 
-    if start < tie_end or score_range.truncated:
+    if next_start < tie_end or score_range.truncated:
         result.failure = "已达同分段查找上限，排名尚未确认"
     return result
 
@@ -125,18 +146,24 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
     page_size: int,
     result: RankLookupResult,
     fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
+    parallelism: Callable[[], int] | None = None,
 ) -> RankLookupResult:
     start = 0
     sequence = RankPageSequence()
-    while start < limit:
-        end = min(start + page_size - 1, limit - 1)
-        page = await fetch_rank_page(
+
+    async def fetch(start: int) -> RankPageResult:
+        return await fetch_rank_page(
             game,
             key=key,
             sub_key=sub_key,
             start=start,
-            end=end,
+            end=min(start + page_size - 1, limit - 1),
         )
+
+    async for start, page in ordered_page_batches(
+        range(0, limit, page_size), fetch, parallelism, phase="linear_scan"
+    ):
+        end = min(start + page_size - 1, limit - 1)
         result.record_page(start, page)
         items = page.items
 
@@ -154,7 +181,5 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
 
         if len(items) < end - start + 1:
             return result
-
-        start = end + 1
 
     return result

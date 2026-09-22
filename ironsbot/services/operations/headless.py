@@ -246,6 +246,10 @@ class HeadlessService:
         return self._dispatcher.idle_worker_count
 
     @property
+    def rank_page_parallelism(self) -> int:
+        return self._dispatcher.rank_page_parallelism
+
+    @property
     def pending_request_counts(self) -> dict[HeadlessRequestPriority, int]:
         """Ready public-pool packets grouped by their effective priority."""
 

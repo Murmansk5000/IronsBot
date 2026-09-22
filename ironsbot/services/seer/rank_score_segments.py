@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
+)
+from ironsbot.services.seer.rank_page_batches import (
+    RankProbePages,
+    ordered_page_batches,
 )
 from ironsbot.services.seer.rank_pagination import RankPageSequence
 from ironsbot.services.seer.rank_score_helpers import (
@@ -36,6 +40,7 @@ class RankScoreSegmentDependencies:
     score_search_tie_page_limit: Callable[[], int]
     fetch_rank_page_result: Callable[..., Awaitable[RankPageResult]]
     score_miss_proof_from_page: Callable[..., RankScoreMissProof | None]
+    parallelism: Callable[[], int] = field(default=lambda: 1)
 
 
 async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
@@ -50,35 +55,34 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
 ) -> None:
     page_size = deps.rank_page_size()
     page_start = deps.rank_page_start(gap_index)
-    proof_page_start = page_start
-    page_result = await deps.fetch_rank_page_result(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=page_start,
-        end=page_start + page_size - 1,
-        use_cache=False,
-    )
-    proof_items = page_result.items
-    fetched_at = page_result.fetched_at
+    starts = [page_start]
     if page_start > 0 and gap_index == page_start:
-        previous_page_start = page_start - page_size
-        previous_page_result = await deps.fetch_rank_page_result(
+        starts.insert(0, page_start - page_size)
+
+    async def fetch(start: int) -> RankPageResult:
+        return await deps.fetch_rank_page_result(
             game,
             key=key,
             sub_key=sub_key,
-            start=previous_page_start,
-            end=previous_page_start + page_size - 1,
+            start=start,
+            end=start + page_size - 1,
             use_cache=False,
         )
-        proof_page_start = previous_page_start
-        proof_items = [*previous_page_result.items, *page_result.items]
-        fetched_at = min(previous_page_result.fetched_at, page_result.fetched_at)
+
+    pages = [
+        page
+        async for _, page in ordered_page_batches(
+            starts,
+            fetch,
+            deps.parallelism,
+            phase="score_probe",
+        )
+    ]
     proof = deps.score_miss_proof_from_page(
-        items=proof_items,
-        page_start=proof_page_start,
+        items=[item for page in pages for item in page.items],
+        page_start=starts[0],
         target_score=target_score,
-        fetched_at=fetched_at,
+        fetched_at=min(page.fetched_at for page in pages),
     )
     if proof is None:
         return
@@ -137,8 +141,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     observation = ObservationTime()
 
-    async def fetch_score(index: int) -> int | None:
-        page_start = deps.rank_page_start(index)
+    async def fetch_probe(page_start: int) -> RankPageResult:
         page = await deps.fetch_rank_page_result(
             game,
             key=key,
@@ -148,6 +151,13 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             use_cache=False,
         )
         observation.include(page.fetched_at)
+        return page
+
+    probe_pages = RankProbePages(fetch_probe)
+
+    async def fetch_score(index: int) -> int | None:
+        page_start = deps.rank_page_start(index)
+        page = await probe_pages(page_start)
         offset = index - page_start
         return int(page.items[offset].score) if 0 <= offset < len(page.items) else None
 
@@ -156,6 +166,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         end_index,
         target_score,
         fetch_score,
+        parallelism=deps.parallelism,
         limits=DescendingScoreSearchLimits(
             probe_count=deps.score_search_probe_limit(limit),
             tie_fallback_size=page_size * deps.score_search_tie_page_limit(),
@@ -208,12 +219,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     fetched_pages = 0
     sequence = RankPageSequence()
 
-    for page_start in page_starts:
-        if sample_indexes is None and fetched_pages >= max_pages:
-            result.truncated = True
-            break
-
-        page_result = await deps.fetch_rank_page_result(
+    async def fetch_sample(page_start: int) -> RankPageResult:
+        return await deps.fetch_rank_page_result(
             game,
             key=key,
             sub_key=sub_key,
@@ -221,6 +228,14 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             end=page_start + page_size - 1,
             use_cache=False,
         )
+
+    async for page_start, page_result in ordered_page_batches(
+        list(page_starts)[:max_pages], fetch_sample, deps.parallelism, phase="score_tie"
+    ):
+        if sample_indexes is None and fetched_pages >= max_pages:
+            result.truncated = True
+            break
+
         observation.include(page_result.fetched_at)
         fetched_pages += 1
         validate_score_sample(
