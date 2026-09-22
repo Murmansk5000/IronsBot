@@ -108,6 +108,12 @@ def build_portable_seer_operations(
                 parser=pet_query_input().parse_argument,
                 search=seer.pet_query.search_info,
                 select=seer.pet_query.select_info,
+                contextual_search=lambda arg, ctx: seer.pet_query.search_info(
+                    arg, execution_identity=ctx.execution_identity
+                ),
+                contextual_select=lambda value, ctx: seer.pet_query.select_info(
+                    value, execution_identity=ctx.execution_identity
+                ),
                 prompt_title="请问你想查询的精灵是……",
             ),
         ),

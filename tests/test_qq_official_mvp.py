@@ -262,7 +262,7 @@ class _FakePetQuery:
     def __init__(self, *, fail_selection: bool = False) -> None:
         self._fail_selection = fail_selection
 
-    async def search_info(self, _argument: str) -> QueryResult[int]:
+    async def search_info(self, _argument: str, **_kwargs: object) -> QueryResult[int]:
         return QueryResult(
             choices=(
                 QueryChoice("雷伊", "70", 70),
@@ -270,7 +270,7 @@ class _FakePetQuery:
             )
         )
 
-    async def select_info(self, pet_id: int) -> QueryResult[object]:
+    async def select_info(self, pet_id: int, **_kwargs: object) -> QueryResult[object]:
         if self._fail_selection:
             raise DataUnavailableError
         return QueryResult(reply=QueryReply(text=f"精灵:{pet_id}"))

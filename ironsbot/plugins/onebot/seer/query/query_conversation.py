@@ -18,6 +18,7 @@ from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
 )
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
@@ -31,8 +32,8 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.query_result import QueryReply
 
 T = TypeVar("T")
-SearchQuery = Callable[[str], Awaitable[QueryResult[T]]]
-SelectionQuery = Callable[[T], Awaitable[QueryResult[Any]]]
+SearchQuery = Callable[..., Awaitable[QueryResult[T]]]
+SelectionQuery = Callable[..., Awaitable[QueryResult[Any]]]
 _QUERY_SELECTION_NAMESPACE = "selection_prompt"
 
 
@@ -59,9 +60,11 @@ async def send_query_reply(
 
 def make_query_handler(  # noqa: C901
     search: SearchQuery[T],
-    select: SelectionQuery[T],
+    select: SelectionQuery,
     prompt_title: str,
     action: ActionDefinition,
+    *,
+    with_execution_identity: bool = False,
 ) -> Callable[[Matcher, T_State, Event], Awaitable[None]]:
     async def resolve_selection(
         item: PromptItem[T],
@@ -69,7 +72,14 @@ def make_query_handler(  # noqa: C901
         event: Event,
     ) -> None:
         try:
-            result = await select(item.value)
+            result = (
+                await select(
+                    item.value,
+                    execution_identity=message_input_context(event).execution_identity,
+                )
+                if with_execution_identity
+                else await select(item.value)
+            )
         except DataUnavailableError:
             _raise_if_selection_cancelled(matcher)
             await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
@@ -96,7 +106,14 @@ def make_query_handler(  # noqa: C901
                 reply_check=_is_digit_selection_input,
             )
         try:
-            result = await search(parse_string_arg(state))
+            result = (
+                await search(
+                    parse_string_arg(state),
+                    execution_identity=message_input_context(event).execution_identity,
+                )
+                if with_execution_identity
+                else await search(parse_string_arg(state))
+            )
         except DataUnavailableError:
             await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
             return

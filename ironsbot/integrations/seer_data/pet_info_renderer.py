@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ironsbot.services.seer.image_failure_notice import report_render_asset_failures
 from ironsbot.services.seer.images import ImageSourceError, placeholder_image
 from ironsbot.services.seer.pet_info_views import PetInfoAssets
 from ironsbot.services.seer.render_paths import (
@@ -23,6 +24,7 @@ from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_d
 from .pet_info_repository import load_pet_info_snapshot
 
 if TYPE_CHECKING:
+    from ironsbot.core.outbound import ExecutionIdentity
     from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import (
         ImageFailureReporter,
@@ -59,6 +61,7 @@ async def render_published_pet_info(  # noqa: PLR0913 - explicit integration por
     pet_id: int,
     *,
     image_failure_reporter: ImageFailureReporter | None = None,
+    execution_identity: ExecutionIdentity | None = None,
 ) -> bytes:
     """Render one pet after completely detaching its data from SQLite."""
     request_key = render_request_cache_key(_PET_INFO_CACHE_CATEGORY, pet_id)
@@ -74,6 +77,7 @@ async def render_published_pet_info(  # noqa: PLR0913 - explicit integration por
         images,
         snapshot,
         image_failure_reporter,
+        execution_identity,
     )
     document = present_pet_info(snapshot, assets)
     rendered = await render_pet_info_document(
@@ -90,6 +94,7 @@ async def _load_assets(
     images: SeerImageSource,
     snapshot: PetInfoSnapshot,
     image_failure_reporter: ImageFailureReporter | None = None,
+    execution_identity: ExecutionIdentity | None = None,
 ) -> tuple[PetInfoAssets, bool]:
     type_ids = tuple(
         sorted({snapshot.pet.type_id, *(skill.type_id for skill in snapshot.skills)})
@@ -117,9 +122,7 @@ async def _load_assets(
             _load_render_asset(images, "mintmark", str(mintmark_id))
             for mintmark_id in mintmark_ids
         ),
-        *(
-            _load_render_asset(images, "item", str(item_id)) for item_id in item_ids
-        ),
+        *(_load_render_asset(images, "item", str(item_id)) for item_id in item_ids),
         *(
             _load_render_asset(images, "sign_buff", str(status_id))
             for status_id in status_ids
@@ -156,10 +159,15 @@ async def _load_assets(
     )
     failures = tuple(result for result in requested if result.error is not None)
     if failures and image_failure_reporter is not None:
-        first = failures[0]
-        error = first.error
-        if error is not None:
-            await image_failure_reporter(first.kind, first.key, error)
+        await report_render_asset_failures(
+            image_failure_reporter,
+            tuple(
+                (item.kind, item.key, item.error)
+                for item in failures
+                if item.error is not None
+            ),
+            execution_identity,
+        )
     return assets, not failures
 
 
