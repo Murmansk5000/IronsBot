@@ -600,8 +600,7 @@ async def test_enabled_mention_reply_registers_after_commands_before_ai(
     contribution.install(registry)
 
     registrations = [
-        registry.cooldown_registration(matcher)
-        for matcher in registry.message_matchers
+        registry.cooldown_registration(matcher) for matcher in registry.message_matchers
     ]
     assert ("exempt", "configured mention reply") in registrations
     matcher = next(
@@ -640,9 +639,7 @@ def test_mention_reply_respects_conversation_blacklist(tmp_path: Path) -> None:
     )
 
     assert (
-        messaging.match_mention_reply(
-            _mention_context(configured, _group(1001))
-        )
+        messaging.match_mention_reply(_mention_context(configured, _group(1001)))
         is None
     )
 
@@ -941,16 +938,12 @@ def test_mention_reply_requires_the_configured_actor_and_bot_mention(
     )
     conversation = _group(1001)
 
-    action = messaging.match_mention_reply(
-        _mention_context(configured, conversation)
-    )
+    action = messaging.match_mention_reply(_mention_context(configured, conversation))
 
     assert action is not None
     assert action.messages == ["first", "second"]
     assert (
-        messaging.match_mention_reply(
-            _mention_context(_actor(2003), conversation)
-        )
+        messaging.match_mention_reply(_mention_context(_actor(2003), conversation))
         is None
     )
     assert (

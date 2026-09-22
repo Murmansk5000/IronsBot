@@ -260,10 +260,13 @@ def test_group_poke_reply_accepts_numeric_group_id() -> None:
         config=HelpConfig(poke_replies={"987654321": "数字群号回复"}),
     )
 
-    assert service.get_configured_reply(
-        group_id=987654321,
-        user_id=1,
-    ) == "数字群号回复"
+    assert (
+        service.get_configured_reply(
+            group_id=987654321,
+            user_id=1,
+        )
+        == "数字群号回复"
+    )
 
 
 def test_user_poke_reply_accepts_chinese_user_alias() -> None:

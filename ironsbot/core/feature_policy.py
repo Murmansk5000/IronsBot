@@ -71,13 +71,13 @@ class FeatureService:
             for features in (
                 *self.group_features.values(),
                 *self.actor_features.values(),
-                *self.platform_default_features.values(),
-                *self.account_default_features.values(),
             )
             for feature in features
         )
 
     def is_actor_superuser(self, actor: ActorRef) -> bool:
+        if self.actor_has_feature(actor, Feature.BLACKLIST.value):
+            return False
         return any(
             self._same_actor_principal(actor, configured)
             for configured in self.superusers
@@ -90,10 +90,10 @@ class FeatureService:
         )
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
-        return (
-            self.actor_has_feature(actor, feature)
-            or feature in self._default_features(actor.platform, actor.account_id)
-            or (self.superuser_bypass and self.is_actor_superuser(actor))
+        if self.actor_has_feature(actor, Feature.BLACKLIST.value):
+            return False
+        return self.actor_has_feature(actor, feature) or (
+            self.superuser_bypass and self.is_actor_superuser(actor)
         )
 
     def conversation_has_feature(
@@ -105,24 +105,7 @@ class FeatureService:
             feature in features
             and self._same_conversation_principal(conversation, configured)
             for configured, features in self.group_features.items()
-        ) or (
-            feature
-            in self._default_features(
-                conversation.platform,
-                conversation.account_id,
-            )
         )
-
-    def _default_features(
-        self,
-        platform: Platform,
-        account_id: str | None,
-    ) -> frozenset[str]:
-        if account_id is not None:
-            account_features = self.account_default_features.get((platform, account_id))
-            if account_features is not None:
-                return account_features
-        return self.platform_default_features.get(platform, frozenset())
 
     def is_feature_allowed(
         self,
@@ -132,11 +115,11 @@ class FeatureService:
     ) -> bool:
         if not is_supported_message_actor(actor, conversation):
             return False
+        if self.is_message_blocked(actor, conversation):
+            return False
         if conversation.kind == "group":
-            return (
-                self.conversation_has_feature(conversation, feature)
-                or self.actor_has_feature(actor, feature)
-                or (self.superuser_bypass and self.is_actor_superuser(actor))
+            return self.conversation_has_feature(conversation, feature) or (
+                self.superuser_bypass and self.is_actor_superuser(actor)
             )
         if conversation.kind == "private":
             return self.is_actor_feature_allowed(actor, feature)
@@ -202,14 +185,9 @@ class FeatureService:
 
         return [actor for actor in self.superuser_actors() if actor.kind == "user"]
 
-    def private_actors_with_superusers(self, feature: str) -> list[ActorRef]:
-        """Return private feature actors and private superusers once each."""
-
-        actors = self.private_actors_for_feature(feature)
-        actors.extend(
-            actor for actor in self.private_superuser_actors() if actor not in actors
-        )
-        return actors
+    def private_admin_notice_actors(self) -> list[ActorRef]:
+        """Notification opt-in is independent of operator privileges."""
+        return self.private_actors_for_feature(Feature.ADMIN_NOTICE.value)
 
     def _same_actor_principal(self, first: ActorRef, second: ActorRef) -> bool:
         if self.principals is None:

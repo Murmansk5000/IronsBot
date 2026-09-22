@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -236,21 +237,7 @@ class QQOfficialAccountConfig(BaseModel):
     secret: str = Field(default="", exclude=True, repr=False)
     proactive_messages: bool = True
     custom_keyboards: bool = False
-    features: list[str] = Field(
-        default_factory=lambda: [
-            "help",
-            "about",
-            "seer_data",
-            "seer_player",
-            "seer_team",
-            "seer_pet",
-            "seer_mintmark",
-            "seer_equipment",
-            "seer_type",
-            "seer_peak",
-            "seer_rank",
-        ]
-    )
+    features: list[str] = Field(default_factory=list)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -279,15 +266,7 @@ class QQOfficialAccountConfig(BaseModel):
 
     @property
     def configured_features(self) -> set[str]:
-        return {
-            *self.features,
-            *(
-                feature
-                for policy in (self.group_policy, self.user_policy)
-                for features in policy.values()
-                for feature in features
-            ),
-        }
+        return set()
 
 
 class QQOfficialConfig(BaseModel):
@@ -324,6 +303,14 @@ class QQOfficialConfig(BaseModel):
     def validate_accounts(self) -> QQOfficialConfig:
         app_ids: set[str] = set()
         for name, account in self.accounts.items():
+            for key in ("features", "group_policy", "user_policy"):
+                if key in account.model_fields_set:
+                    logging.getLogger(__name__).warning(
+                        "bot.qq_official.accounts.%s.%s is retired and ignored; "
+                        "use features.group_policy / features.user_policy",
+                        name,
+                        key,
+                    )
             if not _QQ_OFFICIAL_ACCOUNT_NAME.fullmatch(name):
                 raise QQOfficialConfigError.invalid_account_name()
             if not account.app_id:
@@ -736,9 +723,7 @@ class Settings(BaseModel):
     ) -> None:
         for index, action in enumerate(self.messaging.mention_replies):
             for user_index, user in enumerate(action.users):
-                location = (
-                    f"messaging.mention_replies[{index}].users[{user_index}]"
-                )
+                location = f"messaging.mention_replies[{index}].users[{user_index}]"
                 if user not in self.identities.users:
                     msg = f"{location} references unknown identity user alias: {user}"
                     raise SettingsReferenceError(msg)

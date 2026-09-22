@@ -157,8 +157,6 @@ def plugin_contribution(
                     input_routing=input_routing,
                 ),
             )
-            if enabled
-            else None
         ),
         hooks=(
             PluginHooks(

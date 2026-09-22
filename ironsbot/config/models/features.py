@@ -26,11 +26,11 @@ from ironsbot.core.features import (
     SEER_FEATURES,
     Feature,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import QQOfficialConfig
     from ironsbot.core.feature_policy import IdentityPrincipalResolver
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 _PROTECTED_FEATURES: Final[frozenset[str]] = frozenset(
     {
@@ -386,6 +386,7 @@ def validate_feature_config(
     schedule_features: Iterable[str] = (),
     qq_official: QQOfficialConfig | None = None,
 ) -> dict[str, frozenset[str]]:
+    del qq_official  # Compatibility argument; account-level policies are retired.
     normalized_commands = _normalize_feature_keys(command_features)
     normalized_schedules = _normalize_feature_keys(schedule_features)
     configured_features = normalized_commands | normalized_schedules
@@ -404,29 +405,9 @@ def validate_feature_config(
         | frozenset(resolved_bundles)
     )
     invalid: list[str] = []
-    qq_policies: list[tuple[str, Mapping[str, list[str]]]] = []
-    if qq_official is not None:
-        for account_name, account in qq_official.enabled_accounts.items():
-            qq_policies.extend(
-                (
-                    (
-                        f"bot.qq_official.accounts.{account_name}.features",
-                        {"default": account.features},
-                    ),
-                    (
-                        f"bot.qq_official.accounts.{account_name}.group_policy",
-                        account.group_policy,
-                    ),
-                    (
-                        f"bot.qq_official.accounts.{account_name}.user_policy",
-                        account.user_policy,
-                    ),
-                )
-            )
     for policy_name, policy in (
         ("features.group_policy", config.group_policy),
         ("features.user_policy", config.user_policy),
-        *qq_policies,
     ):
         for target, features in policy.items():
             for index, raw_feature in enumerate(features):
@@ -487,33 +468,6 @@ def build_feature_service(  # noqa: PLR0913
         ):
             actor_features[actor] = actor_features.get(actor, frozenset()) | expanded
 
-    qq_account_defaults: dict[tuple[Platform, str], frozenset[str]] = {}
-    if qq_official is not None:
-        for account_alias, account in qq_official.enabled_accounts.items():
-            account_id = account.app_id
-            default_features = _expand_policy_features(account.features, bundles)
-            qq_account_defaults[(Platform.QQ_OFFICIAL, account_id)] = default_features
-            for reference, features in account.group_policy.items():
-                conversation = references.official_group_conversation_ref(
-                    reference,
-                    account_alias=account_alias,
-                    location=(f"bot.qq_official.accounts.{account_alias}.group_policy"),
-                )
-                group_features[conversation] = group_features.get(
-                    conversation,
-                    frozenset(),
-                ) | _expand_policy_features(features, bundles)
-            for reference, features in account.user_policy.items():
-                actor = references.official_actor_ref(
-                    reference,
-                    account_alias=account_alias,
-                    location=(f"bot.qq_official.accounts.{account_alias}.user_policy"),
-                )
-                actor_features[actor] = actor_features.get(
-                    actor,
-                    frozenset(),
-                ) | _expand_policy_features(features, bundles)
-
     return FeatureService(
         group_features=group_features,
         actor_features=actor_features,
@@ -526,7 +480,6 @@ def build_feature_service(  # noqa: PLR0913
             )
         ),
         superuser_bypass=config.superuser_bypass,
-        account_default_features=qq_account_defaults,
         principals=principals,
     )
 
