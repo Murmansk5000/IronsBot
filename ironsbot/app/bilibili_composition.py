@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.configured_targets.bilibili import (
@@ -17,7 +18,14 @@ from ironsbot.integrations.http.bilibili import (
     poll_bili_login_qr,
     request_bili_login_qr,
 )
+from ironsbot.integrations.image_collage import (
+    fetch_collage_image,
+    render_adaptive_collage,
+)
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
+from ironsbot.integrations.storage.bilibili_delivery_ledger import (
+    SqliteDynamicDeliveryLedger,
+)
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
@@ -26,12 +34,14 @@ from ironsbot.integrations.storage.bilibili_preferences import (
 )
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.content import DynamicContentCompactor
+from ironsbot.services.bilibili.delivery_recovery import BiliStartupRecovery
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.login_notice import send_bili_login_notice
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
+from ironsbot.services.messaging.image_collage import ImageCollageService
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
@@ -91,6 +101,9 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
+        image_collage=ImageCollageService(
+            partial(fetch_collage_image, http_clients.origin), render_adaptive_collage
+        ),
     )
     return BilibiliComponents(
         service=service,
@@ -138,5 +151,24 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         has_category_subscriptions=(
             lambda uid: service.targets.category_config_for_uid(uid) is not None
         ),
+        account_name=service.targets.account_display_name,
+        image_collage=service.image_collage,
+        combine_images=config.push.combine_images,
+        ledger=SqliteDynamicDeliveryLedger(
+            Path(config.storage.data_dir) / "delivery_stages.sqlite"
+        ),
+        category_labels=lambda uid, keys: tuple(
+            definition.label
+            if (category_config := service.targets.category_config_for_uid(uid))
+            is not None
+            and (definition := category_config.categories.get(key)) is not None
+            else key
+            for key in keys
+        ),
     )
-    return BilibiliMonitorService(service, auth_invalid, push_delivery.send)
+    return BilibiliMonitorService(
+        service,
+        auth_invalid,
+        push_delivery.send,
+        startup_recovery=BiliStartupRecovery(push_delivery, service.targets),
+    )

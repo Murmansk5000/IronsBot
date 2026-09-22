@@ -153,6 +153,10 @@ def build_common_components(
             },
             recipient_state=recipient_state,
             group_routing=ingress_routing,
+            account_names={
+                account.app_id: name
+                for name, account in settings.bot.qq_official.enabled_accounts.items()
+            },
         )
     outbound_messenger = PlatformOutboundMessenger(platform_messengers)
     proactive_delivery = ProactiveMessageDelivery(

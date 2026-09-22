@@ -348,6 +348,10 @@ lite = [
 # blocked_bot = ["blacklist"]
 
 [features.help]
+# EN: Extra recommendation weight decays by half every five days.
+# ZH: 新命令推荐初始权重为普通命令的五倍，额外权重每五天减半。
+new_command_initial_weight = 5.0
+new_command_half_life_days = 5.0
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
 ignored_plugins = []
 
@@ -618,6 +622,9 @@ check_second = 5
 boost_windows = []
 
 [bilibili.push]
+# EN: Combine eligible static images before the first send attempt.
+# ZH: 自动推送与历史查询共用合图；发送前合图失败回退原图，发送失败不补发。
+combine_images = true
 # Default: "full"
 # EN: Default push mode for accounts without an explicit mode.
 # ZH: 未单独指定模式的账号默认推送方式，可选 full 或 link。
@@ -1238,6 +1245,10 @@ taomee_internal_user_ids = [
 
 # 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
 [seer.rank.player_lookup]
+# EN: Recent player positions receive one fast live anchor confirmation.
+# ZH: 十分钟内的玩家名次优先联网确认；锚点五秒超时或断线即返回原缓存。
+recent_cache_max_age_seconds = 600
+recent_cache_anchor_timeout_seconds = 5.0
 # Default: 8; EN: Timeout for one official leaderboard page request.
 # ZH: 单次官方榜单页请求最多等待秒数。
 page_timeout_seconds = 8

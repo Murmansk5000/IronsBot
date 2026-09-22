@@ -16,6 +16,7 @@ from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
+from ironsbot.integrations.onebot.execution_identity import resolve_execution_identity
 from ironsbot.integrations.onebot.lucky_skin_window import (
     build_onebot_lucky_skin_window_accounts,
 )
@@ -122,6 +123,7 @@ if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.outbound import ExecutionIdentity
     from ironsbot.extensions.contracts import PlayerLineupRenderSessionFactory
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.seer_data.database import SeerDatabase
@@ -228,6 +230,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         seer_database.peak_season_start,
         seer_database.master_season_start,
         fetch_rank_page,
+        page_parallelism=lambda: headless.rank_page_parallelism,
     )
     images, render_coordinator, render_sessions = build_seer_rendering_components(
         http_clients,
@@ -236,9 +239,17 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         seer_database,
         spawn=task_owner.create,
     )
-    image_failure_reporter = AdminImageFailureReporter(admin_notices)
+    image_failure_reporter = AdminImageFailureReporter(
+        admin_notices,
+        partial(
+            resolve_execution_identity,
+            aliases=settings.messaging.bot_routing.bot_aliases,
+        ),
+    )
 
-    async def render_pet(pet_id: int) -> bytes:
+    async def render_pet(
+        pet_id: int, *, execution_identity: ExecutionIdentity | None = None
+    ) -> bytes:
         with render_sessions.open() as inputs:
             return await render_published_pet_info(
                 inputs.cache,
@@ -247,6 +258,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 render_coordinator.render,
                 pet_id,
                 image_failure_reporter=image_failure_reporter,
+                execution_identity=execution_identity,
             )
 
     @contextmanager

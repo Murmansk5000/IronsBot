@@ -38,6 +38,10 @@ def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
 def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     config = (ROOT / "config.example.toml").read_text(encoding="utf-8")
     config = config.replace('environment = "prod"', 'environment = "test"', 1)
+    config = config.replace(
+        'qq_state = "data/state/qq_state.sqlite"',
+        f'qq_state = "{(tmp_path / "qq_state.sqlite").as_posix()}"',
+    )
     config_path = tmp_path / "bootstrap.toml"
     config_path.write_text(config, encoding="utf-8")
     script = """
@@ -116,6 +120,7 @@ assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
     "identity_links",
     "data_sync",
     "qq_official",
+    "bilibili_official_recovery",
 ]
 assert {"seer.team.query", "seer.pet.avatar"}.issubset(
     state.resources.commands.qq_official_direct_command_ids
