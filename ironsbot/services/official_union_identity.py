@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         IdentityPrincipalService,
     )
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.official_addresses import OfficialAddressService
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,11 @@ class OfficialUnionIdentityService:
     on_merge: Callable[[ActorPrincipalMerge], None]
     on_link: Callable[[CrossPlatformIdentityLink], None]
     clock: Callable[[], float] = time.time
+    addresses: OfficialAddressService | None = None
 
     async def observe(self, incoming: IncomingMessageRef) -> bool:
+        if self.addresses is not None:
+            await self.addresses.observe(incoming)
         evidence = incoming.official_union_identity
         actor = incoming.actor
         if (
@@ -74,6 +78,8 @@ class OfficialUnionIdentityService:
             for merge in self.principals.register_identity_link(link):
                 self.on_merge(merge)
             self.on_link(link)
+        if self.addresses is not None:
+            self.addresses.refresh()
         return bool(links)
 
     async def _report_conflict(

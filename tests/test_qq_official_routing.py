@@ -13,7 +13,7 @@ def test_default_account_owns_private_and_unassigned_groups() -> None:
         conversation_kind="private",
         conversation_id="user",
     )
-    assert not routing.allows(
+    assert routing.allows(
         account_id="local-app",
         conversation_kind="private",
         conversation_id="user",
@@ -39,7 +39,7 @@ def test_addressed_account_can_bootstrap_an_unassigned_group() -> None:
         conversation_id="unknown-group",
         explicitly_addressed=True,
     )
-    assert not routing.allows(
+    assert routing.allows(
         account_id="local-app",
         conversation_kind="private",
         conversation_id="unknown-user",

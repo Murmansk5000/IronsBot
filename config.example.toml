@@ -102,9 +102,10 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
-# EN: The default account handles private messages and groups without an explicit
-#     route. Required when more than one official account is active.
-# ZH: 默认账号处理私聊和未显式分配的群；启用多个官方账号时必填。
+# EN: Private replies stay on the receiving account. This default account handles
+#     unassigned groups; an unowned group endpoint may respond when explicitly addressed.
+# ZH: 私聊回复由收到消息的账号处理；未分配的群由默认账号处理。
+# 尚无已知归属的群端点可响应直接指定本账号的消息；启用多个官方账号时必填。
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
