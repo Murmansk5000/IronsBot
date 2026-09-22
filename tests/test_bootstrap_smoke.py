@@ -9,6 +9,75 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_generator_bootstrap_resolves_real_ai_registration_annotations(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "bootstrap.toml"
+    config_path.write_text(
+        (ROOT / "config.example.toml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    script = """
+import socket
+import traceback
+import nonebot.dependencies as dependencies
+from nonebot.adapters.onebot.v11 import Bot, MessageEvent
+from nonebot.log import logger
+def forbidden(*args, **kwargs):
+    raise AssertionError("registration must not connect to the network")
+socket.socket.connect = forbidden
+socket.create_connection = forbidden
+logger.remove()
+warnings = []
+def warning(message):
+    if "Unknown ForwardRef" in str(message):
+        warnings.append(str(message) + "\\n" + "".join(traceback.format_stack()))
+logger.add(warning, level="WARNING")
+original = dependencies.get_typed_signature
+registered = set()
+def checked(call):
+    signature = original(call)
+    source = getattr(call, "func", call)
+    if getattr(source, "__module__", "") == "ironsbot.plugins.onebot.ai":
+        name = source.__qualname__
+        if name.endswith(("_capture_ai_prompt", "run_ai_chat")):
+            assert signature.parameters["event"].annotation is MessageEvent, name
+            if name.endswith("run_ai_chat"):
+                assert signature.parameters["bot"].annotation is Bot, name
+            registered.add(name)
+    return signature
+dependencies.get_typed_signature = checked
+from scripts.generate_poke_command_introductions import _command_ids
+assert _command_ids()
+assert registered == {"_capture_ai_prompt", "install.<locals>.run_ai_chat"}, registered
+assert not warnings, "\\n".join(warnings)
+print("AI_REGISTRATION_OK")
+"""
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if key.startswith(
+            ("QQ_OFFICIAL_", "APP_ID_", "APP_SECRET_", "ONEBOT_", "AI_KEY")
+        ):
+            del environment[key]
+    environment.update(
+        APP_CONFIG_PATH=str(config_path),
+        PYTHONPATH=str(ROOT),
+        AI_KEY_DEEPSEEK="test-only-registration-no-network",
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "AI_REGISTRATION_OK"
+
+
 def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
     from nonebot.log import logger
 
