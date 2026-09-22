@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +18,7 @@ from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
 from ironsbot.integrations.storage.seer_assets import build_seer_asset_store
-from ironsbot.services.seer.images import ImageSourceError
+from ironsbot.services.seer.image_failure_notice import report_render_asset_failures
 from ironsbot.services.seer.render_assets import RenderAssetSession
 from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
@@ -88,28 +87,11 @@ class SeerRenderSessions:
                         for (kind, key), error in assets.failures.items()
                     )
                     self.spawn(
-                        _report_render_asset_failures(
+                        report_render_asset_failures(
                             self.image_failure_reporter, failures, None
                         ),
                         name="render-asset-failure-notice",
                     )
-
-
-async def _report_render_asset_failures(
-    reporter: ImageFailureReporter,
-    failures: tuple[tuple[str, str, ImageSourceError], ...],
-    identity: object | None,
-) -> None:
-    del identity
-    if not failures:
-        return
-    try:
-        detail = "; ".join(f"{kind}:{key}: {error}" for kind, key, error in failures)
-        await reporter("render_batch", str(len(failures)), ImageSourceError(detail))
-    except Exception:
-        logging.getLogger(__name__).exception(
-            "asset failure notice failed; continuing partial render"
-        )
 
 
 def build_seer_rendering_components(
