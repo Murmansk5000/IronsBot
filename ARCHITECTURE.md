@@ -1014,6 +1014,10 @@ independently testable.
 - Preserve external authorship and meaningful integration merges. History
   cleanup must prove that the final file tree and public behaviour remain
   unchanged unless the task explicitly requests a product change.
+- Do not leave generated artifacts or repository tooling pinned to an obsolete
+  commit ID after an approved history rewrite. Translate intentional baselines
+  through the audited old-to-new SHA map and update their focused tests in the
+  same commit.
 
 提交历史应表达完整的工程意图，而不是记录每一次中间编辑。英文标题使用
 Conventional Commit 格式，正文提供含义一致的中文说明。同一目标下连续产生的
@@ -1021,6 +1025,8 @@ Conventional Commit 格式，正文提供含义一致的中文说明。同一目
 不同功能、架构调整、配置或数据迁移、发布基础设施仍需分开。不得保留净变化为
 零的绕路、重复微补丁或仅用于修正上一提交的噪声，同时必须保留外部作者署名和
 真正有意义的合并历史。
+经批准重写历史后，生成器或仓库工具不得继续依赖已经失效的旧提交号；有意保留的
+行为基线必须通过审计后的旧新 SHA 映射同步更新，并在同一提交中更新对应测试。
 
 ## Work Execution And Progress Reporting
 

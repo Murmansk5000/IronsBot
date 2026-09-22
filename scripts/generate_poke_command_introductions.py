@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
-BASELINE_COMMIT = "f53f7dae"
+BASELINE_COMMIT = "b97cb3ec"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
