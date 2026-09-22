@@ -931,7 +931,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "qqbot-agent-sdk", marker = "extra == 'qq-official'", specifier = "==1.2.2" },
     { name = "qrcode", extras = ["pil"], specifier = ">=8.2" },
-    { name = "seerapi-models", specifier = ">=106.4.0" },
+    { name = "seerapi-models", git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=434667937424e73be3f6cd8f87bd942f7e135666" },
     { name = "uvicorn", specifier = ">=0.20.0,<1.0.0" },
     { name = "websockets", specifier = ">=15.0" },
 ]
@@ -2045,15 +2045,11 @@ wheels = [
 
 [[package]]
 name = "seerapi-models"
-version = "106.4.0"
-source = { registry = "https://pypi.org/simple" }
+version = "106.10.2"
+source = { git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=434667937424e73be3f6cd8f87bd942f7e135666#434667937424e73be3f6cd8f87bd942f7e135666" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlmodel" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/20/b8/7a6689953c891543b30ba759d61fc972a16a8ce889693a83169cb28afc02/seerapi_models-106.4.0.tar.gz", hash = "sha256:e99cbac6108b3407b0693ff42699d5ed9f16dd3409ab33b145d932329504d77a", size = 30565, upload-time = "2026-06-09T12:11:53.946Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/d1/cc235c95a58375b89bee38b9182b36c2b78ed084b5f9d52e3c220242b8af/seerapi_models-106.4.0-py3-none-any.whl", hash = "sha256:aa1434bae3ba971053193ccaa18e9d4e9f9e3105c3cb8d765c7e64035c304e12", size = 48282, upload-time = "2026-06-09T12:11:52.877Z" },
 ]
 
 [[package]]
