@@ -854,6 +854,7 @@ features = ["help", "about", "seer_data"]
     assert account.app_id == "10001"
     assert account.secret == "example-secret"
     assert account.required
+    assert account.proactive_messages
     assert account.custom_keyboards
 
 

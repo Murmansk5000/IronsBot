@@ -147,8 +147,8 @@ AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；
 [固定图片部署模板](docs/examples/fixed-images.md) 配置；五张图片需放入挂载目录，
 模板不会自动加载，也不包含原图片文件。
 
-主动发送默认关闭。机器人应用确认具备对应平台权限后可设置
-`proactive_messages = true`；开启 `team_resource_subscription` 时必须同时开启该项，
+主动发送默认开启；只有明确不应承担任何主动投递的专用账号才需要设置
+`proactive_messages = false`。开启 `team_resource_subscription` 时不能关闭该项，
 否则配置会被明确拒绝，避免订阅成功后无法收到提醒。平台实际发送额度和权限以
 当前机器人应用后台为准。运行时会接收并持久化腾讯的
 `GROUP_MSG_RECEIVE/GROUP_MSG_REJECT`、`C2C_MSG_RECEIVE/C2C_MSG_REJECT` 以及机器人
@@ -177,7 +177,7 @@ default_account = "example_bot"
 [bot.qq_official.accounts.example_bot]
 app_id = "10001"
 required = false
-proactive_messages = false
+proactive_messages = true
 custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 
@@ -208,8 +208,8 @@ owner = ["seer_activity_push", "bili_push"]
 Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
-目标必须填写 `[identities]` 中声明的别名，不再直接散写 OpenID。开启
-`proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
+目标必须填写 `[identities]` 中声明的别名，不再直接散写 OpenID。默认开启的
+`proactive_messages` 在应用具备对应权限后，使定时消息与活动/B站推送复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
 
