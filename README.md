@@ -562,13 +562,15 @@ default_at_users = ["owner"]
 `[features.bundles]` 可以定义 `standard`、`lite` 等可复用组合；组合之间可以引用，
 最终按并集展开。`all = ["my_extension_feature"]` 可把自定义原子 feature 追加到
 内置 `all`，并让它成为可在策略中引用的扩展权限。自定义名称不能覆盖内置
-feature/组合，未知引用、空组合和循环引用都会阻止启动。为避免管理异常或静默拦截
+feature/组合；未注册功能引用只告警并忽略，组合因此变空时不授予任何权限。
+显式空组合、名称冲突和循环引用仍阻止启动。为避免管理异常或静默拦截
 被普通群间接获得，`admin_notice` 与 `blacklist` 不能放入组合，必须在
 `group_policy` 或 `user_policy` 的目标项中显式写出。
 
-TOML 对已识别字段严格加载：既非内置也未被消息动作声明的 feature、未知 B站账号引用、
-未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
-无法识别的多余字段会直接阻止启动，并在校验错误中列出完整路径；
+未注册功能权限项不再阻止启动，也不自动改名或恢复旧功能；`all` 显式声明的扩展
+功能保留既有含义。未知 B站账号引用、未知 Seer 展示区块和残缺 AI action 仍会
+阻止启动，并在校验错误中给出准确路径。
+无法识别的多余字段会记录包含完整路径的警告后忽略；已识别字段的非法值仍会阻止启动；
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该

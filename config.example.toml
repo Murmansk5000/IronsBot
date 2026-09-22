@@ -267,6 +267,7 @@ superuser_bypass = true
 # ZH: 可复用功能组合。值可引用单项功能、内置组合或其他自定义组合；
 # `messaging.commands` / `messaging.schedules` 声明的 feature 也可在这里引用。
 # `all` 可追加自定义原子 feature，并同时声明它们可用于目标策略。
+# 普通组合及目标策略中的未注册功能项只告警并忽略，不授予权限或自动替换为其他功能。
 # 名称不能覆盖已有 feature；admin_notice 和 blacklist 必须在目标策略中显式授予。
 # all = ["my_extension_feature"]
 standard = [

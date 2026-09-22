@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Final
 
@@ -31,6 +32,8 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import QQOfficialConfig
     from ironsbot.core.feature_policy import IdentityPrincipalResolver
+
+logger = logging.getLogger(__name__)
 
 _PROTECTED_FEATURES: Final[frozenset[str]] = frozenset(
     {
@@ -107,15 +110,6 @@ class FeatureBundleConfigError(ValueError):
     @classmethod
     def empty_bundle(cls, name: str) -> FeatureBundleConfigError:
         return cls(f"features.bundles.{name} must not be empty")
-
-    @classmethod
-    def unknown_item(
-        cls,
-        name: str,
-        index: int,
-        item: str,
-    ) -> FeatureBundleConfigError:
-        return cls(f"features.bundles.{name}[{index}]={item} is not registered")
 
     @classmethod
     def admin_notice(cls, name: str) -> FeatureBundleConfigError:
@@ -233,7 +227,25 @@ class _FeatureBundleResolver:
             return self._expand(item)
         if item in self._feature_keys:
             return frozenset((item,))
-        raise FeatureBundleConfigError.unknown_item(name, index, item)
+        _warn_ignored_features((f"features.bundles.{name}[{index}]",))
+        return frozenset()
+
+
+def _warn_ignored_features(paths: Iterable[str]) -> None:
+    logger.warning(
+        "已忽略未注册的功能权限项：%s；这些项不会授予任何权限。",
+        ", ".join(paths),
+    )
+
+
+def _registered_policy_keys(
+    bundles: Mapping[str, frozenset[str]],
+) -> frozenset[str]:
+    return (
+        FEATURE_KEYS
+        | frozenset(bundles)
+        | frozenset(feature for entries in bundles.values() for feature in entries)
+    )
 
 
 def _normalize_feature_keys(features: Iterable[str]) -> frozenset[str]:
@@ -386,21 +398,12 @@ def validate_feature_config(
 ) -> dict[str, frozenset[str]]:
     normalized_commands = _normalize_feature_keys(command_features)
     normalized_schedules = _normalize_feature_keys(schedule_features)
-    configured_features = normalized_commands | normalized_schedules
     resolved_bundles = resolve_feature_bundles(
         config.bundles,
         command_features=normalized_commands,
         schedule_features=normalized_schedules,
     )
-    registered_policy_keys = (
-        FEATURE_KEYS
-        | configured_features
-        | _resolve_custom_all_features(
-            config.bundles.get("all", []),
-            custom_bundle_names=frozenset(config.bundles) - {"all"},
-        )
-        | frozenset(resolved_bundles)
-    )
+    registered_policy_keys = _registered_policy_keys(resolved_bundles)
     invalid: list[str] = []
     qq_policies: list[tuple[str, Mapping[str, list[str]]]] = []
     if qq_official is not None:
@@ -431,10 +434,10 @@ def validate_feature_config(
                 feature = raw_feature.strip()
                 if not feature or feature in registered_policy_keys:
                     continue
-                invalid.append(f"{policy_name}.{target}[{index}]={feature}")
+                invalid.append(f"{policy_name}.{target}[{index}]")
 
     if invalid:
-        raise ValueError("unregistered feature policy key(s): " + ", ".join(invalid))
+        _warn_ignored_features(invalid)
     return resolved_bundles
 
 
@@ -534,9 +537,10 @@ def _expand_policy_features(
     bundles: Mapping[str, frozenset[str]],
 ) -> frozenset[str]:
     expanded: set[str] = set()
+    registered = _registered_policy_keys(bundles)
     for raw_feature in features:
         feature = raw_feature.strip()
-        if not feature:
+        if not feature or feature not in registered:
             continue
         expanded.update(bundles.get(feature, frozenset((feature,))))
     return frozenset(expanded)

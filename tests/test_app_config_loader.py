@@ -553,11 +553,13 @@ def test_config_path_is_selected_by_single_environment_variable() -> None:
     assert config.ai.providers["deepseek"].models == ["deepseek-v4-pro"]
 
 
-def test_unknown_app_config_fields_are_rejected(tmp_path: Path) -> None:
+def test_unknown_app_config_fields_are_ignored_with_paths(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-unknown_top_level = true
+unknown_top_level = "value-that-must-not-be-logged"
 
 [seer.player]
 old_player_setting = true
@@ -572,21 +574,19 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
+    config = load_settings(config_path)
 
-    assert {
-        error["loc"]
-        for error in exc_info.value.errors()
-        if error["type"] == "extra_forbidden"
-    } == {
-        ("unknown_top_level",),
-        ("seer", "player", "old_player_setting"),
-        ("messaging", "commands", 0, "unknown_command_field"),
-    }
+    assert config.messaging.commands[0].id == "hello"
+    assert not hasattr(config, "unknown_top_level")
+    assert "unknown_top_level" in caplog.text
+    assert "value-that-must-not-be-logged" not in caplog.text
+    assert "seer.player.old_player_setting" in caplog.text
+    assert "messaging.commands[0].unknown_command_field" in caplog.text
 
 
-def test_removed_pre_command_mention_settings_are_rejected(tmp_path: Path) -> None:
+def test_removed_pre_command_mention_settings_are_ignored_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -601,22 +601,19 @@ mention_initial_max_responses = 3
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
+    config = load_settings(config_path)
 
-    assert {
-        error["loc"]
-        for error in exc_info.value.errors()
-        if error["type"] == "extra_forbidden"
-    } == {
-        ("bot", "matcher_priority", "ai_group_at"),
-        ("bot", "matcher_priority", "bot_mention_block"),
-        ("messaging", "command_cooldown", "mention_initial_window_seconds"),
-        ("messaging", "command_cooldown", "mention_initial_max_responses"),
-    }
+    assert config.bot.matcher_priority == MatcherPriorityConfig()
+    assert config.messaging.command_cooldown == CommandCooldownConfig()
+    assert "bot.matcher_priority.ai_group_at" in caplog.text
+    assert "bot.matcher_priority.bot_mention_block" in caplog.text
+    assert "messaging.command_cooldown.mention_initial_window_seconds" in caplog.text
+    assert "messaging.command_cooldown.mention_initial_max_responses" in caplog.text
 
 
-def test_unknown_fields_do_not_hide_invalid_known_fields(tmp_path: Path) -> None:
+def test_unknown_fields_do_not_hide_invalid_known_fields(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -631,6 +628,7 @@ old_bot_setting = true
         load_settings(config_path)
 
     assert exc_info.value.errors()[0]["loc"] == ("bot", "port")
+    assert "bot.old_bot_setting" in caplog.text
 
 
 def test_unified_message_actions_parse_as_toml_arrays_of_tables(
@@ -721,26 +719,28 @@ messages = ["first", "second"]
     ]
 
 
-def test_mention_reply_rejects_removed_user_ids_field(tmp_path: Path) -> None:
+def test_mention_reply_ignores_removed_user_ids_field(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
+[identities.users.example]
+qq = 123456789
+
 [[messaging.mention_replies]]
 id = "legacy"
 user_ids = [123456789]
+users = ["example"]
 messages = ["reply"]
 """.strip(),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
+    config = load_settings(config_path)
 
-    assert any(
-        error["loc"] == ("messaging", "mention_replies", 0, "user_ids")
-        and error["type"] == "extra_forbidden"
-        for error in exc_info.value.errors()
-    )
+    assert config.messaging.mention_replies[0].users == ["example"]
+    assert "messaging.mention_replies[0].user_ids" in caplog.text
 
 
 def test_mention_reply_rejects_raw_ids_instead_of_identity_aliases(
@@ -1016,23 +1016,24 @@ def test_invalid_onebot_config_reference_reports_exact_path(
         load_settings(config_path)
 
 
-def test_unregistered_feature_policy_is_rejected_with_exact_path(
+def test_unregistered_feature_policy_warns_with_exact_path(
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
+[identities.groups]
+main = { qq = 200000201 }
 [features.group_policy]
 main = ["seer_player", "rank"]
 """.strip(),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
-
-    assert exc_info.value.errors()[0]["loc"] == ("features",)
-    assert "features.group_policy.main[1]=rank" in str(exc_info.value)
+    settings = load_settings(config_path, env={})
+    assert settings.features.group_policy["main"] == ["seer_player", "rank"]
+    assert "features.group_policy.main[1]" in caplog.text
 
 
 def test_unknown_bilibili_account_is_rejected_with_exact_path(
@@ -1119,7 +1120,9 @@ cache_root = "{absolute_root.as_posix()}"
     assert load_settings(config_path).paths.cache_root == absolute_root
 
 
-def test_removed_player_binding_field_is_rejected(tmp_path: Path) -> None:
+def test_removed_player_binding_field_is_ignored_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -1129,18 +1132,18 @@ change_cooldown_hours = 72.0
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
+    config = load_settings(config_path)
 
-    assert exc_info.value.errors()[0]["loc"] == (
-        "seer",
-        "player",
-        "binding",
-        "change_cooldown_hours",
+    assert (
+        config.seer.player.binding.change_cooldown_days
+        == DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS
     )
+    assert "seer.player.binding.change_cooldown_hours" in caplog.text
 
 
-def test_removed_docker_restart_check_field_is_rejected(tmp_path: Path) -> None:
+def test_removed_docker_restart_check_field_is_ignored_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -1150,14 +1153,10 @@ check_on_restart = false
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
+    config = load_settings(config_path)
 
-    assert exc_info.value.errors()[0]["loc"] == (
-        "operations",
-        "docker_update",
-        "check_on_restart",
-    )
+    assert config.operations.docker_update == DockerUpdateConfig()
+    assert "operations.docker_update.check_on_restart" in caplog.text
 
 
 def test_player_background_refresh_loads(tmp_path: Path) -> None:
@@ -1749,7 +1748,9 @@ accounts = ["missing_worker"]
         load_settings(config_path, env={})
 
 
-def test_legacy_query_worker_is_rejected(tmp_path: Path) -> None:
+def test_legacy_query_worker_is_ignored_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -1761,15 +1762,10 @@ query_worker = true
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path, env={})
+    config = load_settings(config_path, env={})
 
-    assert exc_info.value.errors()[0]["loc"] == (
-        "seer",
-        "player_accounts",
-        0,
-        "query_worker",
-    )
+    assert config.seer.player_accounts[0].name == "worker_two"
+    assert "seer.player_accounts[0].query_worker" in caplog.text
 
 
 def test_player_query_limits_reject_legacy_limit_field() -> None:
