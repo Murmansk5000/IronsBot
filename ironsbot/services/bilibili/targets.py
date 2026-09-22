@@ -251,7 +251,7 @@ class BiliTargetService:
             return None
         config = self.category_config_for_uid(uid)
         title = (
-            f"📺【{config.label} 推送设置】"
+            f"📺【{self.account_display_name(uid)} 推送设置】"
             if config is not None
             else f"📺【{self._subscription_label(uid)} 推送设置】"
         )
@@ -548,13 +548,13 @@ class BiliTargetService:
         return category in configured.default_muted_categories
 
     def _subscription_label(self, uid: int) -> str:
+        return bili_push_subscription_label(uid, self.account_display_name(uid))
+
+    def account_display_name(self, uid: int) -> str | None:
         configured = self.category_config_for_uid(uid)
-        label = (
-            configured.label
-            if configured is not None
-            else self.account_names.name_for_uid(uid)
+        return self.account_names.name_for_uid(uid) or (
+            configured.label if configured is not None else None
         )
-        return bili_push_subscription_label(uid, label)
 
 
 def _push_mode_usage() -> str:
