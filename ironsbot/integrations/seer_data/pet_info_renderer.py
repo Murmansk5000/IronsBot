@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from ironsbot.services.seer.image_failure_notice import report_render_asset_failures
 from ironsbot.services.seer.images import ImageSourceError, placeholder_image
 from ironsbot.services.seer.pet_info_views import PetInfoAssets
 from ironsbot.services.seer.render_paths import (
@@ -157,10 +158,14 @@ async def _load_assets(
     )
     failures = tuple(result for result in requested if result.error is not None)
     if failures and image_failure_reporter is not None:
-        first = failures[0]
-        error = first.error
-        if error is not None:
-            await image_failure_reporter(first.kind, first.key, error)
+        await report_render_asset_failures(
+            image_failure_reporter,
+            tuple(
+                (item.kind, item.key, item.error)
+                for item in failures
+                if item.error is not None
+            ),
+        )
     return assets, not failures
 
 
