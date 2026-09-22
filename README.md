@@ -455,10 +455,12 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 ```
 
 该文件必须在启动前存在，可直接以 [config.example.toml](config.example.toml) 为模板。
-程序只读并严格校验配置，不会修改磁盘上的 TOML。真实 env 文件包含密钥，不纳入仓库；
+程序只读配置，不会修改磁盘上的 TOML。未知或已删除的 TOML 字段会按完整路径记录
+warning 后忽略且不会生效；已知字段的类型、取值、必填项和引用关系仍严格校验并在
+错误时阻止启动。真实 env 文件包含密钥，不纳入仓库；
 使用 Docker Compose 时可参考 [.env.example](.env.example) 手动创建。
 
-改动 TOML 或环境变量后，可以只执行严格配置校验，不启动 NoneBot、QQ 官方连接、
+改动 TOML 或环境变量后，可以只执行配置校验，不启动 NoneBot、QQ 官方连接、
 调度器、数据库或其他网络客户端：
 
 ```bash

@@ -272,8 +272,9 @@ V5 的语义 owner、不会恢复的旧路径，以及 V5 上的验证证据。�
    `account_id`，入站、权限、会话和出站不能退回默认机器人。
 9. 正常运行路径只读写一种 schema；旧数据仅由停机的一次性迁移工具处理。
 10. 配置字段迁移同样只能由部署迁移说明或一次性工具完成；模型不得静默把
-   `refresh_hour`/`refresh_minute` 等旧字段改写为新字段。无法识别的字段必须在
-   启动时明确报错，当前配置只接受 `time = "HH:MM"`。
+   `refresh_hour`/`refresh_minute` 等旧字段改写为新字段。无法识别的 TOML 字段
+   必须记录包含完整路径的 warning 后忽略，不能作为兼容字段继续生效；已知字段
+   的类型、取值和引用错误仍必须阻止启动。当前配置只接受 `time = "HH:MM"`。
 11. 新生产 Python 模块必须遵守 800 行限制，并按真实职责拆分，不能把代码
    移进无归属的辅助文件来规避检查。
 12. 平台身份在持久化层只使用 `ActorRef` / `ConversationRef` 的独立列；QQ
@@ -438,6 +439,10 @@ Rule”。每个改动只允许属于以下三种之一：
    消费者不得依赖未发布 schema，也不得用旧表双读掩盖版本不匹配。
 5. 数据契约必须至少有：构建期单测、消费者 repository 单测、一个真实 release
    或生产等价 SQLite 的 smoke test，以及 schema/必需表校验。
+6. IronsBot 使用的修订版 `seerapi-models` 直接取自
+   `Murmansk-Seer/seerapi` 的固定 Git 提交和 `packages/seerapi-models` 子目录；
+   `uv.lock` 必须固定完整 commit。不得改回无上限版本范围、本地路径依赖，
+   也不要求为内部部署另行上传 PyPI 或 GitHub Release 包。
 
 若 release 未包含新事实，用户可见行为必须明确为“数据暂不可用”或保留已经
 验证的旧功能；绝不静默回到运行时模糊匹配。发布失败要保留 `/更新数据` 的恢复
