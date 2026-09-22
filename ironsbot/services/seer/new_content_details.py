@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
 
+    from ironsbot.core.outbound import ExecutionIdentity
+
     from .autocard import AutocardService
     from .equipment import EquipmentQueryService
     from .mintmark import MintmarkQueryService
@@ -38,14 +40,20 @@ class NewContentDetailService:
     selection_scope: Callable[[NewContentSnapshot], AbstractContextManager[None]]
 
     async def select(
-        self, snapshot: NewContentSnapshot, item: NewContentItem
+        self,
+        snapshot: NewContentSnapshot,
+        item: NewContentItem,
+        *,
+        execution_identity: ExecutionIdentity | None = None,
     ) -> NewContentDetail:
         if item not in snapshot.items:
             raise NewContentSnapshotChangedError
         with self.selection_scope(snapshot):
-            return await self._select(item)
+            return await self._select(item, execution_identity)
 
-    async def _select(self, item: NewContentItem) -> NewContentDetail:
+    async def _select(
+        self, item: NewContentItem, execution_identity: ExecutionIdentity | None
+    ) -> NewContentDetail:
         if item.category == "autocard_sanctuary_effect":
             return format_new_content_autocard_sanctuary_effect_detail(item)
         if item.category == "achievement":
@@ -65,7 +73,13 @@ class NewContentDetailService:
             "peak_expert_pool",
             "peak_master_pool",
         }:
-            result = await self.pet.select_info(item.entity_id)
+            result = (
+                await self.pet.select_info(item.entity_id)
+                if execution_identity is None
+                else await self.pet.select_info(
+                    item.entity_id, execution_identity=execution_identity
+                )
+            )
         elif item.category == "pet_skin":
             result = await self.pet.select_image(
                 PetImageSelection(
