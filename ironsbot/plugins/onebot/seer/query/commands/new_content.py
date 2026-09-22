@@ -22,6 +22,7 @@ from ironsbot.integrations.onebot.matchers import (
     bind_async,
     update_queued_menu_anchor,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
@@ -295,7 +296,11 @@ async def _send_item_detail(
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     try:
-        detail = await services.details.select(snapshot, item)
+        detail = await services.details.select(
+            snapshot,
+            item,
+            execution_identity=message_input_context(event).execution_identity,
+        )
     except (NewContentSnapshotChangedError, DataPublicationChangedError):
         await matcher.finish("数据已更新，当前新增内容菜单已失效，重新发送指令查看。")
         return

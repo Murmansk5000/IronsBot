@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Protocol
 
 from nonebot.log import logger
@@ -10,6 +11,7 @@ from nonebot.log import logger
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
+    ExecutionIdentity,
     OutboundMessage,
     ReplyContext,
     SendResult,
@@ -69,6 +71,30 @@ class OneBotOutboundMessenger:
         self._router = router
         self._outbound = outbound
         self._enabled = enabled
+        self._identities: dict[str, ExecutionIdentity] = {}
+
+    async def _identity(self, bot: Any) -> ExecutionIdentity:
+        account_id = str(getattr(bot, "self_id", "")).strip()
+        if account_id in self._identities:
+            return self._identities[account_id]
+        nickname = ""
+        try:
+            response = await asyncio.wait_for(bot.get_login_info(), timeout=2)
+            if isinstance(response, dict):
+                nickname = str(response.get("nickname") or "").strip()
+        except Exception:  # noqa: BLE001 - nickname lookup must not block delivery
+            pass
+        if not nickname:
+            config = getattr(self._router, "config", None)
+            aliases = getattr(config, "bot_aliases", {})
+            nickname = next(
+                (name for name, value in aliases.items() if str(value) == account_id),
+                account_id,
+            )
+        identity = ExecutionIdentity(Platform.ONEBOT, account_id, nickname)
+        if account_id:
+            self._identities[account_id] = identity
+        return identity
 
     def capabilities_for(
         self,
@@ -111,6 +137,7 @@ class OneBotOutboundMessenger:
             return SendResult(
                 delivered=False,
                 error_code="outbound_disabled",
+                attempted=False,
                 error_message="OneBot outbound messaging is disabled",
                 failure_kind=DeliveryFailureKind.PERMANENT,
             )
@@ -118,6 +145,7 @@ class OneBotOutboundMessenger:
             return SendResult(
                 delivered=False,
                 error_code="unsupported_conversation",
+                attempted=False,
                 error_message=("OneBot only supports private and group conversations"),
                 failure_kind=DeliveryFailureKind.PERMANENT,
             )
@@ -131,6 +159,7 @@ class OneBotOutboundMessenger:
             return SendResult(
                 delivered=False,
                 error_code="unsupported_message",
+                attempted=False,
                 error_message=str(error),
                 failure_kind=DeliveryFailureKind.PERMANENT,
             )
@@ -152,9 +181,11 @@ class OneBotOutboundMessenger:
             return SendResult(
                 delivered=False,
                 error_code="bot_unavailable",
+                attempted=False,
                 error_message="No connected OneBot bot can deliver this message",
                 failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
+        identity = await self._identity(bot)
         decision = (
             await self._outbound.acquire_push(
                 _group_id(conversation),
@@ -167,8 +198,10 @@ class OneBotOutboundMessenger:
             return SendResult(
                 delivered=False,
                 error_code=decision.reason or "rate_limit",
+                attempted=False,
                 error_message="Outbound group message is rate limited",
                 failure_kind=DeliveryFailureKind.RETRYABLE,
+                execution_identity=identity,
             )
         try:
             with use_preacquired_push_permit(
@@ -190,6 +223,7 @@ class OneBotOutboundMessenger:
                 error_code="delivery_failed",
                 error_message=str(error),
                 failure_kind=_onebot_failure_kind(error),
+                execution_identity=identity,
             )
         message_id = onebot_result_message_id(result)
         if message_id is None:
@@ -198,8 +232,11 @@ class OneBotOutboundMessenger:
                 error_code="missing_message_id",
                 error_message="OneBot send response did not include message_id",
                 failure_kind=DeliveryFailureKind.UNCERTAIN,
+                execution_identity=identity,
             )
-        return SendResult(delivered=True, message_id=message_id)
+        return SendResult(
+            delivered=True, message_id=message_id, execution_identity=identity
+        )
 
 
 def _supports_conversation(conversation: ConversationRef) -> bool:

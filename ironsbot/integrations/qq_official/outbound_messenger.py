@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
+    ExecutionIdentity,
     SendResult,
 )
 from ironsbot.core.platform import Platform
@@ -77,6 +78,7 @@ class QQOfficialOutboundMessenger:
     reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
         default_factory=dict
     )
+    account_names: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.account_proactive = dict(self.account_proactive)
@@ -219,6 +221,11 @@ class QQOfficialOutboundMessenger:
         payloads = _reference_group_reply(payloads, reply_context)
         account_id = conversation.account_id
         assert account_id is not None
+        identity = ExecutionIdentity(
+            Platform.QQ_OFFICIAL,
+            account_id,
+            self.account_names.get(account_id, account_id),
+        )
         bot = self.bot_provider(account_id)
         if bot is None:
             return _failure(
@@ -272,15 +279,23 @@ class QQOfficialOutboundMessenger:
                     msg_seq=message_sequence,
                 )
         except Exception as error:  # noqa: BLE001 - transport boundary
-            return qq_official_exception_result(error)
+            return replace(
+                qq_official_exception_result(error), execution_identity=identity
+            )
         result_id = _result_id(result)
         if result_id is None:
-            return _failure(
-                "missing_message_id",
-                "QQ Official send response did not include a message id",
-                DeliveryFailureKind.UNCERTAIN,
+            return replace(
+                _failure(
+                    "missing_message_id",
+                    "QQ Official send response did not include a message id",
+                    DeliveryFailureKind.UNCERTAIN,
+                ),
+                execution_identity=identity,
+                attempted=True,
             )
-        return SendResult(delivered=True, message_id=result_id)
+        return SendResult(
+            delivered=True, message_id=result_id, execution_identity=identity
+        )
 
 
 def _supports_conversation(conversation: ConversationRef) -> bool:
@@ -330,4 +345,5 @@ def _failure(
         error_code=code,
         error_message=message,
         failure_kind=kind,
+        attempted=False,
     )

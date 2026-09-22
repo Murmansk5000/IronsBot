@@ -171,7 +171,7 @@ class _PortableNewContentOperations:
                 )
             if action.item is None:
                 return OutboundMessage.from_text("当前新增内容没有可展示的详情。")
-            return await self._detail(snapshot, action.item)
+            return await self._detail(snapshot, action.item, context)
 
         return self.sessions.offer_menu(
             context,
@@ -189,9 +189,12 @@ class _PortableNewContentOperations:
         self,
         snapshot: NewContentSnapshot,
         item: NewContentItem,
+        context: MessageInputContext,
     ) -> OutboundMessage:
         try:
-            detail = await self.resources.new_content_details.select(snapshot, item)
+            detail = await self.resources.new_content_details.select(
+                snapshot, item, execution_identity=context.execution_identity
+            )
         except (NewContentSnapshotChangedError, DataPublicationChangedError):
             return OutboundMessage.from_text(
                 "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"

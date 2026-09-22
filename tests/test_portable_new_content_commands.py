@@ -44,6 +44,7 @@ class _Details:
         self,
         _snapshot: NewContentSnapshot,
         item: NewContentItem,
+        **_kwargs: object,
     ) -> QueryReply | str:
         if item.category == "pet":
             return QueryReply(text=f"精灵详情:{item.entity_id}")

@@ -69,5 +69,6 @@ def install(group: SeerMatcherGroup) -> None:
             service.select_info,
             "请问你想查询的精灵是……",
             ActionDefinition("seer_pet_info", "精灵信息查询"),
+            with_execution_identity=True,
         )
     )

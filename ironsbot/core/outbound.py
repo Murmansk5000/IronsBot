@@ -8,7 +8,7 @@ from enum import Enum
 from string import Formatter
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
-from ironsbot.core.platform import validate_reply_deadline
+from ironsbot.core.platform import Platform, validate_reply_deadline
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -293,6 +293,17 @@ class DeliveryFailureKind(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionIdentity:
+    platform: Platform
+    account_id: str
+    display_name: str = ""
+
+    def describe(self) -> str:
+        label = "QQ" if self.platform is Platform.ONEBOT else "AppID"
+        return f"{self.display_name or self.account_id}（{label}：{self.account_id}）"
+
+
+@dataclass(frozen=True, slots=True)
 class SendResult:
     delivered: bool
     message_id: str | None = None
@@ -300,6 +311,8 @@ class SendResult:
     error_message: str | None = None
     trace_id: str | None = None
     failure_kind: DeliveryFailureKind | None = None
+    execution_identity: ExecutionIdentity | None = None
+    attempted: bool = True
 
     def __post_init__(self) -> None:
         if self.delivered and not (self.message_id or "").strip():

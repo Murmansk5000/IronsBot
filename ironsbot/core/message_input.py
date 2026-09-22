@@ -8,6 +8,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ironsbot.core.outbound import ExecutionIdentity
     from ironsbot.core.platform import ActorRef, IncomingMessageRef
 
 
@@ -27,6 +28,7 @@ class MessageInputContext:
     message: IncomingMessageRef
     mentions_bot: bool
     automatic_fallback_allowed: bool = True
+    execution_identity: ExecutionIdentity | None = None
 
     @property
     def text(self) -> str:
