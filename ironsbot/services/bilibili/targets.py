@@ -34,6 +34,7 @@ from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionRepository,
 )
 
+from .private_routes import BiliPrivateRoutes
 from .target_models import BiliConfiguredTargets, BiliPushTargets, BiliTargetRule
 from .target_rules import default_bili_target_rule
 
@@ -53,6 +54,7 @@ class BiliTargetService:
     preferences: BiliPushPreferenceStore
     unsubscribe_store: PushSubscriptionRepository
     account_names: BiliAccountNames = field(default_factory=BiliAccountNames)
+    private_routes: BiliPrivateRoutes = field(default_factory=BiliPrivateRoutes)
     linked_group_rules: dict[ConversationRef, BiliTargetRule] = field(
         default_factory=dict,
         compare=False,
@@ -85,7 +87,14 @@ class BiliTargetService:
         }
 
     def configured_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        return dict(self.configured_targets.private_rules)
+        configured = dict(self.configured_targets.private_rules)
+        return {
+            **{
+                self.private_routes.resolve(source): rule
+                for source, rule in configured.items()
+            },
+            **configured,
+        }
 
     def push_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         default_rule = default_bili_target_rule(self.config)
@@ -101,7 +110,7 @@ class BiliTargetService:
         return {
             conversation: configured.get(conversation, default_rule)
             for conversation in (
-                private_conversation_for_actor(actor)
+                self.private_routes.resolve(private_conversation_for_actor(actor))
                 for actor in self.features.private_actors_for_feature("bili_push")
             )
         }
