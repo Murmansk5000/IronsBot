@@ -21,7 +21,7 @@ def build_query_operation(
     sessions: PortableQuerySessions,
     spec: QueryOperationSpec[_T],
 ) -> PortableQueryOperation:
-    """Adapt one QueryResult service without duplicating its command grammar."""
+    """Adapt one query service without duplicating its command grammar."""
 
     async def execute(
         text: str,
@@ -31,10 +31,6 @@ def build_query_operation(
         if argument is None:
             msg = f"catalog accepted input that its query parser rejected: {text!r}"
             raise ValueError(msg)
-        return await sessions.begin(
-            context,
-            argument=argument,
-            spec=spec,
-        )
+        return await sessions.begin(context, argument=argument, spec=spec)
 
     return execute
