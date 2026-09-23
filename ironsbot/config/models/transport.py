@@ -8,6 +8,21 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class SelfCommandsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    prefixes: list[str] = Field(default_factory=lambda: ["演示 ", "示范 "])
+
+    @field_validator("prefixes")
+    @classmethod
+    def validate_prefixes(cls, value: list[str]) -> list[str]:
+        if not value or any(not prefix.strip() for prefix in value):
+            msg = "self command prefixes must contain non-whitespace text"
+            raise ValueError(msg)
+        return sorted(set(value), key=len, reverse=True)
+
+
 class OneBotConfig(BaseModel):
     """OneBot ingress and fallback outbound policy."""
 
@@ -16,6 +31,7 @@ class OneBotConfig(BaseModel):
     enabled: bool = True
     send_messages: bool = True
     identity_verification: bool = False
+    self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
     trusted_official_bots: dict[str, int] = Field(default_factory=dict)
 
     @field_validator("trusted_official_bots", mode="before")

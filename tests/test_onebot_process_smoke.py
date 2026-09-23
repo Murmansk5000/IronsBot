@@ -10,10 +10,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from websockets.sync.client import ClientConnection, connect
 
 BOT_ID = 111111111
 USER_ID = 123456789
+GROUP_ID = 456
 STARTUP_TIMEOUT_SECONDS = 30.0
 REPLY_TIMEOUT_SECONDS = 15.0
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +46,10 @@ port = {port}
 log_level = "INFO"
 plugin_manifest = "core"
 superusers = [{USER_ID}]
+
+[bot.onebot.self_commands]
+enabled = true
+prefixes = ["demo "]
 
 [operations.data_sync]
 on_startup = false
@@ -108,12 +114,31 @@ def _reply_text(action: dict[str, Any]) -> str:
     )
 
 
-def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
+def _assert_about_reply(action: dict[str, Any], *, self_command: bool) -> None:
+    assert "IronsBot" in _reply_text(action)
+    assert "版本：" in _reply_text(action)
+    if self_command:
+        assert action["params"]["group_id"] == GROUP_ID
+        segments = action["params"]["message"]
+        assert segments[0] == {"type": "reply", "data": {"id": "-123"}}
+        assert all(part["type"] != "at" for part in segments)
+    else:
+        assert action["params"]["user_id"] == USER_ID
+
+
+@pytest.mark.parametrize("self_command", [False, True])
+def test_full_process_handles_onebot_websocket_event(
+    tmp_path: Path, *, self_command: bool
+) -> None:
     port = _unused_local_port()
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(_config(port), encoding="utf-8")
     log_path = tmp_path / "process.log"
     environment = os.environ.copy()
+    for key in tuple(environment):
+        if key.startswith(("QQ_OFFICIAL_", "APP_ID_", "APP_SECRET_")):
+            del environment[key]
+    environment.pop("ONEBOT_ACCESS_TOKEN", None)
     environment["APP_CONFIG_PATH"] = str(config_path)
     environment["PYTHONPATH"] = os.pathsep.join(
         filter(None, (str(ROOT), environment.get("PYTHONPATH", "")))
@@ -131,7 +156,20 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
         )
         try:
             with _connect_when_ready(port) as websocket:
-                websocket.send(json.dumps(_private_about_event()))
+                event = _private_about_event()
+                if self_command:
+                    event.update(
+                        post_type="message_sent",
+                        message_type="group",
+                        sub_type="normal",
+                        group_id=GROUP_ID,
+                        user_id=BOT_ID,
+                        message_id=-123,
+                        raw_message="demo 关于",
+                        message=[{"type": "text", "data": {"text": "demo 关于"}}],
+                        sender={"user_id": BOT_ID, "role": "member"},
+                    )
+                websocket.send(json.dumps(event))
                 deadline = time.monotonic() + REPLY_TIMEOUT_SECONDS
                 try:
                     while time.monotonic() < deadline:
@@ -139,8 +177,9 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
                             websocket.recv(timeout=deadline - time.monotonic())
                         )
                         echo = action.get("echo")
-                        if action.get("action") in {"send_msg", "send_private_msg"}:
-                            text = _reply_text(action)
+                        if action.get("action") in {
+                            "send_msg", "send_private_msg", "send_group_msg"
+                        }:
                             websocket.send(
                                 json.dumps(
                                     {
@@ -151,9 +190,7 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
                                     }
                                 )
                             )
-                            assert action["params"]["user_id"] == USER_ID
-                            assert "IronsBot" in text
-                            assert "版本：" in text
+                            _assert_about_reply(action, self_command=self_command)
                             reply_received = True
                             break
                         websocket.send(

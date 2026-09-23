@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import nonebot
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.ai_health import check_configured_ai_api
@@ -49,6 +48,10 @@ from ironsbot.integrations.onebot.identity import (
 from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyService
+from ironsbot.integrations.onebot.self_commands import (
+    SelfCommandAdapter,
+    SelfCommandGate,
+)
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
@@ -212,7 +215,7 @@ async def _load_identity_links(  # noqa: PLR0913
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
-    driver.register_adapter(OneBotV11Adapter)
+    driver.register_adapter(SelfCommandAdapter)
     scheduler = SchedulerFacade()
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
@@ -488,6 +491,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.outbound_platform_selection.onebot_message_handling_enabled
         ),
         identity_observer=identity_observer,
+        self_commands=SelfCommandGate(settings.bot.onebot.self_commands),
     )
 
     def poke_reply_candidates(

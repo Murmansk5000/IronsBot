@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
+    Bot,
     Event,
     GroupMessageEvent,
     Message,
@@ -16,6 +17,7 @@ from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.self_commands import SelfCommandEvent, SelfCommandGate
 from ironsbot.services.identity_observation import OneBotGroupMessageObservation
 
 if TYPE_CHECKING:
@@ -25,12 +27,14 @@ if TYPE_CHECKING:
 
 _SILENT_REASON = "OneBot is running in silent verifier mode"
 _EVERYONE_REASON = "Messages mentioning everyone are not commands"
+_SELF_REASON = "Own-account message is not an accepted self command"
 
 
 @dataclass(frozen=True, slots=True)
 class OneBotIngressPolicy:
     messages_enabled: bool
     identity_observer: SilentIdentityObservationService | None = None
+    self_commands: SelfCommandGate | None = None
 
     async def process(self, event: Event) -> None:
         observation = _group_message_observation(event)
@@ -38,6 +42,16 @@ class OneBotIngressPolicy:
             await self.identity_observer.observe_onebot(observation)
         if not self.messages_enabled:
             raise IgnoredException(_SILENT_REASON)
+        if (
+            isinstance(event, GroupMessageEvent)
+            and event.user_id == event.self_id
+            and (
+                not isinstance(event, SelfCommandEvent)
+                or self.self_commands is None
+                or not self.self_commands.accept(event)
+            )
+        ):
+            raise IgnoredException(_SELF_REASON)
         if isinstance(event, GroupMessageEvent) and message_input_context(
             event
         ).mentions_everyone:
@@ -45,6 +59,8 @@ class OneBotIngressPolicy:
 
     def install(self) -> None:
         policy = self
+        if self.messages_enabled and self.self_commands is not None:
+            Bot.on_calling_api(self.self_commands.record_outbound)
 
         @event_preprocessor
         async def enforce_onebot_ingress(event: Event) -> None:
