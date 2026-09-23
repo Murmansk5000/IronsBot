@@ -8,7 +8,7 @@ import pytest
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -77,6 +77,9 @@ async def test_private_td_owner_can_manage_all_authorized_stages(
     assert isinstance(root, OutboundMessage)
     root_text = "".join(p.text for p in root.parts if isinstance(p, TextPart))
     assert "所有B站动态提醒（仅超管可修改）" not in root_text
+    sessions.record_delivery(
+        context, root, SendResult(delivered=True, message_id="root")
+    )
     changed = await sessions.select("1", context)
     assert isinstance(changed, OutboundMessage)
     assert service.unsubscribe_store.is_unsubscribed(

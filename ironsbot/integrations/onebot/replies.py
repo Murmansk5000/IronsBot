@@ -22,6 +22,7 @@ from ironsbot.core.outbound import (
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
+    parse_reply_message_id,
     render_onebot_outbound_message,
 )
 from ironsbot.integrations.onebot.outbound_messenger import onebot_result_message_id
@@ -195,7 +196,9 @@ def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Mes
     )
     rendered = Message()
     if presentation.context is not None:
-        rendered += MessageSegment.reply(int(presentation.context.message_id))
+        rendered += MessageSegment.reply(
+            parse_reply_message_id(presentation.context.message_id)
+        )
     if presentation.mention_actor is not None:
         rendered += MessageSegment.at(int(presentation.mention_actor.id))
         rendered += MessageSegment.text(presentation.mention_separator)

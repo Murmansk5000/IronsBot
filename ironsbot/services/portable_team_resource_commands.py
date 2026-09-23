@@ -70,6 +70,7 @@ def build_portable_team_resource_operations(
                 select=select,
                 prompt=OutboundMessage.from_text(format_team_overview(items)),
                 keep_open=True,
+                shareable=True,
                 exit_message="已退出战队查询。",
             ),
         )

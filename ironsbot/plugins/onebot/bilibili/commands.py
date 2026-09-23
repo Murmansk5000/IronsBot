@@ -22,7 +22,6 @@ from .command_rules import (
     is_dynamic_menu_command,
     is_update_dynamic_command,
 )
-from .dynamic_actions import handle_dynamic_menu_action
 from .update_actions import handle_update_dynamic_action
 
 if TYPE_CHECKING:
@@ -30,15 +29,30 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 
-def install(
+def install(  # noqa: PLR0913 - transport composition
     registry: MatcherFactory,
     service: BilibiliService,
     features: FeatureService,
     monitor: BilibiliMonitorService,
     targets: BiliTargetService,
+    query_sessions: PortableQuerySessions,
 ) -> None:
+    from ironsbot.integrations.onebot.portable_queries import (
+        make_portable_query_handler,
+    )
+    from ironsbot.services.portable_bilibili_commands import (
+        build_portable_bilibili_operations,
+    )
+
+    operations = build_portable_bilibili_operations(
+        service,
+        query_sessions,
+        notify_auth_invalid=monitor.notify_auth_invalid,
+        refresh_now=monitor.manual_refresh,
+    )
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query", help_ids=("bilibili.dynamic",)),
         rule=Rule(bind(is_dynamic_menu_command, features)) & explicit_command(),
@@ -46,11 +60,7 @@ def install(
         block=True,
     )
     dynamic_menu.append_handler(
-        bind_async(
-            handle_dynamic_menu_action,
-            service=service,
-            monitor=monitor,
-        )
+        make_portable_query_handler(operations["bilibili.dynamic"], query_sessions)
     )
 
     update_dynamic = registry.on_message(

@@ -225,7 +225,17 @@ def build_portable_player_operations(
         service,
         resolver,
         sessions,
-        features or FeatureService({}, {}, frozenset()),
+        features
+        or FeatureService(
+            {
+                _context("米米号", platform=platform).message.conversation: frozenset(
+                    {"seer_player"}
+                )
+                for platform in (Platform.ONEBOT, Platform.QQ_OFFICIAL)
+            },
+            {},
+            frozenset(),
+        ),
         extensions or PlayerDetailExtensionRegistry(),
     )
 
@@ -627,10 +637,12 @@ async def test_player_query_menu_includes_available_shared_extension(
         ),
     )
     selected = await sessions.select(selection, selection_context, allow_deferred=True)
-    assert isinstance(selected, PortableReply)
-    part = selected.message.parts[0]
+    assert isinstance(selected, OutboundMessage if revoke else PortableReply)
+    part = (
+        selected if isinstance(selected, OutboundMessage) else selected.message
+    ).parts[0]
     assert isinstance(part, TextPart)
-    assert part.text == ("该功能当前未对你开放。" if revoke else "team detail")
+    assert part.text == ("当前会话没有使用该选项的权限。" if revoke else "team detail")
 
 
 @pytest.mark.asyncio
@@ -657,6 +669,11 @@ async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
         await operations["seer.player.query"](owner.text, owner),
     )
     initial.delivered()
+    from ironsbot.core.outbound import SendResult
+
+    sessions.record_delivery(
+        owner, initial.message, SendResult(delivered=True, message_id="current-menu")
+    )
     responder = _context(
         "1",
         actor_id="other-member",
@@ -670,7 +687,7 @@ async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
     assert isinstance(result, OutboundMessage)
     part = result.parts[0]
     assert isinstance(part, TextPart)
-    assert part.text == "该功能当前未对你开放。"
+    assert part.text == "当前会话没有使用该选项的权限。"
     assert sessions.has_active_session(owner)
     assert not sessions.has_active_session(responder)
 

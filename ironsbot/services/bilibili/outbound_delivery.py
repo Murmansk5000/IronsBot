@@ -348,7 +348,8 @@ class BilibiliDynamicOutboundSender:
             for target in summary.failed
             if results.get(target) is None
             or (
-                results[target].failure_kind
+                results[target].attempted
+                and results[target].failure_kind
                 is not DeliveryFailureKind.TRANSPORT_UNAVAILABLE
             )
         )
@@ -381,7 +382,7 @@ class BilibiliDynamicOutboundSender:
         target_lines = []
         for conversation in conversations:
             result = results.get(conversation)
-            identity = None
+            identity = result.execution_identity if result is not None else None
             target_lines.append(
                 f"失败目标：{'群' if conversation.kind == 'group' else '私聊'} "
                 f"{conversation.id}\n执行机器人："
