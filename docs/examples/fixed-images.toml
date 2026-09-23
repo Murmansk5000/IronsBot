@@ -1,11 +1,10 @@
-# 原版固定图片口令的可选配置片段，不是完整运行配置。
-# 合入已有 [messaging.sendpic]，不要重复声明该表。
-# 将原版五张 PNG 放入 local_root；容器内路径示例为 /app/data/sendpic。
+# 内置固定图片口令的完整覆盖示例，不是完整运行配置。
+# 默认无需配置；只有要用自己的图片替换内置素材时才合入运行配置。
 [messaging.sendpic]
 local_root = "data/sendpic"
 
 [[messaging.sendpic.configs]]
-id = "training-table"
+id = "study-table"
 backend = "local"
 command = "学习力"
 aliases = ["学习力表","学习力表格"]
@@ -21,7 +20,7 @@ mode = "single"
 image_file = "巅峰姬.png"
 
 [[messaging.sendpic.configs]]
-id = "priority-guide"
+id = "initiative"
 backend = "local"
 command = "必先"
 aliases = []

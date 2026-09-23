@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -55,7 +56,7 @@ class PicConfig(BaseModel):
 
     id: str
     enabled: bool = True
-    backend: Literal["cnb", "local"]
+    backend: Literal["builtin", "cnb", "local"]
     command: str
     aliases: NormalizedStringSet = Field(default_factory=set)
     mode: Literal["single", "indexed"]
@@ -77,13 +78,88 @@ class PicConfig(BaseModel):
         return self
 
 
+def default_sendpic_configs() -> list[PicConfig]:
+    """Return the packaged fixed-image commands."""
+
+    return [
+        PicConfig(
+            id="study-table",
+            backend="builtin",
+            command="学习力",
+            aliases={"学习力表", "学习力表格"},
+            mode="single",
+            image_file="学习力表格.png",
+        ),
+        PicConfig(
+            id="peak-guide",
+            backend="builtin",
+            command="巅峰姬",
+            mode="single",
+            image_file="巅峰姬.png",
+        ),
+        PicConfig(
+            id="initiative",
+            backend="builtin",
+            command="必先",
+            mode="single",
+            image_file="必先.png",
+        ),
+        PicConfig(
+            id="skill-stone",
+            backend="builtin",
+            command="技能石",
+            mode="single",
+            image_file="技能石.png",
+        ),
+        PicConfig(
+            id="anniversary-random-table",
+            backend="builtin",
+            command="周年庆伪随机表",
+            aliases={"伪随机表"},
+            mode="single",
+            image_file="周年庆伪随机表.png",
+        ),
+    ]
+
+
 class SendpicBehaviorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cnb_token: str | None = Field(default=None, exclude=True, repr=False)
     cnb_repo: str | None = None
     local_root: Path = Path("sendpic")
-    configs: list[PicConfig] = Field(default_factory=list)
+    configs: list[PicConfig] = Field(default_factory=default_sendpic_configs)
+
+    @model_validator(mode="before")
+    @classmethod
+    def merge_packaged_commands(cls, value: object) -> object:
+        """Merge user overrides and additions with packaged image commands."""
+
+        if not isinstance(value, Mapping):
+            return value
+        raw_configs = value.get("configs")
+        if raw_configs is None or not isinstance(raw_configs, list):
+            return value
+
+        defaults = {
+            config.id: config.model_dump(mode="json")
+            for config in default_sendpic_configs()
+        }
+        extra_configs: list[object] = []
+        seen_ids: set[str] = set()
+        for raw_config in raw_configs:
+            if not isinstance(raw_config, Mapping):
+                return value
+            raw_id = str(raw_config.get("id", "")).strip()
+            if raw_id in seen_ids:
+                raise ValueError("图片命令 ID 重复：" + raw_id)
+            seen_ids.add(raw_id)
+            if raw_id in defaults:
+                defaults[raw_id].update(raw_config)
+            else:
+                extra_configs.append(raw_config)
+
+        return {**value, "configs": [*defaults.values(), *extra_configs]}
 
     @model_validator(mode="after")
     def validate_unique_ids(self) -> Self:

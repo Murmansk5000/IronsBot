@@ -47,7 +47,7 @@ nonebot-adapter-onebot = [
 include = ["ironsbot*"]
 
 [tool.setuptools.package-data]
-ironsbot = ["manifests/*.toml"]
+ironsbot = ["manifests/*.toml", "integrations/assets/sendpic/*.png"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
