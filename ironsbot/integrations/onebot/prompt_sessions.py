@@ -15,6 +15,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegme
 from nonebot.rule import Rule
 
 from ironsbot.integrations.onebot.message_input import event_reply_message_id
+from ironsbot.integrations.onebot.self_commands import is_unaccepted_self_message
 from ironsbot.integrations.onebot.session_identity import event_session_key
 
 if TYPE_CHECKING:
@@ -60,7 +61,7 @@ def is_current_group_menu_reply(
         return False
     if event.group_id != anchor.group_id or event.self_id != anchor.bot_user_id:
         return False
-    if event.user_id == event.self_id:
+    if is_unaccepted_self_message(event):
         return False
     # The reply sender metadata is optional in OneBot events.  The tracked
     # message ID was obtained from the bot's own send result, so it is the
