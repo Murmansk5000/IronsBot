@@ -66,3 +66,43 @@ def test_manifest_generator_scans_git_history_once(monkeypatch: MonkeyPatch) -> 
         "seer.autocard.sanctuary": "2026-08-02T00:00:00+00:00",
     }
     assert len(calls) == 1
+
+
+def test_manifest_generator_uses_checked_in_seed_without_archive(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    seed = tmp_path / "poke-command-introductions.json"
+    seed.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "commands": {"legacy.command": "2026-08-01T00:00:00+08:00"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "scripts.generate_poke_command_introductions._git_object_exists",
+        lambda _revision: False,
+    )
+    monkeypatch.setattr(
+        "scripts.generate_poke_command_introductions._git_lines",
+        lambda *_args: ["ok"],
+    )
+    monkeypatch.setattr(
+        "scripts.generate_poke_command_introductions._introduced_timestamps",
+        lambda _ids: {"new.command": "2026-09-23T00:00:00+08:00"},
+    )
+    monkeypatch.setattr(
+        "scripts.generate_poke_command_introductions.MANIFEST_PATH",
+        seed,
+    )
+    from scripts.generate_poke_command_introductions import build_manifest
+
+    manifest = build_manifest(("legacy.command", "new.command"))
+
+    assert manifest["commands"] == {
+        "legacy.command": "2026-08-01T00:00:00+08:00",
+        "new.command": "2026-09-23T00:00:00+08:00",
+    }
