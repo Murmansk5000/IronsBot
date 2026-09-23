@@ -8,12 +8,15 @@ from unittest.mock import Mock
 import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Adapter, Bot, Message, MessageSegment
+from nonebot.exception import IgnoredException
 from nonebot.matcher import matchers
 from nonebot.message import handle_event
 
+from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.response_admission import ResponseAdmissionDecision
+from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import (
@@ -21,6 +24,10 @@ from ironsbot.integrations.onebot.portable_queries import (
     make_portable_query_handler,
 )
 from ironsbot.integrations.onebot.prompt_sessions import PromptSessionManager
+from ironsbot.integrations.onebot.self_commands import (
+    SelfCommandAdapter,
+    SelfCommandGate,
+)
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessions,
@@ -120,6 +127,42 @@ def _reply(text: str, *, user: int, anchor: int, shape: str = "metadata", bot: i
     else:
         event.original_message = quoted
     return event
+
+
+@pytest.mark.asyncio
+async def test_prefixed_self_menu_selection_cancel_and_replay(
+    ingress: SimpleNamespace,
+) -> None:
+    policy = OneBotIngressPolicy(
+        messages_enabled=True,
+        self_commands=SelfCommandGate(
+            SelfCommandsConfig(enabled=True, prefixes=["demo "])
+        ),
+    )
+
+    async def deliver(text: str, message_id: int) -> None:
+        data = group_message_event(text, user_id=1, message_id=message_id).model_dump()
+        data["post_type"] = "message_sent"
+        event = SelfCommandAdapter.json_to_event(data)
+        assert event is not None
+        await policy.process(event)
+        await handle_event(ingress.bots[0], event)
+
+    await deliver("demo 菜单", -10)
+    assert len(ingress.sends) == 1
+    with pytest.raises(IgnoredException):
+        await deliver("1", -11)
+    await deliver("demo 1", -12)
+    with pytest.raises(IgnoredException):
+        await deliver("demo 1", -12)
+    await deliver("demo 2", -13)
+    await deliver("demo 0", -14)
+    assert ingress.selected == [("1", 1), ("1", 2)]
+    assert not ingress.sessions.has_active_session(
+        message_input_context(group_message_event(user_id=1))
+    )
+    for sent in ingress.sends:
+        assert not any(part.type == "at" for part in sent["message"])
 
 
 @pytest.mark.asyncio
