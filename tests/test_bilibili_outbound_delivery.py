@@ -8,6 +8,7 @@ import pytest
 from ironsbot.core.outbound import (
     BinaryImagePart,
     DeliveryFailureKind,
+    ExecutionIdentity,
     OutboundMessage,
     RemoteImagePart,
     SendResult,
@@ -50,6 +51,8 @@ if TYPE_CHECKING:
 
 PUB_TS = 1781004683
 AUTHOR_MID = 1310714247
+TWO_IMAGES = 2
+EXPECTED_GROUPED_MEDIA_PARTS = 4
 
 
 def _group(group_id: int) -> ConversationRef:
@@ -191,6 +194,39 @@ class _SkippedDelivery:
         )
 
 
+@dataclass
+class _ImageStageFailureDelivery(_RecordingDelivery):
+    async def send(
+        self,
+        message: OutboundMessage,
+        conversations: Iterable[ConversationRef],
+        **kwargs: object,
+    ) -> ProactiveDeliverySummary:
+        selected = tuple(conversations)
+        self.content_calls.append(
+            {"message": message, "conversations": selected, **kwargs}
+        )
+        if isinstance(message.parts[0], TextPart):
+            return ProactiveDeliverySummary(selected, ())
+        result = SendResult(
+            delivered=False,
+            message_id="first-image-payload",
+            error_code="partial_delivery",
+            failure_kind=DeliveryFailureKind.UNCERTAIN,
+            execution_identity=ExecutionIdentity(
+                Platform.QQ_OFFICIAL,
+                "1900000000",
+                "测试机器人",
+            ),
+        )
+        return ProactiveDeliverySummary(
+            (),
+            selected,
+            uncertain=selected,
+            results=tuple((conversation, result) for conversation in selected),
+        )
+
+
 def test_portable_renderers_keep_text_and_remote_images() -> None:
     link = render_dynamic_link_message(_item(), PUB_TS)
     text = render_dynamic_text_message(_item())
@@ -208,9 +244,16 @@ def test_portable_renderers_keep_text_and_remote_images() -> None:
 @pytest.mark.asyncio
 async def test_two_static_dynamic_images_are_sent_as_one_collage() -> None:
     item = _item()
+    item["id_str"] = "1251206438863241235"
     item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
-        {"url": "https://example.test/one.png"},
-        {"url": "https://example.test/two.png"},
+        {
+            "url": "http://i0.hdslb.com/bfs/new_dyn/"
+            "05d1b15e742ad534eacddda98817729b1310714247.png"
+        },
+        {
+            "url": "http://i0.hdslb.com/bfs/new_dyn/"
+            "a7158382f92d90d8c666e61ea87c10761310714247.png"
+        },
     ]
 
     async def fetch(url: str, _max_bytes: int) -> bytes:
@@ -222,10 +265,7 @@ async def test_two_static_dynamic_images_are_sent_as_one_collage() -> None:
         max_side: int,
         max_pixels: int,
     ) -> bytes:
-        assert image_bytes == (
-            b"https://example.test/one.png",
-            b"https://example.test/two.png",
-        )
+        assert len(image_bytes) == TWO_IMAGES
         assert max_side > 0
         assert max_pixels > 0
         return b"combined"
@@ -239,6 +279,78 @@ async def test_two_static_dynamic_images_are_sent_as_one_collage() -> None:
     assert message.parts == (
         BinaryImagePart(b"combined", "image/png", "dynamic.png"),
     )
+
+
+@pytest.mark.asyncio
+async def test_disabled_image_combining_keeps_every_original_media() -> None:
+    item = _item()
+    urls = ("https://example.test/one.png", "https://example.test/two.gif")
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
+        {"url": url} for url in urls
+    ]
+
+    async def unexpected_fetch(_url: str, _max_bytes: int) -> bytes:
+        raise AssertionError
+
+    message = await prepare_dynamic_image_message(
+        item,
+        ImageCollageService(
+            unexpected_fetch,
+            lambda image_bytes, **_kwargs: b"".join(image_bytes),
+        ),
+        combine_images=False,
+    )
+
+    assert message is not None
+    assert message.parts == tuple(RemoteImagePart(url) for url in urls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("dynamic_id", "media_types"),
+    [
+        ("1251156187788869657", ("jpg", *("gif",) * 5, "jpg", *("gif",) * 5)),
+        ("1251152322276360231", ("jpg", *("gif",) * 4, "jpg", *("gif",) * 4)),
+    ],
+)
+async def test_emperor_guard_dynamics_merge_consecutive_gifs_vertically(
+    dynamic_id: str,
+    media_types: tuple[str, ...],
+) -> None:
+    item = _item()
+    item["id_str"] = dynamic_id
+    urls = tuple(
+        f"https://i0.hdslb.com/bfs/new_dyn/{dynamic_id}-{index}.{media_type}"
+        for index, media_type in enumerate(media_types)
+    )
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
+        {"url": url} for url in urls
+    ]
+
+    async def fetch(url: str, _max_bytes: int) -> bytes:
+        return (
+            b"animated:" + url.encode()
+            if url.endswith(".gif")
+            else b"static:" + url.encode()
+        )
+
+    service = ImageCollageService(
+        fetch,
+        lambda image_bytes, **_kwargs: b"static:" + b"|".join(image_bytes),
+        render_animation=lambda image_bytes: b"gif:" + b"|".join(image_bytes),
+        inspect_animation=lambda image_bytes: image_bytes.startswith(b"animated:"),
+    )
+    message = await prepare_dynamic_image_message(item, service)
+
+    assert message is not None
+    assert len(message.parts) == EXPECTED_GROUPED_MEDIA_PARTS
+    assert message.parts[0] == RemoteImagePart(urls[0])
+    assert isinstance(message.parts[1], BinaryImagePart)
+    assert message.parts[1].content_type == "image/gif"
+    second_static_index = media_types.index("jpg", 1)
+    assert message.parts[2] == RemoteImagePart(urls[second_static_index])
+    assert isinstance(message.parts[3], BinaryImagePart)
+    assert message.parts[3].content_type == "image/gif"
 
 
 @pytest.mark.asyncio
@@ -383,6 +495,34 @@ async def test_text_and_image_failures_share_one_admin_notice(
     assert len(admin_notices.messages) == 1
     message, _kwargs = admin_notices.messages[0]
     assert message.count("私聊 2001") == 1
+
+
+@pytest.mark.asyncio
+async def test_only_the_actual_failed_stage_is_reported(
+    tmp_path: Path,
+) -> None:
+    delivery = _ImageStageFailureDelivery()
+    admin_notices = _RecordingAdminNotices()
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+        admin_notices=admin_notices,  # type: ignore[arg-type]
+    )
+
+    await sender.send(
+        _item(),
+        PUB_TS,
+        AUTHOR_MID,
+        _targets(full_users=(2001,)),
+    )
+
+    assert len(admin_notices.messages) == 1
+    message, _kwargs = admin_notices.messages[0]
+    assert "失败阶段：图片" in message
+    assert "失败阶段：正文" not in message
+    assert "失败阶段：链接" not in message
+    assert "执行机器人：测试机器人（AppID：1900000000）" in message
+    assert "其他成功阶段不受影响" in message
 
 
 @pytest.mark.asyncio

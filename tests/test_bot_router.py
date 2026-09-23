@@ -171,6 +171,7 @@ def test_bot_router_ignores_unconfigured_group_by_default(
     conversation = _group(987654321)
     assert router.for_conversation(conversation) is None
     assert not router.allows_incoming(main_bot.self_id, conversation)
+    assert not router.allows_outbound(conversation)
 
 
 def test_bot_router_default_owns_unconfigured_group_when_enabled(
@@ -189,3 +190,4 @@ def test_bot_router_default_owns_unconfigured_group_when_enabled(
     assert router.for_conversation(conversation) is main_bot
     assert router.allows_incoming(main_bot.self_id, conversation)
     assert not router.allows_incoming(backup_bot.self_id, conversation)
+    assert router.allows_outbound(conversation)

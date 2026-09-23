@@ -8,7 +8,9 @@ import httpx
 import pytest
 from PIL import Image
 
+from ironsbot.integrations import animated_collage
 from ironsbot.integrations.animated_collage import (
+    MAX_OUTPUT_BYTES,
     inspect_animation,
     render_vertical_animation,
 )
@@ -29,6 +31,9 @@ MAX_PIXELS = 40_000_000
 TEST_DOWNLOAD_CONCURRENCY = 2
 EXPECTED_ANIMATION_FRAMES = 2
 EXPECTED_MEDIA_GROUPS = 2
+MAX_COMBINED_ANIMATION_FRAMES = 100
+MAX_COMBINED_ANIMATION_DURATION_MS = 10_000
+MIN_QUALITY_WIDTH = 480
 
 
 def _png(width: int, height: int, color: tuple[int, int, int, int]) -> bytes:
@@ -204,6 +209,7 @@ def test_animated_collage_stacks_rows_without_changing_aspect_ratio() -> None:
             _gif(20, 40, ((0, 0, 255, 255), (255, 255, 0, 255))),
         )
     )
+    assert len(result) <= MAX_OUTPUT_BYTES
 
     with Image.open(BytesIO(result)) as image:
         assert bool(getattr(image, "is_animated", False))
@@ -214,6 +220,61 @@ def test_animated_collage_stacks_rows_without_changing_aspect_ratio() -> None:
         assert rgba.getpixel((20, 10)) == (255, 0, 0, 255)
         assert rgba.getpixel((20, 40)) == (0, 0, 255, 255)
         assert rgba.getchannel("A").getpixel((5, 40)) == 0
+
+
+def test_animated_collage_caps_duration_and_frame_count() -> None:
+    colors = tuple(
+        ((index * 31) % 256, (index * 47) % 256, (index * 67) % 256, 255)
+        for index in range(120)
+    )
+    result = render_vertical_animation(
+        (
+            _gif(2, 2, colors, duration=100),
+            _gif(2, 2, tuple(reversed(colors)), duration=100),
+        )
+    )
+
+    with Image.open(BytesIO(result)) as image:
+        frame_count = int(getattr(image, "n_frames", 1))
+        durations = []
+        for index in range(frame_count):
+            image.seek(index)
+            durations.append(int(image.info.get("duration", 0)))
+        assert frame_count <= MAX_COMBINED_ANIMATION_FRAMES
+        assert sum(durations) <= MAX_COMBINED_ANIMATION_DURATION_MS
+        assert image.info.get("loop") == 0
+
+
+def test_animated_collage_uses_the_full_quality_ladder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempted_widths: list[int] = []
+
+    def fake_render(
+        _animations: Sequence[object],
+        *,
+        max_width: int,
+        max_height: int,
+        max_pixels: int,
+        max_frames: int,
+        colors: int,
+    ) -> bytes:
+        del max_height, max_pixels, max_frames, colors
+        attempted_widths.append(max_width)
+        return b"fits" if max_width == MIN_QUALITY_WIDTH else b"too-large"
+
+    monkeypatch.setattr(animated_collage, "MAX_OUTPUT_BYTES", len(b"fits"))
+    monkeypatch.setattr(animated_collage, "_render_quality", fake_render)
+
+    result = render_vertical_animation(
+        (
+            _gif(2, 2, ((255, 0, 0, 255), (0, 255, 0, 255))),
+            _gif(2, 2, ((0, 0, 255, 255), (255, 255, 0, 255))),
+        )
+    )
+
+    assert result == b"fits"
+    assert attempted_widths == [1280, 1024, 768, MIN_QUALITY_WIDTH]
 
 
 @pytest.mark.asyncio
@@ -262,6 +323,58 @@ async def test_service_deduplicates_urls_and_identical_content() -> None:
 
     assert len(outputs) == 1
     assert outputs[0].content is not None
+
+
+@pytest.mark.asyncio
+async def test_media_limit_is_applied_to_each_consecutive_group() -> None:
+    static_urls = tuple(f"static-{index}" for index in range(10))
+    animated_urls = tuple(f"animated-{index}" for index in range(10))
+
+    async def fetch(url: str, _max_bytes: int) -> bytes:
+        index = int(url.rsplit("-", 1)[1])
+        colors = (
+            ((index * 19) % 256, 0, 0, 255),
+            (0, (index * 23 + 1) % 256, 0, 255),
+        )
+        return _gif(2, 2, colors) if url.startswith("animated") else _png(
+            2, 2, colors[0]
+        )
+
+    service = ImageCollageService(
+        fetch,
+        lambda image_bytes, **_kwargs: b"static:" + b"|".join(image_bytes),
+        render_animation=lambda image_bytes: b"animated:" + b"|".join(image_bytes),
+        inspect_animation=inspect_animation,
+        max_images=18,
+    )
+    outputs = await service.prepare_urls((*static_urls, *animated_urls))
+
+    assert len(outputs) == EXPECTED_MEDIA_GROUPS
+    assert outputs[0].content_type == "image/png"
+    assert outputs[1].content_type == "image/gif"
+
+
+@pytest.mark.asyncio
+async def test_oversized_consecutive_group_falls_back_to_original_media() -> None:
+    urls = tuple(f"animated-{index}" for index in range(19))
+
+    async def fetch(url: str, _max_bytes: int) -> bytes:
+        return b"animated:" + url.encode()
+
+    def unexpected_render(image_bytes: Sequence[bytes]) -> bytes:
+        del image_bytes
+        raise AssertionError
+
+    service = ImageCollageService(
+        fetch,
+        render_adaptive_collage,
+        render_animation=unexpected_render,
+        inspect_animation=lambda image_bytes: image_bytes.startswith(b"animated:"),
+        max_images=18,
+    )
+    outputs = await service.prepare_urls(urls)
+
+    assert tuple(output.url for output in outputs) == urls
 
 
 @pytest.mark.asyncio

@@ -98,12 +98,29 @@ def build_common_components(
         settings.onebot_references,
         settings.bot.use_default_for_unconfigured_groups,
     )
+    routed_onebot_groups = (
+        {
+            settings.onebot_references.resolve_group(
+                target_ref,
+                location=f"messaging.bot_routing.groups.{target_ref}",
+            )
+            for target_ref in settings.messaging.bot_routing.groups
+        }
+        if settings.messaging.bot_routing.enabled
+        else set()
+    )
+    known_onebot_groups = {
+        target.qq
+        for target in settings.identities.groups.values()
+        if target.qq is not None
+    }
     _LOGGER.info(
         "group default routing configured: enabled=%s known_groups=%d "
-        "onebot_routes=%d",
+        "onebot_routes=%d unconfigured_onebot_groups=%d",
         settings.bot.use_default_for_unconfigured_groups,
         len(settings.identities.groups),
-        len(settings.messaging.bot_routing.groups),
+        len(routed_onebot_groups),
+        len(known_onebot_groups - routed_onebot_groups),
     )
     promotions = PromotionCatalog(settings.promotions)
     platform_selection = settings.outbound_platform_selection
@@ -247,10 +264,17 @@ def _build_qq_official_ingress_routing(
     )
     _LOGGER.info(
         "QQ Official group routing configured: default_for_unconfigured=%s "
-        "known_endpoints=%d preferred_groups=%d",
+        "known_endpoints=%d preferred_groups=%d unconfigured_groups=%d",
         settings.bot.use_default_for_unconfigured_groups,
         sum(len(target.official) for target in settings.identities.groups.values()),
         len(preferred_accounts),
+        sum(
+            1
+            for target in settings.identities.groups.values()
+            if target.qq is not None
+            and target.official
+            and str(target.qq) not in preferred_accounts
+        ),
     )
     for target in settings.identities.groups.values():
         if target.qq is None:

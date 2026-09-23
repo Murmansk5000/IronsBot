@@ -87,6 +87,24 @@ class BotRouter:
         )
         return default_bot_id is not None and bot_id == default_bot_id
 
+    def allows_outbound(self, conversation: ConversationRef) -> bool:
+        """Return whether policy assigns any bot to this conversation."""
+
+        if (
+            conversation.platform is not Platform.ONEBOT
+            or conversation.kind not in {"private", "group"}
+            or not conversation.id.isdecimal()
+            or int(conversation.id) <= 0
+        ):
+            return False
+        if self.config.enabled and self._configured_bot_id(conversation) is not None:
+            return True
+        if conversation.kind == "group" and not (
+            self.use_default_for_unconfigured_groups
+        ):
+            return False
+        return self.config.default_bot is not None
+
     def for_conversation(self, conversation: ConversationRef) -> Bot | None:
         """Route one typed OneBot conversation at the integration edge."""
 

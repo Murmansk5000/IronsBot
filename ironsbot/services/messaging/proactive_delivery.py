@@ -179,7 +179,8 @@ class ProactiveMessageDelivery:
         )
         if skipped:
             _LOGGER.info(
-                "%s skipped %d target(s) before a platform send attempt",
+                "%s skipped %d target(s) by routing or platform policy before "
+                "a send attempt",
                 action_name,
                 skipped,
             )

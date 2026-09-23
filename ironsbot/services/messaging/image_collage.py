@@ -136,8 +136,6 @@ class ImageCollageService:
         normalized = tuple(dict.fromkeys(url.strip() for url in urls if url.strip()))
         if not normalized:
             return ()
-        if len(normalized) > self.max_images:
-            raise ImageCollageError.invalid_count(len(normalized), self.max_images)
         semaphore = asyncio.Semaphore(self.download_concurrency)
 
         async def fetch(url: str) -> bytes | None:
@@ -175,6 +173,8 @@ class ImageCollageService:
                 return
             if len(group) == 1:
                 outputs.append(PreparedImage(url=group[0][0]))
+            elif len(group) > self.max_images:
+                outputs.extend(PreparedImage(url=item[0]) for item in group)
             else:
                 try:
                     content = (

@@ -48,6 +48,10 @@ class _Bot:
 @dataclass
 class _Router:
     bot: _Bot | None
+    allowed: bool = True
+
+    def allows_outbound(self, _conversation: ConversationRef) -> bool:
+        return self.allowed
 
     def for_conversation(self, _conversation: ConversationRef) -> _Bot | None:
         return self.bot
