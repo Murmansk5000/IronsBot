@@ -154,7 +154,7 @@ class ProactiveMessageDelivery:
                 state.failed.update(request.conversation for request in next_pending)
                 break
             pending = next_pending
-        return ProactiveDeliverySummary(
+        summary = ProactiveDeliverySummary(
             tuple(
                 request.conversation
                 for request in selected
@@ -172,6 +172,18 @@ class ProactiveMessageDelivery:
             ),
             tuple(state.results.items()),
         )
+        skipped = sum(
+            1
+            for result in state.results.values()
+            if not result.delivered and not result.attempted
+        )
+        if skipped:
+            _LOGGER.info(
+                "%s skipped %d target(s) before a platform send attempt",
+                action_name,
+                skipped,
+            )
+        return summary
 
     async def _run_attempt(  # noqa: PLR0913 - explicit delivery controls
         self,
@@ -265,6 +277,7 @@ class ProactiveMessageDelivery:
             return SendResult(
                 delivered=False,
                 error_code="unsupported_conversation",
+                attempted=False,
                 failure_kind=DeliveryFailureKind.PERMANENT,
             )
 

@@ -5,7 +5,14 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    DeliveryFailureKind,
+    OutboundMessage,
+    RemoteImagePart,
+    SendResult,
+    TextPart,
+)
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -19,6 +26,7 @@ from ironsbot.services.bilibili.outbound_delivery import (
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliDynamicOutboundSender,
+    prepare_dynamic_image_message,
     render_dynamic_content_message,
     render_dynamic_image_message,
     render_dynamic_link_message,
@@ -29,13 +37,14 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.target_models import BiliPushTargets
+from ironsbot.services.messaging.image_collage import ImageCollageService
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     ProactiveDeliverySummary,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
     from pathlib import Path
 
 
@@ -142,6 +151,46 @@ class _RecordingAdminNotices:
         self.messages.append((message, kwargs))
 
 
+@dataclass
+class _SkippedDelivery:
+    async def send_many(
+        self,
+        requests: Iterable[ProactiveDeliveryRequest],
+        **_kwargs: object,
+    ) -> ProactiveDeliverySummary:
+        conversations = tuple(request.conversation for request in requests)
+        result = SendResult(
+            delivered=False,
+            error_code="unsupported_conversation",
+            attempted=False,
+            failure_kind=DeliveryFailureKind.PERMANENT,
+        )
+        return ProactiveDeliverySummary(
+            (),
+            conversations,
+            results=tuple((conversation, result) for conversation in conversations),
+        )
+
+    async def send(
+        self,
+        _message: OutboundMessage,
+        conversations: Iterable[ConversationRef],
+        **_kwargs: object,
+    ) -> ProactiveDeliverySummary:
+        selected = tuple(conversations)
+        result = SendResult(
+            delivered=False,
+            error_code="unsupported_conversation",
+            attempted=False,
+            failure_kind=DeliveryFailureKind.PERMANENT,
+        )
+        return ProactiveDeliverySummary(
+            (),
+            selected,
+            results=tuple((conversation, result) for conversation in selected),
+        )
+
+
 def test_portable_renderers_keep_text_and_remote_images() -> None:
     link = render_dynamic_link_message(_item(), PUB_TS)
     text = render_dynamic_text_message(_item())
@@ -154,6 +203,42 @@ def test_portable_renderers_keep_text_and_remote_images() -> None:
     assert "正文内容" in str(text.parts[0])
     assert isinstance(images.parts[0], RemoteImagePart)
     assert images.parts[0].url == "http://i0.hdslb.com/bfs/new_dyn/test.jpg"
+
+
+@pytest.mark.asyncio
+async def test_two_static_dynamic_images_are_sent_as_one_collage() -> None:
+    item = _item()
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
+        {"url": "https://example.test/one.png"},
+        {"url": "https://example.test/two.png"},
+    ]
+
+    async def fetch(url: str, _max_bytes: int) -> bytes:
+        return url.encode()
+
+    def render(
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+    ) -> bytes:
+        assert image_bytes == (
+            b"https://example.test/one.png",
+            b"https://example.test/two.png",
+        )
+        assert max_side > 0
+        assert max_pixels > 0
+        return b"combined"
+
+    message = await prepare_dynamic_image_message(
+        item,
+        ImageCollageService(fetch, render),
+    )
+
+    assert message is not None
+    assert message.parts == (
+        BinaryImagePart(b"combined", "image/png", "dynamic.png"),
+    )
 
 
 @pytest.mark.asyncio
@@ -252,6 +337,27 @@ async def test_content_failure_after_shared_policy_notifies_admins(
     assert "执行机器人：未确定" in message
     assert "不自动补发" in message
     assert kwargs["action_name"] == "Bilibili dynamic content delivery failure"
+
+
+@pytest.mark.asyncio
+async def test_policy_skips_do_not_report_bilibili_delivery_failure(
+    tmp_path: Path,
+) -> None:
+    admin_notices = _RecordingAdminNotices()
+    sender = BilibiliDynamicOutboundSender(
+        _SkippedDelivery(),  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+        admin_notices=admin_notices,  # type: ignore[arg-type]
+    )
+
+    await sender.send(
+        _item(),
+        PUB_TS,
+        AUTHOR_MID,
+        _targets(full_groups=(1001,)),
+    )
+
+    assert admin_notices.messages == []
 
 
 @pytest.mark.asyncio

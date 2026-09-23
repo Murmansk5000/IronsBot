@@ -492,6 +492,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         identity_observer=identity_observer,
         self_commands=SelfCommandGate(settings.bot.onebot.self_commands),
+        router=common.bot_router,
     )
 
     def poke_reply_candidates(

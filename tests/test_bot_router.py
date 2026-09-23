@@ -35,6 +35,7 @@ def _patch_router(
     *,
     config: BotRoutingConfig,
     connected: list[FakeBot],
+    use_default_for_unconfigured_groups: bool = False,
 ) -> BotRouter:
     monkeypatch.setattr(bot_router, "Bot", FakeBot)
     monkeypatch.setattr(
@@ -48,6 +49,7 @@ def _patch_router(
             {"group_a": 987654321, "group_b": 876543210},
             {"owner": 1234567890, "user_a": 2345678901},
         ),
+        use_default_for_unconfigured_groups,
     )
 
 
@@ -77,7 +79,7 @@ def test_bot_router_routes_groups_and_users_by_alias(
     assert router.for_conversation(_private(2345678901)) is backup_bot
 
 
-def test_bot_router_falls_back_to_default_when_routed_bot_is_offline(
+def test_bot_router_does_not_fall_back_when_routed_bot_is_offline(
     monkeypatch: MonkeyPatch,
 ) -> None:
     main_bot = FakeBot(111111111)
@@ -87,7 +89,7 @@ def test_bot_router_falls_back_to_default_when_routed_bot_is_offline(
         connected=[main_bot],
     )
 
-    assert router.for_conversation(_group(876543210)) is main_bot
+    assert router.for_conversation(_group(876543210)) is None
 
 
 def test_bot_router_rejects_delivery_when_default_is_offline(
@@ -103,7 +105,7 @@ def test_bot_router_rejects_delivery_when_default_is_offline(
     assert router.for_conversation(_group(987654321)) is None
 
 
-def test_bot_router_disabled_uses_explicit_default_bot(
+def test_bot_router_uses_default_for_unconfigured_group_when_enabled(
     monkeypatch: MonkeyPatch,
 ) -> None:
     main_bot = FakeBot(111111111)
@@ -111,6 +113,7 @@ def test_bot_router_disabled_uses_explicit_default_bot(
         monkeypatch,
         config=_routing_config(enabled=False),
         connected=[main_bot],
+        use_default_for_unconfigured_groups=True,
     )
 
     assert router.for_conversation(_group(987654321)) is main_bot
@@ -143,6 +146,7 @@ def test_bot_router_unavailable_logs_use_identity_digests(
         monkeypatch,
         config=_routing_config(groups={}),
         connected=[],
+        use_default_for_unconfigured_groups=True,
     )
 
     assert router.for_conversation(_group(987654321)) is None
@@ -152,3 +156,36 @@ def test_bot_router_unavailable_logs_use_identity_digests(
     assert "111111111" not in rendered
     assert reference_digest("987654321") in rendered
     assert reference_digest("111111111") in rendered
+
+
+def test_bot_router_ignores_unconfigured_group_by_default(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    main_bot = FakeBot(111111111)
+    router = _patch_router(
+        monkeypatch,
+        config=_routing_config(groups={}),
+        connected=[main_bot],
+    )
+
+    conversation = _group(987654321)
+    assert router.for_conversation(conversation) is None
+    assert not router.allows_incoming(main_bot.self_id, conversation)
+
+
+def test_bot_router_default_owns_unconfigured_group_when_enabled(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    main_bot = FakeBot(111111111)
+    backup_bot = FakeBot(222222222)
+    router = _patch_router(
+        monkeypatch,
+        config=_routing_config(groups={}),
+        connected=[main_bot, backup_bot],
+        use_default_for_unconfigured_groups=True,
+    )
+
+    conversation = _group(987654321)
+    assert router.for_conversation(conversation) is main_bot
+    assert router.allows_incoming(main_bot.self_id, conversation)
+    assert not router.allows_incoming(backup_bot.self_id, conversation)

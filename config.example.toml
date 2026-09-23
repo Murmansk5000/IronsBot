@@ -34,6 +34,9 @@
 # - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
 [bot]
+# 未配置专用机器人的群是否使用默认机器人处理收发；默认关闭。
+# 显式配置的机器人离线时始终跳过，不会回退到默认机器人。
+use_default_for_unconfigured_groups = false
 # Default: "prod"
 # EN: Runtime environment label.
 # ZH: 运行环境标签。
@@ -114,9 +117,10 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
-# EN: The default account handles private messages and groups without an explicit
-#     route. Required when more than one official account is active.
-# ZH: 默认账号处理私聊和未显式分配的群；启用多个官方账号时必填。
+# EN: The default account handles private messages. It handles groups without an
+#     explicit route only when bot.use_default_for_unconfigured_groups is true.
+# ZH: 默认账号处理私聊；只有 bot.use_default_for_unconfigured_groups=true 时
+#     才处理未显式分配的群。启用多个官方账号时必填。
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
@@ -932,9 +936,10 @@ local_root = "sendpic"
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
 # Incoming command replies use the receiving bot; proactive pushes use these routes.
 # ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
-# 普通查询由收到事件的机器人回复；主动推送按下面的群/用户路由选择机器人。
-# enabled=false 时不使用群/用户专用路由，但主动推送仍只会使用明确配置的 default_bot。
-# 未配置或未连接 default_bot 时，主动发送会失败，不会挑选任意在线机器人。
+# 普通查询与主动推送都按下面的群/用户路由选择机器人。
+# 未配置群仅在 bot.use_default_for_unconfigured_groups=true 时使用 default_bot。
+# 显式路由的机器人未连接时直接跳过，不会回退到 default_bot 或任意在线机器人。
+# 私聊仍可使用用户路由，并在未配置时使用 default_bot。
 # 开启前请把示例 QQ 和目标别名换成真实配置。
 [messaging.bot_routing]
 enabled = false

@@ -358,6 +358,7 @@ class BotConfig(BaseModel):
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
     plugin_manifest: Literal["full", "core"] = "full"
+    use_default_for_unconfigured_groups: bool = False
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)

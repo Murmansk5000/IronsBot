@@ -28,6 +28,7 @@ def _connected_onebot_bots() -> dict[int, Bot]:
 class BotRouter:
     config: BotRoutingConfig
     references: OneBotReferenceResolver
+    use_default_for_unconfigured_groups: bool = False
 
     def _configured_bot_id(self, conversation: ConversationRef) -> int | None:
         if conversation.kind == "group":
@@ -61,6 +62,31 @@ class BotRouter:
             )
         return None
 
+    def allows_incoming(
+        self,
+        bot_id: int,
+        conversation: ConversationRef,
+    ) -> bool:
+        """Return whether this bot owns one inbound OneBot conversation."""
+
+        if conversation.platform is not Platform.ONEBOT:
+            return False
+        if conversation.kind != "group":
+            return True
+        routed_bot_id = (
+            self._configured_bot_id(conversation) if self.config.enabled else None
+        )
+        if routed_bot_id is not None:
+            return bot_id == routed_bot_id
+        if not self.use_default_for_unconfigured_groups:
+            return False
+        default_bot_id = (
+            self.config.resolve_bot_reference(self.config.default_bot)
+            if self.config.default_bot is not None
+            else None
+        )
+        return default_bot_id is not None and bot_id == default_bot_id
+
     def for_conversation(self, conversation: ConversationRef) -> Bot | None:
         """Route one typed OneBot conversation at the integration edge."""
 
@@ -80,18 +106,29 @@ class BotRouter:
                 return bot
             logger.warning(
                 "routed bot is not connected: target_type={} target_ref={} "
-                "bot_ref={}; falling back to default bot",
+                "bot_ref={}; delivery will be skipped",
                 conversation.kind,
                 reference_digest(conversation.id),
                 reference_digest(str(routed_bot_id)),
             )
+            return None
+
+        if (
+            conversation.kind == "group"
+            and not self.use_default_for_unconfigured_groups
+        ):
+            logger.info(
+                "unconfigured OneBot group skipped: target_ref={}",
+                reference_digest(conversation.id),
+            )
+            return None
 
         default_bot_id = (
             self.config.resolve_bot_reference(self.config.default_bot)
             if self.config.default_bot is not None
             else None
         )
-        if default_bot_id is not None and default_bot_id != routed_bot_id:
+        if default_bot_id is not None:
             if bot := connected.get(default_bot_id):
                 return bot
             logger.warning(

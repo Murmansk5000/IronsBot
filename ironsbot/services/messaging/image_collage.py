@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -16,6 +17,22 @@ DEFAULT_MAX_OUTPUT_SIDE = 12_000
 DEFAULT_MAX_OUTPUT_PIXELS = 40_000_000
 DEFAULT_DOWNLOAD_CONCURRENCY = 4
 MIN_COLLAGE_IMAGES = 2
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedImage:
+    """One ordered image output, either composed bytes or an original URL."""
+
+    url: str | None = None
+    content: bytes | None = None
+    content_type: str = "image/png"
+    filename: str = "dynamic.png"
+
+    def __post_init__(self) -> None:
+        if (self.url is None) == (self.content is None):
+            raise ValueError(  # noqa: TRY003
+                "prepared images require exactly one source"
+            )
 
 
 class ImageCollageError(RuntimeError):
@@ -68,12 +85,22 @@ class ImageCollageRenderer(Protocol):
     ) -> bytes: ...
 
 
+class AnimatedCollageRenderer(Protocol):
+    def __call__(self, image_bytes: Sequence[bytes]) -> bytes: ...
+
+
+class ImageInspector(Protocol):
+    def __call__(self, image_bytes: bytes) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ImageCollageService:
     """Download an ordered image set and compose it without blocking the loop."""
 
     fetch_image: Callable[[str, int], Awaitable[bytes]]
     render: ImageCollageRenderer
+    render_animation: AnimatedCollageRenderer | None = None
+    inspect_animation: ImageInspector | None = None
     max_images: int = DEFAULT_MAX_IMAGES
     max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES
     max_output_side: int = DEFAULT_MAX_OUTPUT_SIDE
@@ -100,6 +127,95 @@ class ImageCollageService:
             max_side=self.max_output_side,
             max_pixels=self.max_output_pixels,
         )
+
+    async def prepare_urls(  # noqa: C901, PLR0915 - ordered mixed-media pipeline
+        self, urls: Sequence[str]
+    ) -> tuple[PreparedImage, ...]:
+        """Compose consecutive media groups while preserving failed originals."""
+
+        normalized = tuple(dict.fromkeys(url.strip() for url in urls if url.strip()))
+        if not normalized:
+            return ()
+        if len(normalized) > self.max_images:
+            raise ImageCollageError.invalid_count(len(normalized), self.max_images)
+        semaphore = asyncio.Semaphore(self.download_concurrency)
+
+        async def fetch(url: str) -> bytes | None:
+            try:
+                async with semaphore:
+                    return await self.fetch_image(url, self.max_source_bytes)
+            except ImageCollageError:
+                return None
+
+        downloaded = await asyncio.gather(*(fetch(url) for url in normalized))
+        seen_content: set[str] = set()
+        assets: list[tuple[str, bytes | None, bool | None]] = []
+        for url, content in zip(normalized, downloaded, strict=True):
+            if content is None:
+                assets.append((url, None, None))
+                continue
+            digest = hashlib.sha256(content).hexdigest()
+            if digest in seen_content:
+                continue
+            seen_content.add(digest)
+            try:
+                animated = await asyncio.to_thread(self._is_animated, content)
+            except ImageCollageError:
+                assets.append((url, None, None))
+                continue
+            assets.append((url, content, animated))
+
+        outputs: list[PreparedImage] = []
+        group: list[tuple[str, bytes]] = []
+        group_animated: bool | None = None
+
+        async def flush() -> None:
+            nonlocal group, group_animated
+            if not group:
+                return
+            if len(group) == 1:
+                outputs.append(PreparedImage(url=group[0][0]))
+            else:
+                try:
+                    content = (
+                        await self._compose_animation([item[1] for item in group])
+                        if group_animated
+                        else await self.compose_bytes([item[1] for item in group])
+                    )
+                except ImageCollageError:
+                    outputs.extend(PreparedImage(url=item[0]) for item in group)
+                else:
+                    outputs.append(
+                        PreparedImage(
+                            content=content,
+                            content_type="image/gif" if group_animated else "image/png",
+                            filename="dynamic.gif" if group_animated else "dynamic.png",
+                        )
+                    )
+            group = []
+            group_animated = None
+
+        for url, content, animated in assets:
+            if content is None or animated is None:
+                await flush()
+                outputs.append(PreparedImage(url=url))
+                continue
+            if group_animated is not None and animated != group_animated:
+                await flush()
+            group_animated = animated
+            group.append((url, content))
+        await flush()
+        return tuple(outputs)
+
+    def _is_animated(self, content: bytes) -> bool:
+        if self.inspect_animation is None:
+            return False
+        return self.inspect_animation(content)
+
+    async def _compose_animation(self, images: Sequence[bytes]) -> bytes:
+        if self.render_animation is None:
+            raise ImageCollageError.animated()
+        return await asyncio.to_thread(self.render_animation, tuple(images))
 
     def _validate_count(self, count: int) -> None:
         if not MIN_COLLAGE_IMAGES <= count <= self.max_images:
