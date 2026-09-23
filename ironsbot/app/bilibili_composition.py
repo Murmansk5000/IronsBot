@@ -8,6 +8,10 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.animated_collage import (
+    inspect_animation,
+    render_vertical_animation,
+)
 from ironsbot.integrations.configured_targets.bilibili import (
     build_bili_configured_targets,
 )
@@ -106,7 +110,10 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
         image_collage=ImageCollageService(
-            partial(fetch_collage_image, http_clients.origin), render_adaptive_collage
+            partial(fetch_collage_image, http_clients.origin),
+            render_adaptive_collage,
+            render_animation=render_vertical_animation,
+            inspect_animation=inspect_animation,
         ),
     )
     return BilibiliComponents(
