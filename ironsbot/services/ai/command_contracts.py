@@ -16,10 +16,7 @@ if TYPE_CHECKING:
 
 
 def ai_chat_command_contracts(*, enabled: bool) -> tuple[CommandContract, ...]:
-    """Describe AI chat inputs only when an AI provider is configured."""
-
-    if not enabled:
-        return ()
+    """Keep a superuser diagnostic route when the installed provider is unavailable."""
     return (
         *commands_from_rows(
             "ai_chat",
@@ -30,7 +27,14 @@ def ai_chat_command_contracts(*, enabled: bool) -> tuple[CommandContract, ...]:
                     "ai_chat.group",
                     ("@机器人 <问题>",),
                     "向 AI 聊天提问",
-                    {"access": (CommandAccess(scope="group"),)},
+                    {
+                        "access": (
+                            CommandAccess(
+                                scope="group",
+                                audience="regular" if enabled else "superuser",
+                            ),
+                        )
+                    },
                 ),
             ),
         ),
@@ -43,7 +47,14 @@ def ai_chat_command_contracts(*, enabled: bool) -> tuple[CommandContract, ...]:
                     "ai_chat.private",
                     ("<问题>",),
                     "直接向 AI 聊天提问",
-                    {"access": (CommandAccess(scope="private"),)},
+                    {
+                        "access": (
+                            CommandAccess(
+                                scope="private",
+                                audience="regular" if enabled else "superuser",
+                            ),
+                        )
+                    },
                 ),
             ),
         ),

@@ -95,7 +95,7 @@ def build_activity_service(  # noqa: PLR0913 - composition root
                 features.conversations_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
             ),
             private_actors=tuple(
-                features.private_actors_with_superusers(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+                features.private_actors_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
             ),
         )
 

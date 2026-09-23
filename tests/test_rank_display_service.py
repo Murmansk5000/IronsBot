@@ -136,8 +136,7 @@ def test_rank_display_limit_merges_to_shared_group_by_latest_update(
     assert service.limit_for_conversation(official_b) == NEWER_LIMIT
     with sqlite3.connect(path) as connection:
         assert connection.execute(
-            "SELECT conversation_id, updated_by_id "
-            "FROM group_rank_display_limits"
+            "SELECT conversation_id, updated_by_id FROM group_rank_display_limits"
         ).fetchall() == [(official_a.id, "member-a")]
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
 
@@ -185,7 +184,6 @@ def test_v2_rank_display_migrates_to_principal_ownership(tmp_path: Path) -> None
     assert store.get(_group()) == STORED_LIMIT
     with sqlite3.connect(path) as connection:
         assert connection.execute(
-            "SELECT principal_kind, principal_id "
-            "FROM group_rank_display_limits"
+            "SELECT principal_kind, principal_id FROM group_rank_display_limits"
         ).fetchall() == [("qq_group", str(GROUP_ID))]
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
