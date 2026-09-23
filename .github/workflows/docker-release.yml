@@ -160,7 +160,8 @@ jobs:
             - name: Enforce runtime candidate size budgets
               shell: bash
               env:
-                  MAX_APP_KIB: "8192"
+                  # Includes the five packaged fixed-image reference charts (~14 MiB).
+                  MAX_APP_KIB: "24576"
                   MAX_SITE_PACKAGES_KIB: "122880"
                   MAX_FONTS_KIB: "24576"
               run: |
