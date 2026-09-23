@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.core.time import TZ_CN
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -58,10 +59,8 @@ def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:
     items: list[SelectionMenuItem] = []
 
     for record in records:
-        time_str = (
-            datetime.fromtimestamp(record.pub_ts, tz=timezone.utc)
-            .astimezone()
-            .strftime("%Y-%m-%d %H:%M:%S")
+        time_str = datetime.fromtimestamp(record.pub_ts, tz=TZ_CN).strftime(
+            "%Y-%m-%d %H:%M:%S"
         )
         suppressed_tag = "（未推送）" if record.suppressed else ""
         items.append(
