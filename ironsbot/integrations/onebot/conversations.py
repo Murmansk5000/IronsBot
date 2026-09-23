@@ -18,6 +18,7 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.message_input import event_reply_message_id
 from ironsbot.integrations.onebot.replies import build_message, event_sender_at_user_ids
+from ironsbot.integrations.onebot.self_commands import is_unaccepted_self_message
 from ironsbot.integrations.onebot.session_identity import event_session_key
 
 if TYPE_CHECKING:
@@ -37,7 +38,7 @@ def event_conversation_session_id(namespace: str, event: MessageEvent) -> str:
 
 
 def is_self_message_event(event: MessageEvent) -> bool:
-    return event.user_id == event.self_id
+    return is_unaccepted_self_message(event)
 
 
 def command_reply_check(commands: tuple[str, ...] | list[str]) -> EventReplyCheck:
