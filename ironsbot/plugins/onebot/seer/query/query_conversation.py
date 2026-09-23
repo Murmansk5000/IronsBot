@@ -19,6 +19,7 @@ from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
 from ironsbot.integrations.onebot.params import parse_string_arg
+from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.services.seer.query_result import QueryResult
 
 if TYPE_CHECKING:
@@ -44,10 +45,13 @@ async def send_query_reply(
     *,
     finish: bool,
 ) -> None:
-    """Send direct and selected query results with consistent group mentions."""
+    """Quote image results while retaining legacy text reply addressing."""
 
     message = render_onebot_outbound_message(reply.to_outbound())
     kwargs = {"at_sender": isinstance(event, GroupMessageEvent)}
+    if reply.image is not None and isinstance(event, MessageEvent):
+        message = build_event_reply_message(event, message)
+        kwargs = {}
     if finish:
         await Matcher.finish(message, **kwargs)
     else:

@@ -21,7 +21,9 @@ from ironsbot.core.outbound import (
     ReplyTemplate,
     SendResult,
 )
-from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.matcher_support import (
+    queued_conversation_is_cancelled,
+)
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     parse_reply_message_id,
@@ -192,7 +194,14 @@ def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Mes
     """Render legacy OneBot command output with the shared reply policy."""
 
     incoming = message_input_context(event).message
-    native_message = Message(message)
+    native_message = Message(
+        MessageSegment.text(render_text(message))
+        if isinstance(message, str)
+        else message
+    )
+    has_image = any(segment.type == "image" for segment in native_message)
+    if has_image:
+        native_message = _image_reply_without_sender(native_message, event.user_id)
     presentation = _event_reply_template(event).presentation(
         incoming,
         has_text=isinstance(message, str)
@@ -201,20 +210,37 @@ def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Mes
             for segment in native_message
         ),
         has_mention=any(segment.type == "at" for segment in native_message),
+        has_image=has_image,
     )
     rendered = Message()
-    if presentation.context is not None:
+    if presentation.context is not None and not any(
+        segment.type == "reply" for segment in native_message
+    ):
         rendered += MessageSegment.reply(
             parse_reply_message_id(presentation.context.message_id)
         )
     if presentation.mention_actor is not None:
         rendered += MessageSegment.at(int(presentation.mention_actor.id))
         rendered += MessageSegment.text(presentation.mention_separator)
-    rendered += (
-        message
-        if isinstance(message, (Message, MessageSegment))
-        else MessageSegment.text(render_text(message))
-    )
+    rendered += native_message
+    return rendered
+
+
+def _image_reply_without_sender(message: Message, user_id: int) -> Message:
+    rendered = Message()
+    removed_mention = False
+    for segment in message:
+        if segment.type == "at" and str(segment.data.get("qq")) == str(user_id):
+            removed_mention = True
+            continue
+        if (
+            removed_mention
+            and segment.type == "text"
+            and not str(segment.data.get("text", "")).strip()
+        ):
+            continue
+        removed_mention = False
+        rendered += segment
     return rendered
 
 
