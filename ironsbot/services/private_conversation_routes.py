@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Resolve configured QQ recipients using verified C2C endpoints only."""
+"""Resolve configured QQ recipients using known official user endpoints."""
 
 import logging
 from dataclasses import dataclass, field
@@ -19,14 +19,15 @@ class PrivateConversationRoutes:
     _warned: set[str] = field(default_factory=set)
 
     def register(self, link: CrossPlatformIdentityLink) -> None:
-        # A member identity proves ownership, not a C2C sending address.
-        if link.official.kind != "user":
+        # TODO(identity-migration): Treat member_openid and user_openid as the
+        # same AppID-scoped address until production observations are migrated.
+        if link.official.kind not in {"member", "user"}:
             return
         self._links[self._endpoint(link)] = link.onebot_qq_id
         self._warned.discard(link.onebot_qq_id)
 
     def unregister(self, link: CrossPlatformIdentityLink) -> None:
-        if link.official.kind == "user":
+        if link.official.kind in {"member", "user"}:
             self._links.pop(self._endpoint(link), None)
 
     @staticmethod
@@ -59,8 +60,7 @@ class PrivateConversationRoutes:
             self._warned.add(source.id)
             _LOGGER.warning(
                 "Private route unresolved: recipient=%s reason=%s; "
-                "configure or verify a C2C user_openid for the intended bot; "
-                "member_openid is not a private address",
+                "configure or observe an AppID-scoped OpenID for the intended bot",
                 reference_digest(source.id),
                 "ambiguous C2C endpoints" if candidates else "missing C2C endpoint",
             )

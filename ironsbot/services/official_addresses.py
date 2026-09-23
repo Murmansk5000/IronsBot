@@ -53,16 +53,22 @@ class OfficialAddressService:
         self._configured.add((app_id, openid))
 
     def accept_link(self, link: CrossPlatformIdentityLink) -> None:
-        if link.official.kind == "user":
-            key = (link.official.app_id, link.official.openid)
-            old = self._addresses.get(key)
-            self._addresses[key] = OfficialAddress(
-                *key,
-                member_seen=old.member_seen if old else False,
-                private_seen=True,
-                member_seen_at=old.member_seen_at if old else None,
-                private_seen_at=link.linked_at,
-            )
+        if link.official.kind not in {"member", "user"}:
+            return
+        key = (link.official.app_id, link.official.openid)
+        old = self._addresses.get(key)
+        member = link.official.kind == "member"
+        self._addresses[key] = OfficialAddress(
+            *key,
+            member_seen=member or (old.member_seen if old else False),
+            private_seen=not member or (old.private_seen if old else False),
+            member_seen_at=(
+                link.linked_at if member else (old.member_seen_at if old else None)
+            ),
+            private_seen_at=(
+                (old.private_seen_at if old else None) if member else link.linked_at
+            ),
+        )
         self.refresh()
 
     async def load(self, links: tuple[CrossPlatformIdentityLink, ...]) -> None:
@@ -89,8 +95,13 @@ class OfficialAddressService:
     def refresh(self) -> None:
         for key in self._addresses.keys() | self._configured:
             address = self._addresses.get(key)
+            # TODO(identity-migration): QQ Official currently exposes the same
+            # OpenID for group-member and C2C addressing in this deployment.
+            # Reintroduce source-specific eligibility after production SQLite
+            # has been migrated with independently verified C2C observations.
             if key not in self._configured and (
-                address is None or not address.private_seen
+                address is None
+                or not (address.member_seen or address.private_seen)
             ):
                 continue
             app_id, openid = key
@@ -108,7 +119,14 @@ class OfficialAddressService:
                 link = CrossPlatformIdentityLink(
                     qq_id,
                     OfficialIdentity(app_id, "user", openid),
-                    (address.private_seen_at or 0) if address is not None else 0,
+                    (
+                        max(
+                            address.member_seen_at or 0,
+                            address.private_seen_at or 0,
+                        )
+                        if address is not None
+                        else 0
+                    ),
                 )
                 self.on_private_link(link)
                 self._private_links[key] = link
