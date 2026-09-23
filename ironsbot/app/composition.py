@@ -78,6 +78,9 @@ from ironsbot.services.identity_observation import (
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.messaging.command_recommendations import (
+    CommandRecommendationService,
+)
 from ironsbot.services.official_union_identity import OfficialUnionIdentityService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
@@ -213,7 +216,7 @@ async def _load_identity_links(  # noqa: PLR0913
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(SelfCommandAdapter)
-    scheduler = SchedulerFacade()
+    scheduler = SchedulerFacade(timezone="Asia/Shanghai")
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
     databases = DatabaseManager()
@@ -567,6 +570,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         addressed_input_hints=AddressedInputHintService(
             window_seconds=settings.features.help.hint_window_seconds,
             max_per_window=settings.features.help.hint_max_per_window,
+            recommendations=CommandRecommendationService(
+                command_catalog, features, settings.features.help
+            ),
         ),
         identity_links=identity_links,
         identity_linking=identity_linking,
@@ -619,6 +625,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     ]
     if common.qq_official is not None:
         resource_startup_hooks.append(("qq_official", common.qq_official.start))
+        resource_startup_hooks.append(
+            (
+                "bilibili_official_recovery",
+                partial(bilibili_monitor.check_on_connect, "qq_official"),
+            )
+        )
         resource_shutdown_hooks.append(("qq_official", common.qq_official.stop))
 
     return Application(
