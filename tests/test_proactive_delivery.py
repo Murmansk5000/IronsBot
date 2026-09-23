@@ -17,8 +17,10 @@ from ironsbot.core.outbound import (
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
+from ironsbot.integrations.storage.daily_delivery import SqliteDailyDeliveryStore
 from ironsbot.services.activity.delivery import ActivityReminderDelivery
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
@@ -29,6 +31,8 @@ from ironsbot.services.messaging.scheduled_delivery import ScheduledMessageDeliv
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
 )
@@ -39,6 +43,8 @@ from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
 
 GROUP = ConversationRef(Platform.ONEBOT, "group", "3003")
@@ -421,6 +427,7 @@ async def test_activity_sender_skips_empty_reminders() -> None:
 @pytest.mark.parametrize("scenario", ("unsubscribed", "duplicate"))
 async def test_lucky_skin_sender_skips_unsubscribed_or_duplicate_notice(
     scenario: str,
+    tmp_path: Path,
 ) -> None:
     subscriptions = FakeSubscriptions(
         unsubscribed=(
@@ -432,9 +439,18 @@ async def test_lucky_skin_sender_skips_unsubscribed_or_duplicate_notice(
     )
     delivery, messenger, _subscriptions = _delivery(subscriptions=subscriptions)
 
+    claims = SqliteDailyDeliveryStore(tmp_path / "daily.sqlite")
+    principals = IdentityPrincipalService()
+    if scenario == "duplicate":
+        principal = principals.actor_principal(ACTOR)
+        assert claims.claim(f"lucky:{principal.kind}:{principal.id}", "2026-08-05")
     sender = LuckySkinWindowOutboundSender(
         delivery,
         cast("PushSubscriptionRepository", subscriptions),
+        claims,
+        PrivateConversationRoutes(),
+        PortableQuerySessions(),
+        principals.actor_principal,
     )
     sent = await sender.send_daily_notice(
         ActorRef(Platform.ONEBOT, PRIVATE.id),
@@ -447,12 +463,16 @@ async def test_lucky_skin_sender_skips_unsubscribed_or_duplicate_notice(
 
 
 @pytest.mark.asyncio
-async def test_lucky_skin_sender_uses_typed_private_delivery() -> None:
+async def test_lucky_skin_sender_uses_typed_private_delivery(tmp_path: Path) -> None:
     delivery, messenger, subscriptions = _delivery()
 
     sender = LuckySkinWindowOutboundSender(
         delivery,
         cast("PushSubscriptionRepository", subscriptions),
+        SqliteDailyDeliveryStore(tmp_path / "daily.sqlite"),
+        PrivateConversationRoutes(),
+        PortableQuerySessions(),
+        IdentityPrincipalService().actor_principal,
     )
     sent = await sender.send_daily_notice(
         ActorRef(Platform.ONEBOT, PRIVATE.id),
@@ -462,7 +482,6 @@ async def test_lucky_skin_sender_uses_typed_private_delivery() -> None:
 
     assert sent
     assert subscriptions.hint_calls == [
-        (PRIVATE, "lucky_skin_window_delivery"),
         (PRIVATE, "push_subscription_hint"),
     ]
     assert [conversation for conversation, _message in messenger.calls] == [PRIVATE]
