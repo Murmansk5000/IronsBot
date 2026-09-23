@@ -484,6 +484,26 @@ Then group owners/admins manage subscriptions in QQ:
 
 Keep real QQ group IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Runtime team subscriptions are stored in the shared `[paths].qq_state` database; do not commit that database to GitHub.
 
+## OneBot 自发指令（Docker / Unraid）
+
+在容器挂载的 TOML 配置中按需添加，不新增 Unraid 环境变量：
+
+```toml
+[bot.onebot.self_commands]
+enabled = false
+prefixes = ["演示 ", "示范 "]
+```
+
+默认关闭，未使用者无需迁移。开启时同时在 NapCat 打开 `reportSelfMessage`，
+使用机器人 QQ 本人在群内发送 `演示 帮助`；数字选择和退出也写成
+`演示 1`、`演示 0`。前缀末尾空格有意义，多个前缀按最长匹配。
+该 QQ 只使用已有 TOML 权限，不自动变为超级管理员或管理通知收件人。
+官方凭据接管或 OneBot 发送关闭时始终静默，不回退到 NapCat。
+
+从原版迁移：`[runtime.self_commands]` 改成 `[bot.onebot.self_commands]`，
+`prefix` 改成 `prefixes`，删除旧 `superuser`；不保留旧字段兼容入口。
+当前消息含 `@全体成员` 时不响应，引用正文中的提及除外。
+
 ## Unraid
 
 This repository includes a Community Applications-ready Unraid template:
