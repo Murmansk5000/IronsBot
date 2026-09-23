@@ -75,6 +75,16 @@ def seer_command_contracts(
         player_id_resolver.has_reference_choices,
     )
     return (
+        CommandContract(
+            id="seer.pet.flip",
+            plugin_id="seer_query",
+            section="娱乐",
+            examples=("抛精灵 @成员1 @成员2",),
+            description="为两名成员随机召唤精灵，比较属性克制倍率决定胜负",
+            routing_aliases=("抛精灵",),
+            features_all=("pet_flip",),
+            access=(CommandAccess(scope="group"),),
+        ),
         *commands_from_rows(
             "seer_query",
             "玩家",

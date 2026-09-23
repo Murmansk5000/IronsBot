@@ -10,6 +10,7 @@ from . import (
     mintmark_queries,
     new_content,
     peak_queries,
+    pet_flip,
     pet_queries,
     player,
     player_shortcuts,
@@ -29,6 +30,7 @@ def install(group: SeerMatcherGroup) -> None:
     mintmark_queries.install(group)
     peak_queries.install(group)
     pet_queries.install(group)
+    pet_flip.install(group)
     player.install(group)
     player_shortcuts.install(group)
     rank_list.install(group)
