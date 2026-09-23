@@ -107,10 +107,10 @@ user_a = "backup_bot"
 ```
 
 `group_a/group_b` 和 `owner/user_a` 统一引用 `[identities.groups]`、
-`[identities.users]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
-`default_bot`；若默认机器人也未连接或没有配置，主动发送会明确失败并记录 warning，
-不会选择任意在线 OneBot 机器人。第一版只控制主动发送，不过滤接收事件；同一个群
-放入多个机器人时，它们仍可能同时收到并响应。
+`[identities.users]`；也可以直接写群号或 QQ 号。`[messaging.bot_routing]` 中显式指定的目标机器人未连接时，主动发送明确失败并记录 warning，
+不回退到 `default_bot`，也不选择任意在线机器人。只有未配置的群目标且
+`bot.use_default_for_unconfigured_groups = true` 时才尝试 `default_bot`。
+群消息入站按路由归属处理；私聊仍由接收事件的机器人处理。
 
 ### Docker Compose
 
