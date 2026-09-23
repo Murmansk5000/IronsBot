@@ -9,6 +9,10 @@ from nonebot.typing import T_State  # noqa: TC002
 from ironsbot.core.platform import ConversationRef
 from ironsbot.integrations.onebot.matchers import bind_async, enter_prompt_loop
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import (
+    build_event_reply_message,
+    finish_event_reply,
+)
 from ironsbot.services.messaging.service import (  # noqa: TC001
     MessagingService,
 )
@@ -46,7 +50,7 @@ async def handle_push_subscription_menu(
         read_only=read_only,
     )
     if not options:
-        await matcher.finish("当前没有可管理的推送订阅。")
+        await finish_event_reply(matcher, event, "当前没有可管理的推送订阅。")
 
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = options
     session_id, version = PUSH_SUBSCRIPTION_FLOW.begin(
@@ -70,7 +74,7 @@ async def handle_push_subscription_menu(
             version,
             target_type,
         ),
-        prompt=prompt,
+        prompt=build_event_reply_message(event, prompt),
         queue_namespace=PUSH_SUBSCRIPTION_FLOW.namespace,
         queue_reply_check=PUSH_SUBSCRIPTION_FLOW.reply_check(
             session_id,
@@ -97,12 +101,13 @@ async def handle_push_subscription_select(
 
     text = event.get_plaintext().strip()
     if text == "0":
-        await matcher.finish("已退出。")
+        await finish_event_reply(matcher, event, "已退出。")
     index = int(text)
     if index < 1 or index > len(options):
         await PUSH_SUBSCRIPTION_FLOW.reject(
             matcher,
             state,
+            event,
             "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
         )
 
@@ -129,6 +134,7 @@ async def handle_push_subscription_select(
         await PUSH_SUBSCRIPTION_FLOW.reject(
             matcher,
             state,
+            event,
             prompt,
             replace_menu_anchor=True,
         )
@@ -143,6 +149,7 @@ async def handle_push_subscription_select(
         await PUSH_SUBSCRIPTION_FLOW.reject(
             matcher,
             state,
+            event,
             submenu_prompt,
             replace_menu_anchor=True,
         )
@@ -159,6 +166,7 @@ async def handle_push_subscription_select(
     await PUSH_SUBSCRIPTION_FLOW.reject(
         matcher,
         state,
+        event,
         prompt,
         replace_menu_anchor=True,
     )

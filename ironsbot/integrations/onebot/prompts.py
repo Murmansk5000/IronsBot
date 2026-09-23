@@ -40,6 +40,7 @@ from ironsbot.integrations.onebot.message_input import event_reply_message_id
 from ironsbot.integrations.onebot.prompt_errors import (
     PromptSessionManagerMissingError,
 )
+from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.session_identity import event_session_key
 
 T = TypeVar("T")
@@ -124,16 +125,14 @@ class Prompt(Generic[T]):
 
     def build_event_message(self, event: Event) -> str | Message:
         text = self.build_message()
-        if not isinstance(event, GroupMessageEvent):
+        if not isinstance(event, MessageEvent):
             return text
-        if self.at_user_id is None:
-            self.at_user_id = event.user_id
-
-        message = Message()
-        message += MessageSegment.at(self.at_user_id)
-        message += MessageSegment.text(" ")
-        message += MessageSegment.text(text)
-        return message
+        if isinstance(event, GroupMessageEvent) and self.at_user_id is not None:
+            message = MessageSegment.at(self.at_user_id) + MessageSegment.text(
+                "\n" + text
+            )
+            return build_event_reply_message(event, message)
+        return build_event_reply_message(event, text)
 
 
 PROMPT_STATE_KEY = "prompt"
@@ -271,15 +270,19 @@ def _create_selection_handler(
     ) -> None:
         if PROMPT_STATE_KEY not in state:
             raise FinishedException
+        if not isinstance(event, MessageEvent):
+            raise FinishedException
 
         key_text = event.get_plaintext().strip()
 
         if key_text == "0":
-            await matcher.finish("❌已退出查询")
+            await matcher.finish(build_event_reply_message(event, "❌已退出查询"))
 
         prompt = cast("Prompt[Any]", state[PROMPT_STATE_KEY])
         if (item := prompt.get_item_by_input(key_text)) is None:
-            await matcher.finish("⚠️序号超出范围，已退出选择")
+            await matcher.finish(
+                build_event_reply_message(event, "⚠️序号超出范围，已退出选择")
+            )
 
         if len(signature(resolver).parameters) >= RESOLVER_WITH_EVENT_PARAM_COUNT:
             event_resolver = cast("PromptResolverWithEvent", resolver)

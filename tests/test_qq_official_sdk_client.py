@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -11,8 +12,18 @@ from qqbot_agent_sdk.media_loader import (
 )
 
 from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
-from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    MentionPart,
+    OutboundMessage,
+    TextPart,
+)
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.integrations.qq_official.api_errors import (
     QQOfficialApiError,
     QQOfficialPartialDeliveryError,
@@ -22,7 +33,12 @@ from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialTextPayload,
     render_qq_official_outbound_message,
 )
+from ironsbot.integrations.qq_official.outbound_messenger import (
+    QQOfficialOutboundMessenger,
+)
+from ironsbot.integrations.qq_official.runtime import deliver_qq_official_reply
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from qqbot_agent_sdk.api_client import QQApiClient
@@ -243,6 +259,53 @@ async def test_sdk_client_uploads_binary_image_before_sending_media() -> None:
     assert message.msg_type == QQMessageType.RICH_MEDIA
     assert message.media is not None
     assert message.media.file_info == "c2c-file"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("caption", [False, True])
+@pytest.mark.parametrize("sequence", [None, "source-index"])
+async def test_image_query_delivery_uses_native_reference_without_extra_at_message(
+    *, caption: bool, sequence: str | None
+) -> None:
+    api = _FakeApi()
+    client = _client(api)
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False}, bot_provider=lambda _: client
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "group", account_id="app"
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "member", "member", "group", "app")
+    incoming = IncomingMessageRef(
+        Platform.QQ_OFFICIAL,
+        actor,
+        conversation,
+        "event-id",
+        "1",
+        sequence=sequence,
+        reply_deadline=datetime(2099, 1, 1, tzinfo=UTC),
+    )
+    images = (
+        BinaryImagePart(b"one", "image/png"),
+        BinaryImagePart(b"two", "image/png"),
+    )
+    body = (*images, TextPart("caption")) if caption else images
+    reply = PortableReply(OutboundMessage((MentionPart(actor), TextPart("\n"), *body)))
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    assert len(api.messages) == len(body)
+    for _, _, message in api.messages[:2]:
+        assert message.msg_type == QQMessageType.RICH_MEDIA
+        assert message.media is not None
+        assert message.content == ""
+        assert message.markdown is None
+        assert message.msg_id == "event-id"
+        assert (
+            message.message_reference.message_id if message.message_reference else None
+        ) == sequence
+    if caption:
+        assert api.messages[-1][2].content == "caption"
 
 
 @pytest.mark.asyncio

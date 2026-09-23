@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from nonebot.adapters import (
     Event,  # noqa: TC002 - NoneBot resolves callback annotations
 )
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import (
     T_State,  # noqa: TC002 - NoneBot resolves callback annotations
@@ -31,6 +31,7 @@ from ironsbot.integrations.onebot.prompts import (
     PromptItem,
     enter_prompt,
 )
+from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.autocard import AutocardEntry
 from ironsbot.services.seer.data import (
@@ -293,12 +294,12 @@ async def _render_content_prompt(
         logger.exception("new content menu rendering failed; falling back to text")
         return prompt.build_event_message(event)
 
-    message = Message()
-    if isinstance(event, GroupMessageEvent):
-        message += MessageSegment.at(event.user_id)
-        message += MessageSegment.text(" ")
-    message += MessageSegment.image(image)
-    return message
+    message = Message(MessageSegment.image(image))
+    return (
+        build_event_reply_message(event, message)
+        if isinstance(event, MessageEvent)
+        else message
+    )
 
 
 async def _send_item_detail(
@@ -339,7 +340,11 @@ async def _send_item_detail(
         )
     else:
         message = Message(detail)
-    await matcher.send(message, at_sender=isinstance(event, GroupMessageEvent))
+    await matcher.send(
+        build_event_reply_message(event, message)
+        if isinstance(event, MessageEvent)
+        else message
+    )
 
 
 @dataclass(frozen=True, slots=True)

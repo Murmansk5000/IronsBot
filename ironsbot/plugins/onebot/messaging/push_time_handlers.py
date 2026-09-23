@@ -11,6 +11,10 @@ from nonebot.typing import T_State
 from ironsbot.core.platform import ConversationRef
 from ironsbot.integrations.onebot.matchers import enter_prompt_loop
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import (
+    build_event_reply_message,
+    finish_event_reply,
+)
 from ironsbot.services.messaging.push_time import (
     PushTimeOption,
     build_push_time_menu_prompt,
@@ -61,7 +65,7 @@ def build_push_time_menu_handler(
         target_type = cast("OneBotConversationKind", conversation.kind)
         options = options_for(conversation)
         if not options:
-            await matcher.finish("当前没有可修改时间的推送。")
+            await finish_event_reply(matcher, event, "当前没有可修改时间的推送。")
 
         state[PUSH_TIME_OPTIONS_KEY] = options
         session_id, version = PUSH_TIME_FLOW.begin(event, state, target_type)
@@ -71,7 +75,9 @@ def build_push_time_menu_handler(
             matcher,
             handlers=[handle_push_time_select],
             rule=PUSH_TIME_FLOW.rule(state, session_id, version, target_type),
-            prompt=build_push_time_menu_prompt(conversation, options),
+            prompt=build_event_reply_message(
+                event, build_push_time_menu_prompt(conversation, options)
+            ),
             queue_namespace=PUSH_TIME_FLOW.namespace,
             queue_reply_check=PUSH_TIME_FLOW.reply_check(
                 session_id,
@@ -103,7 +109,7 @@ def build_push_time_menu_handler(
         selected = state.get(PUSH_TIME_SELECTED_KEY)
         text = event.get_plaintext().strip()
         if selected is None:
-            await _handle_push_time_index(matcher, state, text, options)
+            await _handle_push_time_index(matcher, state, text, options, event)
             return
         if not isinstance(selected, int):
             state.pop(PUSH_TIME_SELECTED_KEY, None)
@@ -112,7 +118,6 @@ def build_push_time_menu_handler(
         await _handle_push_time_value(
             matcher,
             state,
-            text,
             options,
             PushTimeValueContext(
                 selected=selected,
@@ -120,6 +125,7 @@ def build_push_time_menu_handler(
                 refresh_push_time_jobs=refresh_push_time_jobs,
                 messaging=messaging,
             ),
+            event,
         )
 
     return handle_push_time_menu
@@ -130,14 +136,16 @@ async def _handle_push_time_index(
     state: T_State,
     text: str,
     options: list[PushTimeOption],
+    event: MessageEvent,
 ) -> None:
     if text == "0":
-        await matcher.finish("已退出。")
+        await finish_event_reply(matcher, event, "已退出。")
     index = int(text)
     if index < 1 or index > len(options):
         await PUSH_TIME_FLOW.reject(
             matcher,
             state,
+            event,
             "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
         )
     option = options[index - 1]
@@ -145,6 +153,7 @@ async def _handle_push_time_index(
     await PUSH_TIME_FLOW.reject(
         matcher,
         state,
+        event,
         push_time_value_prompt(option),
         selection=False,
         replace_menu_anchor=True,
@@ -154,28 +163,30 @@ async def _handle_push_time_index(
 async def _handle_push_time_value(
     matcher: Matcher,
     state: T_State,
-    text: str,
     options: list[PushTimeOption],
     context: PushTimeValueContext,
+    event: MessageEvent,
 ) -> None:
+    text = event.get_plaintext().strip()
     selected_index = context.selected
     if selected_index < 0 or selected_index >= len(options):
         state.pop(PUSH_TIME_SELECTED_KEY, None)
         await PUSH_TIME_FLOW.reject(
             matcher,
             state,
+            event,
             build_push_time_menu_prompt(context.conversation, options),
             replace_menu_anchor=True,
         )
 
     if text == "0":
-        await matcher.finish("已退出。")
+        await finish_event_reply(matcher, event, "已退出。")
 
     option = options[selected_index]
     try:
         normalized = normalize_push_time_input(option, text)
     except ValueError as e:
-        await PUSH_TIME_FLOW.reject(matcher, state, str(e), selection=False)
+        await PUSH_TIME_FLOW.reject(matcher, state, event, str(e), selection=False)
         return
 
     result_message = context.messaging.update_push_time(
@@ -197,6 +208,7 @@ async def _handle_push_time_value(
     await PUSH_TIME_FLOW.reject(
         matcher,
         state,
+        event,
         prompt,
         replace_menu_anchor=True,
     )

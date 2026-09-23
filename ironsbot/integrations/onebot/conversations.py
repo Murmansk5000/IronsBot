@@ -17,7 +17,11 @@ from ironsbot.integrations.onebot.matchers import (
     queued_conversation_is_cancelled,
 )
 from ironsbot.integrations.onebot.message_input import event_reply_message_id
-from ironsbot.integrations.onebot.replies import build_message, event_sender_at_user_ids
+from ironsbot.integrations.onebot.replies import (
+    build_event_reply_message,
+    build_message,
+    event_sender_at_user_ids,
+)
 from ironsbot.integrations.onebot.self_commands import is_unaccepted_self_message
 from ironsbot.integrations.onebot.session_identity import event_session_key
 
@@ -151,6 +155,12 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
             at_user_ids=event_sender_at_user_ids(event),
         )
     )
+    if (
+        prompt_message is not None
+        and isinstance(event, MessageEvent)
+        and any(segment.type == "image" for segment in prompt_message)
+    ):
+        prompt_message = build_event_reply_message(event, prompt_message)
     rule = prompt_sessions.make_rule(
         session_id,
         version,
