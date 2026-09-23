@@ -21,7 +21,9 @@ from ironsbot.core.outbound import (
     ReplyTemplate,
     SendResult,
 )
-from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.matcher_support import (
+    queued_conversation_is_cancelled,
+)
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     parse_reply_message_id,
@@ -203,7 +205,9 @@ def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Mes
         has_mention=any(segment.type == "at" for segment in native_message),
     )
     rendered = Message()
-    if presentation.context is not None:
+    if presentation.context is not None and not any(
+        segment.type == "reply" for segment in native_message
+    ):
         rendered += MessageSegment.reply(
             parse_reply_message_id(presentation.context.message_id)
         )

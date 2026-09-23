@@ -15,6 +15,7 @@ nonebot.init()
 from ironsbot.plugins.onebot.seer.query.commands import data_queries
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.external_references import SeerInfoReference
+from tests.helpers.onebot_events import group_message_event
 
 
 def test_weekly_preview_image_output_includes_cache_notice_and_reference() -> None:
@@ -24,19 +25,20 @@ def test_weekly_preview_image_output_includes_cache_notice_and_reference() -> No
     references = SimpleNamespace(
         url_for=lambda _reference: "https://seerinfo.yuyuqaq.cn/preview"
     )
-    matcher = SimpleNamespace(finish=AsyncMock(side_effect=FinishedException))
+    matcher = SimpleNamespace(state={}, finish=AsyncMock(side_effect=FinishedException))
     with suppress(FinishedException):
         asyncio.run(
             data_queries._finish_query(
                 operation,
                 matcher=cast("Any", matcher),
+                event=group_message_event(message_id=-10),
                 references=cast("Any", references),
                 reference=SeerInfoReference.WEEKLY_PREVIEW,
             )
         )
 
     message = matcher.finish.await_args.args[0]
-    assert message[0].type == "image"
+    assert [part.type for part in message[:4]] == ["reply", "at", "text", "image"]
     assert message.extract_plain_text() == (
-        "\n缓存时间：2026-08-10 11:00:00\n相关查询：https://seerinfo.yuyuqaq.cn/preview"
+        "\n\n缓存时间：2026-08-10 11:00:00\n相关查询：https://seerinfo.yuyuqaq.cn/preview"
     )

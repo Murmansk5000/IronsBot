@@ -60,3 +60,9 @@ def test_event_reply_does_not_duplicate_explicit_mention() -> None:
 
     assert [segment.type for segment in message] == ["reply", "at", "text"]
     assert message[1].data["qq"] == "456"
+
+
+def test_event_reply_is_idempotent_for_already_prepared_message() -> None:
+    event = group_message_event(message_id=-10)
+    prepared = build_event_reply_message(event, "result")
+    assert build_event_reply_message(event, prepared) == prepared

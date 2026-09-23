@@ -18,6 +18,7 @@ from nonebot.plugin import on_command, on_fullmatch, on_message, on_notice
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
+from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.session_identity import event_session_key
 
 if TYPE_CHECKING:
@@ -591,7 +592,10 @@ class MatcherFactory:
                     if request_decision.token is not None:
                         state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_decision.token
                     if not request_decision.allowed:
-                        await matcher.finish(request_decision.feedback)
+                        await matcher.finish(
+                            build_event_reply_message(event, request_decision.feedback)
+                            if request_decision.feedback is not None else None
+                        )
 
             decision = self.cooldown.admit(
                 actor=message_input_context(event).message.actor,
@@ -604,7 +608,10 @@ class MatcherFactory:
             if decision.token is not None:
                 state[_COMMAND_COOLDOWN_TOKEN_KEY] = decision.token
             if not decision.allowed:
-                await matcher.finish(decision.feedback)
+                await matcher.finish(
+                    build_event_reply_message(event, decision.feedback)
+                    if decision.feedback is not None else None
+                )
             if policy.closes_active_conversation and self.close_portable_session:
                 self.close_portable_session(event)
 

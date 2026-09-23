@@ -604,8 +604,12 @@ def test_menu_image_and_text_fallback_share_layout_and_sender(
     )
 
     assert isinstance(message, Message)
-    assert message[0].type == "at"
-    assert message[0].data["qq"] == str(event.user_id)
+    mention_index = 1 if render_error is not None else 0
+    if render_error is not None:
+        assert message[0].type == "reply"
+        assert message[0].data["id"] == str(event.message_id)
+    assert message[mention_index].type == "at"
+    assert message[mention_index].data["qq"] == str(event.user_id)
     assert renderer_calls[0][:3] == (
         snapshot,
         layout.display_categories,

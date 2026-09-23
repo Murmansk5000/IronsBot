@@ -99,14 +99,18 @@ def create_image_command(
     async def _handler(
         m: Matcher,
         state: T_State,
+        event: MessageEvent,
     ) -> None:
         request: IndexedImageRequest = state[INDEXED_IMAGE_REQUEST_KEY]
         try:
             result = await service.fetch_indexed(config, request.index)
         except ImageIndexOutOfRangeError as e:
-            await m.finish(str(e))
+            await finish_event_reply(m, event, str(e))
+            return
 
-        await m.finish(
+        await finish_event_reply(
+            m,
+            event,
             render_onebot_outbound_message(
                 result.to_outbound(template, command=config.command)
             )
