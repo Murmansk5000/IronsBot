@@ -2,6 +2,7 @@ import asyncio
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.operations import StartupConfig
 from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.plugins.onebot import startup_notice as startup_notice_runtime
@@ -16,7 +17,12 @@ from tests.helpers.runtime import build_test_runtime
 def _startup_notice_service(
     *parts: tuple[str, str, str],
 ) -> StartupNoticeService:
-    service = StartupNoticeService(build_test_runtime(superuser_ids=(1,)).admin_notices)
+    service = StartupNoticeService(
+        build_test_runtime(
+            superuser_ids=(1,),
+            feature_config=FeatureConfig(user_policy={"1": ["admin_notice"]}),
+        ).admin_notices
+    )
     for part in parts:
         service.add(*part)
     return service
