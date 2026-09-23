@@ -18,9 +18,9 @@ from ironsbot.integrations.qq_official.api_errors import (
     qq_official_exception_result,
 )
 from ironsbot.integrations.qq_official.message_rendering import (
+    QQOfficialImagePayload,
     QQOfficialOutboundMessageError,
     QQOfficialPayload,
-    QQOfficialTextPayload,
     render_qq_official_outbound_message,
 )
 from ironsbot.integrations.qq_official.reply_sequences import (
@@ -218,7 +218,6 @@ class QQOfficialOutboundMessenger:
                 str(error),
                 DeliveryFailureKind.PERMANENT,
             )
-        payloads = _reference_group_reply(payloads, reply_context)
         account_id = conversation.account_id
         assert account_id is not None
         identity = ExecutionIdentity(
@@ -263,6 +262,9 @@ class QQOfficialOutboundMessenger:
                 message_id = None
             else:
                 message_sequence = allocation_sequence
+        payloads = _reference_group_reply(
+            payloads, reply_context if message_id is not None else None
+        )
         try:
             if conversation.kind == "group":
                 result = await bot.send_to_group(
@@ -323,13 +325,14 @@ def _reference_group_reply(
         or not payloads
     ):
         return payloads
-    if isinstance(payloads[0], QQOfficialTextPayload) and payloads[0].markdown:
-        # QQ clients duplicate combined Markdown when a native source reference is
-        # attached. msg_id/msg_seq still keep this inside the passive reply contract.
-        return payloads
-    return (
-        replace(payloads[0], reference_id=context.sequence),
-        *payloads[1:],
+    # Reference every image in a batch. Markdown text keeps its own mention to
+    # avoid QQ clients duplicating combined Markdown with a native reference.
+    return tuple(
+        replace(payload, reference_id=context.sequence)
+        if isinstance(payload, QQOfficialImagePayload)
+        or (index == 0 and not payload.markdown)
+        else payload
+        for index, payload in enumerate(payloads)
     )
 
 

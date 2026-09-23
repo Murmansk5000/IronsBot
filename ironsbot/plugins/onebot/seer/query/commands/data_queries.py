@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.integrations.onebot.matchers import (
@@ -14,6 +15,7 @@ from ironsbot.integrations.onebot.matchers import (
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
+from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
@@ -38,20 +40,23 @@ async def _finish_query(
     operation: Callable[[], Awaitable[DataQueryReply]],
     *,
     matcher: Matcher,
+    event: MessageEvent,
     references: SeerInfoReferences | None,
     reference: SeerInfoReference | None = None,
 ) -> None:
     try:
         reply: DataQueryReply = await operation()
     except DataUnavailableError:
-        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
         return
     if isinstance(reply, DataQueryImageReply):
         url = None if references is None else references.url_for(reference)
         message = reply.to_outbound(reference_url=url)
-        await matcher.finish(render_onebot_outbound_message(message))
+        await finish_event_reply(
+            matcher, event, render_onebot_outbound_message(message)
+        )
         return
-    await matcher.finish(reply)
+    await finish_event_reply(matcher, event, reply)
 
 
 def install(group: SeerMatcherGroup) -> None:

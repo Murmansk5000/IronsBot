@@ -6,13 +6,14 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -35,62 +36,68 @@ if TYPE_CHECKING:
     )
 
 
-async def _report_progress(matcher: Matcher, message: str) -> None:
-    await matcher.send(message)
+async def _report_progress(matcher: Matcher, event: MessageEvent, message: str) -> None:
+    await send_event_reply(matcher, event, message)
 
 
 async def _finish_result(
     result: PeakQueryResult,
     matcher: Matcher,
+    event: MessageEvent,
 ) -> None:
-    await matcher.finish(render_onebot_outbound_message(result.to_outbound()))
+    await finish_event_reply(
+        matcher, event, render_onebot_outbound_message(result.to_outbound())
+    )
 
 
 async def _handle_pool(
     service: PeakQueryService,
     matcher: Matcher,
+    event: MessageEvent,
     *,
     expert: bool,
 ) -> None:
     try:
         result = await service.pool(
             expert=expert,
-            progress=partial(_report_progress, matcher),
+            progress=partial(_report_progress, matcher, event),
         )
     except DataUnavailableError:
-        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher)
+    await _finish_result(result, matcher, event)
 
 
 async def _handle_vote(
     service: PeakQueryService,
     matcher: Matcher,
+    event: MessageEvent,
 ) -> None:
     try:
-        result = await service.vote(partial(_report_progress, matcher))
+        result = await service.vote(partial(_report_progress, matcher, event))
     except DataUnavailableError:
-        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher)
+    await _finish_result(result, matcher, event)
 
 
 async def _handle_master_pool(
     service: PeakQueryService,
     matcher: Matcher,
+    event: MessageEvent,
 ) -> None:
     try:
-        result = await service.master_pool(partial(_report_progress, matcher))
+        result = await service.master_pool(partial(_report_progress, matcher, event))
     except DataUnavailableError:
-        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher)
+    await _finish_result(result, matcher, event)
 
 
 async def _handle_item_rank(
     service: PeakQueryService,
     matcher: Matcher,
-    event: Event,
+    event: MessageEvent,
     *,
     kind: Literal["套装", "称号"],
 ) -> None:
@@ -100,25 +107,25 @@ async def _handle_item_rank(
             kind=kind,
         )
     except DataUnavailableError:
-        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher)
+    await _finish_result(result, matcher, event)
 
 
 async def _handle_pet_rank(
     service: PeakQueryService,
     matcher: Matcher,
-    event: Event,
+    event: MessageEvent,
 ) -> None:
     try:
         result = await service.pet_rank(
             event.get_plaintext(),
-            partial(_report_progress, matcher),
+            partial(_report_progress, matcher, event),
         )
     except DataUnavailableError:
-        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher)
+    await _finish_result(result, matcher, event)
 
 
 def install(group: SeerMatcherGroup) -> None:
