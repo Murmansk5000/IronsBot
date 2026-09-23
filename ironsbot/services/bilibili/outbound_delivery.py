@@ -66,6 +66,7 @@ FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure
 
 HistoryQueryChecker = Callable[[ConversationRef], bool]
 _LOGGER = logging.getLogger(__name__)
+FailureKey = tuple[ConversationRef, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,35 +121,31 @@ class BilibiliDynamicOutboundSender:
                 (TextPart("🏷️ 标签：" + " / ".join(labels) + "\n"), *link_message.parts)
             )
 
-        results: dict[ConversationRef, SendResult] = {}
-        failed_conversations = list(
-            await self._send_link_message(
-                link_message,
-                targets.link_group_conversations,
-                targets.link_private_conversations,
-                action_name=LINK_DYNAMIC_PUSH_ACTION,
-                subscription_key=subscription_key,
-                author_mid=author_mid,
-                dynamic_id=dynamic_id,
-                results=results,
-            )
+        failures: dict[FailureKey, SendResult] = {}
+        await self._send_link_message(
+            link_message,
+            targets.link_group_conversations,
+            targets.link_private_conversations,
+            action_name=LINK_DYNAMIC_PUSH_ACTION,
+            subscription_key=subscription_key,
+            author_mid=author_mid,
+            dynamic_id=dynamic_id,
+            failures=failures,
         )
 
         full_targets = self._subscribed_full_targets(targets, subscription_key)
         if not full_targets.has_targets:
-            await self._finish_delivery(item, author_mid, failed_conversations, results)
+            await self._finish_delivery(item, author_mid, failures)
             return
-        failed_conversations.extend(
-            await self._send_link_message(
-                link_message,
-                full_targets.full_group_conversations,
-                full_targets.full_private_conversations,
-                action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
-                subscription_key=subscription_key,
-                author_mid=author_mid,
-                dynamic_id=dynamic_id,
-                results=results,
-            )
+        await self._send_link_message(
+            link_message,
+            full_targets.full_group_conversations,
+            full_targets.full_private_conversations,
+            action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
+            subscription_key=subscription_key,
+            author_mid=author_mid,
+            dynamic_id=dynamic_id,
+            failures=failures,
         )
 
         text_targets = self._subscribed_full_targets(
@@ -177,14 +174,12 @@ class BilibiliDynamicOutboundSender:
         else:
             content_message = None
         if content_message is not None:
-            failed_conversations.extend(
-                await self._send_content(
-                    content_message,
-                    text_targets,
-                    results,
-                    dynamic_id=dynamic_id,
-                    stage="text",
-                )
+            await self._send_content(
+                content_message,
+                text_targets,
+                failures,
+                dynamic_id=dynamic_id,
+                stage="text",
             )
 
         image_targets = self._subscribed_full_targets(
@@ -200,35 +195,31 @@ class BilibiliDynamicOutboundSender:
             else None
         )
         if image_message is not None and image_targets.has_targets:
-            failed_conversations.extend(
-                await self._send_content(
-                    image_message,
-                    image_targets,
-                    results,
-                    dynamic_id=dynamic_id,
-                    stage="image",
-                )
+            await self._send_content(
+                image_message,
+                image_targets,
+                failures,
+                dynamic_id=dynamic_id,
+                stage="image",
             )
-        await self._finish_delivery(item, author_mid, failed_conversations, results)
+        await self._finish_delivery(item, author_mid, failures)
 
     async def _finish_delivery(
         self,
         item: dict[str, Any],
         author_mid: int,
-        failed_conversations: list[ConversationRef],
-        results: dict[ConversationRef, SendResult],
+        failures: dict[FailureKey, SendResult],
     ) -> None:
         dynamic_id = str(item.get("id_str", ""))
         if self.ledger is not None:
             self.ledger.skip_remaining(dynamic_id)
-        if failed_conversations and (
+        if failures and (
             self.ledger is None or self.ledger.claim_notification(dynamic_id)
         ):
             await self._notify_content_delivery_failure(
                 item,
                 author_mid,
-                tuple(dict.fromkeys(failed_conversations)),
-                results,
+                failures,
             )
 
     def _stage_delivery(self, dynamic_id: str, stage: str) -> ProactiveMessageDelivery:
@@ -273,8 +264,8 @@ class BilibiliDynamicOutboundSender:
         subscription_key: str,
         author_mid: int,
         dynamic_id: str,
-        results: dict[ConversationRef, SendResult],
-    ) -> tuple[ConversationRef, ...]:
+        failures: dict[FailureKey, SendResult],
+    ) -> None:
         summary = await self._stage_delivery(dynamic_id, "link").send_many(
             (
                 ProactiveDeliveryRequest(
@@ -295,17 +286,17 @@ class BilibiliDynamicOutboundSender:
             include_promotions=True,
             max_attempts=1,
         )
-        return self._capture_failures(summary, results)
+        self._capture_failures(summary, failures, stage="link")
 
     async def _send_content(
         self,
         content_message: OutboundMessage,
         targets: BiliPushTargets,
-        results: dict[ConversationRef, SendResult],
+        failures: dict[FailureKey, SendResult],
         *,
         dynamic_id: str,
         stage: str,
-    ) -> tuple[ConversationRef, ...]:
+    ) -> None:
         conversations = (
             *targets.full_group_conversations,
             *targets.full_private_conversations,
@@ -317,37 +308,39 @@ class BilibiliDynamicOutboundSender:
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             max_attempts=1,
         )
-        return self._capture_failures(summary, results)
+        self._capture_failures(summary, failures, stage=stage)
 
     @staticmethod
     def _capture_failures(
         summary: ProactiveDeliverySummary,
-        results: dict[ConversationRef, SendResult],
-    ) -> tuple[ConversationRef, ...]:
-        results.update(
-            {
-                conversation: result
-                for conversation, result in summary.results
-                if not result.delivered
-            }
-        )
-        return tuple(
-            target
-            for target in summary.failed
-            if results.get(target) is None
-            or (
-                results[target].attempted
-                and results[target].failure_kind
+        failures: dict[FailureKey, SendResult],
+        *,
+        stage: str,
+    ) -> None:
+        failed = set(summary.failed)
+        recorded: set[ConversationRef] = set()
+        for conversation, result in summary.results:
+            recorded.add(conversation)
+            if (
+                conversation in failed
+                and not result.delivered
+                and result.attempted
+                and result.failure_kind
                 is not DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+            ):
+                failures[(conversation, stage)] = result
+        for conversation in failed - recorded:
+            failures[(conversation, stage)] = SendResult(
+                delivered=False,
+                error_code="delivery_failed",
+                failure_kind=DeliveryFailureKind.PERMANENT,
             )
-        )
 
     async def _notify_content_delivery_failure(
         self,
         item: dict[str, Any],
         author_mid: int,
-        conversations: tuple[ConversationRef, ...],
-        results: dict[ConversationRef, SendResult],
+        failures: dict[FailureKey, SendResult],
     ) -> None:
         if self.admin_notices is None:
             _LOGGER.error(
@@ -362,19 +355,33 @@ class BilibiliDynamicOutboundSender:
                         conversation.platform.value,
                         conversation.kind,
                         reference_digest(conversation.id),
+                        stage,
                     )
-                    for conversation in conversations
+                    for conversation, stage in failures
                 ),
             )
             return
-        target_lines = []
-        for conversation in conversations:
-            result = results.get(conversation)
-            identity = result.execution_identity if result is not None else None
+        grouped: dict[ConversationRef, list[tuple[str, SendResult]]] = {}
+        for (conversation, stage), result in failures.items():
+            grouped.setdefault(conversation, []).append((stage, result))
+        target_lines: list[str] = []
+        stage_labels = {"link": "链接", "text": "正文", "image": "图片"}
+        for conversation, stage_results in grouped.items():
+            stages = "、".join(
+                stage_labels.get(stage, stage) for stage, _result in stage_results
+            )
+            identities = tuple(
+                dict.fromkeys(
+                    result.execution_identity
+                    for _stage, result in stage_results
+                    if result.execution_identity is not None
+                )
+            )
+            identity_text = "、".join(identity.describe() for identity in identities)
             target_lines.append(
                 f"失败目标：{'群' if conversation.kind == 'group' else '私聊'} "
-                f"{conversation.id}\n执行机器人："
-                f"{identity.describe() if identity is not None else '未确定'}"
+                f"{conversation.id}\n失败阶段：{stages}\n执行机器人："
+                f"{identity_text or '未确定'}"
             )
         name = item_author_name(item)
         if name in {f"UID {author_mid}", "该账号"}:
@@ -382,8 +389,8 @@ class BilibiliDynamicOutboundSender:
                 self.account_name(author_mid) if self.account_name else None
             ) or name
         await self.admin_notices.send_private_to_superusers(
-            "⚠️ B站动态发送失败\n"
-            "本次发送未完成，不自动补发。\n"
+            "⚠️ B站动态部分阶段发送失败\n"
+            "列出的阶段未完成，不自动补发；其他成功阶段不受影响。\n"
             f"B站账号：{name}（UID：{author_mid}）\n"
             f"动态ID：{item.get('id_str', '未知')}\n" + "\n".join(target_lines) + "\n"
             "请检查当前平台的富媒体上传通道。",
@@ -514,11 +521,19 @@ async def prepare_dynamic_image_message(
     if len(urls) <= 1:
         return original
     try:
-        content = await collage.compose_urls(urls)
+        prepared = await collage.prepare_urls(urls)
     except ImageCollageError:
         _LOGGER.warning("Bilibili collage unavailable; using original images")
         return original
-    return OutboundMessage((BinaryImagePart(content, "image/png", "dynamic.png"),))
+    parts = tuple(
+        RemoteImagePart(image.url)
+        if image.url is not None
+        else BinaryImagePart(
+            image.content or b"", image.content_type, image.filename
+        )
+        for image in prepared
+    )
+    return OutboundMessage(parts) if parts else None
 
 
 async def prepare_dynamic_content_messages(
