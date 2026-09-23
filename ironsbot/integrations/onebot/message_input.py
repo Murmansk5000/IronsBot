@@ -70,6 +70,7 @@ def message_input_context(event: Event) -> MessageInputContext:
     user_id = _event_user_id(event)
     actor = onebot_actor_ref(user_id)
     group_id = getattr(event, "group_id", None)
+    role = getattr(getattr(event, "sender", None), "role", None)
     conversation = onebot_conversation_ref(user_id, group_id=group_id)
     return MessageInputContext(
         IncomingMessageRef(
@@ -80,8 +81,14 @@ def message_input_context(event: Event) -> MessageInputContext:
             text=text,
             direct_mentions=member_mentions,
             reply_to_id=event_reply_message_id(event),
+            group_role=str(role) if group_id is not None and role is not None else None,
         ),
         mentions_bot=mentions_bot,
+        mentions_everyone=any(
+            getattr(segment, "type", "") == "at"
+            and str(getattr(segment, "data", {}).get("qq", "")) == "all"
+            for segment in _current_message(event)
+        ),
         execution_identity=(
             ExecutionIdentity(Platform.ONEBOT, self_id) if self_id else None
         ),

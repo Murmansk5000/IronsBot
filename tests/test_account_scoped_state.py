@@ -182,14 +182,17 @@ def test_actor_preferences_and_quotas_are_shared_by_union_principal(
             quotas.merge_principals(merge.source, merge.target)
 
     assert watches.get(actor_b) == (1400001,)
-    assert quotas.status(
-        local_date=date(2026, 9, 22),
-        actor=actor_b,
-        scope="unbound",
-        player_id=_PLAYER_A,
-        action_key="profile",
-        limit=3,
-    ).used_count == 1
+    assert (
+        quotas.status(
+            local_date=date(2026, 9, 22),
+            actor=actor_b,
+            scope="unbound",
+            player_id=_PLAYER_A,
+            action_key="profile",
+            limit=3,
+        ).used_count
+        == 1
+    )
 
 
 def _link_binding_principals(
