@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, tzinfo
 from math import isfinite
 from typing import TYPE_CHECKING, TypeVar
+from zoneinfo import ZoneInfo
 
 from ironsbot.core.commands import csv_items, json_array
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
-TZ_CN = timezone(timedelta(hours=8))
+TZ_CN = ZoneInfo("Asia/Shanghai")
 TIME_PART_COUNT = 2
 TIME_PART_COUNT_WITH_SECONDS = 3
 MIN_HOUR = 0
@@ -28,10 +29,8 @@ IDEOGRAPHIC_COMMA = "、"
 FULLWIDTH_SEMICOLON = "；"
 
 
-def now(tz: timezone | None = None) -> datetime:
-    if tz is None:
-        return datetime.now(timezone.utc).astimezone()
-    return datetime.now(tz=tz)
+def now(tz: tzinfo | None = None) -> datetime:
+    return datetime.now(tz=tz or TZ_CN)
 
 
 def observation_age(fetched_at: float | None, *, at: float) -> float | None:

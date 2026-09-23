@@ -8,6 +8,8 @@ from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import TZ_CN
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -23,7 +25,7 @@ NOTICE_MAX_CHARS = 3000
 
 
 def _now_text() -> str:
-    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _write_marker(payload: dict[str, Any]) -> None:
