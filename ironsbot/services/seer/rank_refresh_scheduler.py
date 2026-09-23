@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.platform import reference_digest
-from ironsbot.core.time import scheduled_clock_time, second_of_day
+from ironsbot.core.time import TZ_CN, scheduled_clock_time, second_of_day
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -24,7 +24,7 @@ def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) 
     if not rank_config.active_start or not rank_config.active_end:
         return True
 
-    current_time = now or datetime.now(timezone.utc).astimezone()
+    current_time = (now or datetime.now(timezone.utc)).astimezone(TZ_CN)
     current = (current_time.hour * 60 + current_time.minute) * 60 + current_time.second
     start = second_of_day(
         rank_config.active_start,
