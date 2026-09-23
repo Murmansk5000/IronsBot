@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.categories import classify_dynamic
 from ironsbot.services.bilibili.checkpoints import (
@@ -298,7 +299,7 @@ async def run_monitor_check(  # noqa: PLR0913 - monitor coordination boundary
     force: bool = False,
     now: datetime | None = None,
 ) -> MonitorCheckResult:
-    current_now = now or datetime.now(timezone.utc).astimezone()
+    current_now = (now or datetime.now(timezone.utc)).astimezone(TZ_CN)
     active_boost_slots = boost_slots_at(service.config.polling, current_now)
     due_boost_slots = boost_slots_due(service.auto_check_state, active_boost_slots)
     if service.check_lock.locked():
@@ -330,7 +331,7 @@ async def run_monitor_check(  # noqa: PLR0913 - monitor coordination boundary
         result = MonitorCheckResult()
         catch_up = force
         while True:
-            current_now = now or datetime.now(timezone.utc).astimezone()
+            current_now = (now or datetime.now(timezone.utc)).astimezone(TZ_CN)
             active_boost_slots = boost_slots_at(service.config.polling, current_now)
             merged_slots = {
                 slot.key: slot
