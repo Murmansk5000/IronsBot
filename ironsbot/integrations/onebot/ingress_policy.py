@@ -16,11 +16,13 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.self_commands import SelfCommandEvent, SelfCommandGate
 from ironsbot.services.identity_observation import OneBotGroupMessageObservation
 
 if TYPE_CHECKING:
+    from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.services.identity_observation import (
         SilentIdentityObservationService,
     )
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
 _SILENT_REASON = "OneBot is running in silent verifier mode"
 _EVERYONE_REASON = "Messages mentioning everyone are not commands"
 _SELF_REASON = "Own-account message is not an accepted self command"
+_ROUTING_REASON = "OneBot account does not own this group"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +38,7 @@ class OneBotIngressPolicy:
     messages_enabled: bool
     identity_observer: SilentIdentityObservationService | None = None
     self_commands: SelfCommandGate | None = None
+    router: BotRouter | None = None
 
     async def process(self, event: Event) -> None:
         observation = _group_message_observation(event)
@@ -42,6 +46,14 @@ class OneBotIngressPolicy:
             await self.identity_observer.observe_onebot(observation)
         if not self.messages_enabled:
             raise IgnoredException(_SILENT_REASON)
+        if isinstance(event, GroupMessageEvent) and self.router is not None:
+            conversation = ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(event.group_id),
+            )
+            if not self.router.allows_incoming(event.self_id, conversation):
+                raise IgnoredException(_ROUTING_REASON)
         if (
             isinstance(event, GroupMessageEvent)
             and event.user_id == event.self_id

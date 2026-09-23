@@ -46,6 +46,14 @@ port = {port}
 log_level = "INFO"
 plugin_manifest = "core"
 superusers = [{USER_ID}]
+use_default_for_unconfigured_groups = true
+
+[messaging.bot_routing]
+enabled = false
+default_bot = "smoke_bot"
+
+[messaging.bot_routing.bot_aliases]
+smoke_bot = {BOT_ID}
 
 [bot.onebot.self_commands]
 enabled = true
