@@ -257,7 +257,7 @@ async def test_ai_error_visibility_and_restricted_admin_notice(
     owner = ActorRef(OFFICIAL, "owner:opaque")
     features = FeatureService(
         {GROUP: frozenset({"admin_notice"})} if admin else {},
-        {},
+        {owner: frozenset({"admin_notice"})},
         frozenset({owner}),
     )
     service = _service(
@@ -289,7 +289,7 @@ async def test_ai_failure_notifies_only_official_admin_targets(
     )
     features = FeatureService(
         {ADMIN_GROUP: frozenset({"admin_notice"})},
-        {},
+        {OWNER: frozenset({"admin_notice"})},
         frozenset({OWNER}),
     )
     service = _service(

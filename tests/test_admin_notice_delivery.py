@@ -48,6 +48,9 @@ def _service(
 ) -> tuple[AdminNoticeService, FakeAdminNoticeSender]:
     feature_config = FeatureConfig(
         group_policy={"3003": ["admin_notice"]} if with_targets else {},
+        user_policy={"1001": ["admin_notice"], "2002": ["admin_notice"]}
+        if with_targets
+        else {},
     )
     sender = FakeAdminNoticeSender()
     return (

@@ -15,6 +15,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.identity_observation import OneBotGroupMessageObservation
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     )
 
 _SILENT_REASON = "OneBot is running in silent verifier mode"
+_EVERYONE_REASON = "Messages mentioning everyone are not commands"
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +38,10 @@ class OneBotIngressPolicy:
             await self.identity_observer.observe_onebot(observation)
         if not self.messages_enabled:
             raise IgnoredException(_SILENT_REASON)
+        if isinstance(event, GroupMessageEvent) and message_input_context(
+            event
+        ).mentions_everyone:
+            raise IgnoredException(_EVERYONE_REASON)
 
     def install(self) -> None:
         policy = self

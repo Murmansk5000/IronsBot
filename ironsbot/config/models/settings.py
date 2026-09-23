@@ -723,9 +723,7 @@ class Settings(BaseModel):
     ) -> None:
         for index, action in enumerate(self.messaging.mention_replies):
             for user_index, user in enumerate(action.users):
-                location = (
-                    f"messaging.mention_replies[{index}].users[{user_index}]"
-                )
+                location = f"messaging.mention_replies[{index}].users[{user_index}]"
                 if user not in self.identities.users:
                     msg = f"{location} references unknown identity user alias: {user}"
                     raise SettingsReferenceError(msg)
