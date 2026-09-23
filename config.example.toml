@@ -114,10 +114,12 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
-# EN: Private replies stay on the receiving account. This default account handles
-#     unassigned groups; an unowned group endpoint may respond when explicitly addressed.
-# ZH: 私聊回复由收到消息的账号处理；未分配的群由默认账号处理。
-# 尚无已知归属的群端点可响应直接指定本账号的消息；启用多个官方账号时必填。
+# EN: Private replies stay on the receiving account; private push account selection
+#     is separate from this group default-routing switch. Groups without an explicit
+#     route use this account only when bot.use_default_for_unconfigured_groups is true.
+# ZH: 私聊回复由收到消息的账号处理；私聊推送另按已知端点和私聊路由策略选择账号。
+# 未显式分配的群仅在 bot.use_default_for_unconfigured_groups=true 时使用默认账号。
+# 启用多个官方账号时必填。
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
@@ -932,9 +934,9 @@ local_root = "sendpic"
 # message_template = "{image}"
 
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
-# Incoming command replies use the receiving bot; proactive pushes use these routes.
+# Group ingress and proactive pushes use these routes; private replies stay on the receiving bot.
 # ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
-# 普通查询由收到事件的机器人回复；主动推送按下面的群/用户路由选择机器人。
+# 群入站和主动推送按下面的群/用户路由选择机器人；私聊回复仍由收到事件的机器人处理。
 # enabled=false 时不使用群/用户专用路由，但主动推送仍只会使用明确配置的 default_bot。
 # 未配置或未连接 default_bot 时，主动发送会失败，不会挑选任意在线机器人。
 # 开启前请把示例 QQ 和目标别名换成真实配置。

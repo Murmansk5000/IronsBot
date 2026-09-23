@@ -1,4 +1,5 @@
-from typing import cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
@@ -13,6 +14,18 @@ from ironsbot.integrations.onebot.rules import (
     natural_language,
 )
 from tests.helpers.onebot_events import group_message_event
+
+if TYPE_CHECKING:
+    from ironsbot.integrations.onebot.router import BotRouter
+
+
+@dataclass
+class _RejectingRouter:
+    calls: int = 0
+
+    def allows_incoming(self, _bot_id: int, _conversation: object) -> bool:
+        self.calls += 1
+        return False
 
 
 @pytest.mark.asyncio
@@ -46,3 +59,19 @@ async def test_quoted_everyone_mention_does_not_block_current_command() -> None:
     assert not message_input_context(event).mentions_everyone
     await OneBotIngressPolicy(messages_enabled=True).process(event)
     assert await explicit_command()(cast("Bot", None), event, {})
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_group_is_ignored_even_when_bot_is_mentioned() -> None:
+    router = _RejectingRouter()
+    event = group_message_event(
+        message=Message(MessageSegment.at(1)) + MessageSegment.text("帮助")
+    )
+
+    with pytest.raises(IgnoredException):
+        await OneBotIngressPolicy(
+            messages_enabled=True,
+            router=cast("BotRouter", router),
+        ).process(event)
+
+    assert router.calls == 1
