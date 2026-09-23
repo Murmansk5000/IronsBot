@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili.monitor import run_monitor_check
 from ironsbot.services.bilibili.schedule import boost_schedule_entries
 from ironsbot.services.operations.scheduler import JobRegistry
@@ -75,6 +76,7 @@ class BilibiliMonitorService:
             "cron",
             minute="*",
             second=check_second,
+            timezone=TZ_CN,
             job_id="auto_check",
         )
         for entry in boost_schedule_entries(self.service.config.polling):
@@ -86,6 +88,7 @@ class BilibiliMonitorService:
                 hour=entry.hour,
                 minute=entry.minute,
                 second=entry.second,
+                timezone=TZ_CN,
                 job_id=entry.job_suffix,
             )
 

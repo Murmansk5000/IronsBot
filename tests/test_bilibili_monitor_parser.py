@@ -115,6 +115,7 @@ def test_link_message_omits_content_and_images() -> None:
         part.text for part in message.parts if isinstance(part, TextPart)
     )
     assert "传送门：https://t.bilibili.com/1211894957538803730" in rendered
+    assert "发布时间：2026-06-09 19:31:23" in rendered
     assert "正文内容" not in rendered
 
 
