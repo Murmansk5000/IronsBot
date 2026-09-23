@@ -175,3 +175,47 @@ def test_reply_template_can_disable_reference_and_sender_mention() -> None:
 
     assert prepared.context is None
     assert prepared.message == OutboundMessage.from_text("result")
+
+
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("caption", [False, True])
+@pytest.mark.parametrize("explicit_mention", [False, True])
+@pytest.mark.parametrize(
+    "image",
+    [BinaryImagePart(b"image", "image/png"), RemoteImagePart("https://example.test/i")],
+)
+def test_image_replies_reference_sender_without_mention(
+    *,
+    platform: Platform,
+    caption: bool,
+    explicit_mention: bool,
+    image: BinaryImagePart | RemoteImagePart,
+) -> None:
+    conversation = ConversationRef(platform, "group", "group", account_id="bot")
+    actor = ActorRef(platform, "sender", "member", "group", account_id="bot")
+    incoming = IncomingMessageRef(platform, actor, conversation, "source", "query")
+    body = (TextPart("caption"), image) if caption else (image,)
+    message = OutboundMessage(
+        (MentionPart(actor), TextPart("\n"), *body) if explicit_mention else body
+    )
+
+    prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, message)
+
+    assert prepared.context == ReplyContext.from_message(incoming)
+    assert prepared.message.parts == body
+    assert COMMAND_REPLY_TEMPLATE.prepare(incoming, prepared.message) == prepared
+
+
+def test_image_reply_does_not_remove_other_explicit_recipients() -> None:
+    conversation = ConversationRef(Platform.ONEBOT, "group", "456")
+    sender = ActorRef(Platform.ONEBOT, "123", "member", "456")
+    other = ActorRef(Platform.ONEBOT, "321", "member", "456")
+    incoming = IncomingMessageRef(Platform.ONEBOT, sender, conversation, "7", "query")
+    image = BinaryImagePart(b"png", "image/png")
+    original = OutboundMessage(
+        (MentionPart(sender), TextPart(" "), MentionPart(other), image)
+    )
+
+    prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, original)
+
+    assert prepared.message.parts == (MentionPart(other), image)

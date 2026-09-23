@@ -13,6 +13,7 @@ from ironsbot.core.outbound import (
     DeliveryFailureKind,
     MentionPart,
     OutboundMessage,
+    RemoteImagePart,
     ReplyContext,
     TextPart,
 )
@@ -511,6 +512,68 @@ async def test_group_member_mention_is_one_markdown_passive_reply() -> None:
         ),
     )
     assert bot.calls[0][3:] == ("event-id", 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("markdown", [False, True])
+async def test_every_image_in_mixed_reply_references_the_source(
+    *, markdown: bool
+) -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger({"app": False}, bot_provider=lambda _: bot)
+    member = ActorRef(Platform.QQ_OFFICIAL, "member", "member", GROUP.id, "app")
+    caption = (
+        (MentionPart(member), TextPart("caption"))
+        if markdown
+        else (TextPart("caption"),)
+    )
+
+    result = await messenger.reply(
+        _reply(GROUP, "event-id", "source-index"),
+        OutboundMessage(
+            (
+                *caption,
+                BinaryImagePart(b"png", "image/png"),
+                RemoteImagePart("https://example.test/image"),
+            )
+        ),
+    )
+
+    assert result.delivered
+    text, first, second = bot.calls[0][2]
+    assert text.reference_id == (None if markdown else "source-index")
+    assert first.reference_id == second.reference_id == "source-index"
+    assert bot.calls[0][3:] == ("event-id", 1)
+
+
+@pytest.mark.asyncio
+async def test_expired_image_reply_drops_reference_for_proactive_send() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger({"app": True}, bot_provider=lambda _: bot)
+    result = await messenger.reply(
+        ReplyContext(
+            GROUP, "expired", "source-index", datetime(2000, 1, 1, tzinfo=UTC)
+        ),
+        OutboundMessage((BinaryImagePart(b"png", "image/png"),)),
+    )
+    assert result.delivered
+    assert bot.calls[0][2][0].reference_id is None
+    assert bot.calls[0][3:] == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_proactive_image_keeps_mention_without_reference() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger({"app": True}, bot_provider=lambda _: bot)
+    member = ActorRef(Platform.QQ_OFFICIAL, "member", "member", GROUP.id, "app")
+    result = await messenger.send(
+        GROUP,
+        OutboundMessage((MentionPart(member), BinaryImagePart(b"png", "image/png"))),
+    )
+    assert result.delivered
+    text, image = bot.calls[0][2]
+    assert isinstance(text, QQOfficialTextPayload) and text.markdown
+    assert text.reference_id is image.reference_id is None
 
 
 @pytest.mark.asyncio
