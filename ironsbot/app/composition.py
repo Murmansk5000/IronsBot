@@ -277,6 +277,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.activity.notice_timeout_seconds,
         ),
     )
+    query_sessions = PortableQuerySessions()
     seer_components = build_seer_components(
         settings,
         http_clients,
@@ -291,6 +292,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
         identity_principals,
         admin_notices,
+        query_sessions,
+        common.private_routes,
     )
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -510,7 +513,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             ignored_plugins=ignored_plugins,
         )
 
-    query_sessions = PortableQuerySessions()
     from ironsbot.services.portable_menu_access import (
         explicit_command_resolver,
         menu_access_resolver,
