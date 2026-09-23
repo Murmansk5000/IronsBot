@@ -19,9 +19,9 @@ from nonebot.typing import (
 
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
-    bind_async,
     update_queued_menu_anchor,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
@@ -83,7 +83,20 @@ _NEW_CONTENT_INPUT_PATTERN = re.compile(
 
 
 def install(group: SeerMatcherGroup) -> None:
-    service: SeerDataQueryService = group.resources.data_queries
+    from ironsbot.integrations.onebot.portable_queries import (
+        make_portable_query_handler,
+    )
+    from ironsbot.services.portable_new_content_commands import (
+        build_portable_new_content_operations,
+    )
+
+    operations = build_portable_new_content_operations(
+        group.resources,
+        group.query_sessions,
+        group.features,
+        expanded_categories=group.new_content_expanded_categories,
+        preview_max_items=group.new_content_preview_max_items,
+    )
     root_rule = seer_feature_rule(group.features, "seer_data") & explicit_command()
     root = group.on_fullmatch(
         NEW_CONTENT_COMMANDS,
@@ -94,7 +107,11 @@ def install(group: SeerMatcherGroup) -> None:
         rule=root_rule,
         priority=group.matcher_priority("seer_data"),
     )
-    root.append_handler(bind_async(_start_new_content, service, None, group))
+    root.append_handler(
+        make_portable_query_handler(
+            operations["seer.data.new_content"], group.query_sessions
+        )
+    )
 
     for spec in NEW_CONTENT_COMMAND_SPECS:
         rule = root_rule
@@ -110,7 +127,9 @@ def install(group: SeerMatcherGroup) -> None:
             priority=group.matcher_priority("seer_data"),
         )
         matcher.append_handler(
-            bind_async(_start_new_content, service, spec.categories, group)
+            make_portable_query_handler(
+                operations[spec.command_id], group.query_sessions
+            )
         )
 
 
@@ -295,7 +314,11 @@ async def _send_item_detail(
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     try:
-        detail = await services.details.select(snapshot, item)
+        detail = await services.details.select(
+            snapshot,
+            item,
+            execution_identity=message_input_context(event).execution_identity,
+        )
     except (NewContentSnapshotChangedError, DataPublicationChangedError):
         await matcher.finish("数据已更新，当前新增内容菜单已失效，重新发送指令查看。")
         return

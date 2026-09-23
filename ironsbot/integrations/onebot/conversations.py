@@ -16,7 +16,9 @@ from ironsbot.integrations.onebot.matchers import (
     get_queued_conversation,
     queued_conversation_is_cancelled,
 )
+from ironsbot.integrations.onebot.message_input import event_reply_message_id
 from ironsbot.integrations.onebot.replies import build_message, event_sender_at_user_ids
+from ironsbot.integrations.onebot.session_identity import event_session_key
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message
@@ -31,7 +33,7 @@ EventReplyCheck = Callable[[MessageEvent], bool]
 def event_conversation_session_id(namespace: str, event: MessageEvent) -> str:
     group_id = getattr(event, "group_id", None)
     target = f"group:{group_id}" if group_id is not None else "private"
-    return f"{namespace}:{target}:user:{event.user_id}"
+    return f"{namespace}:bot:{event.self_id}:{target}:user:{event.user_id}"
 
 
 def is_self_message_event(event: MessageEvent) -> bool:
@@ -52,11 +54,11 @@ def _owner_reply_check(
     def _check(next_event: Event) -> bool:
         if not isinstance(next_event, MessageEvent):
             return False
-        if next_event.get_session_id() != owner_event_session_id:
+        if event_session_key(next_event) != owner_event_session_id:
             return False
         if is_self_message_event(next_event):
             return False
-        if getattr(next_event, "reply", None) is not None:
+        if event_reply_message_id(next_event) is not None:
             return False
         return reply_check(next_event)
 
@@ -79,7 +81,7 @@ async def begin_event_reply_conversation(  # noqa: PLR0913
     """Reserve direct menu input while an asynchronous first-level command runs."""
 
     session_id = event_conversation_session_id(namespace, event)
-    owner_event_session_id = event.get_session_id()
+    owner_event_session_id = event_session_key(event)
 
     def _group_reply(next_event: Event) -> bool:
         return (
@@ -129,7 +131,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         owner_event_session_id = queued.event_session_id
     else:
         session_id = event_conversation_session_id(namespace, event)
-        owner_event_session_id = event.get_session_id()
+        owner_event_session_id = event_session_key(event)
     if not isinstance(session_id, str):
         session_id = event_conversation_session_id(namespace, event)
     prompt_sessions = get_prompt_session_manager(matcher)

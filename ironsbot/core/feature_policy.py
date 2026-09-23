@@ -71,13 +71,13 @@ class FeatureService:
             for features in (
                 *self.group_features.values(),
                 *self.actor_features.values(),
-                *self.platform_default_features.values(),
-                *self.account_default_features.values(),
             )
             for feature in features
         )
 
     def is_actor_superuser(self, actor: ActorRef) -> bool:
+        if self.actor_has_feature(actor, Feature.BLACKLIST.value):
+            return False
         return any(
             self._same_actor_principal(actor, configured)
             for configured in self.superusers
@@ -90,10 +90,10 @@ class FeatureService:
         )
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
-        return (
-            self.actor_has_feature(actor, feature)
-            or feature in self._default_features(actor.platform, actor.account_id)
-            or (self.superuser_bypass and self.is_actor_superuser(actor))
+        if self.actor_has_feature(actor, Feature.BLACKLIST.value):
+            return False
+        return self.actor_has_feature(actor, feature) or (
+            self.superuser_bypass and self.is_actor_superuser(actor)
         )
 
     def conversation_has_feature(
@@ -105,12 +105,6 @@ class FeatureService:
             feature in features
             and self._same_conversation_principal(conversation, configured)
             for configured, features in self.group_features.items()
-        ) or (
-            feature
-            in self._default_features(
-                conversation.platform,
-                conversation.account_id,
-            )
         )
 
     def _default_features(
@@ -132,11 +126,11 @@ class FeatureService:
     ) -> bool:
         if not is_supported_message_actor(actor, conversation):
             return False
+        if self.is_message_blocked(actor, conversation):
+            return False
         if conversation.kind == "group":
-            return (
-                self.conversation_has_feature(conversation, feature)
-                or self.actor_has_feature(actor, feature)
-                or (self.superuser_bypass and self.is_actor_superuser(actor))
+            return self.conversation_has_feature(conversation, feature) or (
+                self.superuser_bypass and self.is_actor_superuser(actor)
             )
         if conversation.kind == "private":
             return self.is_actor_feature_allowed(actor, feature)
