@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -39,6 +40,9 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.services.identity_principals import IdentityPrincipalService
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +96,31 @@ def build_common_components(
     bot_router = BotRouter(
         settings.messaging.bot_routing,
         settings.onebot_references,
+        settings.bot.use_default_for_unconfigured_groups,
+    )
+    routed_onebot_groups = (
+        {
+            settings.onebot_references.resolve_group(
+                target_ref,
+                location=f"messaging.bot_routing.groups.{target_ref}",
+            )
+            for target_ref in settings.messaging.bot_routing.groups
+        }
+        if settings.messaging.bot_routing.enabled
+        else set()
+    )
+    known_onebot_groups = {
+        target.qq
+        for target in settings.identities.groups.values()
+        if target.qq is not None
+    }
+    _LOGGER.info(
+        "group default routing configured: enabled=%s known_groups=%d "
+        "onebot_routes=%d unconfigured_onebot_groups=%d",
+        settings.bot.use_default_for_unconfigured_groups,
+        len(settings.identities.groups),
+        len(routed_onebot_groups),
+        len(known_onebot_groups - routed_onebot_groups),
     )
     promotions = PromotionCatalog(settings.promotions)
     platform_selection = settings.outbound_platform_selection
@@ -231,6 +260,21 @@ def _build_qq_official_ingress_routing(
     routing = QQOfficialIngressRouting(
         account_ids[default_alias],
         preferred_accounts,
+        settings.bot.use_default_for_unconfigured_groups,
+    )
+    _LOGGER.info(
+        "QQ Official group routing configured: default_for_unconfigured=%s "
+        "known_endpoints=%d preferred_groups=%d unconfigured_groups=%d",
+        settings.bot.use_default_for_unconfigured_groups,
+        sum(len(target.official) for target in settings.identities.groups.values()),
+        len(preferred_accounts),
+        sum(
+            1
+            for target in settings.identities.groups.values()
+            if target.qq is not None
+            and target.official
+            and str(target.qq) not in preferred_accounts
+        ),
     )
     for target in settings.identities.groups.values():
         if target.qq is None:
