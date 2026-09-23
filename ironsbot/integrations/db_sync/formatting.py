@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import TZ_CN
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime
@@ -27,7 +29,7 @@ def format_timestamp(value: datetime | None) -> str:
     if value is None:
         return "未知"
 
-    return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    return value.astimezone(TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_fingerprint(value: str | None) -> str:

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.core.bilibili import BiliBoostWindow, BiliPollingConfig
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili import monitor as monitor_module
 from ironsbot.services.bilibili.monitor import MonitorCheckResult, run_monitor_check
 from ironsbot.services.bilibili.runtime import (
@@ -111,6 +112,7 @@ def test_bili_monitor_service_registers_second_precision_scheduler_job(
         "replace_existing": True,
         "minute": "*",
         "second": 5,
+        "timezone": TZ_CN,
     }
 
 
@@ -143,6 +145,7 @@ def test_bili_monitor_registers_extra_release_burst_jobs(tmp_path: Path) -> None
         (10, 0, 10),
         (10, 0, 15),
     ]
+    assert all(job["timezone"] == TZ_CN for job in scheduler.jobs[1:])
 
 
 def test_new_dynamic_stops_the_rest_of_its_release_burst(
@@ -182,13 +185,13 @@ def test_new_dynamic_stops_the_rest_of_its_release_burst(
             service,
             on_auth_invalid=_ignore_auth_invalid,
             send_push=_ignore_push,
-            now=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+            now=datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc),
         )
         second = await run_monitor_check(
             service,
             on_auth_invalid=_ignore_auth_invalid,
             send_push=_ignore_push,
-            now=datetime(2026, 1, 1, 10, 0, 5, tzinfo=timezone.utc),
+            now=datetime(2026, 1, 1, 2, 0, 5, tzinfo=timezone.utc),
         )
         assert first.discovered_new
         assert not second.executed
@@ -231,7 +234,7 @@ def test_empty_release_burst_response_keeps_later_offsets(
                 service,
                 on_auth_invalid=_ignore_auth_invalid,
                 send_push=_ignore_push,
-                now=datetime(2026, 1, 1, 10, 0, second, tzinfo=timezone.utc),
+                now=datetime(2026, 1, 1, 2, 0, second, tzinfo=timezone.utc),
             )
             assert result.executed
 

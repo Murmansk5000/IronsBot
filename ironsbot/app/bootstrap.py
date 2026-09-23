@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,8 @@ from ironsbot.config.environment import load_runtime_environment
 from ironsbot.config.loader import load_settings
 from ironsbot.core.plugin_install import scoped_plugin_install_context
 
+APPLICATION_TIMEZONE = "Asia/Shanghai"
+
 if TYPE_CHECKING:
     from ironsbot.app.application import Application
     from ironsbot.config.models.settings import Settings
@@ -24,6 +27,15 @@ if TYPE_CHECKING:
 def configure_third_party_logging() -> None:
     for logger_name in ("httpx", "httpcore"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
+def configure_process_timezone() -> None:
+    """Keep framework logs and third-party local clocks on Beijing time."""
+
+    os.environ["TZ"] = APPLICATION_TIMEZONE
+    tzset = getattr(time, "tzset", None)
+    if tzset is not None:
+        tzset()
 
 
 def configure_application_logging(level: str) -> None:
@@ -66,6 +78,7 @@ def initialize_nonebot(settings: Settings) -> None:
 def bootstrap() -> Application:
     configure_third_party_logging()
     load_runtime_environment()
+    configure_process_timezone()
     configure_log_privacy(os.environ)
     settings = load_settings()
     initialize_nonebot(settings)

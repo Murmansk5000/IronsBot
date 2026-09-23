@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from ironsbot.core.time import (
+    TZ_CN,
     ObservationTime,
     ScheduledClockTime,
     clock_window_contains,
@@ -17,6 +18,12 @@ from ironsbot.core.time import (
     remaining_observation_ttl,
     second_of_day,
 )
+
+
+def test_default_application_clock_uses_beijing_time() -> None:
+    from ironsbot.core.time import now
+
+    assert now().tzinfo == TZ_CN
 
 
 @pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -1.0, 101.0])
