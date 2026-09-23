@@ -1819,6 +1819,40 @@ def test_qq_official_renderer_only_escapes_line_start_menu_numbers() -> None:
     )
 
 
+def test_qq_official_renderer_keeps_bilibili_hash_tags_literal() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                MentionPart(member),
+                TextPart("#赛尔号##帝皇之戎#\n无需畏怯那短暂的沉落。"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-openid" />\n\n'
+            "\\#赛尔号\\#\\#帝皇之戎\\#\n无需畏怯那短暂的沉落。",
+            markdown=True,
+        ),
+    )
+
+
 def test_qq_official_renderer_rejects_cross_group_member_mentions() -> None:
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
