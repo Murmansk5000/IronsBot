@@ -65,12 +65,12 @@ class _InputStrategy:
 
     async def __call__(self, event: Event, _: T_State) -> bool:
         context = message_input_context(event)
+        if context.mentions_everyone:
+            return False
         if self.name == "natural_language":
             return context.kind is MessageInputKind.DIRECT
         if context.kind is MessageInputKind.BOT_MENTION:
-            if context.has_member_mentions:
-                return self.allow_member_mentions
-            return self.name != "natural_language"
+            return self.allow_member_mentions or not context.has_member_mentions
         if context.kind is MessageInputKind.MEMBER_MENTION:
             return self.allow_member_mentions
         if context.kind is MessageInputKind.REPLY:
@@ -112,7 +112,10 @@ def bot_mention() -> Rule:
 
     async def _matches(event: Event, _: T_State) -> bool:
         context = message_input_context(event)
-        return context.kind is MessageInputKind.BOT_MENTION
+        return (
+            not context.mentions_everyone
+            and context.kind is MessageInputKind.BOT_MENTION
+        )
 
     return Rule(_matches)
 

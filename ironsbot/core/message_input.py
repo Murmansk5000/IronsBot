@@ -29,6 +29,7 @@ class MessageInputContext:
     mentions_bot: bool
     automatic_fallback_allowed: bool = True
     execution_identity: ExecutionIdentity | None = None
+    mentions_everyone: bool = False
 
     @property
     def text(self) -> str:
@@ -44,7 +45,7 @@ class MessageInputContext:
 
     @property
     def has_any_mention(self) -> bool:
-        return self.mentions_bot or bool(self.member_mentions)
+        return self.mentions_bot or self.mentions_everyone or bool(self.member_mentions)
 
     @property
     def kind(self) -> MessageInputKind:

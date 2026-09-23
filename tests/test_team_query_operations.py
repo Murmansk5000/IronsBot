@@ -16,11 +16,57 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.player_references import PlayerReferenceChoice
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_commands import team_query_input_matcher
 from ironsbot.services.seer.team import SeerTeamQueryService, TeamQueryActor
 from ironsbot.services.seer.team_commands import build_team_query_operation
+from tests.helpers.onebot_events import GroupMemberRole, group_message_event
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial_role", "selection_role"),
+    [("admin", "member"), ("member", "admin"), ("owner", "member")],
+)
+async def test_onebot_team_menu_uses_current_event_role(
+    initial_role: GroupMemberRole, selection_role: GroupMemberRole
+) -> None:
+    service = Mock()
+    service.query_player_team = AsyncMock(return_value="team")
+    sessions = PortableQuerySessions()
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: (
+            PlayerReferenceChoice(90001, "first"),
+            PlayerReferenceChoice(90002, "second"),
+        ),
+    )
+    operation = build_team_query_operation(
+        cast("SeerTeamQueryService", service),
+        resolver,
+        FeatureService({}, {}, frozenset()),
+        sessions,
+    )
+    event = group_message_event("战队example", sender={"role": initial_role})
+    context = message_input_context(event)
+    assert command_context(event) == command_context_from_input(context)
+    await operation(context.text, context)
+    selection = message_input_context(
+        group_message_event("1", sender={"role": selection_role}, message_id=4)
+    )
+    await sessions.select("1", selection)
+    service.query_player_team.assert_awaited_once_with(
+        90001,
+        TeamQueryActor(
+            selection.message.actor,
+            selection.message.conversation,
+            can_manage=selection_role in {"owner", "admin"},
+        ),
+    )
 
 
 @pytest.mark.asyncio
