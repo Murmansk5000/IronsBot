@@ -258,6 +258,18 @@ def build_portable_help_operation(  # noqa: PLR0913 - composition boundary
                 select=select,
                 prompt=prompt,
                 keep_open=True,
+                shareable=True,
+                can_select=lambda entry, responder: (
+                    entry
+                    in visible_help_entries(
+                        definitions,
+                        command_context_from_input(responder),
+                        features=features,
+                        commands=commands,
+                        ignored_plugins=ignored_plugins,
+                        command_ids=command_ids,
+                    )
+                ),
                 exit_message="✅ 已退出帮助。",
             ),
         )
