@@ -243,7 +243,10 @@ class IdentityPrincipalService:
         self,
         link: CrossPlatformIdentityLink,
     ) -> tuple[ConversationPrincipalMerge, ...]:
-        if link.official.kind != "user":
+        # TODO(identity-migration): member_openid is temporarily accepted as a
+        # C2C address for the same AppID. Restore a user-only check after the
+        # production address database has verified both source types.
+        if link.official.kind not in {"member", "user"}:
             return ()
         endpoint = ConversationRef(
             Platform.QQ_OFFICIAL,
@@ -259,7 +262,7 @@ class IdentityPrincipalService:
         return () if source == target else (ConversationPrincipalMerge(source, target),)
 
     def unregister_private_link(self, link: CrossPlatformIdentityLink) -> None:
-        if link.official.kind == "user":
+        if link.official.kind in {"member", "user"}:
             self._conversation_principals.pop(
                 ConversationRef(
                     Platform.QQ_OFFICIAL,
