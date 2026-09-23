@@ -27,11 +27,11 @@ from ironsbot.core.features import (
     SEER_FEATURES,
     Feature,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import QQOfficialConfig
     from ironsbot.core.feature_policy import IdentityPrincipalResolver
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 logger = logging.getLogger(__name__)
 
