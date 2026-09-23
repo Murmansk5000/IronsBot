@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
 DEFAULT_MAX_IMAGES = 18
 DEFAULT_MAX_SOURCE_BYTES = 20 * 1024 * 1024
@@ -17,6 +17,8 @@ DEFAULT_MAX_OUTPUT_SIDE = 12_000
 DEFAULT_MAX_OUTPUT_PIXELS = 40_000_000
 DEFAULT_DOWNLOAD_CONCURRENCY = 4
 MIN_COLLAGE_IMAGES = 2
+_DownloadedAsset = tuple[str, bytes | None, bool | None]
+_PreparedGroup = tuple[tuple[tuple[str, bytes], ...], bool | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +209,88 @@ class ImageCollageService:
         await flush()
         return tuple(outputs)
 
+    async def iter_prepared_urls(
+        self, urls: Sequence[str]
+    ) -> AsyncIterator[PreparedImage]:
+        """Yield independently composed media groups as soon as each is ready."""
+
+        normalized = tuple(dict.fromkeys(url.strip() for url in urls if url.strip()))
+        if not normalized:
+            return
+        assets = await self._download_assets(normalized)
+        tasks = [
+            asyncio.ensure_future(self._prepare_group(items, animated=animated))
+            for items, animated in _partition_groups(assets)
+        ]
+        try:
+            for completed in asyncio.as_completed(tasks):
+                for image in await completed:
+                    yield image
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _download_assets(
+        self,
+        urls: Sequence[str],
+    ) -> tuple[_DownloadedAsset, ...]:
+        semaphore = asyncio.Semaphore(self.download_concurrency)
+
+        async def fetch(url: str) -> bytes | None:
+            try:
+                async with semaphore:
+                    return await self.fetch_image(url, self.max_source_bytes)
+            except ImageCollageError:
+                return None
+
+        downloaded = await asyncio.gather(*(fetch(url) for url in urls))
+        seen_content: set[str] = set()
+        assets: list[_DownloadedAsset] = []
+        for url, content in zip(urls, downloaded, strict=True):
+            if content is None:
+                assets.append((url, None, None))
+                continue
+            digest = hashlib.sha256(content).hexdigest()
+            if digest in seen_content:
+                continue
+            seen_content.add(digest)
+            try:
+                animated = await asyncio.to_thread(self._is_animated, content)
+            except ImageCollageError:
+                assets.append((url, None, None))
+                continue
+            assets.append((url, content, animated))
+        return tuple(assets)
+
+    async def _prepare_group(
+        self,
+        group: Sequence[tuple[str, bytes]],
+        *,
+        animated: bool | None,
+    ) -> tuple[PreparedImage, ...]:
+        if animated is None or len(group) == 1:
+            return (PreparedImage(url=group[0][0]),)
+        if len(group) > self.max_images:
+            return tuple(PreparedImage(url=url) for url, _content in group)
+        try:
+            content = (
+                await self._compose_animation([item[1] for item in group])
+                if animated
+                else await self.compose_bytes([item[1] for item in group])
+            )
+        except ImageCollageError:
+            return tuple(PreparedImage(url=url) for url, _content in group)
+        return (
+            PreparedImage(
+                content=content,
+                content_type="image/gif" if animated else "image/png",
+                filename="dynamic.gif" if animated else "dynamic.png",
+            ),
+        )
+
     def _is_animated(self, content: bytes) -> bool:
         if self.inspect_animation is None:
             return False
@@ -220,3 +304,28 @@ class ImageCollageService:
     def _validate_count(self, count: int) -> None:
         if not MIN_COLLAGE_IMAGES <= count <= self.max_images:
             raise ImageCollageError.invalid_count(count, self.max_images)
+
+
+def _partition_groups(assets: Sequence[_DownloadedAsset]) -> tuple[_PreparedGroup, ...]:
+    groups: list[_PreparedGroup] = []
+    group: list[tuple[str, bytes]] = []
+    group_animated: bool | None = None
+
+    def flush() -> None:
+        nonlocal group, group_animated
+        if group:
+            groups.append((tuple(group), group_animated))
+        group = []
+        group_animated = None
+
+    for url, content, animated in assets:
+        if content is None or animated is None:
+            flush()
+            groups.append((((url, b""),), None))
+            continue
+        if group_animated is not None and animated != group_animated:
+            flush()
+        group_animated = animated
+        group.append((url, content))
+    flush()
+    return tuple(groups)

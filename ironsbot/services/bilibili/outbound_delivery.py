@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -325,8 +325,7 @@ class BilibiliDynamicOutboundSender:
                 conversation in failed
                 and not result.delivered
                 and result.attempted
-                and result.failure_kind
-                is not DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+                and result.failure_kind is not DeliveryFailureKind.TRANSPORT_UNAVAILABLE
             ):
                 failures[(conversation, stage)] = result
         for conversation in failed - recorded:
@@ -528,9 +527,7 @@ async def prepare_dynamic_image_message(
     parts = tuple(
         RemoteImagePart(image.url)
         if image.url is not None
-        else BinaryImagePart(
-            image.content or b"", image.content_type, image.filename
-        )
+        else BinaryImagePart(image.content or b"", image.content_type, image.filename)
         for image in prepared
     )
     return OutboundMessage(parts) if parts else None
@@ -550,6 +547,40 @@ async def prepare_dynamic_content_messages(
         combine_images=combine_images,
     )
     return tuple(part for part in (text, images) if part is not None)
+
+
+async def iter_dynamic_image_messages(
+    item: dict[str, Any],
+    collage: ImageCollageService | None,
+    *,
+    combine_images: bool = True,
+) -> AsyncIterator[OutboundMessage]:
+    """Yield each prepared media group without waiting for slower groups."""
+
+    original = render_dynamic_image_message(item)
+    if original is None:
+        return
+    urls = tuple(
+        part.url for part in original.parts if isinstance(part, RemoteImagePart)
+    )
+    if collage is None or not combine_images or len(urls) <= 1:
+        for part in original.parts:
+            yield OutboundMessage((part,))
+        return
+    try:
+        async for image in collage.iter_prepared_urls(urls):
+            part = (
+                RemoteImagePart(image.url)
+                if image.url is not None
+                else BinaryImagePart(
+                    image.content or b"", image.content_type, image.filename
+                )
+            )
+            yield OutboundMessage((part,))
+    except ImageCollageError:
+        _LOGGER.warning("Bilibili collage unavailable; using original images")
+        for part in original.parts:
+            yield OutboundMessage((part,))
 
 
 def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:
