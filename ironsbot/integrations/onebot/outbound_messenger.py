@@ -102,7 +102,9 @@ class OneBotOutboundMessenger:
     ) -> DeliveryCapabilities:
         return (
             _ONEBOT_CAPABILITIES
-            if self._enabled and _supports_conversation(conversation)
+            if self._enabled
+            and _supports_conversation(conversation)
+            and self._router.allows_outbound(conversation)
             else _UNSUPPORTED_CAPABILITIES
         )
 

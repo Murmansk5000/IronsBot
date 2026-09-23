@@ -6,7 +6,11 @@ from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 
 
 def test_default_account_owns_private_and_unassigned_groups() -> None:
-    routing = QQOfficialIngressRouting("public-app", {})
+    routing = QQOfficialIngressRouting(
+        "public-app",
+        {},
+        use_default_for_unconfigured_groups=True,
+    )
 
     assert routing.allows(
         account_id="public-app",
@@ -30,10 +34,10 @@ def test_default_account_owns_private_and_unassigned_groups() -> None:
     )
 
 
-def test_addressed_account_can_bootstrap_an_unassigned_group() -> None:
+def test_addressed_account_cannot_bootstrap_an_unassigned_group() -> None:
     routing = QQOfficialIngressRouting("public-app", {})
 
-    assert routing.allows(
+    assert not routing.allows(
         account_id="local-app",
         conversation_kind="group",
         conversation_id="unknown-group",
@@ -43,6 +47,22 @@ def test_addressed_account_can_bootstrap_an_unassigned_group() -> None:
         account_id="local-app",
         conversation_kind="private",
         conversation_id="unknown-user",
+        explicitly_addressed=True,
+    )
+
+
+def test_unconfigured_group_is_ignored_by_default() -> None:
+    routing = QQOfficialIngressRouting("public-app", {})
+
+    assert not routing.allows(
+        account_id="public-app",
+        conversation_kind="group",
+        conversation_id="unknown-group",
+    )
+    assert not routing.allows(
+        account_id="local-app",
+        conversation_kind="group",
+        conversation_id="unknown-group",
         explicitly_addressed=True,
     )
 
