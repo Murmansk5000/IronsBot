@@ -8,6 +8,7 @@ import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.outbound import DeliveryFailureKind
 from ironsbot.integrations.storage.sqlite import SqliteDatabase
 from ironsbot.services.bilibili.parser import dynamic_content, dynamic_image_urls
 
@@ -145,7 +146,13 @@ class SqliteDynamicDeliveryLedger:
         self, dynamic_id: str, target: ConversationRef, stage: str, result: SendResult
     ) -> None:
         state = "success" if result.delivered else "failed"
-        if result.error_code == "bot_unavailable":
+        if not result.attempted:
+            state = (
+                "skipped"
+                if result.failure_kind is DeliveryFailureKind.PERMANENT
+                else "pending"
+            )
+        elif result.error_code == "bot_unavailable":
             state = "pending"
         elif (
             result.failure_kind is not None and result.failure_kind.value == "uncertain"

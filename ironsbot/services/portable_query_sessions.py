@@ -3,257 +3,60 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from secrets import token_urlsafe
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
-from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
+from ironsbot.core.interactive_prompts import PromptChoice
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.core.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
+from ironsbot.services.portable_interactions import (
+    PortableInteractions,
+    check_current_interaction,
+)
+from ironsbot.services.portable_query_types import (
+    MenuSelect,  # noqa: F401 - public compatibility
+    PortableMenuSpec,
+    PortableQueryOperation,  # noqa: F401 - public compatibility
+    PortableQuerySessionError,
+    PortableResponseReservation,  # noqa: F401 - public compatibility
+    PortableTextInputSpec,
+    QueryOperationSpec,
+    QuerySelect,
+    _PendingSelection,
+    _PendingTextInput,
+    _SessionKey,
+    _UntypedMenuSelect,
+)
 from ironsbot.services.portable_reply import PortableReply
-from ironsbot.services.seer.query_result import QueryResult
+from ironsbot.services.portable_session_state import _MENU_ACCESS, PortableSessionState
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Literal
 
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.core.platform import ActorRef, ConversationRef
-    from ironsbot.core.semantic_requests import SemanticRequest
+    from ironsbot.core.semantic_requests import ActionDefinition
+    from ironsbot.services.seer.query_result import QueryResult
 
 _T = TypeVar("_T")
-QuerySearch = Callable[[str], Awaitable[QueryResult[_T]]]
-QuerySelect = Callable[[_T], Awaitable[QueryResult[Any]]]
-QueryArgumentParser = Callable[[str], str | None]
-_SessionKey = tuple["ActorRef", "ConversationRef"]
-_UntypedMenuSelect = Callable[
-    [object, "MessageInputContext"],
-    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
-]
-MenuSelect = Callable[
-    [_T, "MessageInputContext"], Awaitable[OutboundMessage | PortableReply]
-]
-MenuSemanticRequest = Callable[[_T, "MessageInputContext"], "SemanticRequest | None"]
-TextSubmit = Callable[[str, "MessageInputContext"], Awaitable[OutboundMessage]]
-PendingResponseCheck = Callable[[str], bool]
 _SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
 
 
-class PortableQueryOperation(Protocol):
-    def __call__(
-        self, text: str, context: MessageInputContext
-    ) -> Awaitable[OutboundMessage | None]: ...
-
-
-class PortableQuerySessionError(ValueError):
-    @classmethod
-    def invalid_ttl(cls) -> PortableQuerySessionError:
-        return cls("portable query session TTL must be positive")
-
-    @classmethod
-    def deferred_result_not_enabled(cls) -> PortableQuerySessionError:
-        return cls("portable deferred session result was not enabled by the caller")
-
-    @classmethod
-    def menu_label_count_mismatch(cls) -> PortableQuerySessionError:
-        return cls("portable menu labels must match the choice count")
-
-    @classmethod
-    def invalid_shared_choice(cls) -> PortableQuerySessionError:
-        return cls("portable shared menu choices must reference visible choices")
-
-
-@dataclass(frozen=True, slots=True)
-class QueryOperationSpec(Generic[_T]):
-    parser: QueryArgumentParser
-    search: QuerySearch[_T]
-    select: QuerySelect[_T]
-    prompt_title: str
-    not_found_message: str | None = None
-    keep_open: bool = True
-    contextual_search: (
-        Callable[[str, MessageInputContext], Awaitable[QueryResult[_T]]] | None
-    ) = None
-    contextual_select: (
-        Callable[[_T, MessageInputContext], Awaitable[QueryResult[Any]]] | None
-    ) = None
-
-
-@dataclass(frozen=True, slots=True)
-class PortableMenuSpec(Generic[_T]):
-    choices: tuple[_T, ...]
-    select: MenuSelect[_T]
-    prompt: OutboundMessage
-    labels: tuple[str, ...] = ()
-    text_inputs: tuple[frozenset[str], ...] = ()
-    shared_select: MenuSelect[_T] | None = None
-    semantic_request: MenuSemanticRequest[_T] | None = None
-    shared_choice_indexes: frozenset[int] = frozenset()
-    keep_open: bool = False
-    exit_message: str = "已退出查询。"
-
-    def __post_init__(self) -> None:
-        if self.labels and len(self.labels) != len(self.choices):
-            raise PortableQuerySessionError.menu_label_count_mismatch()
-        if self.text_inputs and len(self.text_inputs) != len(self.choices):
-            raise ValueError("menu text inputs must match the choice count")  # noqa: TRY003
-        if any(
-            index < 1 or index > len(self.choices)
-            for index in self.shared_choice_indexes
-        ):
-            raise PortableQuerySessionError.invalid_shared_choice()
-        if bool(self.shared_choice_indexes) != (self.shared_select is not None):
-            raise PortableQuerySessionError.invalid_shared_choice()
-
-
-@dataclass(frozen=True, slots=True)
-class PortableTextInputSpec:
-    submit: TextSubmit
-    prompt: OutboundMessage
-    exit_message: str = "已退出查询。"
-
-
-@dataclass(frozen=True, slots=True)
-class _PendingSelection:
-    session: PromptSession
-    choices: tuple[object, ...]
-    select: _UntypedMenuSelect
-    prompt_title: str
-    not_found_message: str | None
-    expires_at: float
-    shared_select: _UntypedMenuSelect | None = None
-    semantic_request: (
-        Callable[[object, "MessageInputContext"], "SemanticRequest | None"] | None
-    ) = None
-    shared_choice_ids: frozenset[str] = frozenset()
-    keep_open: bool = False
-    exit_message: str = "已退出查询。"
-
-
-@dataclass(frozen=True, slots=True)
-class _PendingTextInput:
-    submit: TextSubmit
-    expires_at: float
-    exit_message: str
-
-
-@dataclass(slots=True)
-class _PendingResponseReservation:
-    token: object
-    accepts: PendingResponseCheck
-    ready: asyncio.Event
-    expires_at: float
-
-
-@dataclass(frozen=True, slots=True)
-class PortableResponseReservation:
-    """Hold early replies until the operation's first prompt is delivered."""
-
-    _owner: PortableQuerySessions
-    _key: _SessionKey
-    _token: object
-
-    def release(self) -> None:
-        self._owner._finish_reservation(self._key, self._token, delivered=True)
-
-    def cancel(self) -> None:
-        self._owner._finish_reservation(self._key, self._token, delivered=False)
-
-    def guard(self, reply: PortableReply) -> PortableReply:
-        """Release waiting input only after the guarded reply is delivered."""
-
-        def delivered() -> None:
-            if reply.on_delivered is not None:
-                reply.on_delivered()
-            self.release()
-
-        def failed() -> None:
-            try:
-                if reply.on_delivery_failed is not None:
-                    reply.on_delivery_failed()
-            finally:
-                self.cancel()
-
-        return replace(
-            reply,
-            on_delivered=delivered,
-            on_delivery_failed=failed,
-        )
-
-
-class PortableQuerySessions:
+class PortableQuerySessions(PortableSessionState):
     """Own one active interaction template per actor and conversation."""
 
     def __init__(
-        self,
-        *,
-        ttl_seconds: float = 120.0,
-        now: Callable[[], float] = monotonic,
+        self, *, ttl_seconds: float = 120.0, now: Callable[[], float] = monotonic
     ) -> None:
-        if ttl_seconds <= 0:
-            raise PortableQuerySessionError.invalid_ttl()
-        self._ttl_seconds = ttl_seconds
-        self._now = now
-        self._pending: dict[_SessionKey, _PendingSelection | _PendingTextInput] = {}
-        self._reservations: dict[_SessionKey, _PendingResponseReservation] = {}
-
-    def reserve_responses(
-        self,
-        context: MessageInputContext,
-        accepts: PendingResponseCheck,
-    ) -> PortableResponseReservation:
-        """Reserve one actor/conversation while its first prompt is loading."""
-
-        key = self._key(context)
-        self._cancel_reservation(key)
-        self._pending.pop(key, None)
-        token = object()
-        self._reservations[key] = _PendingResponseReservation(
-            token=token,
-            accepts=accepts,
-            ready=asyncio.Event(),
-            expires_at=self._now() + self._ttl_seconds,
-        )
-        return PortableResponseReservation(self, key, token)
-
-    def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
-        key = self._key(context)
-        reservation = self._active_reservation(key)
-        if reservation is not None and reservation.accepts(text):
-            return True
-        pending = self._pending.get(key)
-        if pending is not None and pending.expires_at <= self._now():
-            if isinstance(
-                pending, _PendingSelection
-            ) and self._matches_selection_response(pending, text):
-                return True
-            self._pending.pop(key, None)
-        self._drop_expired(key)
-        pending = self._pending.get(key)
-        return isinstance(pending, _PendingTextInput) or (
-            isinstance(pending, _PendingSelection)
-            and self._matches_selection_response(pending, text)
-        )
-
-    def has_active_session(self, context: MessageInputContext) -> bool:
-        key = self._key(context)
-        self._drop_expired(key)
-        return key in self._pending
-
-    def discard(self, context: MessageInputContext) -> None:
-        """Remove every unfinished interaction owned by this participant."""
-
-        key = self._key(context)
-        self._cancel_reservation(key)
-        self._pending.pop(key, None)
-
-    def active_prompt(self, context: MessageInputContext) -> PromptSession | None:
-        key = self._key(context)
-        self._drop_expired(key)
-        pending = self._pending.get(key)
-        return pending.session if isinstance(pending, _PendingSelection) else None
+        super().__init__(ttl_seconds=ttl_seconds, now=now)
+        self.interactions = PortableInteractions(self)
 
     async def begin(
         self,
@@ -282,6 +85,7 @@ class PortableQuerySessions:
             prompt_title=spec.prompt_title,
             not_found_message=spec.not_found_message,
             keep_open=spec.keep_open,
+            action=spec.action,
         )
 
     def offer(
@@ -318,6 +122,7 @@ class PortableQuerySessions:
         spec: PortableMenuSpec[_T],
     ) -> OutboundMessage:
         """Offer a custom numeric menu through the shared session store."""
+        check_current_interaction()
 
         async def select_untyped(
             value: object,
@@ -340,6 +145,9 @@ class PortableQuerySessions:
             if spec.semantic_request is None:
                 return None
             return spec.semantic_request(cast("_T", value), selection_context)
+
+        def can_select(value: object, ctx: MessageInputContext) -> bool:
+            return spec.can_select is None or spec.can_select(cast("_T", value), ctx)
 
         key = self._key(context)
         if not spec.choices:
@@ -367,16 +175,28 @@ class PortableQuerySessions:
             not_found_message="",
             expires_at=session.expires_at,
             shared_select=(
-                shared_select_untyped if spec.shared_select is not None else None
+                shared_select_untyped
+                if spec.shared_select is not None
+                else select_untyped
+                if spec.shareable
+                else None
             ),
             semantic_request=(
                 semantic_request_untyped if spec.semantic_request is not None else None
             ),
             shared_choice_ids=frozenset(
-                str(index) for index in spec.shared_choice_indexes
+                str(index)
+                for index in (
+                    range(1, len(spec.choices) + 1)
+                    if spec.shareable
+                    else spec.shared_choice_indexes
+                )
             ),
             keep_open=spec.keep_open,
             exit_message=spec.exit_message,
+            access=spec.access or self._access(context),
+            can_select=can_select,
+            owner_context=context,
         )
         return replace(spec.prompt, prompt=session)
 
@@ -385,13 +205,16 @@ class PortableQuerySessions:
         context: MessageInputContext,
         spec: PortableTextInputSpec,
     ) -> OutboundMessage:
+        check_current_interaction()
         key = self._key(context)
+        session = self._new_session(context, ())
         self._pending[key] = _PendingTextInput(
             submit=spec.submit,
             expires_at=self._now() + self._ttl_seconds,
             exit_message=spec.exit_message,
+            session=session,
         )
-        return spec.prompt
+        return replace(spec.prompt, prompt=session)
 
     @overload
     async def select(
@@ -419,9 +242,31 @@ class PortableQuerySessions:
         allow_deferred: bool = False,
     ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
+        if text.strip() == "0":
+            pending = self._pending.get(key)
+            if pending is not None or key in self._reservations:
+                self.discard(context)
+                return OutboundMessage.from_text(
+                    pending.exit_message if pending else "已退出查询。"
+                )
+            return None
+        owner = self.quoted_owner(context)
+        if owner is not None and self._key(owner) != key:
+            return await self.select_shared(
+                text, owner, context, allow_deferred=allow_deferred
+            )
+        if not self._accepts_anchor(self._pending.get(key), context):
+            return None
         reservation = self._active_reservation(key)
         if reservation is not None and reservation.accepts(text):
             await self._wait_for_reservation(key, reservation)
+            check_current_interaction()
+        return await self._select_pending(text, context, allow_deferred=allow_deferred)
+
+    async def _select_pending(
+        self, text: str, context: MessageInputContext, *, allow_deferred: bool
+    ) -> OutboundMessage | PortableReply | None:
+        key = self._key(context)
         expired = self._pending.get(key)
         if expired is not None and expired.expires_at <= self._now():
             self._pending.pop(key, None)
@@ -483,22 +328,6 @@ class PortableQuerySessions:
             allow_deferred=allow_deferred,
         )
 
-    def recognizes_shared_response(
-        self,
-        text: str,
-        owner: MessageInputContext,
-        responder: MessageInputContext,
-    ) -> bool:
-        """Recognize an explicitly shareable choice in a quoted group menu."""
-
-        pending = self._shared_pending(owner, responder)
-        if pending is None:
-            return False
-        choice = self._selection_choice(pending, text)
-        return choice is not None and (
-            choice.id == "0" or choice.id in pending.shared_choice_ids
-        )
-
     async def select_shared(
         self,
         text: str,
@@ -513,10 +342,13 @@ class PortableQuerySessions:
         if pending is None:
             return None
         choice = self._selection_choice(pending, text)
-        if choice is None or (
-            choice.id != "0" and choice.id not in pending.shared_choice_ids
-        ):
+        if choice is None or choice.id not in pending.shared_choice_ids:
             return None
+        value = pending.choices[int(choice.id) - 1]
+        if (pending.access is not None and not pending.access(responder)) or (
+            pending.can_select is not None and not pending.can_select(value, responder)
+        ):
+            return OutboundMessage.from_text("当前会话没有使用该选项的权限。")
         key = self._key(responder)
         self._cancel_reservation(key)
         expires_at = self._now() + self._ttl_seconds
@@ -525,11 +357,18 @@ class PortableQuerySessions:
             select=cast("_UntypedMenuSelect", pending.shared_select),
             session=replace(
                 pending.session,
+                id=token_urlsafe(18),
                 actor=responder.message.actor,
                 request_message_id=responder.message.message_id,
                 expires_at=expires_at,
+                choices=tuple(
+                    option
+                    for option in pending.session.choices
+                    if option.id == "0" or option.id in pending.shared_choice_ids
+                ),
             ),
             expires_at=expires_at,
+            owner_context=responder,
         )
         self._pending[key] = cloned
         return await self._select_choice(
@@ -568,6 +407,11 @@ class PortableQuerySessions:
             and choice.id not in pending.shared_choice_ids
         ):
             return None
+        value = pending.choices[int(choice.id) - 1]
+        if (pending.access is not None and not pending.access(context)) or (
+            pending.can_select is not None and not pending.can_select(value, context)
+        ):
+            return None
         return pending.semantic_request(pending.choices[int(choice.id) - 1], context)
 
     async def _select_choice(
@@ -584,9 +428,18 @@ class PortableQuerySessions:
             self._pending.pop(key, None)
             return OutboundMessage.from_text(pending.exit_message)
 
+        value = pending.choices[index - 1]
+        if (pending.access is not None and not pending.access(context)) or (
+            pending.can_select is not None and not pending.can_select(value, context)
+        ):
+            return OutboundMessage.from_text("当前会话没有使用该选项的权限。")
         if not pending.keep_open:
             self._pending.pop(key, None)
-        result = await pending.select(pending.choices[index - 1], context)
+        access_token = _MENU_ACCESS.set(pending.access)
+        try:
+            result = await pending.select(value, context)
+        finally:
+            _MENU_ACCESS.reset(access_token)
         if isinstance(result, (OutboundMessage, PortableReply)):
             if isinstance(result, PortableReply) and not allow_deferred:
                 raise PortableQuerySessionError.deferred_result_not_enabled()
@@ -605,6 +458,7 @@ class PortableQuerySessions:
             prompt_title=pending.prompt_title,
             not_found_message=pending.not_found_message,
             keep_open=pending.keep_open,
+            action=pending.action,
         )
 
     @staticmethod
@@ -626,7 +480,9 @@ class PortableQuerySessions:
         prompt_title: str,
         not_found_message: str | None,
         keep_open: bool,
+        action: ActionDefinition | None = None,
     ) -> OutboundMessage | None:
+        check_current_interaction()
         key = self._key(context)
         if result.message:
             if not keep_open:
@@ -664,6 +520,22 @@ class PortableQuerySessions:
             not_found_message=not_found_message,
             expires_at=session.expires_at,
             keep_open=keep_open,
+            shared_select=select,
+            shared_choice_ids=frozenset(
+                choice.id for choice in session.choices if choice.id != "0"
+            ),
+            access=self._access(context),
+            owner_context=context,
+            action=action,
+            semantic_request=(
+                lambda value, _ctx: SemanticRequest(
+                    action=action,
+                    target=_query_target(value, result),
+                    source=SemanticRequestSource.MENU,
+                )
+            )
+            if action
+            else None,
         )
         return replace(
             OutboundMessage.from_text(
@@ -685,114 +557,12 @@ class PortableQuerySessions:
             prompt=session,
         )
 
-    def _drop_expired(self, key: _SessionKey) -> None:
-        pending = self._pending.get(key)
-        if pending is not None and pending.expires_at <= self._now():
-            self._pending.pop(key, None)
 
-    def _active_reservation(
-        self,
-        key: _SessionKey,
-    ) -> _PendingResponseReservation | None:
-        reservation = self._reservations.get(key)
-        if reservation is not None and reservation.expires_at <= self._now():
-            self._finish_reservation(key, reservation.token, delivered=False)
-            return None
-        return reservation
-
-    async def _wait_for_reservation(
-        self,
-        key: _SessionKey,
-        reservation: _PendingResponseReservation,
-    ) -> None:
-        timeout = max(0.0, reservation.expires_at - self._now())
-        try:
-            await asyncio.wait_for(reservation.ready.wait(), timeout=timeout)
-        except TimeoutError:
-            self._finish_reservation(key, reservation.token, delivered=False)
-
-    def _cancel_reservation(self, key: _SessionKey) -> None:
-        reservation = self._reservations.get(key)
-        if reservation is not None:
-            self._finish_reservation(key, reservation.token, delivered=False)
-
-    def _finish_reservation(
-        self,
-        key: _SessionKey,
-        token: object,
-        *,
-        delivered: bool,
-    ) -> None:
-        reservation = self._reservations.get(key)
-        if reservation is None or reservation.token is not token:
-            return
-        self._reservations.pop(key, None)
-        if not delivered:
-            self._pending.pop(key, None)
-        reservation.ready.set()
-
-    @staticmethod
-    def _matches_selection_response(
-        pending: _PendingSelection,
-        text: str,
-    ) -> bool:
-        return (
-            pending.session.choice_from_action(text) is not None
-            or pending.session.choice_from_text(text) is not None
-            or text.strip().isdigit()
-        )
-
-    def _shared_pending(
-        self,
-        owner: MessageInputContext,
-        responder: MessageInputContext,
-    ) -> _PendingSelection | None:
-        if (
-            not responder.is_reply
-            or responder.message.conversation.kind != "group"
-            or responder.message.conversation != owner.message.conversation
-            or responder.message.actor == owner.message.actor
-        ):
-            return None
-        key = self._key(owner)
-        self._drop_expired(key)
-        pending = self._pending.get(key)
-        if not isinstance(pending, _PendingSelection):
-            return None
-        return (
-            pending
-            if pending.shared_choice_ids and pending.shared_select is not None
-            else None
-        )
-
-    @staticmethod
-    def _selection_choice(
-        pending: _PendingSelection,
-        text: str,
-    ) -> PromptChoice | None:
-        return pending.session.choice_from_action(
-            text
-        ) or pending.session.choice_from_text(text)
-
-    @staticmethod
-    def _key(context: MessageInputContext) -> _SessionKey:
-        return context.message.actor, context.message.conversation
-
-    def _new_session(
-        self,
-        context: MessageInputContext,
-        choices: tuple[PromptChoice, ...],
-    ) -> PromptSession:
-        exit_choice = PromptChoice(
-            "0",
-            "退出",
-            frozenset({"0", "取消"}),
-        )
-        return PromptSession(
-            id=token_urlsafe(18),
-            actor=context.message.actor,
-            conversation=context.message.conversation,
-            request_message_id=context.message.message_id,
-            choices=(*choices, exit_choice),
-            expires_at=self._now() + self._ttl_seconds,
-        )
+def _query_target(value: object, result: QueryResult[Any]) -> SemanticTarget:
+    for choice in result.choices:
+        if choice.value == value:
+            target = getattr(choice, "semantic_target", None)
+            if isinstance(target, SemanticTarget):
+                return target
+            return SemanticTarget(key=str(value), display=choice.name)
+    return SemanticTarget(key=str(value), display=str(value))

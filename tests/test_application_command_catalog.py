@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from pytest import MonkeyPatch
 
 from ironsbot.app.application import Application
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.plugin_install import PluginContribution, PluginContributionCatalog
 
 
-def test_application_validates_the_catalog_after_matcher_registration() -> None:
+def test_application_validates_the_catalog_after_matcher_registration(
+    monkeypatch: MonkeyPatch,
+) -> None:
     calls: list[str] = []
+    monkeypatch.setattr(
+        "ironsbot.integrations.onebot.portable_queries.install_portable_menu_router",
+        lambda *_args: calls.append("portable_router"),
+    )
 
     class Matchers:
         def validate_command_catalog(self, catalog: CommandCatalog) -> None:
@@ -53,6 +62,8 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
             "Any",
             SimpleNamespace(
                 commands=commands,
+                query_sessions=object(),
+                features=object(),
                 contribution_catalog=PluginContributionCatalog(),
             ),
         ),
@@ -70,6 +81,7 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
 
     assert calls == [
         "plugin",
+        "portable_router",
         "queued_router",
         "validate",
         "postprocessor",

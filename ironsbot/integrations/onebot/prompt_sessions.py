@@ -15,6 +15,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegme
 from nonebot.rule import Rule
 
 from ironsbot.integrations.onebot.message_input import event_reply_message_id
+from ironsbot.integrations.onebot.session_identity import event_session_key
 
 if TYPE_CHECKING:
     from asyncio import TimerHandle
@@ -401,7 +402,7 @@ class PromptSessionManager:
         self.acquire(session_id)
 
     def invalidate_event_conversations(self, event: Event) -> None:
-        event_session_id = event.get_session_id()
+        event_session_id = event_session_key(event)
         for context in tuple(self._queued_by_token.values()):
             if context.event_session_id == event_session_id:
                 self._cancel_queued_conversation(context)
@@ -526,7 +527,7 @@ class PromptSessionManager:
                 message_id = id(event)
         key = (
             int(getattr(event, "self_id", 0) or 0),
-            event.get_session_id(),
+            event_session_key(event),
             message_id,
         )
         if key in self._claimed_inputs:

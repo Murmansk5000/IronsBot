@@ -29,8 +29,12 @@ MENTIONED_USER_ID = 2002
 
 @dataclass
 class _Bot:
+    self_id: str = "123456"
     private_messages: list[tuple[int, Message]] = field(default_factory=list)
     group_messages: list[tuple[int, Message]] = field(default_factory=list)
+
+    async def get_login_info(self) -> dict[str, str]:
+        return {"nickname": "执行机器人"}
 
     async def send_private_msg(self, *, user_id: int, message: Message) -> object:
         self.private_messages.append((user_id, message))
@@ -75,6 +79,9 @@ async def test_onebot_outbound_messenger_sends_group_message_with_mention() -> N
 
     assert result.delivered
     assert result.message_id == "202"
+    assert result.execution_identity is not None
+    assert result.execution_identity.account_id == bot.self_id
+    assert result.execution_identity.display_name == "执行机器人"
     assert bot.group_messages[0][0] == GROUP_ID
     assert str(bot.group_messages[0][1]).startswith(
         f"[CQ:at,qq={MENTIONED_USER_ID}]hello"

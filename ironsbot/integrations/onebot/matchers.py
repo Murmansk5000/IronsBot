@@ -18,6 +18,8 @@ from nonebot.plugin import on_command, on_fullmatch, on_message, on_notice
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
+from ironsbot.integrations.onebot.session_identity import event_session_key
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -155,7 +157,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
         )
         queued = prompt_sessions.start_queued_conversation(
             namespace=queue_namespace,
-            event_session_id=queue_event_session_id or event.get_session_id(),
+            event_session_id=queue_event_session_id or event_session_key(event),
             owner_user_id=owner_user_id,
             state=matcher.state,
             reply_check=queue_reply_check,
@@ -229,7 +231,7 @@ async def begin_queued_conversation(  # noqa: PLR0913
     owner_user_id = raw_owner_user_id if isinstance(raw_owner_user_id, int) else None
     queued = prompt_sessions.start_queued_conversation(
         namespace=namespace,
-        event_session_id=queue_event_session_id or event.get_session_id(),
+        event_session_id=queue_event_session_id or event_session_key(event),
         owner_user_id=owner_user_id,
         state=matcher.state,
         reply_check=queue_reply_check,
@@ -365,6 +367,7 @@ class MatcherFactory:
     priorities: object
     prompt_session_manager: PromptSessionManager | None = None
     in_flight_requests: InFlightRequestService | None = None
+    close_portable_session: Callable[[MessageEvent], None] | None = None
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
     _notice_matchers: list[type[Matcher]] = field(default_factory=list)
     _cooldown_registrations: dict[type[Matcher], tuple[str, str]] = field(
@@ -602,6 +605,8 @@ class MatcherFactory:
                 state[_COMMAND_COOLDOWN_TOKEN_KEY] = decision.token
             if not decision.allowed:
                 await matcher.finish(decision.feedback)
+            if policy.closes_active_conversation and self.close_portable_session:
+                self.close_portable_session(event)
 
         dependent = matcher.append_handler(admit)
         matcher.handlers.remove(dependent)

@@ -32,6 +32,8 @@ class PortableReply:
     on_delivered: Callable[[], None] | None = None
     on_delivery_failed: Callable[[], None] | None = None
     follow_up: PortableFollowUp | None = None
+    on_finished: Callable[[], None] | None = None
+    is_current: Callable[[], bool] | None = None
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -52,10 +54,7 @@ async def deliver_portable_reply(
     """Own ordered delivery and abort unfinished work on every interrupted path."""
 
     async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
-        receipt = await send(message)
-        if on_sent is not None:
-            on_sent(stage, receipt)
-        return receipt.delivered
+        return await _transmit_reply(reply, send, message, stage, on_sent)
 
     completed = False
     try:
@@ -66,19 +65,47 @@ async def deliver_portable_reply(
             if not await transmit(message, "additional"):
                 return False
         if reply.follow_up is not None:
-            try:
-                message = await reply.follow_up()
-            except Exception as error:
-                if on_follow_up_error is None:
-                    raise
-                message = on_follow_up_error(error)
+            if reply.is_current is not None and not reply.is_current():
+                return False
+            message = await _follow_up_message(reply.follow_up, on_follow_up_error)
             completed = await transmit(message, "follow_up")
         else:
             completed = True
         return completed
     finally:
-        if not completed:
-            reply.delivery_failed()
+        try:
+            if not completed:
+                reply.delivery_failed()
+        finally:
+            if reply.on_finished is not None:
+                reply.on_finished()
+
+
+async def _transmit_reply(
+    reply: PortableReply,
+    send: Callable[[OutboundMessage], Awaitable[SendResult]],
+    message: OutboundMessage,
+    stage: DeliveryStage,
+    on_sent: Callable[[DeliveryStage, SendResult], None] | None,
+) -> bool:
+    if reply.is_current is not None and not reply.is_current():
+        return False
+    receipt = await send(message)
+    if on_sent is not None:
+        on_sent(stage, receipt)
+    return receipt.delivered
+
+
+async def _follow_up_message(
+    follow_up: PortableFollowUp,
+    on_error: Callable[[Exception], OutboundMessage] | None,
+) -> OutboundMessage:
+    try:
+        return await follow_up()
+    except Exception as error:
+        if on_error is None:
+            raise
+        return on_error(error)
 
 
 async def progress_operation_reply(

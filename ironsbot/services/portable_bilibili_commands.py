@@ -26,6 +26,15 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _can_read(
+    service: BilibiliService, dynamic_id: str, context: MessageInputContext
+) -> bool:
+    record = service.history.get(dynamic_id)
+    return record is not None and record.uid in service.targets.query_uids(
+        context.message.actor, context.message.conversation
+    )
+
+
 def build_portable_bilibili_operations(
     service: BilibiliService,
     sessions: PortableQuerySessions,
@@ -69,6 +78,10 @@ def build_portable_bilibili_operations(
                 ),
                 prompt=OutboundMessage.from_text(result.prompt),
                 keep_open=True,
+                shareable=True,
+                can_select=lambda dynamic_id, responder: _can_read(
+                    service, dynamic_id, responder
+                ),
                 exit_message="已退出动态选择。",
             ),
         )

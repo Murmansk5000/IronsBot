@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="B站动态",
@@ -48,6 +49,7 @@ def plugin_contribution(
     features: FeatureService,
     monitor: BilibiliMonitorService,
     scheduler: Scheduler,
+    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     """Declare Bilibili commands, delivery construction, and monitor lifecycle."""
 
@@ -67,6 +69,7 @@ def plugin_contribution(
             features=features,
             monitor=monitor,
             targets=service.targets,
+            query_sessions=query_sessions,
         ),
         hooks=PluginHooks(
             startup=(
@@ -93,5 +96,6 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             monitor=context.resources.bilibili_monitor,
             scheduler=context.scheduler,
+            query_sessions=context.resources.query_sessions,
         ),
     )

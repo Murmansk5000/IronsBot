@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -37,6 +38,7 @@ class _FakeBilibiliService:
 
     def __init__(self) -> None:
         self.targets = _FakeBiliTargets()
+        self.history = SimpleNamespace(get=lambda _id: SimpleNamespace(uid=123))
 
     async def query_dynamic_menu(self, **_kwargs: object) -> DynamicMenuResult:
         if self.status != "ok":
@@ -80,6 +82,9 @@ class _FakeBilibiliService:
 
 
 class _FakeBiliTargets:
+    def query_uids(self, _actor: ActorRef, _conversation: ConversationRef) -> list[int]:
+        return [123]
+
     async def account_summary(self, conversation: ConversationRef) -> str:
         return f"账号:{conversation.account_id}:{conversation.id}"
 

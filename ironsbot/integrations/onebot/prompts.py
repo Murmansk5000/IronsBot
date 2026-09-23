@@ -36,9 +36,11 @@ from ironsbot.integrations.onebot.matchers import (
 from ironsbot.integrations.onebot.matchers import (
     enter_prompt_loop as _enter_prompt_loop,
 )
+from ironsbot.integrations.onebot.message_input import event_reply_message_id
 from ironsbot.integrations.onebot.prompt_errors import (
     PromptSessionManagerMissingError,
 )
+from ironsbot.integrations.onebot.session_identity import event_session_key
 
 T = TypeVar("T")
 
@@ -157,7 +159,7 @@ async def _invalidate_prompt_on_command(matcher: Matcher, event: Event) -> None:
         prompt_sessions = get_prompt_session_manager(matcher)
     except PromptSessionManagerMissingError:
         return
-    prompt_sessions.invalidate(event.get_session_id())
+    prompt_sessions.invalidate(event_session_key(event))
     prompt_sessions.invalidate_event_conversations(event)
 
 
@@ -172,7 +174,7 @@ async def enter_prompt(  # noqa: PLR0913
 ) -> None:
     """发送 Prompt 并进入选择循环（替代 ``matcher.got``）。"""
     state[PROMPT_STATE_KEY] = prompt
-    session_id = event.get_session_id()
+    session_id = event_session_key(event)
     prompt_sessions = get_prompt_session_manager(matcher)
     version = prompt_sessions.acquire(session_id)
     input_check = input_check or _is_digit_input
@@ -186,7 +188,11 @@ async def enter_prompt(  # noqa: PLR0913
     )
 
     def queue_reply_check(next_event: Event) -> bool:
-        return next_event.get_session_id() == session_id and input_check(next_event)
+        return (
+            event_session_key(next_event) == session_id
+            and event_reply_message_id(next_event) is None
+            and input_check(next_event)
+        )
 
     # Image-backed menus can take noticeable time to render.  Reserve the
     # selection shape before awaiting that work so a quick ``a1`` or ``1`` is
