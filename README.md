@@ -8,21 +8,28 @@ IronsBot 支持 OneBot v11 / NapCat 与 QQ 官方机器人。OneBot 通过 NoneB
 
 OneBot 事件入口位于 `ironsbot/plugins/onebot`，查询与渲染等业务由应用服务统一组合。扩展按当前扩展清单加载，不再从 `ironsbot/custom_plugins` 扫描。
 
-## OneBot 本人命令（可选）
+## OneBot 自发指令与回复
 
-此功能仅适用于 OneBot，不是 QQ 官方 SDK 的能力；默认关闭。
-显式启用后，本人在群里发送的文字或引用消息可通过配置的非空前缀执行原命令。
-菜单续接和退出也必须带前缀，前缀末尾空格会保留。以下是主动启用的虚构示例，
-不是默认配置，也不会授予额外 Feature 或管理员权限：
+可选配置（默认关闭，不使用时无需修改现有 TOML）：
 
 ```toml
 [bot.onebot.self_commands]
-enabled = true
-prefixes = ["/self "]
+enabled = false
+prefixes = ["演示 ", "示范 "]
 ```
 
-只接受本人的群文字和引用，不接受图片或提及段；其他人的消息不会因此变为本人命令。
-机器人出站回声不能触发该入口；静默入站设置优先，即使启用本功能也不会绕过静默。
+NapCat 需开启 `reportSelfMessage`。启用后，机器人 QQ 本人在群内发送
+`演示 帮助` 可执行命令，菜单续接和退出也必须带前缀：`演示 1`、`演示 0`。
+保留前缀末尾空格；只接受本人群消息中的文字和引用，不接受图片或提及段。
+使用该 QQ 在 TOML 中的现有权限，不自动提权，也不自动获得管理通知资格。
+官方账号接管或 OneBot 发送关闭时，此开关不能解除 NapCat 静默。
+
+旧 `[runtime.self_commands]` 移到 `[bot.onebot.self_commands]`，旧 `prefix`
+改为 `prefixes`；旧 `superuser` 不恢复，请使用现有权限配置。没有旧字段兼容别名。
+
+OneBot 文本命令回复统一引用原消息，并以 `@发起者` 加换行开头；纯图片不另发
+空提及，自发指令不提及自己。当前消息包含 `@全体成员` 时一律不响应，
+即使同时 @机器人；引用正文中的提及不参与判断。主动通知和 Notice 保持原有策略。
 
 ## 功能
 
@@ -196,7 +203,6 @@ app_id = "10001"
 required = false
 proactive_messages = true
 custom_keyboards = false
-
 [features.group_policy]
 example_official_group = ["seer_activity_push", "bili_push"]
 
@@ -206,15 +212,20 @@ owner = ["seer_activity_push", "bili_push"]
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
 数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
-`default_account` 是未分配群和私聊的唯一响应账号；启用多个官方账号时必须明确填写，
+`default_account` 是未分配群的响应账号；私聊由实际收到事件的账号处理。启用多个官方账号时必须明确填写，
 不按 TOML 书写顺序猜测。`group_routes` 使用 `[identities.groups]` 的逻辑群别名，
 把特殊群交给指定账号；同一逻辑群中的其他官方账号保持静默。
 若逻辑群只声明了一个已启用官方账号的 OpenID，该账号会自动成为该群响应者，
 不必在 `group_routes` 重复填写；一个逻辑群声明多个官方账号时才需显式选择。
-业务功能只由统一的 `features.group_policy` 和 `features.user_policy` 显式授权。
-账号内的 `features`、`group_policy`、`user_policy` 仅保留读取以识别退役配置；显式填写会告警并忽略，
-不再授予默认功能、附加目标权限或定义推送目标，新配置不应填写。个人功能仅用于私聊，不能绕过群策略；
-超管仍遵循 `superuser_bypass`。示例只保留已有明确目标授权，不将原账号默认列表转换为公共授权。
+业务功能只由 `features.group_policy` 和 `features.user_policy` 授权，机器人账号不授予
+默认服务。旧账号级 `features/group_policy/user_policy` 仅兼容读取并告警，不再生效。
+普通用户个人权限仅用于私聊，不放行群内未开放的功能；超管遵循 `superuser_bypass`。
+`bot.superusers` 可同时填写 owner 和多个 NapCat QQ；统一授予管理权限。
+管理通知只取 `features.user_policy` / `group_policy` 中显式授予的 `admin_notice`，
+并遵循 TD 退订。`all`、超管身份及 `superuser_bypass` 都不会自动订阅通知或业务推送。
+例如 `superusers = ["owner", "xiaohao"]`，仅在用户策略给 owner 添加
+`admin_notice`，即可让两者都有管理权限但只有 owner 收到管理通知；不必给 xiaohao 加 `all`。
+旧 `admin_notice_superusers` 字段已删除，请迁移到显式用户策略。
 被动回复始终由收到事件的同一 AppID 发出，不能把一个官方账号收到的消息转给另一个
 账号回复；入站路由会在业务执行前选定唯一账号，避免两个机器人重复响应。
 账号不再使用 TOML `enabled`；TOML 声明公开 AppID，并由同后缀的
@@ -224,8 +235,7 @@ owner = ["seer_activity_push", "bili_push"]
 阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
 官方入站消息 ID 会在业务执行前持久化到 `/app/data/qq_official/inbound.sqlite`，防止
 Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
-群和用户功能授权使用统一的 `features.group_policy` / `features.user_policy`；
-主动推送目标还需满足相应业务的订阅及投递条件，账号只承担实际发送通道。
+主动推送目标同样来自共享群/用户配置，账号仅决定使用哪个发送通道。
 目标必须填写 `[identities]` 中声明的别名，不再直接散写 OpenID。默认开启的
 `proactive_messages` 在应用具备对应权限后，使定时消息与活动/B站推送复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
@@ -287,6 +297,13 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 建立或覆盖映射。关联后优先复用重构前的 OneBot 玩家绑定；如果只有用户后来在官方端
 重绑的数据，则将其合并到同一 OneBot 主身份。该过程不向用户发送验证码或成功/失败消息。官方私聊 `user_openid`
 不参与 NapCat 群消息推断；启动前必须已知的私聊目标仍在 `[identities.users]` 声明。
+
+B站私聊推送在 OneBot 出站关闭时，会使用该 QQ 已验证的官方**私聊用户**绑定，
+并保留原有账号列表、推送模式和退订偏好。优先选择默认官方账号下的地址；否则只在
+存在唯一可用地址时切换。缺少地址或多个地址无法确定时记录告警，不猜测接收账号。
+群里验证的 `member_openid` 不能作为私聊地址使用。可以在目标官方机器人私聊中
+完成账号关联，或取得实际 `user_openid` 后在用户配置中填写
+`official = { 机器人别名 = "user_openid" }`。地址修正不会补发此前已尝试的动态。
 
 QQ 官方群回复同时引用用户的原始消息，并提及发令成员。腾讯群接口的普通 TEXT
 payload 不会解析成员 OpenID 提及，而自定义 MARKDOWN 会同时产生富文本正文和平台生成的
