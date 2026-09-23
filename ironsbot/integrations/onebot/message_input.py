@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.core.platform import IncomingMessageRef, Platform
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
@@ -81,6 +82,9 @@ def message_input_context(event: Event) -> MessageInputContext:
             reply_to_id=event_reply_message_id(event),
         ),
         mentions_bot=mentions_bot,
+        execution_identity=(
+            ExecutionIdentity(Platform.ONEBOT, self_id) if self_id else None
+        ),
     )
 
 

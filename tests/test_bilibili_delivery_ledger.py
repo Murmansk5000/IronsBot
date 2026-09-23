@@ -8,6 +8,7 @@ import pytest
 
 from ironsbot.core.outbound import (
     DeliveryFailureKind,
+    ExecutionIdentity,
     OutboundMessage,
     SendResult,
 )
@@ -100,12 +101,14 @@ def prepare(path: Path) -> SqliteDynamicDeliveryLedger:
 async def test_attempted_stage_never_replays(tmp_path: Path, state: str) -> None:
     path = tmp_path / "stages.sqlite"
     ledger = prepare(path)
+    identity = ExecutionIdentity(Platform.ONEBOT, "200", "executor")
     result = (
-        SendResult(delivered=True, message_id="9")
+        SendResult(delivered=True, message_id="9", execution_identity=identity)
         if state == "success"
         else SendResult(
             delivered=False,
             error_code="failed",
+            execution_identity=identity,
             failure_kind=(
                 DeliveryFailureKind.UNCERTAIN
                 if state == "uncertain"
@@ -131,7 +134,7 @@ async def test_attempted_stage_never_replays(tmp_path: Path, state: str) -> None
         stored = db.execute("SELECT result FROM stages WHERE stage='link'").fetchone()[
             0
         ]
-    assert '"delivered":' in stored
+    assert '"account_id": "200"' in stored
 
 
 def test_restart_abandons_inflight_and_expires_old_work(tmp_path: Path) -> None:
@@ -168,14 +171,16 @@ async def test_complete_dynamic_does_not_retry_failed_image_or_repeat_notice(
     monkeypatch.setattr(
         "ironsbot.services.bilibili.outbound_delivery.DYNAMIC_PUSH_INTERVAL_SECONDS", 0
     )
+    executor = ExecutionIdentity(Platform.ONEBOT, "200", "任务机器人")
     messenger = FakeMessenger(
         scripted_results=[
-            SendResult(delivered=True, message_id="link"),
-            SendResult(delivered=True, message_id="text"),
+            SendResult(delivered=True, message_id="link", execution_identity=executor),
+            SendResult(delivered=True, message_id="text", execution_identity=executor),
             SendResult(
                 delivered=False,
                 error_code="image_failed",
                 failure_kind=DeliveryFailureKind.RETRYABLE,
+                execution_identity=executor,
             ),
         ]
     )
@@ -199,4 +204,5 @@ async def test_complete_dynamic_does_not_retry_failed_image_or_repeat_notice(
     assert len(messenger.calls) == count
     notices.send_private_to_superusers.assert_awaited_once()
     text = notices.send_private_to_superusers.await_args.args[0]
+    assert "任务机器人（QQ：200）" in text
     assert "赛尔号（UID：1310714247）" in text

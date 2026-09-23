@@ -168,6 +168,19 @@ async def handle_autocard_sanctuary_query(
 
 
 def install(group: SeerMatcherGroup) -> None:
+    from ironsbot.integrations.onebot.portable_queries import (
+        make_portable_query_handler,
+    )
+    from ironsbot.services.portable_autocard_commands import (
+        build_portable_autocard_operations,
+    )
+
+    operations = build_portable_autocard_operations(
+        group.resources.autocard,
+        group.resources.autocard_media,
+        group.resources.autocard_sanctuary,
+        group.query_sessions,
+    )
     matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_autocard_sanctuary_query",
@@ -179,5 +192,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_autocard"),
     )
     matcher.append_handler(
-        bind_async(handle_autocard_sanctuary_query, group.resources.autocard_sanctuary)
+        make_portable_query_handler(
+            operations["seer.autocard.sanctuary"], group.query_sessions
+        )
     )

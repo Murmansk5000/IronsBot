@@ -28,6 +28,7 @@ def install(group: SeerMatcherGroup) -> None:
             service.select_mintmark,
             "请问你想查询的刻印是……",
             ActionDefinition("seer_mintmark_query", "刻印查询"),
+            sessions=group.query_sessions,
         )
     )
 
@@ -47,5 +48,6 @@ def install(group: SeerMatcherGroup) -> None:
             service.select_gem,
             "请问你想查询的宝石是……",
             ActionDefinition("seer_gem_query", "宝石查询"),
+            sessions=group.query_sessions,
         )
     )

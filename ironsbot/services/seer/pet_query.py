@@ -23,12 +23,13 @@ from ironsbot.services.seer.render_crash_report import render_crash_marker
 if TYPE_CHECKING:
     from seerapi_models import PetORM, PetSkinORM
 
+    from ironsbot.core.outbound import ExecutionIdentity
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
 
 logger = logging.getLogger(__name__)
 PET_PROMPT_MAX_ITEMS = 20
-PetInfoRenderer = Callable[[int], Awaitable[bytes]]
+PetInfoRenderer = Callable[..., Awaitable[bytes]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,8 +89,12 @@ class PetQueryService:
     ) -> QueryResult[object]:
         return QueryResult(reply=await self._build_image_reply(selection))
 
-    async def search_info(self, arg: str) -> QueryResult[int]:
-        return await self._search_pet(arg, self._build_info_reply)
+    async def search_info(
+        self, arg: str, *, execution_identity: ExecutionIdentity | None = None
+    ) -> QueryResult[int]:
+        return await self._search_pet(
+            arg, partial(self._build_info_reply, execution_identity=execution_identity)
+        )
 
     async def search_avatar(self, arg: str) -> QueryResult[int]:
         return await self._search_pet(arg, self._build_avatar_reply)
@@ -130,7 +135,9 @@ class PetQueryService:
                 )
         return QueryResult(reply=await build_reply(selected))
 
-    async def select_info(self, pet_id: int) -> QueryResult[object]:
+    async def select_info(
+        self, pet_id: int, *, execution_identity: ExecutionIdentity | None = None
+    ) -> QueryResult[object]:
         with self._data.get(self._data.pet, pet_id) as pet:
             if pet is None:
                 return QueryResult(
@@ -141,7 +148,11 @@ class PetQueryService:
                 str(pet.name),
                 int(pet.resource_id),
             )
-        return QueryResult(reply=await self._build_info_reply(selected))
+        return QueryResult(
+            reply=await self._build_info_reply(
+                selected, execution_identity=execution_identity
+            )
+        )
 
     async def select_avatar(self, pet_id: int) -> QueryResult[object]:
         with self._data.get(self._data.pet, pet_id) as pet:
@@ -229,7 +240,9 @@ class PetQueryService:
             image_error=image_error,
         )
 
-    async def _build_info_reply(self, pet: PetSelection) -> QueryReply:
+    async def _build_info_reply(
+        self, pet: PetSelection, *, execution_identity: ExecutionIdentity | None = None
+    ) -> QueryReply:
         pet_id = pet.pet_id
         pet_name = pet.name
         logger.info(
@@ -244,7 +257,13 @@ class PetQueryService:
                 pet_name=pet_name,
                 resource_id=pet_id,
             ):
-                image = await self._render_info(pet_id)
+                image = (
+                    await self._render_info(
+                        pet_id, execution_identity=execution_identity
+                    )
+                    if execution_identity
+                    else await self._render_info(pet_id)
+                )
         except ImageSourceError as error:
             logger.warning(
                 "pet info asset fetch failed: pet_id=%s error=%s", pet_id, error
