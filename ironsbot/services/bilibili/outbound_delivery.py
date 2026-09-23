@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.outbound import (
@@ -18,6 +18,7 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ConversationRef, reference_digest
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
 from ironsbot.services.bilibili.parser import (
     dynamic_content,
@@ -451,10 +452,8 @@ def render_dynamic_link_message(
         author_mid = item_author_mid(item)
         if fallback_name and author_name in {f"UID {author_mid}", "该账号"}:
             author_name = fallback_name
-        time_str = (
-            datetime.fromtimestamp(pub_ts, tz=timezone.utc)
-            .astimezone()
-            .strftime("%Y-%m-%d %H:%M:%S")
+        time_str = datetime.fromtimestamp(pub_ts, tz=TZ_CN).strftime(
+            "%Y-%m-%d %H:%M:%S"
         )
         return OutboundMessage(
             (

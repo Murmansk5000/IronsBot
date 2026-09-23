@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.time import TZ_CN
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
@@ -315,7 +316,7 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
     migration_actor = ActorRef(Platform.ONEBOT, "0")
     SqlitePlayerBindingStore(qq_state).get(migration_actor)
     SqlitePlayerQueryLimitStore(qq_state).status(
-        local_date=datetime.now(timezone.utc).date(),
+        local_date=datetime.now(TZ_CN).date(),
         actor=migration_actor,
         scope="bound_default",
         player_id=0,

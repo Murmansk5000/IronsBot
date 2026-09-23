@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 from zoneinfo import ZoneInfo
 
+from ironsbot.core.time import TZ_CN
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Sequence
 
@@ -199,4 +201,4 @@ def _resolve_timezone(value: str | tzinfo | None) -> tzinfo:
         return ZoneInfo(value)
     if value is not None:
         return value
-    return datetime.now().astimezone().tzinfo or timezone.utc
+    return TZ_CN

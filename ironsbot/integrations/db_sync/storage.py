@@ -10,6 +10,8 @@ from pathlib import Path
 
 import httpx
 
+from ironsbot.core.time import TZ_CN
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,7 +77,7 @@ def _file_timestamp(file_path: str | Path) -> datetime | None:
         return None
 
     try:
-        return datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=TZ_CN)
     except OSError:
         logger.exception(f"读取本地数据库时间失败: {path}")
         return None
@@ -86,7 +88,7 @@ def _parse_http_datetime(value: str | None) -> datetime | None:
         return None
 
     try:
-        return parsedate_to_datetime(value).astimezone()
+        return parsedate_to_datetime(value).astimezone(TZ_CN)
     except (TypeError, ValueError, IndexError, OverflowError):
         return None
 

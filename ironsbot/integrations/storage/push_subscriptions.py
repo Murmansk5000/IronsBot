@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.platform import ConversationKind, ConversationRef, Platform
+from ironsbot.core.time import TZ_CN
 from ironsbot.integrations.storage.conversation_principal_rows import (
     PrincipalRowMergeSpec,
     PrincipalTableCopySpec,
@@ -431,7 +432,7 @@ class PushUnsubscribeStore:
         *,
         today: str | None = None,
     ) -> bool:
-        delivered_on = today or datetime.now().astimezone().date().isoformat()
+        delivered_on = today or datetime.now(TZ_CN).date().isoformat()
         owner_values = self._owner_values(conversation)
         endpoint_values = _conversation_values(conversation)
         with self._connect() as con:
