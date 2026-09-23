@@ -37,7 +37,7 @@ async def test_address_sources_are_independent_deduplicated_and_durable(
 
 
 @pytest.mark.asyncio
-async def test_member_binding_requires_real_private_observation_and_respects_app(
+async def test_member_binding_is_reused_as_private_address_within_same_app(
     tmp_path: Path,
 ) -> None:
     principals = IdentityPrincipalService()
@@ -54,7 +54,8 @@ async def test_member_binding_requires_real_private_observation_and_respects_app
     )
     source = ConversationRef(Platform.ONEBOT, "private", "123456")
     await service.load((link,))
-    assert routes.resolve(source) == source
+    assert routes.resolve(source).id == "same"
+    assert routes.resolve(source).account_id == "app"
     for app, address in (("other", "same"), ("app", "different"), ("app", "same")):
         target = ConversationRef(
             Platform.QQ_OFFICIAL, "private", address, account_id=app
@@ -68,9 +69,9 @@ async def test_member_binding_requires_real_private_observation_and_respects_app
                 "",
             )
         )
-        assert (routes.resolve(source) != source) == (
-            app == "app" and address == "same"
-        )
+        resolved = routes.resolve(source)
+        assert resolved.id == "same"
+        assert resolved.account_id == "app"
     routes.unregister(
         CrossPlatformIdentityLink("123456", OfficialIdentity("app", "user", "same"), 2)
     )
