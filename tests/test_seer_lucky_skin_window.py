@@ -255,7 +255,7 @@ class _Sessions:
 
 class _NotificationSender:
     def __init__(self) -> None:
-        self.messages: list[tuple[ActorRef, str, str]] = []
+        self.messages: list[tuple[ActorRef, str | LuckySkinWindowResult, str]] = []
         self._sent: set[tuple[ActorRef, str]] = set()
 
     async def send_daily_notice(
@@ -268,7 +268,7 @@ class _NotificationSender:
         if (actor, day) in self._sent:
             return False
         self._sent.add((actor, day))
-        self.messages.append((actor, str(message), day))
+        self.messages.append((actor, message, day))
         return True
 
 
@@ -624,7 +624,16 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
     assert {command_id for command_id, _body in game.calls} == {EXPECTED_COMMAND_ID}
     assert all(body == EXPECTED_REQUEST for _command_id, body in game.calls)
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
-    messages = {int(actor.id): message for actor, message, _day in delivery.messages}
+    assert all(
+        isinstance(message, LuckySkinWindowResult)
+        for _actor, message, _day in delivery.messages
+    )
+    messages = {
+        int(actor.id): service.format_result(
+            cast("LuckySkinWindowResult", message), actor=actor
+        )
+        for actor, message, _day in delivery.messages
+    }
     assert "皮肤101（皮肤ID：101，资源ID：1400101） ★ 关注" in messages[1001]
     assert "皮肤102（皮肤ID：102，资源ID：1400102） ★ 关注" in messages[1002]
     asyncio.run(service.send_daily_notifications())
