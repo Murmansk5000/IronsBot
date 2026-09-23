@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import (
@@ -17,6 +18,7 @@ from ironsbot.core.outbound import (
     COMMAND_REPLY_TEMPLATE,
     DeliveryFailureKind,
     OutboundMessage,
+    ReplyTemplate,
     SendResult,
 )
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
@@ -31,6 +33,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 ReplyMessage = str | Message | MessageSegment
+
+
+def _event_reply_template(event: MessageEvent) -> ReplyTemplate:
+    if event.user_id == event.self_id:
+        return replace(COMMAND_REPLY_TEMPLATE, mention_sender=False)
+    return COMMAND_REPLY_TEMPLATE
 
 
 def render_text(text: str) -> str:
@@ -152,7 +160,7 @@ async def send_portable_event_reply(
             failure_kind=DeliveryFailureKind.PERMANENT,
         )
     incoming = message_input_context(event).message
-    prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, message)
+    prepared = _event_reply_template(event).prepare(incoming, message)
     rendered = render_onebot_outbound_message(
         prepared.message,
         conversation=incoming.conversation,
@@ -185,7 +193,7 @@ def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Mes
 
     incoming = message_input_context(event).message
     native_message = Message(message)
-    presentation = COMMAND_REPLY_TEMPLATE.presentation(
+    presentation = _event_reply_template(event).presentation(
         incoming,
         has_text=isinstance(message, str)
         or any(
