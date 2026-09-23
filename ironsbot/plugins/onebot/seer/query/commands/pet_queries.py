@@ -32,6 +32,7 @@ def install(group: SeerMatcherGroup) -> None:
             service.select_avatar,
             "请选择要查询头像的精灵：",
             ActionDefinition("seer_pet_avatar", "精灵头像查询"),
+            sessions=group.query_sessions,
         )
     )
     image_matcher = group.on_message(
@@ -50,6 +51,7 @@ def install(group: SeerMatcherGroup) -> None:
             service.select_image,
             "请问你想查询的立绘是……",
             ActionDefinition("seer_pet_image", "精灵立绘查询"),
+            sessions=group.query_sessions,
         )
     )
 
@@ -69,6 +71,7 @@ def install(group: SeerMatcherGroup) -> None:
             service.select_info,
             "请问你想查询的精灵是……",
             ActionDefinition("seer_pet_info", "精灵信息查询"),
+            sessions=group.query_sessions,
             with_execution_identity=True,
         )
     )
