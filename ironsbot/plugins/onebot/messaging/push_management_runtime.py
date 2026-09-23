@@ -14,6 +14,10 @@ from ironsbot.integrations.onebot.matchers import (
     get_prompt_session_manager,
     reject_with_rule,
 )
+from ironsbot.integrations.onebot.replies import (
+    build_event_reply_message,
+    finish_event_reply,
+)
 from ironsbot.integrations.onebot.self_commands import is_unaccepted_self_message
 
 if TYPE_CHECKING:
@@ -110,10 +114,11 @@ class PromptFlow:
         text = event.get_plaintext().strip()
         return text.isdigit() if selection else bool(text)
 
-    async def reject(
+    async def reject(  # noqa: PLR0913 - event and menu state have distinct lifetimes
         self,
         matcher: Matcher,
         state: T_State,
+        event: MessageEvent,
         prompt: str,
         *,
         selection: bool = True,
@@ -127,7 +132,8 @@ class PromptFlow:
             or not isinstance(version, int)
             or target_type not in {"private", "group"}
         ):
-            await matcher.finish(prompt)
+            await finish_event_reply(matcher, event, prompt)
+            return
         resolved_target_type = cast("OneBotConversationKind", target_type)
         reply_check = self.reply_check(
             session_id,
@@ -152,7 +158,7 @@ class PromptFlow:
                 resolved_target_type,
                 selection=selection,
             ),
-            prompt=prompt,
+            prompt=build_event_reply_message(event, prompt),
             replace_menu_anchor=replace_menu_anchor,
         )
 

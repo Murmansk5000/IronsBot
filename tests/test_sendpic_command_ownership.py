@@ -331,12 +331,12 @@ async def test_handler_uses_parsed_index_once(
     monkeypatch.setattr(service, "parse_indexed", parser)
     matcher = Mock(finish=AsyncMock(side_effect=FinishedException))
     with pytest.raises(FinishedException):
-        await handlers["sendpic.memes"](matcher, state)
+        await handlers["sendpic.memes"](matcher, state, event)
     parser.assert_not_called()
     backend.count.assert_awaited_once_with("memes")
     if index == OUT_OF_RANGE_INDEX:
         backend.get_file.assert_not_awaited()
-        assert "1到3" in matcher.finish.call_args.args[0]
+        assert "1到3" in str(matcher.finish.call_args.args[0])
     else:
         backend.get_file.assert_awaited_once()
         path = backend.get_file.call_args.args[0]
