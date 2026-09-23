@@ -104,10 +104,9 @@ def test_config_check_warns_and_ignores_retired_account_policy(
 ) -> None:
     config_path = tmp_path / "invalid-official-policy.toml"
     text = (ROOT / "config.example.toml").read_text(encoding="utf-8")
-    text = text.replace(
-        "[bot.qq_official.accounts.example_bot.user_policy]",
-        "[bot.qq_official.accounts.example_bot.user_policy]\n"
-        '"raw-official-openid" = ["help"]',
+    text += (
+        "\n[bot.qq_official.accounts.example_bot.user_policy]\n"
+        '"raw-official-openid" = ["help"]\n'
     )
     config_path.write_text(text, encoding="utf-8")
 
