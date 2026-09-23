@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from string import Formatter
 from typing import TYPE_CHECKING, Protocol, TypeAlias
@@ -224,10 +224,17 @@ class ReplyTemplate:
         incoming: IncomingMessageRef,
         message: OutboundMessage,
     ) -> PreparedReply:
+        has_image = any(
+            isinstance(part, (BinaryImagePart, RemoteImagePart))
+            for part in message.parts
+        )
+        if has_image and self.include_reply and self.mention_text_only:
+            message = _without_sender_mention(message, incoming.actor)
         presentation = self.presentation(
             incoming,
             has_text=any(isinstance(part, TextPart) for part in message.parts),
             has_mention=any(isinstance(part, MentionPart) for part in message.parts),
+            has_image=has_image,
         )
         if presentation.mention_actor is None:
             return PreparedReply(message, presentation.context)
@@ -247,6 +254,7 @@ class ReplyTemplate:
         *,
         has_text: bool,
         has_mention: bool,
+        has_image: bool = False,
     ) -> ReplyPresentation:
         mention_sender = (
             self.mention_sender
@@ -258,7 +266,7 @@ class ReplyTemplate:
             )
             and incoming.actor.account_id == incoming.conversation.account_id
             and not has_mention
-            and (not self.mention_text_only or has_text)
+            and (not self.mention_text_only or (has_text and not has_image))
         )
         return ReplyPresentation(
             context=(
@@ -270,6 +278,24 @@ class ReplyTemplate:
 
 
 COMMAND_REPLY_TEMPLATE = ReplyTemplate()
+
+
+def _without_sender_mention(
+    message: OutboundMessage, actor: ActorRef
+) -> OutboundMessage:
+    """Image replies use their source reference instead of a sender prefix."""
+
+    parts: list[MessagePart] = []
+    removed_mention = False
+    for part in message.parts:
+        if isinstance(part, MentionPart) and part.actor == actor:
+            removed_mention = True
+            continue
+        if removed_mention and isinstance(part, TextPart) and not part.text.strip():
+            continue
+        removed_mention = False
+        parts.append(part)
+    return replace(message, parts=tuple(parts))
 
 
 @dataclass(frozen=True, slots=True)

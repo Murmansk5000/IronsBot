@@ -1,3 +1,4 @@
+import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.commands import (
@@ -66,3 +67,40 @@ def test_event_reply_is_idempotent_for_already_prepared_message() -> None:
     event = group_message_event(message_id=-10)
     prepared = build_event_reply_message(event, "result")
     assert build_event_reply_message(event, prepared) == prepared
+
+
+@pytest.mark.parametrize("caption", [False, True])
+@pytest.mark.parametrize("explicit_mention", [False, True])
+def test_image_reply_uses_reference_instead_of_sender_mention(
+    *, caption: bool, explicit_mention: bool
+) -> None:
+    event = group_message_event(user_id=123, message_id=-7)
+    body = Message(MessageSegment.image(b"image"))
+    if caption:
+        body += MessageSegment.text("caption")
+    source = build_message(body, at_user_ids=[123]) if explicit_mention else body
+
+    reply = build_event_reply_message(event, source)
+
+    assert reply == MessageSegment.reply(-7) + body
+    assert build_event_reply_message(event, reply) == reply
+
+
+def test_image_reply_keeps_business_recipient_but_removes_sender_prefix() -> None:
+    event = group_message_event(user_id=123, message_id=7)
+    body = build_message(MessageSegment.image(b"image"), at_user_ids=[123, 321])
+
+    reply = build_event_reply_message(event, body)
+
+    assert reply[0] == MessageSegment.reply(7)
+    assert [part.data["qq"] for part in reply if part.type == "at"] == ["321"]
+
+
+def test_plain_text_cq_syntax_cannot_turn_into_an_image_or_mention() -> None:
+    event = group_message_event(message_id=7)
+    text = "[CQ:image,file=https://example.test/image][CQ:at,qq=321]"
+
+    reply = build_event_reply_message(event, text)
+
+    assert [part.type for part in reply] == ["reply", "at", "text", "text"]
+    assert reply[-1].data["text"] == text

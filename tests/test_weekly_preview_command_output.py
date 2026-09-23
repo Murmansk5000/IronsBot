@@ -38,7 +38,7 @@ def test_weekly_preview_image_output_includes_cache_notice_and_reference() -> No
         )
 
     message = matcher.finish.await_args.args[0]
-    assert [part.type for part in message[:4]] == ["reply", "at", "text", "image"]
+    assert [part.type for part in message] == ["reply", "image", "text", "text"]
     assert message.extract_plain_text() == (
-        "\n\n缓存时间：2026-08-10 11:00:00\n相关查询：https://seerinfo.yuyuqaq.cn/preview"
+        "\n缓存时间：2026-08-10 11:00:00\n相关查询：https://seerinfo.yuyuqaq.cn/preview"
     )

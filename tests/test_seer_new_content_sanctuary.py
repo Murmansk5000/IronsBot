@@ -309,9 +309,9 @@ async def test_autocard_detail_uses_native_onebot_image_message() -> None:
     await _send_item_detail(item, matcher, group_message_event("1"))
 
     message = matcher.send.await_args.args[0]
-    assert [segment.type for segment in message] == ["image", "text"]
+    assert [segment.type for segment in message] == ["reply", "image", "text"]
     assert message.extract_plain_text() == "卡牌详情"
-    assert matcher.send.await_args.kwargs == {"at_sender": True}
+    assert matcher.send.await_args.kwargs == {}
     media.outbound.assert_awaited_once_with(
         detail,
         include_additional_images=False,
@@ -604,12 +604,13 @@ def test_menu_image_and_text_fallback_share_layout_and_sender(
     )
 
     assert isinstance(message, Message)
-    mention_index = 1 if render_error is not None else 0
+    assert message[0].type == "reply"
+    assert message[0].data["id"] == str(event.message_id)
     if render_error is not None:
-        assert message[0].type == "reply"
-        assert message[0].data["id"] == str(event.message_id)
-    assert message[mention_index].type == "at"
-    assert message[mention_index].data["qq"] == str(event.user_id)
+        assert message[1].type == "at"
+        assert message[1].data["qq"] == str(event.user_id)
+    else:
+        assert not any(segment.type == "at" for segment in message)
     assert renderer_calls[0][:3] == (
         snapshot,
         layout.display_categories,

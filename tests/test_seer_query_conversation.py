@@ -128,7 +128,13 @@ async def test_query_reply_preserves_content_order_and_image_failure(
     if image is None:
         assert message.extract_plain_text() == "beforefailed\nafter"
     else:
-        assert [segment.type for segment in message] == ["text", "image", "text"]
-        assert message[0].data["text"] == "before"
-        assert message[1].data["file"] == "base64://" + b64encode(image).decode()
-        assert message[2].data["text"] == "after"
+        assert [segment.type for segment in message] == [
+            "reply",
+            "text",
+            "image",
+            "text",
+        ]
+        assert message[1].data["text"] == "before"
+        assert message[2].data["file"] == "base64://" + b64encode(image).decode()
+        assert message[3].data["text"] == "after"
+        assert send.await_args.kwargs == {}

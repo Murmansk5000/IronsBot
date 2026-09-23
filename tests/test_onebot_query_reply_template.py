@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from nonebot.adapters.onebot.v11 import MessageSegment
 
+from ironsbot.integrations.onebot import conversations
 from ironsbot.plugins.onebot.messaging import push_subscription_handlers
 from ironsbot.plugins.onebot.seer.query.commands import data_queries, peak_queries
 from ironsbot.services.seer.peak import PeakQueryResult
@@ -74,3 +75,31 @@ async def test_subscription_menu_keeps_reply_reference_and_sender(
     assert [part.type for part in prompt] == ["reply", "at", "text", "text"]
     assert prompt[0] == MessageSegment.reply(-15)
     assert prompt.extract_plain_text() == "\nmenu"
+
+
+@pytest.mark.asyncio
+async def test_legacy_image_menu_cannot_add_sender_mention_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event = group_message_event(message_id=-20)
+    loop = AsyncMock()
+    monkeypatch.setattr(conversations, "enter_prompt_loop", loop)
+    monkeypatch.setattr(conversations, "get_queued_conversation", lambda _: None)
+    monkeypatch.setattr(
+        conversations, "queued_conversation_is_cancelled", lambda _: False
+    )
+    monkeypatch.setattr(conversations, "get_prompt_session_manager", lambda _: Mock())
+
+    await conversations.enter_event_reply_conversation(
+        SimpleNamespace(state={}),
+        event,
+        namespace="image-menu",
+        handlers=[],
+        reply_check=lambda _: True,
+        prompt=MessageSegment.image(b"menu") + MessageSegment.text("choose"),
+    )
+
+    assert loop.await_args is not None
+    prompt = loop.await_args.kwargs["prompt"]
+    assert [part.type for part in prompt] == ["reply", "image", "text"]
+    assert prompt[0] == MessageSegment.reply(-20)
