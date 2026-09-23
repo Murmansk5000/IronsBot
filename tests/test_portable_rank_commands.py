@@ -7,24 +7,31 @@ import pytest
 
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_rank_commands import (
     build_portable_rank_admin_operations,
     build_portable_rank_operations,
 )
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
+from ironsbot.services.seer.rank_list_models import (
+    RankListPreparedReply,
+    RankListSelection,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from ironsbot.services.portable_reply import PortableReply
+    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import (
         RankCacheBatchCommand,
@@ -35,6 +42,16 @@ if TYPE_CHECKING:
         RankScoreCommand,
     )
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+class _Features:
+    @staticmethod
+    def is_feature_allowed(
+        _actor: ActorRef,
+        _conversation: ConversationRef,
+        _feature: str,
+    ) -> bool:
+        return True
 
 
 class _RankAdminService:
@@ -91,6 +108,8 @@ class _RankAdminService:
 class _RankQueryService:
     def __init__(self) -> None:
         self.delivered: list[tuple[str, int]] = []
+        self.list_prepared: RankListPreparedReply | None = None
+        self.score_prepared: RankListPreparedReply | None = None
 
     def default_limit(self, _conversation: ConversationRef | None) -> int:
         return 17
@@ -120,6 +139,19 @@ class _RankQueryService:
             f"{command.start_rank}:{command.limit}"
         )
 
+    async def prepare_list(
+        self,
+        command: RankListCommand,
+        *,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
+    ) -> RankListPreparedReply:
+        if self.list_prepared is not None:
+            return self.list_prepared
+        return RankListPreparedReply(
+            await self.list(command, actor=actor, conversation=conversation)
+        )
+
     async def score(
         self,
         command: RankScoreCommand,
@@ -129,6 +161,19 @@ class _RankQueryService:
     ) -> str:
         del actor, conversation
         return f"score:{command.rank_key}:{command.score}"
+
+    async def prepare_score(
+        self,
+        command: RankScoreCommand,
+        *,
+        conversation: ConversationRef | None,
+        actor: ActorRef | None = None,
+    ) -> RankListPreparedReply:
+        if self.score_prepared is not None:
+            return self.score_prepared
+        return RankListPreparedReply(
+            await self.score(command, actor=actor, conversation=conversation)
+        )
 
     async def player(
         self,
@@ -184,11 +229,13 @@ def _context(
     text: str,
     *,
     mentions: tuple[ActorRef, ...] = (),
+    actor_id: str = "caller-openid",
+    reply_to_id: str | None = None,
 ) -> MessageInputContext:
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-openid")
     actor = ActorRef(
         Platform.QQ_OFFICIAL,
-        "caller-openid",
+        actor_id,
         "member",
         conversation.id,
     )
@@ -200,6 +247,7 @@ def _context(
             message_id=f"message-{text}",
             text=text,
             direct_mentions=mentions,
+            reply_to_id=reply_to_id,
         ),
         mentions_bot=True,
     )
@@ -214,6 +262,28 @@ def _target() -> ActorRef:
     )
 
 
+def _rank_operations(
+    service: _RankQueryService,
+    resolver: PlayerIdResolver,
+) -> dict[str, PortableOperation]:
+    sessions = PortableQuerySessions()
+
+    async def player_query(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        del context
+        return PortableReply(OutboundMessage.from_text(f"query:{text}"))
+
+    return build_portable_rank_operations(
+        cast("RankQueryService", service),
+        resolver,
+        sessions,
+        player_query,
+        cast("FeatureService", _Features()),
+    )
+
+
 def _text(message: OutboundMessage) -> str:
     part = message.parts[0]
     assert isinstance(part, TextPart)
@@ -223,10 +293,7 @@ def _text(message: OutboundMessage) -> str:
 @pytest.mark.asyncio
 async def test_portable_rank_dispatches_list_score_and_alias_player_queries() -> None:
     service = _RankQueryService()
-    operations = build_portable_rank_operations(
-        cast("RankQueryService", service),
-        _resolver(),
-    )
+    operations = _rank_operations(service, _resolver())
     operation = operations["rank.global_collection"]
 
     listed = cast(
@@ -251,12 +318,143 @@ async def test_portable_rank_dispatches_list_score_and_alias_player_queries() ->
 
 
 @pytest.mark.asyncio
-async def test_portable_rank_display_limit_uses_full_platform_identity() -> None:
+async def test_rank_menu_preserves_displayed_rank_and_opens_player_query() -> None:
     service = _RankQueryService()
+    service.list_prepared = RankListPreparedReply(
+        "成就点数榜（第 11-20 名）\n11. 玩家甲（700011） 100分",
+        (RankListSelection(11, 700011, "玩家甲"),),
+    )
+    sessions = PortableQuerySessions()
+    player_queries: list[tuple[str, str]] = []
+
+    async def player_query(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        player_queries.append((text, context.message.actor.id))
+        return PortableReply(OutboundMessage.from_text("玩家详情"))
+
     operations = build_portable_rank_operations(
         cast("RankQueryService", service),
         _resolver(),
+        sessions,
+        player_query,
+        cast("FeatureService", _Features()),
     )
+    context = _context("成就榜11-20")
+    result = cast(
+        "PortableReply",
+        await operations["rank.global_collection"](context.text, context),
+    )
+
+    assert _text(result.message).startswith("成就点数榜（第 11-20 名）")
+    assert "发送榜单中的名次查询对应玩家" in _text(result.message)
+    assert result.message.prompt is not None
+    assert tuple(choice.id for choice in result.message.prompt.choices) == ("11", "0")
+    assert not sessions.recognizes_response("1", context)
+    selected = await sessions.interactions.select("11", context)
+    assert selected is not None
+    assert _text(selected.message) == "玩家详情"
+    assert player_queries == [("米米号700011", "caller-openid")]
+
+
+@pytest.mark.asyncio
+async def test_rank_menu_quoted_member_uses_responder_identity() -> None:
+    service = _RankQueryService()
+    service.list_prepared = RankListPreparedReply(
+        "成就点数榜\n11. 玩家甲（700011） 100分",
+        (RankListSelection(11, 700011, "玩家甲"),),
+    )
+    sessions = PortableQuerySessions()
+    player_queries: list[tuple[str, str]] = []
+
+    async def player_query(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        player_queries.append((text, context.message.actor.id))
+        return PortableReply(OutboundMessage.from_text("玩家详情"))
+
+    operations = build_portable_rank_operations(
+        cast("RankQueryService", service),
+        _resolver(),
+        sessions,
+        player_query,
+        cast("FeatureService", _Features()),
+    )
+    owner = _context("成就榜11-20")
+    result = cast(
+        "PortableReply",
+        await operations["rank.global_collection"](owner.text, owner),
+    )
+    sessions.record_delivery(
+        owner,
+        result.message,
+        SendResult(delivered=True, message_id="rank-menu"),
+    )
+    responder = _context(
+        "11",
+        actor_id="responder-openid",
+        reply_to_id="rank-menu",
+    )
+
+    selected = await sessions.interactions.select("11", responder)
+
+    assert selected is not None
+    assert _text(selected.message) == "玩家详情"
+    assert player_queries == [("米米号700011", "responder-openid")]
+    assert sessions.has_active_session(owner)
+    assert not sessions.recognizes_response("0", responder)
+
+
+@pytest.mark.asyncio
+async def test_rank_score_menu_accepts_sparse_displayed_ranks() -> None:
+    service = _RankQueryService()
+    service.score_prepared = RankListPreparedReply(
+        "群星之巅榜\n383. 玩家甲（700383） 8884分\n385. 玩家乙（700385） 8884分",
+        (
+            RankListSelection(383, 700383, "玩家甲"),
+            RankListSelection(385, 700385, "玩家乙"),
+        ),
+    )
+    sessions = PortableQuerySessions()
+
+    async def player_query(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        del context
+        return PortableReply(OutboundMessage.from_text(text))
+
+    operations = build_portable_rank_operations(
+        cast("RankQueryService", service),
+        _resolver(),
+        sessions,
+        player_query,
+        cast("FeatureService", _Features()),
+    )
+    context = _context("群星牌榜8884分")
+    result = cast(
+        "PortableReply",
+        await operations["rank.global_collection"](context.text, context),
+    )
+
+    assert result.message.prompt is not None
+    assert tuple(choice.id for choice in result.message.prompt.choices) == (
+        "383",
+        "385",
+        "0",
+    )
+    assert not sessions.recognizes_response("384", context)
+    selected = await sessions.interactions.select("385", context)
+    assert selected is not None
+    assert _text(selected.message) == "米米号700385"
+
+
+@pytest.mark.asyncio
+async def test_portable_rank_display_limit_uses_full_platform_identity() -> None:
+    service = _RankQueryService()
+    operations = _rank_operations(service, _resolver())
     context = _context("/榜单显示 20")
 
     result = cast(
@@ -269,10 +467,7 @@ async def test_portable_rank_display_limit_uses_full_platform_identity() -> None
 
 @pytest.mark.asyncio
 async def test_rank_with_direct_mention_uses_member_openid_binding() -> None:
-    operations = build_portable_rank_operations(
-        cast("RankQueryService", _RankQueryService()),
-        _resolver(),
-    )
+    operations = _rank_operations(_RankQueryService(), _resolver())
     context = _context("成就榜", mentions=(_target(),))
 
     result = cast(
@@ -304,9 +499,8 @@ def test_rank_catalog_claims_a_direct_member_mention_as_player_query() -> None:
 
 @pytest.mark.asyncio
 async def test_rank_reports_an_unbound_mentioned_openid() -> None:
-    operations = build_portable_rank_operations(
-        cast("RankQueryService", _RankQueryService()),
-        _resolver(target_binding=None),
+    operations = _rank_operations(
+        _RankQueryService(), _resolver(target_binding=None)
     )
     context = _context("成就榜", mentions=(_target(),))
 

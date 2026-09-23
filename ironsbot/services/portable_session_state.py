@@ -291,7 +291,7 @@ class PortableSessionState:
         return (
             pending.session.choice_from_action(text) is not None
             or pending.session.choice_from_text(text) is not None
-            or text.strip().isdigit()
+            or (pending.claim_unknown_numeric and text.strip().isdigit())
         )
 
     def _shared_pending(

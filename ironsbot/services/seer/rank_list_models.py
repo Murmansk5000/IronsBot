@@ -91,6 +91,21 @@ class RankPlayerTargetCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class RankListSelection:
+    """One player row exactly as numbered in a rendered rank result."""
+
+    rank: int
+    player_id: int
+    nick: str
+
+
+@dataclass(frozen=True, slots=True)
+class RankListPreparedReply:
+    message: str
+    selections: tuple[RankListSelection, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class RankCacheBatchCommand:
     rank_key: str
     start_rank: int

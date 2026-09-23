@@ -62,6 +62,13 @@ class PortableQuerySessionError(ValueError):
     def invalid_shared_choice(cls) -> PortableQuerySessionError:
         return cls("portable shared menu choices must reference visible choices")
 
+    @classmethod
+    def invalid_choice_keys(cls) -> PortableQuerySessionError:
+        return cls(
+            "portable menu choice keys must be unique, non-empty, non-zero, "
+            "and match the choice count"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class QueryOperationSpec(Generic[_T]):
@@ -86,6 +93,7 @@ class PortableMenuSpec(Generic[_T]):
     select: MenuSelect[_T]
     prompt: OutboundMessage
     labels: tuple[str, ...] = ()
+    choice_keys: tuple[str, ...] = ()
     text_inputs: tuple[frozenset[str], ...] = ()
     shared_select: MenuSelect[_T] | None = None
     semantic_request: MenuSemanticRequest[_T] | None = None
@@ -95,10 +103,19 @@ class PortableMenuSpec(Generic[_T]):
     can_select: Callable[[_T, MessageInputContext], bool] | None = None
     keep_open: bool = False
     exit_message: str = "已退出查询。"
+    invalid_choice_message: str | None = None
+    claim_unknown_numeric: bool = True
 
     def __post_init__(self) -> None:
         if self.labels and len(self.labels) != len(self.choices):
             raise PortableQuerySessionError.menu_label_count_mismatch()
+        normalized_keys = tuple(key.strip().casefold() for key in self.choice_keys)
+        if self.choice_keys and (
+            len(normalized_keys) != len(self.choices)
+            or any(not key or key == "0" for key in normalized_keys)
+            or len(set(normalized_keys)) != len(normalized_keys)
+        ):
+            raise PortableQuerySessionError.invalid_choice_keys()
         if self.text_inputs and len(self.text_inputs) != len(self.choices):
             raise ValueError("menu text inputs must match the choice count")  # noqa: TRY003
         if any(
@@ -121,6 +138,7 @@ class PortableTextInputSpec:
 class _PendingSelection:
     session: PromptSession
     choices: tuple[object, ...]
+    choice_ids: tuple[str, ...]
     select: _UntypedMenuSelect
     prompt_title: str
     not_found_message: str | None
@@ -137,6 +155,8 @@ class _PendingSelection:
     can_select: Callable[[object, MessageInputContext], bool] | None = None
     owner_context: MessageInputContext | None = None
     action: ActionDefinition | None = None
+    invalid_choice_message: str | None = None
+    claim_unknown_numeric: bool = True
 
 
 @dataclass(frozen=True, slots=True)

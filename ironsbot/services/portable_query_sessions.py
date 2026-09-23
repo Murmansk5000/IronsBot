@@ -157,9 +157,19 @@ class PortableQuerySessions(PortableSessionState):
             context,
             tuple(
                 PromptChoice(
-                    str(index),
+                    (
+                        spec.choice_keys[index - 1].strip()
+                        if spec.choice_keys
+                        else str(index)
+                    ),
                     spec.labels[index - 1] if spec.labels else f"选项 {index}",
-                    frozenset({str(index)})
+                    frozenset(
+                        {
+                            spec.choice_keys[index - 1].strip()
+                            if spec.choice_keys
+                            else str(index)
+                        }
+                    )
                     | (
                         spec.text_inputs[index - 1] if spec.text_inputs else frozenset()
                     ),
@@ -170,6 +180,9 @@ class PortableQuerySessions(PortableSessionState):
         self._pending[key] = _PendingSelection(
             session=session,
             choices=tuple(spec.choices),
+            choice_ids=tuple(
+                choice.id for choice in session.choices if choice.id != "0"
+            ),
             select=select_untyped,
             prompt_title="",
             not_found_message="",
@@ -185,7 +198,7 @@ class PortableQuerySessions(PortableSessionState):
                 semantic_request_untyped if spec.semantic_request is not None else None
             ),
             shared_choice_ids=frozenset(
-                str(index)
+                session.choices[index - 1].id
                 for index in (
                     range(1, len(spec.choices) + 1)
                     if spec.shareable
@@ -197,6 +210,8 @@ class PortableQuerySessions(PortableSessionState):
             access=spec.access or self._access(context),
             can_select=can_select,
             owner_context=context,
+            invalid_choice_message=spec.invalid_choice_message,
+            claim_unknown_numeric=spec.claim_unknown_numeric,
         )
         return replace(spec.prompt, prompt=session)
 
@@ -287,7 +302,8 @@ class PortableQuerySessions(PortableSessionState):
         if choice is None:
             if text.strip().isdigit():
                 return OutboundMessage.from_text(
-                    f"序号无效，输入 1～{len(pending.choices)}，或输入 0 退出。"
+                    pending.invalid_choice_message
+                    or f"序号无效，输入 1～{len(pending.choices)}，或输入 0 退出。"
                 )
             return None
         return await self._select_choice(
@@ -344,7 +360,7 @@ class PortableQuerySessions(PortableSessionState):
         choice = self._selection_choice(pending, text)
         if choice is None or choice.id not in pending.shared_choice_ids:
             return None
-        value = pending.choices[int(choice.id) - 1]
+        value = pending.choices[_choice_index(pending, choice)]
         if (pending.access is not None and not pending.access(responder)) or (
             pending.can_select is not None and not pending.can_select(value, responder)
         ):
@@ -407,12 +423,14 @@ class PortableQuerySessions(PortableSessionState):
             and choice.id not in pending.shared_choice_ids
         ):
             return None
-        value = pending.choices[int(choice.id) - 1]
+        value = pending.choices[_choice_index(pending, choice)]
         if (pending.access is not None and not pending.access(context)) or (
             pending.can_select is not None and not pending.can_select(value, context)
         ):
             return None
-        return pending.semantic_request(pending.choices[int(choice.id) - 1], context)
+        return pending.semantic_request(
+            pending.choices[_choice_index(pending, choice)], context
+        )
 
     async def _select_choice(
         self,
@@ -423,12 +441,10 @@ class PortableQuerySessions(PortableSessionState):
         choice: PromptChoice,
         allow_deferred: bool,
     ) -> OutboundMessage | PortableReply | None:
-        index = int(choice.id)
-        if index == 0:
+        if choice.id == "0":
             self._pending.pop(key, None)
             return OutboundMessage.from_text(pending.exit_message)
-
-        value = pending.choices[index - 1]
+        value = pending.choices[_choice_index(pending, choice)]
         if (pending.access is not None and not pending.access(context)) or (
             pending.can_select is not None and not pending.can_select(value, context)
         ):
@@ -515,6 +531,9 @@ class PortableQuerySessions(PortableSessionState):
         self._pending[key] = _PendingSelection(
             session=session,
             choices=tuple(choice.value for choice in result.choices),
+            choice_ids=tuple(
+                choice.id for choice in session.choices if choice.id != "0"
+            ),
             select=select,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
@@ -527,6 +546,7 @@ class PortableQuerySessions(PortableSessionState):
             access=self._access(context),
             owner_context=context,
             action=action,
+            claim_unknown_numeric=True,
             semantic_request=(
                 lambda value, _ctx: SemanticRequest(
                     action=action,
@@ -566,3 +586,11 @@ def _query_target(value: object, result: QueryResult[Any]) -> SemanticTarget:
                 return target
             return SemanticTarget(key=str(value), display=choice.name)
     return SemanticTarget(key=str(value), display=str(value))
+
+
+def _choice_index(pending: _PendingSelection, choice: PromptChoice) -> int:
+    try:
+        return pending.choice_ids.index(choice.id)
+    except ValueError as error:
+        msg = "prompt choice does not belong to the pending menu"
+        raise PortableQuerySessionError(msg) from error
