@@ -114,7 +114,17 @@ def _operations(
         build_portable_lucky_skin_operations(
             cast("LuckySkinWindowService", service),
             cast("PetQueryService", pet),
-            FeatureService({}, {}, frozenset(), principals=identity),
+            FeatureService(
+                {
+                    _context(platform=platform).message.conversation: frozenset(
+                        {"seer_pet"}
+                    )
+                    for platform in (Platform.ONEBOT, Platform.QQ_OFFICIAL)
+                },
+                {},
+                frozenset(),
+                principals=identity,
+            ),
             sessions,
             PlayerIdResolver(
                 lambda value, _conversation: (

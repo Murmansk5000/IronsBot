@@ -14,21 +14,17 @@ from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticTarget,
 )
-from ironsbot.integrations.onebot.conversations import (
-    begin_event_reply_conversation,
-)
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
 from ironsbot.integrations.onebot.params import parse_string_arg
-from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
-from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_result import QueryResult
 
 if TYPE_CHECKING:
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.outbound import OutboundMessage
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.query_result import QueryReply
 
 T = TypeVar("T")
@@ -58,90 +54,70 @@ async def send_query_reply(
         await Matcher.send(message, **kwargs)
 
 
-def make_query_handler(  # noqa: C901
+def make_query_handler(  # noqa: PLR0913 - query adapter compatibility
     search: SearchQuery[T],
     select: SelectionQuery,
     prompt_title: str,
     action: ActionDefinition,
     *,
+    sessions: PortableQuerySessions | None = None,
     with_execution_identity: bool = False,
 ) -> Callable[[Matcher, T_State, Event], Awaitable[None]]:
-    async def resolve_selection(
-        item: PromptItem[T],
-        matcher: Matcher,
-        event: Event,
-    ) -> None:
-        try:
-            result = (
-                await select(
-                    item.value,
-                    execution_identity=message_input_context(event).execution_identity,
-                )
-                if with_execution_identity
-                else await select(item.value)
-            )
-        except DataUnavailableError:
-            _raise_if_selection_cancelled(matcher)
-            await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
-            return
-        _raise_if_selection_cancelled(matcher)
-        if result.message:
-            await matcher.finish(result.message)
-            return
-        if result.reply is not None:
-            await send_query_reply(result.reply, event, finish=False)
+    from ironsbot.integrations.onebot.portable_queries import (
+        make_portable_query_handler,
+        release_query_menu_admission,
+    )
+    from ironsbot.services.portable_query_sessions import (
+        PortableQuerySessions,
+        QueryOperationSpec,
+    )
 
-    async def handle(
-        matcher: Matcher,
-        state: T_State,
-        event: Event,
-    ) -> None:
-        if isinstance(event, MessageEvent):
-            await begin_event_reply_conversation(
-                matcher,
-                event,
-                namespace=_QUERY_SELECTION_NAMESPACE,
-                handlers=[resolve_selection],
-                pending_reply_check=_is_digit_selection_input,
-                reply_check=_is_digit_selection_input,
-            )
-        try:
-            result = (
-                await search(
-                    parse_string_arg(state),
-                    execution_identity=message_input_context(event).execution_identity,
-                )
+    shared_sessions = sessions or PortableQuerySessions()
+
+    async def handle(matcher: Matcher, state: T_State, event: Event) -> None:
+        argument = parse_string_arg(state)
+
+        async def search_contextual(
+            value: str, context: MessageInputContext
+        ) -> QueryResult[T]:
+            return (
+                await search(value, execution_identity=context.execution_identity)
                 if with_execution_identity
-                else await search(parse_string_arg(state))
+                else await search(value)
             )
-        except DataUnavailableError:
-            await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
-            return
-        if result.message:
-            await matcher.finish(result.message)
-        if result.reply is not None:
-            await send_query_reply(result.reply, event, finish=True)
-        if not result.choices:
-            raise FinishedException
-        await enter_prompt(
-            matcher,
-            event,
-            state,
-            Prompt(
-                title=prompt_title,
-                action=action,
-                items=[
-                    PromptItem(
-                        choice.name,
-                        choice.description,
-                        choice.value,
-                        is_sub_prompt=choice.is_sub_choice,
-                        semantic_target=_query_choice_semantic_target(choice),
-                    )
-                    for choice in result.choices
-                ],
-            ),
-            resolve_selection,
+
+        async def select_contextual(
+            value: T, context: MessageInputContext
+        ) -> QueryResult[Any]:
+            return (
+                await select(value, execution_identity=context.execution_identity)
+                if with_execution_identity
+                else await select(value)
+            )
+
+        async def operation(
+            text: str, context: MessageInputContext
+        ) -> OutboundMessage | None:
+            del text
+            message = await shared_sessions.begin(
+                context,
+                argument=argument,
+                spec=QueryOperationSpec(
+                    parser=lambda _text: argument,
+                    search=search,
+                    select=select,
+                    contextual_search=search_contextual,
+                    contextual_select=select_contextual,
+                    prompt_title=prompt_title,
+                    action=action,
+                ),
+            )
+            if message is not None and message.prompt is not None:
+                release_query_menu_admission(matcher, shared_sessions)
+            return message
+
+        await make_portable_query_handler(operation, shared_sessions)(
+            matcher, state, event
         )
 
     return handle

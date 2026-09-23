@@ -41,7 +41,7 @@ def render_onebot_outbound_message(
 
     rendered = Message()
     if reply_to_id is not None:
-        rendered += MessageSegment.reply(_onebot_id(reply_to_id))
+        rendered += MessageSegment.reply(parse_reply_message_id(reply_to_id))
     for part in message.parts:
         if isinstance(part, TextPart):
             rendered += MessageSegment.text(part.text)
@@ -72,7 +72,9 @@ def _supports_group_mention(
     )
 
 
-def _onebot_id(value: str) -> int:
-    if not value.isdecimal():
+def parse_reply_message_id(value: str) -> int:
+    """Message IDs are signed integers, unlike QQ account and group IDs."""
+    digits = value.removeprefix("-")
+    if not digits.isascii() or not digits.isdecimal():
         raise OneBotOutboundMessageError.invalid_reply_id()
     return int(value)

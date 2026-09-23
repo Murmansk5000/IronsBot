@@ -87,6 +87,7 @@ class _PortableAutocardOperations:
                 select=select,
                 prompt=OutboundMessage.from_text(result.prompt_text),
                 keep_open=True,
+                shareable=True,
                 exit_message="❌ 已退出群星牌选择",
             ),
         )
@@ -154,6 +155,7 @@ class _PortableAutocardOperations:
                 select=select,
                 prompt=OutboundMessage.from_text(prompt),
                 keep_open=True,
+                shareable=True,
                 exit_message="❌ 已退出群星牌场地选择",
             ),
         )

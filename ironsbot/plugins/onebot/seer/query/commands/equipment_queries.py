@@ -61,5 +61,6 @@ def install(group: SeerMatcherGroup) -> None:
                 partial(service.select, kind),
                 prompt_title,
                 ActionDefinition(command_id, f"{kind}查询"),
+                sessions=group.query_sessions,
             )
         )
