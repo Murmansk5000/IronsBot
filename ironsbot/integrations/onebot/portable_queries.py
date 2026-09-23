@@ -19,7 +19,10 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     COMMAND_COOLDOWN_TOKEN_STATE_KEY,
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
 )
-from ironsbot.integrations.onebot.replies import send_portable_event_reply
+from ironsbot.integrations.onebot.replies import (
+    finish_event_reply,
+    send_portable_event_reply,
+)
 from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -60,7 +63,7 @@ def make_portable_query_handler(
                 operation, context.text, context
             )
         except DataUnavailableError:
-            await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+            await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
             return
         if reply is not None:
             await _deliver(matcher, event, reply, sessions)
@@ -97,7 +100,7 @@ def install_portable_menu_router(
         try:
             reply = await sessions.interactions.select(context.text, context)
         except DataUnavailableError:
-            await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+            await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
             return
         if reply is not None:
             await _deliver(matcher, event, reply, sessions)
