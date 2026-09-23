@@ -26,6 +26,7 @@ from ironsbot.integrations.docker.daemon import (
     pull_docker_image,
     remove_image_if_unused,
     remove_stale_repository_images,
+    remove_stopped_watchtower_containers,
 )
 from ironsbot.integrations.docker.registry import (
     inspect_registry_image_info,
@@ -357,7 +358,60 @@ def test_create_watchtower_container_sets_docker_api_version() -> None:
     assert client.request_json["Env"] == ["DOCKER_API_VERSION=1.40"]
     assert client.request_json["Cmd"] == ["--run-once", "--cleanup", "ironsbot"]
     host_config = cast("dict[str, object]", client.request_json["HostConfig"])
-    assert host_config["AutoRemove"] is False
+    assert host_config["AutoRemove"] is True
+    assert client.request_json["Labels"] == {"io.ironsbot.role": "watchtower-once"}
+
+
+def test_remove_stopped_watchtower_containers_keeps_running_updater() -> None:
+    class FakeResponse:
+        def __init__(self, payload: object, status_code: int = 200) -> None:
+            self._payload = payload
+            self.status_code = status_code
+
+        def json(self) -> object:
+            return self._payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class FakeClient:
+        removed: list[str]
+
+        def __init__(self) -> None:
+            self.removed = []
+
+        async def get(self, _url: str, **_kwargs: object) -> FakeResponse:
+            return FakeResponse(
+                [
+                    {
+                        "Id": "stopped-id",
+                        "Names": ["/ironsbot-watchtower-once-old"],
+                        "State": "exited",
+                    },
+                    {
+                        "Id": "running-id",
+                        "Names": ["/ironsbot-watchtower-once-live"],
+                        "State": "running",
+                    },
+                    {
+                        "Id": "unrelated-id",
+                        "Names": ["/other-container"],
+                        "State": "exited",
+                    },
+                ]
+            )
+
+        async def delete(self, url: str, **_kwargs: object) -> FakeResponse:
+            self.removed.append(url)
+            return FakeResponse(None, status_code=204)
+
+    client = FakeClient()
+    removed = asyncio.run(
+        remove_stopped_watchtower_containers(client)  # type: ignore[arg-type]
+    )
+
+    assert removed == 1
+    assert client.removed == ["/containers/stopped-id"]
 
 
 def test_create_watchtower_container_passes_private_registry_credentials() -> None:
