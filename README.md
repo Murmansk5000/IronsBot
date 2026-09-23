@@ -139,7 +139,8 @@ AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；
 `ai.provider_order` 切换，每个提供商内部再按 `models` 顺序切换模型。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
 `[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
-`feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
+`feature` 或图片功能 `image`，通过统一的 `features.group_policy` / `features.user_policy`
+向相应逻辑群或用户显式授权，而不是加入机器人账号的 `features`。本地图片继续从挂载目录
 读取，远程图片继续使用已配置后端，不会复制进机器人镜像。带数字 QQ 提醒对象的文本
 口令只在 OneBot 显示和执行，避免官方平台静默丢失 @ 语义。
 
@@ -148,8 +149,8 @@ AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；
 模板不会自动加载，也不包含原图片文件。
 
 主动发送默认开启；只有明确不应承担任何主动投递的专用账号才需要设置
-`proactive_messages = false`。开启 `team_resource_subscription` 时不能关闭该项，
-否则配置会被明确拒绝，避免订阅成功后无法收到提醒。平台实际发送额度和权限以
+`proactive_messages = false`。需要战队资源等主动提醒时，应为实际发送账号开启该项；
+业务功能授权不代表账号具备主动投递能力。退役的账号授权字段不再触发原配置校验。平台实际发送额度和权限以
 当前机器人应用后台为准。运行时会接收并持久化腾讯的
 `GROUP_MSG_RECEIVE/GROUP_MSG_REJECT`、`C2C_MSG_RECEIVE/C2C_MSG_REJECT` 以及机器人
 加入/移除事件；目标明确关闭主动消息或移除机器人后，所有主动推送会在调用平台接口前
@@ -179,12 +180,11 @@ app_id = "10001"
 required = false
 proactive_messages = true
 custom_keyboards = false
-features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 
-[bot.qq_official.accounts.example_bot.group_policy]
+[features.group_policy]
 example_official_group = ["seer_activity_push", "bili_push"]
 
-[bot.qq_official.accounts.example_bot.user_policy]
+[features.user_policy]
 owner = ["seer_activity_push", "bili_push"]
 ```
 
@@ -195,8 +195,10 @@ owner = ["seer_activity_push", "bili_push"]
 把特殊群交给指定账号；同一逻辑群中的其他官方账号保持静默。
 若逻辑群只声明了一个已启用官方账号的 OpenID，该账号会自动成为该群响应者，
 不必在 `group_routes` 重复填写；一个逻辑群声明多个官方账号时才需显式选择。
-`features` 是该账号可用的默认功能。面向公众的账号可配置完整默认功能；专用账号应使用
-`features = []`，再通过账号策略或 `[features]` 下基于逻辑身份的策略只开放特殊目标。
+业务功能只由统一的 `features.group_policy` 和 `features.user_policy` 显式授权。
+账号内的 `features`、`group_policy`、`user_policy` 仅保留读取以识别退役配置；显式填写会告警并忽略，
+不再授予默认功能、附加目标权限或定义推送目标，新配置不应填写。个人功能仅用于私聊，不能绕过群策略；
+超管仍遵循 `superuser_bypass`。示例只保留已有明确目标授权，不将原账号默认列表转换为公共授权。
 被动回复始终由收到事件的同一 AppID 发出，不能把一个官方账号收到的消息转给另一个
 账号回复；入站路由会在业务执行前选定唯一账号，避免两个机器人重复响应。
 账号不再使用 TOML `enabled`；TOML 声明公开 AppID，并由同后缀的
@@ -206,8 +208,8 @@ owner = ["seer_activity_push", "bili_push"]
 阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
 官方入站消息 ID 会在业务执行前持久化到 `/app/data/qq_official/inbound.sqlite`，防止
 Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
-每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
-附加对应 feature。
+群和用户功能授权使用统一的 `features.group_policy` / `features.user_policy`；
+主动推送目标还需满足相应业务的订阅及投递条件，账号只承担实际发送通道。
 目标必须填写 `[identities]` 中声明的别名，不再直接散写 OpenID。默认开启的
 `proactive_messages` 在应用具备对应权限后，使定时消息与活动/B站推送复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
@@ -242,7 +244,7 @@ AppSecret 获取短期 AccessToken，并在内存中自动刷新。每个账号�
 再声明一个账号及其公开 AppID，并增加一个同后缀的 Secret 变量。Secret 写进
 TOML 会被严格拒绝。
 
-多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
+多个账号的连接、AccessToken、OpenID 和主动消息路由按 AppID 隔离；业务权限使用统一身份策略。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
 运行日志只记录 TOML 账号别名；消息 ID、群 OpenID 和用户 OpenID 仅记录不可逆短摘要，
 便于关联同一次故障而不把平台原始标识写入日志。
@@ -250,7 +252,7 @@ OneBot 路由与发送失败同样只记录 QQ 目标和机器人账号的不可
 或群号。
 
 `官方身份` 只是排障工具，不再是建立群映射的必经步骤。需要查看平台原始标识时，
-可临时在目标账号的 `features` 中加入
+可临时在统一的 `features.user_policy` 或 `features.group_policy` 中，仅向需要排障的逻辑用户或群授予
 `qq_official_identity_info`，然后私聊发送“官方身份”，或在目标群 @机器人发送
 “官方身份”。机器人只向当前会话返回该事件携带的用户、群或群成员 OpenID；完成
 本机配置后应立即移除这个 Feature。它默认关闭，也不会被 `all` 功能包隐式启用。
@@ -308,6 +310,9 @@ IronsBot 会处理其中明确匹配的命令和正在进行的选项会话，
 未开启该群设置时，群聊仍需 `@` 机器人。
 
 ## 常用赛尔查询
+
+图片素材获取失败时，管理员通知会汇总失败资源，并在可用时标明实际执行账号；显示名仅用于诊断，不作为权限身份。
+
 
 - 首次成功查询指定米米号后，机器人会询问是否设为默认米米号；按提示回复 `是`/`y` 或 `否`/`n`。发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。
 - 绑定后，查询默认米米号的每日查询额度会提高。额度按成功获取的数据项目结算；缓存、后台预热、超时和发送失败不计入。基础资料与阵容每次最多计 1 项，收集、巅峰和榜单查询会按成功获取的对应数据项目计入。

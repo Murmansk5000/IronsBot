@@ -99,7 +99,7 @@ def test_config_check_redacts_secret_from_validation_error(tmp_path: Path) -> No
     assert "Traceback" not in result.stderr
 
 
-def test_config_check_rejects_undeclared_official_policy_target(
+def test_config_check_warns_and_ignores_retired_account_policy(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "invalid-official-policy.toml"
@@ -133,7 +133,6 @@ def test_config_check_rejects_undeclared_official_policy_target(
         timeout=15,
     )
 
-    assert result.returncode == CONFIG_ERROR_EXIT_CODE
-    assert "IronsBot configuration invalid" in result.stderr
-    assert "has no official endpoint for account example_bot" in result.stderr
+    assert result.returncode == 0
+    assert "retired and ignored" in result.stderr
     assert "Traceback" not in result.stderr

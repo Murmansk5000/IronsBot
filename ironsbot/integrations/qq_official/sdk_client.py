@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class QQOfficialSendReceipt:
     id: str
+    reply_anchor_ids: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -88,6 +89,7 @@ class TencentQQClient:
         first_sequence: int | None,
     ) -> QQOfficialSendReceipt:
         first_id: str | None = None
+        anchors: list[str] = []
         for offset, payload in enumerate(payloads):
             sequence = (
                 first_sequence + offset
@@ -103,6 +105,10 @@ class TencentQQClient:
                     sequence=sequence,
                 )
                 sent_id = _response_id(response)
+                anchors.append(sent_id)
+                sequence_id = response.get("msg_idx")
+                if isinstance(sequence_id, (str, int)) and str(sequence_id).strip():
+                    anchors.append(str(sequence_id))
             except Exception as error:
                 if first_id is not None:
                     raise QQOfficialPartialDeliveryError(first_id) from error
@@ -123,7 +129,7 @@ class TencentQQClient:
         if first_id is None:
             msg = "QQ Official message rendered no send operations"
             raise RuntimeError(msg)
-        return QQOfficialSendReceipt(first_id)
+        return QQOfficialSendReceipt(first_id, tuple(dict.fromkeys(anchors)))
 
     async def _send_payload(
         self,

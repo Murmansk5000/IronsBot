@@ -48,7 +48,7 @@ def test_feature_service_reads_feature_config() -> None:
     assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "text")
 
 
-def test_user_policy_applies_to_the_same_actor_in_group_chat() -> None:
+def test_user_policy_does_not_bypass_group_policy() -> None:
     feature_service = build_feature_service(
         FeatureConfig(
             user_policy={"456": ["ai_chat"]},
@@ -56,7 +56,8 @@ def test_user_policy_applies_to_the_same_actor_in_group_chat() -> None:
         (),
     )
 
-    assert feature_service.is_feature_allowed(_actor(456), _group(123), "ai_chat")
+    assert not feature_service.is_feature_allowed(_actor(456), _group(123), "ai_chat")
+    assert feature_service.is_actor_feature_allowed(_actor(456), "ai_chat")
     assert not feature_service.is_feature_allowed(_actor(789), _group(123), "ai_chat")
 
 

@@ -27,6 +27,7 @@ from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_d
 from .pet_info_repository import load_pet_info_snapshot
 
 if TYPE_CHECKING:
+    from ironsbot.core.outbound import ExecutionIdentity
     from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import (
         ImageFailureReporter,
@@ -63,6 +64,7 @@ async def render_published_pet_info(  # noqa: PLR0913 - explicit integration por
     pet_id: int,
     *,
     image_failure_reporter: ImageFailureReporter | None = None,
+    execution_identity: ExecutionIdentity | None = None,
 ) -> bytes:
     """Render one pet after completely detaching its data from SQLite."""
     request_key = render_request_cache_key(_PET_INFO_CACHE_CATEGORY, pet_id)
@@ -78,6 +80,7 @@ async def render_published_pet_info(  # noqa: PLR0913 - explicit integration por
         images,
         snapshot,
         image_failure_reporter,
+        execution_identity,
     )
     document = present_pet_info(snapshot, assets)
     rendered = await render_pet_info_document(
@@ -94,6 +97,7 @@ async def _load_assets(
     images: SeerImageSource,
     snapshot: PetInfoSnapshot,
     image_failure_reporter: ImageFailureReporter | None = None,
+    execution_identity: ExecutionIdentity | None = None,
 ) -> tuple[PetInfoAssets, bool]:
     type_ids = tuple(
         sorted({snapshot.pet.type_id, *(skill.type_id for skill in snapshot.skills)})
@@ -165,6 +169,7 @@ async def _load_assets(
                 for item in failures
                 if item.error is not None
             ),
+            execution_identity,
         )
     return assets, not failures
 

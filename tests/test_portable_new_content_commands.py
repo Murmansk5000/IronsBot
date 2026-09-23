@@ -44,6 +44,7 @@ class _Details:
         self,
         _snapshot: NewContentSnapshot,
         item: NewContentItem,
+        **_kwargs: object,
     ) -> QueryReply | str:
         if item.category == "pet":
             return QueryReply(text=f"精灵详情:{item.entity_id}")
@@ -126,9 +127,8 @@ def _context(text: str = "新增内容") -> MessageInputContext:
 def _features(*features: str) -> FeatureService:
     return FeatureService(
         group_features={},
-        actor_features={},
+        actor_features={_context().message.actor: frozenset(features)},
         superusers=frozenset(),
-        platform_default_features={Platform.QQ_OFFICIAL: frozenset(features)},
     )
 
 

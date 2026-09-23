@@ -171,16 +171,31 @@ class _PortableNewContentOperations:
                 )
             if action.item is None:
                 return OutboundMessage.from_text("当前新增内容没有可展示的详情。")
-            return await self._detail(snapshot, action.item)
+            return await self._detail(snapshot, action.item, context)
 
         return self.sessions.offer_menu(
             context,
             PortableMenuSpec(
                 choices=tuple(choice.action for choice in menu.choices),
                 labels=tuple(choice.name for choice in menu.choices),
+                text_inputs=tuple(
+                    frozenset({choice.key}) if choice.key else frozenset()
+                    for choice in menu.choices
+                ),
                 select=select,
                 prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),
                 keep_open=True,
+                shareable=True,
+                can_select=lambda action, responder: (
+                    action.category
+                    in available_new_content_categories(
+                        lambda feature: self.features.is_feature_allowed(
+                            responder.message.actor,
+                            responder.message.conversation,
+                            feature,
+                        )
+                    )
+                ),
                 exit_message="已退出新增内容查询。",
             ),
         )
@@ -189,9 +204,12 @@ class _PortableNewContentOperations:
         self,
         snapshot: NewContentSnapshot,
         item: NewContentItem,
+        context: MessageInputContext,
     ) -> OutboundMessage:
         try:
-            detail = await self.resources.new_content_details.select(snapshot, item)
+            detail = await self.resources.new_content_details.select(
+                snapshot, item, execution_identity=context.execution_identity
+            )
         except (NewContentSnapshotChangedError, DataPublicationChangedError):
             return OutboundMessage.from_text(
                 "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"

@@ -93,6 +93,15 @@ class Application:
             ):
                 contribution.install(self.matcher_factory)
         if self.onebot_message_handling_enabled:
+            from ironsbot.integrations.onebot.portable_queries import (
+                install_portable_menu_router,
+            )
+
+            install_portable_menu_router(
+                self.matcher_factory,
+                self.resources.query_sessions,
+                self.resources.features,
+            )
             self.matcher_factory.install_queued_conversation_router()
             self.matcher_factory.validate_command_catalog(self.resources.commands)
             self.matcher_factory.install_postprocessor()
