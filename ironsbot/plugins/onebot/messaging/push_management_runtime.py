@@ -14,6 +14,7 @@ from ironsbot.integrations.onebot.matchers import (
     get_prompt_session_manager,
     reject_with_rule,
 )
+from ironsbot.integrations.onebot.self_commands import is_unaccepted_self_message
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -104,7 +105,7 @@ class PromptFlow:
         event_type = (
             GroupMessageEvent if target_type == "group" else PrivateMessageEvent
         )
-        if not isinstance(event, event_type) or event.user_id == event.self_id:
+        if not isinstance(event, event_type) or is_unaccepted_self_message(event):
             return False
         text = event.get_plaintext().strip()
         return text.isdigit() if selection else bool(text)
