@@ -92,6 +92,16 @@ send_messages = true
 #     静默关联群 member_openid 与 QQ 号；候选数字群来自 identities.groups。
 identity_verification = false
 
+[bot.onebot.self_commands]
+# EN: Optional own-account group commands; requires NapCat reportSelfMessage.
+# ZH: 允许机器人 QQ 本人发送带前缀的群指令；需要 NapCat 开启 reportSelfMessage。
+#     默认关闭，沿用该 QQ 的现有功能权限，不额外提权或授予通知资格。
+#     官方接管或 OneBot 发送关闭时仍静默。
+enabled = false
+# EN: Keep trailing spaces; menu selections must also include a prefix.
+# ZH: 保留前缀末尾空格；菜单续接也需前缀，例如“演示 1”“演示 0”。
+prefixes = ["演示 ", "示范 "]
+
 [bot.onebot.trusted_official_bots]
 # EN: Official account alias -> numeric QQ ID seen by NapCat.
 # ZH: 官方账号别名 -> NapCat 事件中看到的官方机器人数字 QQ 号。
