@@ -8,7 +8,6 @@ from time import monotonic
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.adapters.onebot.v11 import MessageSegment as OneBotMessageSegment
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
@@ -25,6 +24,7 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     PromptSessionManager,
     _QueuedConversation,
 )
+from ironsbot.integrations.onebot.replies import build_event_reply_message
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -67,12 +67,7 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
             state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
             return
         prompt_sessions.cancel_queued_conversation(state)
-        if getattr(event, "group_id", None) is not None:
-            await matcher.finish(
-                OneBotMessageSegment.at(event.user_id)
-                + OneBotMessageSegment.text(" 已退出当前选择。")
-            )
-        await matcher.finish("已退出当前选择。")
+        await matcher.finish(build_event_reply_message(event, "已退出当前选择。"))
 
     pending = context.pending
     request: SemanticRequest | None = None
@@ -173,10 +168,4 @@ async def _send_in_flight_feedback(
     event: MessageEvent,
     feedback: str,
 ) -> None:
-    if getattr(event, "group_id", None) is not None:
-        await matcher.send(
-            OneBotMessageSegment.at(event.user_id)
-            + OneBotMessageSegment.text(f" {feedback}")
-        )
-        return
-    await matcher.send(feedback)
+    await matcher.send(build_event_reply_message(event, feedback))
