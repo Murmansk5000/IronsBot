@@ -1,8 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
 
-import pytest
-
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_preferences import (
@@ -33,16 +31,17 @@ def _link(app: str = "app1", *, member: bool = False) -> CrossPlatformIdentityLi
     )
 
 
-def test_member_link_never_becomes_private_address(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_member_link_becomes_same_app_private_address() -> None:
     routes = BiliPrivateRoutes(
         onebot_enabled=False, official_accounts=frozenset({"app1"})
     )
     routes.register(_link(member=True))
-    assert routes.resolve(SOURCE) == SOURCE
-    assert routes.resolve(SOURCE) == SOURCE
-    assert caplog.text.count("missing C2C endpoint") == 1
+    assert routes.resolve(SOURCE) == ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "openid-app1",
+        account_id="app1",
+    )
 
 
 def test_verified_user_route_selection_and_unlink() -> None:
@@ -66,17 +65,17 @@ def test_verified_user_route_selection_and_unlink() -> None:
     assert routes.resolve(SOURCE) == SOURCE
 
 
-def test_private_principal_only_merges_verified_user_and_unlinks() -> None:
+def test_private_principal_merges_same_app_member_and_unlinks() -> None:
     principals = IdentityPrincipalService()
-    assert not principals.register_private_link(_link(member=True))
     endpoint = ConversationRef(
         Platform.QQ_OFFICIAL, "private", "openid-app1", account_id="app1"
     )
-    assert principals.register_private_link(_link())
+    member_link = _link(member=True)
+    assert principals.register_private_link(member_link)
     assert principals.conversation_principal(
         endpoint
     ) == principals.conversation_principal(SOURCE)
-    principals.unregister_private_link(_link())
+    principals.unregister_private_link(member_link)
     assert principals.conversation_principal(
         endpoint
     ) != principals.conversation_principal(SOURCE)
