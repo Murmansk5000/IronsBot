@@ -12,6 +12,7 @@ class QQOfficialIngressRouting:
 
     default_account_id: str
     preferred_accounts_by_onebot_group: dict[str, str]
+    use_default_for_unconfigured_groups: bool = False
     _onebot_groups_by_endpoint: dict[tuple[str, str], str] = field(
         default_factory=dict,
         repr=False,
@@ -36,12 +37,21 @@ class QQOfficialIngressRouting:
         conversation_id: str,
         explicitly_addressed: bool = False,
     ) -> bool:
+        del explicitly_addressed  # Addressing cannot bypass configured group ownership.
         if conversation_kind != "group":
             return True
         onebot_group_id = self._onebot_groups_by_endpoint.get(
             (account_id, conversation_id)
         )
         if onebot_group_id is None:
-            return explicitly_addressed or account_id == self.default_account_id
+            return (
+                self.use_default_for_unconfigured_groups
+                and account_id == self.default_account_id
+            )
         preferred = self.preferred_accounts_by_onebot_group.get(onebot_group_id)
-        return account_id == (preferred or self.default_account_id)
+        if preferred is not None:
+            return account_id == preferred
+        return (
+            self.use_default_for_unconfigured_groups
+            and account_id == self.default_account_id
+        )

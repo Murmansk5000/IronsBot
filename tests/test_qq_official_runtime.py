@@ -435,7 +435,7 @@ def test_runtime_dispatches_shared_group_only_through_routed_account(
     asyncio.run(run())
 
 
-def test_runtime_allows_addressed_account_to_bootstrap_unknown_group(
+def test_runtime_ignores_addressed_account_in_unknown_group_by_default(
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
@@ -480,10 +480,7 @@ def test_runtime_allows_addressed_account_to_bootstrap_unknown_group(
                 },
             )
 
-            assert router.dispatch_count == 1
-            context = cast("MessageInputContext", router.contexts[0])
-            assert context.message.conversation.account_id == "special-app"
-            assert context.mentions_bot
+            assert router.dispatch_count == 0
 
     asyncio.run(run())
 
