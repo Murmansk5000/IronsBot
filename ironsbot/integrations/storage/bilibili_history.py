@@ -275,6 +275,19 @@ class SqliteBiliDynamicHistoryStore:
         except sqlite3.Error as e:
             _LOGGER.warning("failed to save Bilibili dynamic summary: %s", e)
 
+    def clear_summary(self, dynamic_id: str) -> None:
+        if not dynamic_id:
+            return
+        try:
+            with self._database.connect() as conn:
+                conn.execute(
+                    "UPDATE dynamics SET summary = '', summary_generated_by_ai = 0 "
+                    "WHERE dynamic_id = ?",
+                    (dynamic_id,),
+                )
+        except sqlite3.Error as e:
+            _LOGGER.warning("failed to clear Bilibili dynamic summary: %s", e)
+
     def list(
         self,
         *,
