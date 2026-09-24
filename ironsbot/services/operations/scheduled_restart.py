@@ -7,10 +7,14 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.scheduler import JobRegistry, Scheduler
+
+if TYPE_CHECKING:
+    from ironsbot.services.operations.docker_update import DockerUpdateService
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 JOB_ID = "scheduled_bot_restart"
@@ -64,3 +68,25 @@ async def _scheduled_restart(
         await asyncio.sleep(grace_seconds)
 
     await restart_process()
+
+
+async def update_image_and_restart(
+    docker_update: DockerUpdateService,
+    fallback_restart: ProcessRestart,
+) -> None:
+    try:
+        _message, action = await docker_update.prepare_update_and_restart()
+        logger.info("scheduled Docker maintenance prepared: action=%s", action)
+        await docker_update.execute_restart(action)
+    except Exception:
+        logger.exception(
+            "scheduled Docker maintenance failed; restarting current image"
+        )
+        try:
+            _message, action = await docker_update.prepare_restart_only()
+            await docker_update.execute_restart(action)
+        except Exception:
+            logger.exception(
+                "scheduled Docker restart failed; restarting bot process"
+            )
+            await fallback_restart()
