@@ -43,6 +43,8 @@ class BiliDynamicHistoryStore(Protocol):
         generated_by_ai: bool,
     ) -> None: ...
 
+    def clear_summary(self, dynamic_id: str) -> None: ...
+
     def list(
         self,
         *,

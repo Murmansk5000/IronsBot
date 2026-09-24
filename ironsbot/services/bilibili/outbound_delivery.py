@@ -21,7 +21,9 @@ from ironsbot.core.platform import ConversationRef, reference_digest
 from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
 from ironsbot.services.bilibili.parser import (
+    dynamic_body_hydration_reason,
     dynamic_content,
+    dynamic_delivery_content,
     dynamic_image_urls,
     dynamic_url,
     item_author_mid,
@@ -157,6 +159,7 @@ class BilibiliDynamicOutboundSender:
             compacted = (
                 await self.content_compactor.compact(dynamic_content(item))
                 if self.content_compactor is not None
+                and dynamic_body_hydration_reason(item) is None
                 else None
             )
             content_override = compacted.display_text if compacted is not None else None
@@ -483,7 +486,7 @@ def render_dynamic_text_message(
     """Render dynamic body text independently from source images."""
 
     try:
-        content = (content_override or dynamic_content(item)).strip()
+        content = (content_override or dynamic_delivery_content(item)).strip()
     except (TypeError, ValueError, KeyError):
         _LOGGER.exception("failed to render Bilibili dynamic text")
         return None

@@ -3,13 +3,16 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ironsbot.core.outbound import TextPart
 from ironsbot.services.bilibili.hydration import hydrate_dynamic_item
+from ironsbot.services.bilibili.outbound_delivery import render_dynamic_text_message
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
 from ironsbot.services.bilibili.service import BiliFeedResponse
 from tests.helpers.bilibili import build_test_bilibili_service
 
-SEER_UID = 1310714247
+SEER_UID = 987654321
+LONG_DYNAMIC_THRESHOLD = 800
 
 
 def _item(
@@ -94,6 +97,40 @@ def test_hydrate_dynamic_item_replaces_truncated_opus_body() -> None:
     assert dynamic_content(hydrated) == "被截断的完整官方正文"
 
 
+def test_hydrated_history_discards_stale_excerpt_summary(tmp_path: Path) -> None:
+    service = build_test_bilibili_service(tmp_path)
+    source = _item(body="旧的半截正文...", truncated=True)
+    service.history.save_snapshot(
+        build_dynamic_history_snapshot(
+            source, pub_ts=int(time.time()), author_mid=SEER_UID, pushed=True
+        )
+    )
+    service.history.save_summary("123456", "旧的半截正文...", generated_by_ai=False)
+    service.cookie_store.save("test-cookie")
+
+    async def fetch_detail(_cookie: str, _dynamic_id: str) -> BiliFeedResponse:
+        return _detail_response(_item(body="完整正文内容" * 200))
+
+    service.fetch_detail = fetch_detail
+    record = service.history.get("123456")
+    assert record is not None
+    prepared = asyncio.run(service.prepare_dynamic_detail(record))
+    saved = service.history.get("123456")
+
+    assert saved is not None
+    assert saved.summary == ""
+    assert len(dynamic_content(prepared.item)) > LONG_DYNAMIC_THRESHOLD
+
+
+def test_truncated_body_is_not_sent_as_complete_text() -> None:
+    message = render_dynamic_text_message(_item(body="旧的半截正文...", truncated=True))
+
+    assert message is not None
+    assert isinstance(message.parts[0], TextPart)
+    assert "正文暂未获取完整" in message.parts[0].text
+    assert "旧的半截正文" not in message.parts[0].text
+
+
 def test_service_backfills_recent_empty_body_without_changing_delivery_state(
     tmp_path: Path,
 ) -> None:
@@ -106,6 +143,7 @@ def test_service_backfills_recent_empty_body_without_changing_delivery_state(
         pushed=True,
     )
     service.history.save_snapshot(snapshot)
+    service.history.save_summary("123456", "旧摘要", generated_by_ai=False)
     service.cookie_store.save("test-cookie")
 
     async def fetch_detail(_cookie: str, _dynamic_id: str) -> BiliFeedResponse:
@@ -117,5 +155,6 @@ def test_service_backfills_recent_empty_body_without_changing_delivery_state(
     saved = service.history.get("123456")
     assert saved is not None
     assert saved.pushed
+    assert saved.summary == ""
     assert dynamic_content(saved.item) == "补全后的官方正文"
     assert asyncio.run(service.backfill_recent_empty_bodies()) == 0
