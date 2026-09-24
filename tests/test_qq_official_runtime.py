@@ -29,7 +29,17 @@ from ironsbot.integrations.qq_official.runtime import (
     QQOfficialRuntimeAccount,
     QQOfficialStartupError,
 )
+from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.integrations.storage.official_addresses import SqliteOfficialAddressStore
+from ironsbot.services.identity_link_store import (
+    CrossPlatformGroupLink,
+    OfficialIdentity,
+)
+from ironsbot.services.identity_observation import (
+    IdentityObservationAccount,
+    OneBotGroupMessageObservation,
+    SilentIdentityObservationService,
+)
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.official_addresses import OfficialAddressService
 
@@ -537,6 +547,181 @@ def test_runtime_ignores_addressed_account_in_unknown_group_by_default(
                 },
             )
 
+            assert router.dispatch_count == 0
+
+    asyncio.run(run())
+
+
+def test_unmapped_group_mention_is_observed_but_not_dispatched(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("special-app", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            runtime.configure_ingress_routing(
+                QQOfficialIngressRouting("special-app", {"10001": "special-app"})
+            )
+            observer = SimpleNamespace(observe_official_message=AsyncMock())
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                identity_observer=cast("Any", observer),
+            )
+
+            await runtime.handle_event(
+                "special-app",
+                "GROUP_AT_MESSAGE_CREATE",
+                {
+                    "id": "first-mention",
+                    "content": "@bot",
+                    "group_openid": "unmapped-group",
+                    "author": {"member_openid": "member-openid"},
+                    "mentions": [{"is_you": True, "member_openid": "bot-openid"}],
+                },
+            )
+
+            observer.observe_official_message.assert_awaited_once()
+            assert router.dispatch_count == 0
+
+    asyncio.run(run())
+
+
+def test_matched_mention_establishes_group_route_before_dispatch(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("special-app", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            runtime.configure_ingress_routing(
+                QQOfficialIngressRouting("special-app", {"10001": "special-app"})
+            )
+
+            def register_group_link(link: CrossPlatformGroupLink) -> None:
+                runtime.register_group_link(link)
+
+            observer = SilentIdentityObservationService(
+                store,
+                {
+                    "special-app": IdentityObservationAccount(
+                        "special-app", 4019875223, {}, frozenset({10001})
+                    )
+                },
+                on_group_link=register_group_link,
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                identity_observer=observer,
+            )
+            assert not await observer.observe_onebot(
+                OneBotGroupMessageObservation(
+                    1621582661,
+                    2947993138,
+                    10001,
+                    ("4019875223",),
+                    "",
+                    "onebot-mention",
+                )
+            )
+
+            await runtime.handle_event(
+                "special-app",
+                "GROUP_AT_MESSAGE_CREATE",
+                {
+                    "id": "official-mention",
+                    "content": "@bot",
+                    "group_openid": "unmapped-group",
+                    "author": {"member_openid": "member-openid"},
+                    "mentions": [{"is_you": True, "member_openid": "bot-openid"}],
+                },
+            )
+
+            links = await store.all_group_links()
+            assert len(links) == 1
+            assert links[0].onebot_group_id == "10001"
+            assert router.dispatch_count == 1
+
+    asyncio.run(run())
+
+
+def test_non_owner_group_mention_links_member_without_dispatch(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("public-app", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            runtime.configure_ingress_routing(
+                QQOfficialIngressRouting("public-app", {})
+            )
+
+            def register_group_link(link: CrossPlatformGroupLink) -> None:
+                runtime.register_group_link(link)
+
+            observer = SilentIdentityObservationService(
+                store,
+                {
+                    "public-app": IdentityObservationAccount(
+                        "public-app", 4012787294, {}, frozenset({2160018101})
+                    )
+                },
+                on_group_link=register_group_link,
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                identity_observer=observer,
+            )
+            assert not await observer.observe_onebot(
+                OneBotGroupMessageObservation(
+                    2947993138,
+                    2947993138,
+                    2160018101,
+                    ("4012787294", "1157733847"),
+                    "",
+                    "onebot-mention",
+                )
+            )
+
+            await runtime.handle_event(
+                "public-app",
+                "GROUP_AT_MESSAGE_CREATE",
+                {
+                    "id": "official-mention",
+                    "content": "@bot @target",
+                    "group_openid": "unmapped-group",
+                    "author": {"member_openid": "napcat-openid"},
+                    "mentions": [
+                        {"is_you": True, "member_openid": "bot-openid"},
+                        {"member_openid": "target-openid", "username": "target"},
+                    ],
+                },
+            )
+
+            assert (
+                await store.for_official(
+                    OfficialIdentity(
+                        "public-app", "member", "target-openid", "unmapped-group"
+                    )
+                )
+                is not None
+            )
             assert router.dispatch_count == 0
 
     asyncio.run(run())

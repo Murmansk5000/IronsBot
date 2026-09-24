@@ -403,7 +403,7 @@ class QQOfficialRuntime:
             connection.started = False
             connection.lifecycle.stopped()
 
-    async def handle_event(  # noqa: C901 - transport boundary owns event outcomes
+    async def handle_event(  # noqa: C901, PLR0912 - transport boundary owns event outcomes
         self,
         app_id: str,
         event_type: str,
@@ -455,6 +455,13 @@ class QQOfficialRuntime:
             return
         if self._union_identity is not None:
             await self._union_identity.observe(incoming)
+        if self._identity_observer is not None and (
+            incoming.conversation.kind == "group" and mentions_bot
+        ):
+            await self._identity_observer.observe_official_message(
+                incoming,
+                explicitly_addressed=mentions_bot,
+            )
         if not self._accepts_incoming(
             app_id,
             event_type,
@@ -481,7 +488,7 @@ class QQOfficialRuntime:
             context.kind.value,
             recognized,
         )
-        if self._identity_observer is not None and (recognized or mentions_bot):
+        if self._identity_observer is not None and recognized and not mentions_bot:
             await self._identity_observer.observe_official_message(
                 incoming,
                 explicitly_addressed=mentions_bot,

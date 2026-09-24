@@ -368,6 +368,12 @@ class SilentIdentityObservationService:
             if self.on_group_link is not None:
                 self.on_group_link(group_link)
             changed = True
+            _LOGGER.info(
+                "silent group link confirmed: app=%s group=%s onebot_group=%s",
+                reference_digest(group_link.official_app_id),
+                reference_digest(group_link.official_group_openid),
+                reference_digest(group_link.onebot_group_id),
+            )
 
         source_message_id = f"{official.incoming.message_id}:{observation.message_id}"
         sender = canonical_official_identity(
