@@ -18,8 +18,11 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.permissions import can_manage_group_event
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command, member_target_command
+from ironsbot.services.portable_player_commands import build_portable_player_operations
+from ironsbot.services.portable_rank_commands import build_portable_rank_operations
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_models import (
     RANK_PAGE_OVERVIEW_COMMANDS,
@@ -122,34 +125,6 @@ def _is_rank_player_command(
         error=target.error,
     )
     return True
-
-
-async def _handle_list(
-    service: RankQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    message = await service.list(
-        state[RANK_LIST_COMMAND_KEY],
-        actor=message_input_context(event).message.actor,
-        conversation=message_input_context(event).message.conversation,
-    )
-    await finish_event_reply(matcher, event, message)
-
-
-async def _handle_score(
-    service: RankQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    message = await service.score(
-        state[RANK_SCORE_COMMAND_KEY],
-        conversation=message_input_context(event).message.conversation,
-        actor=message_input_context(event).message.actor,
-    )
-    await finish_event_reply(matcher, event, message)
 
 
 async def _handle_player(
@@ -277,6 +252,20 @@ async def _handle_display_limit(
 def install(group: SeerMatcherGroup) -> None:
     query = group.resources.rank_queries
     admin = group.resources.rank_admin
+    player_query = build_portable_player_operations(
+        group.resources.player,
+        group.player_id_resolver,
+        group.query_sessions,
+        group.features,
+        group.resources.player_detail_extensions,
+    )["seer.player.query"]
+    operations = build_portable_rank_operations(
+        query,
+        group.player_id_resolver,
+        group.query_sessions,
+        player_query,
+        group.features,
+    )
     feature_rule = seer_feature_rule(group.features, "seer_rank") & explicit_command()
     player_feature_rule = (
         seer_feature_rule(group.features, "seer_rank") & member_target_command()
@@ -296,7 +285,11 @@ def install(group: SeerMatcherGroup) -> None:
         rule=feature_rule & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
     )
-    list_matcher.append_handler(bind_async(_handle_list, query))
+    list_matcher.append_handler(
+        make_portable_query_handler(
+            operations["rank.global_collection"], group.query_sessions
+        )
+    )
 
     player_matcher = group.on_message(
         policy=CommandPolicy.command(
@@ -323,7 +316,11 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         priority=priority,
     )
-    score_matcher.append_handler(bind_async(_handle_score, query))
+    score_matcher.append_handler(
+        make_portable_query_handler(
+            operations["rank.global_collection"], group.query_sessions
+        )
+    )
 
     cache_status = group.on_fullmatch(
         RANK_SAMPLE_STATUS_COMMANDS,

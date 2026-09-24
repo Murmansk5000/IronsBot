@@ -48,7 +48,7 @@ def format_global_rank_score_message(
             ]
         return "\n".join(lines)
 
-    shown = _score_items_for_display(result.items, display_limit)
+    shown = score_player_items_for_display(result, display_limit)
     start_rank = result.start_rank or shown[0].rank_index + 1
     end_rank = result.end_rank or shown[-1].rank_index + 1
     population = (
@@ -74,7 +74,7 @@ def format_global_rank_score_message(
     return "\n".join(lines)
 
 
-def _score_items_for_display(items: list[Any], display_limit: int) -> list[Any]:
+def score_items_for_display(items: list[Any], display_limit: int) -> list[Any]:
     """Show both edges of a large same-score segment instead of only its head."""
 
     limit = max(1, display_limit)
@@ -85,6 +85,35 @@ def _score_items_for_display(items: list[Any], display_limit: int) -> list[Any]:
     if tail_count == 0:
         return items[:head_count]
     return [*items[:head_count], *items[-tail_count:]]
+
+
+def score_gap_items_for_display(result: Any) -> list[Any]:
+    """Return the player rows rendered as proof for a missing exact score."""
+
+    items: list[Any] = []
+    for gap in (
+        getattr(result, "higher_gap", None),
+        getattr(result, "lower_gap", None),
+    ):
+        if gap is not None:
+            items.extend(getattr(gap, "items", []))
+    return items
+
+
+def score_player_items_for_display(result: Any, display_limit: int) -> list[Any]:
+    """Return exactly the numbered player rows rendered by the formatter."""
+
+    if not result.queried:
+        return []
+    if result.items:
+        return score_items_for_display(result.items, display_limit)
+    if (
+        result.budget_exhausted
+        or result.boundary_score is None
+        or result.target_score < result.boundary_score
+    ):
+        return []
+    return score_gap_items_for_display(result)
 
 
 def _format_score_gap_proof(spec: GlobalRankSpec, result: Any) -> list[str]:
