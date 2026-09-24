@@ -52,6 +52,27 @@ def test_portable_menu_rejects_mismatched_text_inputs() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "choice_keys",
+    [
+        ("11",),
+        ("", "12"),
+        ("0", "12"),
+        ("11", "11"),
+    ],
+)
+def test_portable_menu_rejects_invalid_explicit_choice_keys(
+    choice_keys: tuple[str, ...],
+) -> None:
+    with pytest.raises(PortableQuerySessionError, match="choice keys"):
+        PortableMenuSpec(
+            choices=("one", "two"),
+            choice_keys=choice_keys,
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+        )
+
+
 def test_portable_menu_rejects_unknown_shared_choice() -> None:
     with pytest.raises(PortableQuerySessionError, match="shared menu choices"):
         PortableMenuSpec(
@@ -97,6 +118,36 @@ async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> No
     )
     assert empty.prompt is None
     assert sessions.active_prompt(context) is None
+
+
+@pytest.mark.asyncio
+async def test_menu_explicit_keys_preserve_sparse_display_numbers() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("owner")
+    select = AsyncMock(
+        side_effect=lambda value, _context: OutboundMessage.from_text(
+            f"selected:{value}"
+        )
+    )
+    menu = sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("eleven", "twenty"),
+            choice_keys=("11", "20"),
+            select=select,
+            prompt=OutboundMessage.from_text("rank page"),
+            keep_open=True,
+            claim_unknown_numeric=False,
+        ),
+    )
+
+    assert menu.prompt is not None
+    assert tuple(choice.id for choice in menu.prompt.choices) == ("11", "20", "0")
+    assert not sessions.recognizes_response("1", context)
+    assert sessions.recognizes_response("11", context)
+    assert _text(await sessions.select("11", context)) == "selected:eleven"
+    assert _text(await sessions.select("20", context)) == "selected:twenty"
+    assert [call.args[0] for call in select.await_args_list] == ["eleven", "twenty"]
 
 
 @pytest.mark.asyncio
@@ -352,6 +403,38 @@ async def test_shareable_group_choice_clones_session_for_quoted_responder() -> N
     selected.assert_awaited_once_with("read-only", responder)
     assert sessions.has_active_session(owner)
     assert sessions.has_active_session(responder)
+
+
+@pytest.mark.asyncio
+async def test_shareable_explicit_key_selects_original_value_for_responder() -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("owner")
+    responder = _context("responder", reply_to_id="rank-menu")
+    selected = AsyncMock(return_value=OutboundMessage.from_text("selected"))
+    message = sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("rank-11", "rank-20"),
+            choice_keys=("11", "20"),
+            select=selected,
+            prompt=OutboundMessage.from_text("rank menu"),
+            shareable=True,
+            claim_unknown_numeric=False,
+        ),
+    )
+    sessions.record_delivery(
+        owner, message, SendResult(delivered=True, message_id="rank-menu")
+    )
+
+    assert sessions.recognizes_shared_response("20", owner, responder)
+    assert not sessions.recognizes_shared_response("2", owner, responder)
+    result = await sessions.select_shared("20", owner, responder)
+
+    assert isinstance(result, OutboundMessage)
+    assert _text(result) == "selected"
+    selected.assert_awaited_once_with("rank-20", responder)
+    assert sessions.has_active_session(owner)
+    assert not sessions.has_active_session(responder)
 
 
 @pytest.mark.asyncio

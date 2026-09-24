@@ -41,9 +41,12 @@ from ironsbot.services.seer.rank_list_messages import format_local_rank_message
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
     LOCAL_RANKS,
+    RankListPreparedReply,
+    RankListSelection,
 )
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
+    score_player_items_for_display,
 )
 from ironsbot.services.seer.rank_pagination import RankPageConflictError
 from ironsbot.services.seer.rank_player_query import (
@@ -51,6 +54,7 @@ from ironsbot.services.seer.rank_player_query import (
     fetch_cached_rank_player_result,
     fetch_rank_player_result,
 )
+from ironsbot.services.seer.rank_ranges import MAX_LOCAL_RANK_POSITION, MAX_RANK_POSITION, RankRangeError, range_completion, range_failure, validate_rank_interval
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -127,7 +131,29 @@ class RankQueryService:
         actor: ActorRef | None = None,
         conversation: ConversationRef | None = None,
     ) -> str:
+        return (
+            await self.prepare_list(
+                command,
+                actor=actor,
+                conversation=conversation,
+            )
+        ).message
+
+    async def prepare_list(
+        self,
+        command: RankListCommand,
+        *,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
+    ) -> RankListPreparedReply:
         try:
+            validate_rank_interval(
+                command.start_rank,
+                command.end_rank,
+                maximum=MAX_LOCAL_RANK_POSITION
+                if command.kind == "local"
+                else MAX_RANK_POSITION,
+            )
             if command.kind == "local":
                 return self._local_message(command)
             return await self._run_headless_request(
@@ -140,9 +166,15 @@ class RankQueryService:
                 label="榜单查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return player_request_protection_message(error)
-        except (RankPageConflictError, DataUnavailableError) as error:
-            return str(error)
+            return RankListPreparedReply(
+                player_request_protection_message(error)
+            )
+        except (RankPageConflictError, DataUnavailableError, RankRangeError) as error:
+            return RankListPreparedReply(str(error))
+        except (TimeoutError, SocketRecvError, ValueError) as error:
+            return RankListPreparedReply(
+                range_failure(command.start_rank, command.end_rank, error),
+            )
 
     async def score(
         self,
@@ -151,6 +183,21 @@ class RankQueryService:
         conversation: ConversationRef | None,
         actor: ActorRef | None = None,
     ) -> str:
+        return (
+            await self.prepare_score(
+                command,
+                conversation=conversation,
+                actor=actor,
+            )
+        ).message
+
+    async def prepare_score(
+        self,
+        command: RankScoreCommand,
+        *,
+        conversation: ConversationRef | None,
+        actor: ActorRef | None = None,
+    ) -> RankListPreparedReply:
         try:
             return await self._run_headless_request(
                 lambda: self._score_message(
@@ -163,9 +210,9 @@ class RankQueryService:
                 label="榜单分数查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return player_request_protection_message(error)
+            return RankListPreparedReply(player_request_protection_message(error))
         except (RankPageConflictError, DataUnavailableError) as error:
-            return str(error)
+            return RankListPreparedReply(str(error))
 
     async def player(
         self,
@@ -304,15 +351,16 @@ class RankQueryService:
         command: RankListCommand,
         *,
         conversation: ConversationRef | None,
-    ) -> str:
+    ) -> RankListPreparedReply:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
-            return "❌找不到当前巅峰赛季数据。"
+            return RankListPreparedReply("❌找不到当前巅峰赛季数据。")
+        count = command.limit
         with game.operations.track(
             "榜单查询",
             (
                 f"{spec.title} 第 "
-                f"{command.start_rank}-{command.start_rank + command.limit - 1}名"
+                f"{command.start_rank}-{command.start_rank + count - 1}名"
             ),
             source="榜单查询",
             conversation=conversation,
@@ -323,14 +371,37 @@ class RankQueryService:
                 key=spec.key,
                 sub_key=spec.sub_key,
                 start_rank=command.start_rank,
-                count=command.limit,
+                count=count,
             )
-        return format_global_rank_message(
-            spec,
-            result.items,
-            timestamp=timestamp_text(result.fetched_at),
-            start_rank=command.start_rank,
-            requested_count=command.limit,
+        return RankListPreparedReply(
+            format_global_rank_message(
+                spec,
+                result.items,
+                timestamp=timestamp_text(result.fetched_at),
+                start_rank=command.start_rank,
+                requested_count=count,
+            )
+            + (
+                "\n"
+                + range_completion(
+                    command.start_rank,
+                    command.end_rank - command.start_rank + 1,
+                    count,
+                    len(result.items),
+                    incomplete_reason=result.incomplete_reason
+                    or "部分位置被榜单过滤规则排除。",
+                )
+                if command.requested_end_rank is not None or len(result.items) < count
+                else ""
+            ),
+            tuple(
+                RankListSelection(
+                    rank=command.start_rank + offset,
+                    player_id=item.id,
+                    nick=item.nick,
+                )
+                for offset, item in enumerate(result.items)
+            ),
         )
 
     async def _score_message(
@@ -340,10 +411,10 @@ class RankQueryService:
         *,
         display_limit: int,
         conversation: ConversationRef | None,
-    ) -> str:
+    ) -> RankListPreparedReply:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
-            return "❌找不到当前巅峰赛季数据。"
+            return RankListPreparedReply("❌找不到当前巅峰赛季数据。")
         with game.operations.track(
             "榜单分数查询",
             f"{spec.title} {command.score}{spec.unit}",
@@ -374,11 +445,22 @@ class RankQueryService:
             result.searched_limit,
             result.truncated,
         )
-        return format_global_rank_score_message(
-            spec,
-            result,
-            timestamp=timestamp_text(result.fetched_at),
-            display_limit=display_limit,
+        shown = score_player_items_for_display(result, display_limit)
+        return RankListPreparedReply(
+            format_global_rank_score_message(
+                spec,
+                result,
+                timestamp=timestamp_text(result.fetched_at),
+                display_limit=display_limit,
+            ),
+            tuple(
+                RankListSelection(
+                    rank=item.rank_index + 1,
+                    player_id=item.id,
+                    nick=item.nick,
+                )
+                for item in shown
+            ),
         )
 
     async def _player_message(
@@ -404,7 +486,7 @@ class RankQueryService:
                 anchor_only=anchor_only,
             )
 
-    def _local_message(self, command: RankListCommand) -> str:
+    def _local_message(self, command: RankListCommand) -> RankListPreparedReply:
         spec = LOCAL_RANKS[command.rank_key]
         season_sub_key = (
             self._rank.current_peak_sub_key() if spec.season_limited else None
@@ -415,15 +497,34 @@ class RankQueryService:
             start_rank=command.start_rank,
             season_sub_key=season_sub_key,
         )
-        return format_local_rank_message(
-            spec,
-            entries,
-            sample_count=sample_count,
-            season_sub_key=(
-                str(season_sub_key) if season_sub_key is not None else None
+        return RankListPreparedReply(
+            (format_local_rank_message(
+                spec,
+                entries,
+                sample_count=sample_count,
+                season_sub_key=(
+                    str(season_sub_key) if season_sub_key is not None else None
+                ),
+                start_rank=command.start_rank,
+                requested_count=command.limit,
+            )) + ("\n"
+                + range_completion(
+                    command.start_rank,
+                    command.end_rank - command.start_rank + 1,
+                    command.limit,
+                    len(entries),
+                    incomplete_reason="本地样本不足。",
+                )
+                if command.requested_end_rank is not None
+                else ""),
+            tuple(
+                RankListSelection(
+                    rank=entry.rank,
+                    player_id=entry.user_id,
+                    nick=entry.nick,
+                )
+                for entry in entries
             ),
-            start_rank=command.start_rank,
-            requested_count=command.limit,
         )
 
     def _check_player_quota(

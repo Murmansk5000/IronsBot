@@ -26,6 +26,9 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
     rank_refresh_target_label,
     rank_target_limit,
 )
+from ironsbot.services.seer.rank_list_models import RankListPreparedReply
+from ironsbot.services.seer.rank_ranges import RankRangeError, range_failure, validate_rank_interval
+from ironsbot.services.operations.headless_errors import SocketRecvError
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -83,43 +86,54 @@ class RankAdminService:
         actor: ActorRef,
         progress: ProgressReporter,
     ) -> str:
-        from ironsbot.services.seer.rank_ranges import RankRangeError, validate_rank_interval
+        return (await self.prepare_cache_batch(command, actor=actor, progress=progress)).message
 
+    async def prepare_cache_batch(
+        self,
+        command: RankCacheBatchCommand,
+        *,
+        actor: ActorRef,
+        progress: ProgressReporter,
+    ) -> RankListPreparedReply:
         try:
             validate_rank_interval(command.start_rank, command.end_rank)
         except RankRangeError as error:
-            return str(error)
-        spec = self._rank.get_spec(command.rank_key)
-        requested_count = command.end_rank - command.start_rank + 1
-        if self._rank.spec_needs_sub_key(spec):
-            return build_rank_batch_no_players_message(spec)
-        request_count = min(requested_count, self._policy.batch_limit)
-        await progress(
-            build_rank_batch_start_message(
-                spec,
-                command,
-                request_count=request_count,
-                requested_count=requested_count,
+            return RankListPreparedReply(str(error))
+        try:
+            spec = self._rank.get_spec(command.rank_key)
+            requested_count = command.end_rank - command.start_rank + 1
+            if self._rank.spec_needs_sub_key(spec):
+                return RankListPreparedReply(build_rank_batch_no_players_message(spec))
+            request_count = min(requested_count, self._policy.batch_limit)
+            await progress(
+                build_rank_batch_start_message(
+                    spec,
+                    command,
+                    request_count=request_count,
+                    requested_count=requested_count,
+                )
             )
-        )
-        item_count = await self._requests.run(
-            lambda: self._cache_global_batch(
-                self._headless.get_game(),
-                command,
-                spec=spec,
-                request_count=request_count,
-            ),
-            actor=actor,
-            label="手动缓存榜单",
-        )
-        if item_count <= 0:
-            return build_rank_batch_no_players_message(spec)
-        return build_rank_batch_result_message(
-            spec,
-            command,
-            item_count=item_count,
-            requested_count=requested_count,
-        )
+            item_count = await self._requests.run(
+                lambda: self._cache_global_batch(
+                    self._headless.get_game(),
+                    command,
+                    spec=spec,
+                    request_count=request_count,
+                ),
+                actor=actor,
+                label="手动缓存榜单",
+            )
+            if item_count <= 0:
+                return RankListPreparedReply(build_rank_batch_no_players_message(spec))
+            return RankListPreparedReply(build_rank_batch_result_message(
+                    spec,
+                    command,
+                    item_count=item_count,
+                    requested_count=requested_count,
+                ))
+
+        except (TimeoutError, SocketRecvError, ValueError) as error:
+            return RankListPreparedReply(range_failure(command.start_rank, command.end_rank, error))
 
     def page_status(self, command: RankPageCacheStatusCommand) -> str:
         spec = self._rank.get_spec(command.rank_key)
