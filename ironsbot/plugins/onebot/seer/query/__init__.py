@@ -27,8 +27,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-
     from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
     from ironsbot.integrations.onebot.matchers import MatcherFactory
@@ -60,23 +58,6 @@ def _install(
     )
 
 
-async def _report_render_crash(
-    _bot: Bot,
-    *,
-    settings: Settings,
-    resources: ApplicationResources,
-) -> None:
-    from ironsbot.services.seer.render_crash_report import (
-        report_previous_render_crash,
-    )
-
-    await report_previous_render_crash(
-        resources.admin_notices,
-        settings.bot.logging,
-        settings.paths.log_file,
-    )
-
-
 def plugin_contribution(
     *,
     settings: Settings,
@@ -87,6 +68,9 @@ def plugin_contribution(
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
     )
+    from ironsbot.services.seer.render_crash_report import RenderCrashReporter
+
+    render_crash_reporter = RenderCrashReporter(resources.admin_notices)
 
     return PluginContribution(
         id="seer_query",
@@ -118,6 +102,7 @@ def plugin_contribution(
         install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(
+                ("render_crash_capture", render_crash_reporter.capture_previous),
                 (
                     "local_rank_jobs",
                     partial(
@@ -140,11 +125,7 @@ def plugin_contribution(
             first_bot_connect=(
                 (
                     "render_crash_report",
-                    partial(
-                        _report_render_crash,
-                        settings=settings,
-                        resources=resources,
-                    ),
+                    render_crash_reporter.report_previous,
                 ),
             ),
         ),
