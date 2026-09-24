@@ -23,6 +23,7 @@ class Feature(str, Enum):
     LUCKY_SKIN_WINDOW = "lucky_skin_window"
     MEETING = "meeting"
     PET_CONFIG = "pet_config"
+    PET_FLIP = "pet_flip"
     PLAYER_LINEUP_PRIVATE = "player_lineup_private"
     PUSH_TOPICS = "push_topics"
     QQ_OFFICIAL_IDENTITY_INFO = "qq_official_identity_info"
