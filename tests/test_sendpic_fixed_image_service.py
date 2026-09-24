@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 import tomllib
@@ -7,7 +8,11 @@ from pydantic import ValidationError
 
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
 from ironsbot.core.outbound import BinaryImagePart, TextPart
-from ironsbot.integrations.sendpic import LocalBackend
+from ironsbot.integrations.sendpic import (
+    BUILTIN_IMAGE_ROOT,
+    LocalBackend,
+    SendpicBackendProvider,
+)
 from ironsbot.services.messaging.sendpic import (
     ImageNotFoundError,
     SendpicService,
@@ -123,19 +128,44 @@ def test_indexed_image_result_owns_platform_neutral_template_output(
     )
 
 
-def test_image_commands_are_empty_by_default() -> None:
-    assert SendpicBehaviorConfig().configs == []
+def test_packaged_image_commands_are_enabled_by_default() -> None:
+    assert {item.id for item in SendpicBehaviorConfig().configs} == {
+        "study-table",
+        "peak-guide",
+        "initiative",
+        "skill-stone",
+        "anniversary-random-table",
+    }
 
 
-def test_builtin_backend_is_rejected() -> None:
-    with pytest.raises(ValidationError):
-        PicConfig(
-            id="legacy",
-            backend="builtin",  # type: ignore[arg-type]
-            command="legacy",
-            mode="single",
-            image_file="legacy.png",
-        )
+def test_packaged_image_commands_read_bundled_png_files() -> None:
+    provider = SendpicBackendProvider(
+        Mock(),
+        cnb_token=None,
+        cnb_repo=None,
+        local_root=Path("sendpic"),
+    )
+    service = SendpicService(
+        SendpicBehaviorConfig(),
+        provider,
+        command_starts=("/", ""),
+    )
+
+    assert BUILTIN_IMAGE_ROOT.is_dir()
+    for command in service.commands:
+        result = asyncio.run(service.fetch_single(command))
+        assert result.data.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_builtin_backend_is_accepted() -> None:
+    config = PicConfig(
+        id="packaged",
+        backend="builtin",
+        command="packaged",
+        mode="single",
+        image_file="packaged.png",
+    )
+    assert config.backend == "builtin"
 
 
 def test_custom_gallery_defines_complete_command_index() -> None:
@@ -157,8 +187,28 @@ def test_custom_gallery_defines_complete_command_index() -> None:
         command_starts=("/", ""),
     )
 
-    assert {command.id for command in service.commands} == {"example-gallery"}
-    assert service.exact_command_texts == {"表情", "表情包", "/表情", "/表情包"}
+    assert {command.id for command in service.commands} == {
+        "study-table",
+        "peak-guide",
+        "initiative",
+        "skill-stone",
+        "anniversary-random-table",
+        "example-gallery",
+    }
+    assert service.exact_command_texts >= {
+        "学习力",
+        "学习力表",
+        "学习力表格",
+        "巅峰姬",
+        "必先",
+        "技能石",
+        "周年庆伪随机表",
+        "伪随机表",
+        "表情",
+        "表情包",
+        "/表情",
+        "/表情包",
+    }
 
 
 def test_sendpic_command_contracts_follow_enabled_configurations() -> None:
