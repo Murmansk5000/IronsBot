@@ -256,6 +256,7 @@ def build_test_plugin_registry(
                 select=_noop_query,
             ),
             seer=SimpleNamespace(
+                pet_flip=SimpleNamespace(play=_noop_query),
                 data_queries=SimpleNamespace(
                     weekly_preview=_noop_query,
                     data_version=_noop_query,

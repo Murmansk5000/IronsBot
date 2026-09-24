@@ -93,6 +93,7 @@ def plugin_contribution(
         features=frozenset(
             {
                 Feature.SEER,
+                Feature.PET_FLIP,
                 Feature.SEER_PLAYER,
                 Feature.SEER_TEAM,
                 Feature.SEER_PET,
