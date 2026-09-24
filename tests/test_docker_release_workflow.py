@@ -416,6 +416,7 @@ def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> Non
     assert upload["with"]["if-no-files-found"] == "warn"
     assert "--network none --entrypoint sh" in budget["run"]
     assert "ironsbot-candidate-runtime-size-kib.txt" in budget["run"]
+    assert budget["env"]["MAX_APP_KIB"] == "24576"
     assert budget["env"]["MAX_SITE_PACKAGES_KIB"] == "122880"
 
 
@@ -513,8 +514,8 @@ def test_candidate_image_growth_requires_readable_baseline(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("app_kib", "site_packages_kib", "fonts_kib", "expected_ok"),
     [
-        (8192, 122880, 24576, True),
-        (8193, 1, 1, False),
+        (24576, 122880, 24576, True),
+        (24577, 1, 1, False),
         (1, 122881, 1, False),
         (1, 1, 24577, False),
     ],
