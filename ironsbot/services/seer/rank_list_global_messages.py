@@ -40,7 +40,8 @@ def format_global_rank_message(
     requested_count: int = RANK_LIST_SIZE,
 ) -> str:
     if not items:
-        return f"❌找不到{spec.title}数据。"
+        return (f"❌{spec.title}第 {start_rank}-{start_rank + requested_count - 1} 名"
+            "未返回记录；空页不代表协议名次上限。")
 
     from ironsbot.services.seer.rank_list_formatting import format_rank_window
 

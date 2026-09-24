@@ -44,8 +44,6 @@ def parse_rank_list_command(
         return None
 
     start_rank, requested_count = window
-    if start_rank <= 0 or requested_count <= 0:
-        return None
     limit = max(1, min(requested_count, max_limit))
     end_rank = start_rank + requested_count - 1
     return RankListCommand(
@@ -124,12 +122,7 @@ def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
     start_rank = int(start_text)
     end_rank = int(end_text)
 
-    if (
-        rank_command is None
-        or rank_command[0] != "global"
-        or start_rank <= 0
-        or end_rank < start_rank
-    ):
+    if rank_command is None or rank_command[0] != "global":
         return None
 
     return RankCacheBatchCommand(

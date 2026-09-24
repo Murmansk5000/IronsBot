@@ -111,6 +111,7 @@ from ironsbot.services.seer.player_detail_extensions import (
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
+from ironsbot.services.seer.rank_list_models import RankListPreparedReply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -376,6 +377,17 @@ class _FakeRankQueries:
     ) -> str:
         del actor, conversation
         return f"榜单:{command.rank_key}:{command.start_rank}:{command.limit}"
+
+    async def prepare_list(
+        self,
+        command: RankListCommand,
+        *,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
+    ) -> RankListPreparedReply:
+        return RankListPreparedReply(
+            await self.list(command, actor=actor, conversation=conversation)
+        )
 
 
 class _FakeAi:
