@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.new_content_details import NewContentDetailService
     from ironsbot.services.seer.peak import PeakQueryService
+    from ironsbot.services.seer.pet_flip import PetFlipService
     from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
@@ -65,3 +66,4 @@ class SeerQueryResources:
     new_content_menu: NewContentMenuRenderer
     new_content_details: NewContentDetailService
     external_references: SeerInfoReferences
+    pet_flip: PetFlipService | None = None
