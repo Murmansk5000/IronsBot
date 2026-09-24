@@ -13,15 +13,11 @@ from ironsbot.core.time import TZ_CN
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ironsbot.config.models.settings import LoggingConfig
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
 logger = getLogger(__name__)
 
 MARKER_PATH = Path("data/seer/render_crash_marker.json")
-LOG_TAIL_BYTES = 16 * 1024
-LOG_TAIL_LINES = 24
-NOTICE_MAX_CHARS = 3000
 
 
 def _now_text() -> str:
@@ -57,27 +53,6 @@ def _clear_marker() -> None:
         logger.exception("failed to clear render crash marker")
 
 
-def _read_log_tail(log_config: LoggingConfig, log_path: Path) -> str:
-    if not log_config.file_enabled:
-        return "文件日志未启用。"
-
-    if not log_path.exists():
-        return f"日志文件不存在：{log_path}"
-
-    try:
-        with log_path.open("rb") as file:
-            file.seek(0, 2)
-            size = file.tell()
-            file.seek(max(0, size - LOG_TAIL_BYTES))
-            raw = file.read().decode("utf-8", errors="replace")
-    except OSError:
-        logger.exception("failed to read render crash log tail")
-        return f"日志读取失败：{log_path}"
-
-    lines = raw.splitlines()[-LOG_TAIL_LINES:]
-    return "\n".join(lines)
-
-
 def _format_marker(marker: dict[str, Any]) -> str:
     fields = [
         ("时间", marker.get("started_at")),
@@ -91,13 +66,6 @@ def _format_marker(marker: dict[str, Any]) -> str:
     if raw:
         lines.append(str(raw))
     return "\n".join(lines) if lines else "未能读取崩溃标记详情。"
-
-
-def _truncate_notice(text: str) -> str:
-    if len(text) <= NOTICE_MAX_CHARS:
-        return text
-
-    return text[: NOTICE_MAX_CHARS - 20] + "\n...（已截断）"
 
 
 @contextmanager
@@ -123,26 +91,25 @@ def render_crash_marker(
         _clear_marker()
 
 
-async def report_previous_render_crash(
-    admin_notices: AdminNoticeService,
-    log_config: LoggingConfig,
-    log_path: Path,
-) -> None:
-    marker = _read_marker()
-    if marker is None:
-        return
+class RenderCrashReporter:
+    def __init__(self, admin_notices: AdminNoticeService) -> None:
+        self.admin_notices = admin_notices
+        self._previous_marker: dict[str, Any] | None = None
 
-    _clear_marker()
-    log_tail = _read_log_tail(log_config, log_path)
-    notice = _truncate_notice(
-        "⚠️ 机器人上次可能在精灵信息渲染时异常退出。\n"
-        "这类崩溃通常发生在 Chromium/htmlkit/native 渲染层，"
-        "Python 不一定能捕获 traceback。\n\n"
-        f"【崩溃前任务】\n{_format_marker(marker)}\n\n"
-        f"【最近日志】\n{log_tail}"
-    )
-    await admin_notices.send(
-        notice,
-        subscription_key="render_crash_notice",
-        action_name="render crash notice",
-    )
+    def capture_previous(self) -> None:
+        # Capture before incoming bot messages can start a new render.
+        self._previous_marker = _read_marker()
+        if self._previous_marker is not None:
+            _clear_marker()
+
+    async def report_previous(self, _bot: object) -> None:
+        marker = self._previous_marker
+        if marker is None:
+            return
+        self._previous_marker = None
+        await self.admin_notices.send(
+            "⚠️ 上次运行在精灵资料图渲染期间中断，原因尚未确认。\n"
+            f"{_format_marker(marker)}",
+            subscription_key="render_crash_notice",
+            action_name="render crash notice",
+        )
