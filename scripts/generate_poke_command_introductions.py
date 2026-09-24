@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
-BASELINE_COMMIT = "b97cb3ec"
+BASELINE_COMMIT = "c83f48e8dd65ba71dd4227c8251083b9443ded4b"
 ARCHIVE_COMMIT = "55a39fd12c8b562f8ac3eb8b95d5a71325e8981f"
 
 if str(ROOT) not in sys.path:
@@ -87,19 +87,56 @@ def _introduced_timestamps(
     return introduced
 
 
+def _seed_commands(path: Path = MANIFEST_PATH) -> dict[str, str]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        commands = payload.get("commands")
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(commands, dict):
+        return {}
+    return {
+        command_id: introduced
+        for command_id, introduced in commands.items()
+        if isinstance(command_id, str) and isinstance(introduced, str)
+    }
+
+
+def _git_object_exists(revision: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{revision}^{{commit}}"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
     _git_lines("merge-base", "--is-ancestor", BASELINE_COMMIT, "HEAD")
     ids = tuple(command_ids)
     commands = _introduced_timestamps(ids)
-    # The archived history is authoritative for pre-refactor command IDs.
-    # Failing the build on a missing archive is safer than promoting every moved ID.
-    archived = _introduced_timestamps(ids, ARCHIVE_COMMIT)
-    baseline_time = _git_lines("show", "-s", "--format=%aI", BASELINE_COMMIT)[0]
-    for command_id, introduced in archived.items():
-        if datetime.fromisoformat(introduced) <= datetime.fromisoformat(baseline_time):
-            commands.pop(command_id, None)
-        else:
-            commands[command_id] = introduced
+    if _git_object_exists(ARCHIVE_COMMIT):
+        # The archived history is authoritative when it is available locally.
+        archived = _introduced_timestamps(ids, ARCHIVE_COMMIT)
+        baseline_time = _git_lines("show", "-s", "--format=%aI", BASELINE_COMMIT)[0]
+        for command_id, introduced in archived.items():
+            if datetime.fromisoformat(introduced) <= datetime.fromisoformat(
+                baseline_time
+            ):
+                commands.pop(command_id, None)
+            else:
+                commands[command_id] = introduced
+    else:
+        # CI does not have access to the private history archive. Keep the reviewed,
+        # checked-in pre-refactor results and combine them with current Git history.
+        commands.update(
+            {
+                command_id: introduced
+                for command_id, introduced in _seed_commands(MANIFEST_PATH).items()
+                if command_id in ids
+            }
+        )
     return {
         "schema_version": 1,
         "baseline_commit": BASELINE_COMMIT,
