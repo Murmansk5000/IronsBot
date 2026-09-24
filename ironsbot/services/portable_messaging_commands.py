@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage, address_message_to
+from ironsbot.core.platform import Platform
 from ironsbot.services.messaging.push_time import (
     build_push_time_menu_prompt,
     normalize_push_time_input,
@@ -29,7 +30,8 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.messaging import PicConfig
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
@@ -48,11 +50,16 @@ def build_portable_messaging_operations(
     sessions: PortableQuerySessions,
     *,
     refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
+    identity_principals: IdentityPrincipalService | None = None,
 ) -> Mapping[str, PortableOperation]:
     """Expose configured text commands whose semantics are platform-neutral."""
 
     operations = {
-        f"messaging.{action.id}": _text_operation(action)
+        f"messaging.{action.id}": build_portable_text_operation(
+            action,
+            messaging.command_mentions(action.id),
+            identity_principals,
+        )
         for action in messaging.portable_command_actions
     }
     operations["messaging.push_subscription"] = _subscription_operation(
@@ -293,16 +300,48 @@ def build_portable_sendpic_operations(
     }
 
 
-def _text_operation(action: MessageReplyAction) -> PortableOperation:
+def build_portable_text_operation(
+    action: MessageReplyAction,
+    configured_mentions: tuple[ActorRef, ...],
+    identity_principals: IdentityPrincipalService | None,
+) -> PortableOperation:
     async def execute(
         text: str,
         context: MessageInputContext,
     ) -> PortableReply:
         del text
+        mentions = context.member_mentions
+        if context.message.conversation.kind == "group":
+            conversation = context.message.conversation
+            if conversation.platform is Platform.QQ_OFFICIAL and configured_mentions:
+                if identity_principals is None:
+                    return PortableReply(
+                        OutboundMessage.from_text(
+                            "无法确认配置的 @成员 身份，未发送消息。"
+                        )
+                    )
+                resolved = tuple(
+                    identity_principals.official_group_member_for_qq(
+                        actor.id, conversation
+                    )
+                    for actor in configured_mentions
+                )
+                if any(actor is None for actor in resolved):
+                    return PortableReply(
+                        OutboundMessage.from_text(
+                            "无法确认配置的 @成员 身份，未发送消息。"
+                        )
+                    )
+                mentions = (
+                    *mentions,
+                    *(actor for actor in resolved if actor is not None),
+                )
+            elif conversation.platform is Platform.ONEBOT:
+                mentions = (*mentions, *configured_mentions)
         messages = tuple(
             address_message_to(
                 OutboundMessage.from_text(message),
-                context.member_mentions,
+                mentions,
             )
             for message in action.messages
         )

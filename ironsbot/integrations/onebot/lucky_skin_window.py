@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
     from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
+    from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 
@@ -31,18 +32,30 @@ class OneBotLuckySkinWindowSubscriptionOptions:
 
     service: LuckySkinWindowService
     subscriptions: PushSubscriptionRepository
+    identity_principals: IdentityPrincipalService | None = None
 
     def subscription_options(
         self,
         conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
-        if (
-            conversation.platform is not Platform.ONEBOT
-            or conversation.kind != "private"
-            or not conversation.id.isdecimal()
-        ):
+        if conversation.kind != "private":
             return []
-        actor = ActorRef(Platform.ONEBOT, conversation.id)
+        if conversation.platform is Platform.ONEBOT:
+            if not conversation.id.isdecimal():
+                return []
+            actor = ActorRef(Platform.ONEBOT, conversation.id)
+        elif self.identity_principals is not None:
+            actor = self.identity_principals.onebot_actor(
+                ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    conversation.id,
+                    account_id=conversation.account_id,
+                )
+            )
+            if actor is None:
+                return []
+        else:
+            return []
         if not self.service.is_eligible_actor(actor):
             return []
         return [

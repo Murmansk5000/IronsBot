@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.command_catalog import CommandContext, command_context_from_input
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
@@ -38,6 +38,7 @@ from ironsbot.services.portable_menu_access import menu_access_resolver
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
+    build_portable_text_operation,
 )
 from ironsbot.services.portable_new_content_commands import (
     build_portable_new_content_operations,
@@ -73,6 +74,7 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
@@ -135,6 +137,7 @@ class PortableCommandRouter:
         ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
         messaging: MessagingService | None = None,
+        identity_principals: IdentityPrincipalService | None = None,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
         unknown = set(operations) - catalog.command_ids
@@ -161,6 +164,7 @@ class PortableCommandRouter:
         self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
         self._messaging = messaging
+        self._identity_principals = identity_principals
         self._query_sessions = query_sessions or PortableQuerySessions()
         self._query_sessions.access_resolver = menu_access_resolver(catalog, features)
         from ironsbot.services.portable_menu_access import explicit_command_resolver
@@ -197,6 +201,7 @@ class PortableCommandRouter:
                 self._messaging is not None
                 and self._messaging.match_mention_reply(context) is not None
             )
+            or self._keyword_action(context) is not None
             or self._ai_input_routing.decide(
                 context,
                 command_context,
@@ -221,7 +226,7 @@ class PortableCommandRouter:
             return None
         return PortableReply(OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT))
 
-    async def dispatch(  # noqa: C901, PLR0911 - explicit routing precedence
+    async def dispatch(  # noqa: C901, PLR0911, PLR0912 - explicit routing precedence
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
@@ -268,6 +273,16 @@ class PortableCommandRouter:
                     return PortableReply(
                         messages[0],
                         additional_messages=messages[1:],
+                    )
+                keyword_action = self._keyword_action(context)
+                if keyword_action is not None:
+                    return cast(
+                        "PortableReply",
+                        await build_portable_text_operation(
+                            keyword_action,
+                            self._messaging.command_mentions(keyword_action.id),
+                            self._identity_principals,
+                        )(command, context),
                     )
             return await self._fallback_reply(context, command_context, command)
         try:
@@ -388,6 +403,19 @@ class PortableCommandRouter:
         return self._features.is_message_blocked(
             message.actor,
             message.conversation,
+        )
+
+    def _keyword_action(
+        self, context: MessageInputContext
+    ) -> MessageReplyAction | None:
+        if self._messaging is None or not context.text.strip():
+            return None
+        message = context.message
+        return self._messaging.match_action(
+            context.text,
+            actor=message.actor,
+            conversation=message.conversation,
+            interaction="automatic",
         )
 
 
@@ -528,6 +556,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
                 messaging,
                 sessions,
                 refresh_push_time_jobs=refresh_push_time_jobs,
+                identity_principals=identity_principals,
             )
         ),
     )
@@ -643,6 +672,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
         messaging=messaging,
+        identity_principals=identity_principals,
         query_sessions=sessions,
     )
 

@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ironsbot.config.models.seer import RankQueryConfig
-    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationPrincipal, ConversationRef
 
 _DISPLAY_LIMIT_RE = re.compile(
     r"^/\s*榜单(?:显示(?:条数|数量)?|默认(?:条数|数量)|条数)"
@@ -34,6 +34,9 @@ class RankDisplayService:
     config: RankQueryConfig
     configured_limits: Mapping[ConversationRef, int]
     store: RankDisplayStore
+    conversation_principal: (
+        Callable[[ConversationRef], ConversationPrincipal] | None
+    ) = None
 
     def limit_for_conversation(
         self,
@@ -45,6 +48,20 @@ class RankDisplayService:
             if conversation is not None
             else None
         )
+        if (
+            configured is None
+            and conversation is not None
+            and self.conversation_principal is not None
+        ):
+            principal = self.conversation_principal(conversation)
+            configured = next(
+                (
+                    limit
+                    for candidate, limit in self.configured_limits.items()
+                    if self.conversation_principal(candidate) == principal
+                ),
+                None,
+            )
         return self._clamp(stored or configured or self.config.display_limit)
 
     def set_conversation_limit(

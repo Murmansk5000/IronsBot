@@ -34,6 +34,8 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.identity_link_store import CrossPlatformGroupLink
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_detail_extensions import (
@@ -48,6 +50,37 @@ _ADMIN = ActorRef(Platform.ONEBOT, "100")
 _REGULAR = ActorRef(Platform.ONEBOT, "200")
 _GROUP = ConversationRef(Platform.ONEBOT, "group", "300")
 _PLAYER_ID = 123456
+
+
+def test_group_alias_is_visible_to_linked_official_group_only() -> None:
+    principals = IdentityPrincipalService()
+    registry = PlayerAccountRegistry(
+        (PlayerAccount(_PLAYER_ID, "示例玩家", (), None),),
+        private_alias_groups={_GROUP: ("示例玩家",)},
+    )
+    registry.bind_conversation_principals(principals.conversation_principal)
+    official = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "opaque-group", account_id="example-app"
+    )
+    assert registry.resolve_player_id("示例玩家", conversation=official) is None
+
+    principals.register_group_link(
+        CrossPlatformGroupLink("300", "example-app", "opaque-group", 1.0)
+    )
+
+    assert registry.resolve_player_id("示例玩家", conversation=official) == _PLAYER_ID
+    assert (
+        registry.resolve_player_id(
+            "示例玩家",
+            conversation=ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                "another-group",
+                account_id="example-app",
+            ),
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio

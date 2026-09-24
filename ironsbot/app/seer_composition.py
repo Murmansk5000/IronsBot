@@ -189,6 +189,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
+    player_accounts.bind_conversation_principals(
+        identity_principals.conversation_principal
+    )
 
     def resolve_configured_player_reference(
         reference: str,
@@ -451,6 +454,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             )
         },
         rank_display_store,
+        identity_principals.conversation_principal,
     )
     rank_page_refresh = RankPageRefreshService(
         settings.seer.rank.page_refresh,

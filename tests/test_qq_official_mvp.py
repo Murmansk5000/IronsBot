@@ -66,6 +66,7 @@ from ironsbot.integrations.qq_official.runtime import (
     deliver_qq_official_reply,
     qq_official_event_is_supported,
     qq_official_event_mentions_bot,
+    qq_official_event_mentions_everyone,
 )
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
@@ -495,6 +496,37 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
         message_type=message_type,
         raw=raw or {},
     )
+
+
+@pytest.mark.asyncio
+async def test_official_everyone_mention_never_dispatches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event = _sdk_event(
+        event_type="GROUP_AT_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="opaque-member",
+        content="帮助",
+        raw={"mentions": [{"type": "all"}, {"is_you": True}]},
+    )
+    monkeypatch.setattr(EventParser, "parse", staticmethod(lambda *_args: event))
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    async with AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (QQOfficialRuntimeAccount("example-app", "example-secret"),),
+            http_client=client,
+            session_root=tmp_path,
+        )
+        runtime.bind(cast("PortableCommandRouter", _FailingPortableRouter()), messenger)
+        await runtime.handle_event("example-app", event.event_type, {})
+
+    assert bot.sent == 0
 
 
 @pytest.mark.asyncio
@@ -1503,6 +1535,29 @@ def test_group_at_or_structured_self_mention_is_classified_as_bot_mention() -> N
     assert not qq_official_event_mentions_bot(full_message)
     assert qq_official_event_mentions_bot(mentioned_full_message)
     assert qq_official_event_mentions_bot(at_message)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"at_all": True},
+        {"mentions": [{"type": "all"}]},
+        {"mentions": [{"at_all": True}, {"is_you": True}]},
+    ],
+)
+def test_official_everyone_mention_is_not_a_command(
+    raw: dict[str, object],
+) -> None:
+    event = _sdk_event(
+        event_type="GROUP_AT_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="opaque-member",
+        content="帮助",
+        raw=raw,
+    )
+
+    assert qq_official_event_mentions_everyone(event)
 
 
 def test_full_group_mentions_are_removed_without_dropping_member_targets() -> None:
@@ -3196,9 +3251,9 @@ def test_bare_mention_hint_is_bounded_without_group_features() -> None:
     assert reply is not None
     assert reply.message.parts == (TextPart(DIRECT_COMMAND_HELP_HINT_TEXT),)
     assert router.bare_mention_hint(context) is None
-    assert router.bare_mention_hint(
-        _portable_input("帮助", actor, conversation)
-    ) is None
+    assert (
+        router.bare_mention_hint(_portable_input("帮助", actor, conversation)) is None
+    )
 
 
 @pytest.mark.asyncio

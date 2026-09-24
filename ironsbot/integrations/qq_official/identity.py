@@ -97,6 +97,22 @@ def qq_official_event_mentions_bot(event: InboundEvent) -> bool:
     return _bot_mention(raw) is not None
 
 
+def qq_official_event_mentions_everyone(event: InboundEvent) -> bool:
+    raw = event.raw if isinstance(event.raw, Mapping) else {}
+    if raw.get("at_all") is True:
+        return True
+    mentions = raw.get("mentions")
+    if not isinstance(mentions, Sequence) or isinstance(mentions, (str, bytes)):
+        return False
+    return any(
+        isinstance(mention, Mapping)
+        and (
+            mention.get("at_all") is True or mention.get("type") in ("all", "everyone")
+        )
+        for mention in mentions
+    )
+
+
 def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
     text = event.content.strip()
     if event.event_type == GROUP_MESSAGE_CREATE:
