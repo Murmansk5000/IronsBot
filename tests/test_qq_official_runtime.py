@@ -13,6 +13,7 @@ from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
+    IncomingMessageRef,
     OfficialUnionIdentity,
     Platform,
 )
@@ -28,6 +29,9 @@ from ironsbot.integrations.qq_official.runtime import (
     QQOfficialRuntimeAccount,
     QQOfficialStartupError,
 )
+from ironsbot.integrations.storage.official_addresses import SqliteOfficialAddressStore
+from ironsbot.services.identity_principals import IdentityPrincipalService
+from ironsbot.services.official_addresses import OfficialAddressService
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -110,6 +114,59 @@ class _UnionIdentityObserver:
     async def observe(self, incoming: object) -> bool:
         self.messages.append(incoming)
         return True
+
+
+def test_runtime_records_any_private_sender_before_command_routing(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        store = SqliteOfficialAddressStore(tmp_path / "addresses.sqlite")
+        addresses = OfficialAddressService(
+            store,
+            IdentityPrincipalService(),
+            lambda _link: None,
+            lambda _link: None,
+        )
+
+        class _AddressObserver:
+            async def observe(self, incoming: object) -> bool:
+                await addresses.observe(cast("IncomingMessageRef", incoming))
+                return False
+
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _RejectingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+                union_identity=cast("Any", _AddressObserver()),
+            )
+            await runtime.handle_event(
+                "app-id",
+                "C2C_MESSAGE_CREATE",
+                {
+                    "id": "first-message",
+                    "content": "随便聊聊",
+                    "timestamp": "2026-09-24T12:00:00+08:00",
+                    "author": {"user_openid": "new-user-openid"},
+                },
+            )
+            assert router.dispatch_count == 0
+
+        rows = await SqliteOfficialAddressStore(
+            tmp_path / "addresses.sqlite"
+        ).all_addresses()
+        assert len(rows) == 1
+        assert rows[0].app_id == "app-id"
+        assert rows[0].openid == "new-user-openid"
+        assert rows[0].private_seen
+        assert not rows[0].member_seen
+
+    asyncio.run(run())
 
 
 def _install_fake_sdk(monkeypatch: pytest.MonkeyPatch, *, ready: bool) -> None:
