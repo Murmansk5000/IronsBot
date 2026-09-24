@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -26,6 +27,7 @@ IMAGE_PULL_RETRY_ATTEMPTS = 3
 IMAGE_PULL_RETRY_BASE_DELAY_SECONDS = 2.0
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
+WATCHTOWER_CONTAINER_PREFIX = "ironsbot-watchtower-once-"
 TRANSIENT_DOCKER_PULL_ERRORS = (
     "eof",
     "timeout",
@@ -90,10 +92,49 @@ async def remove_container_quietly(
         raise_for_docker_status(response)
     except Exception:  # noqa: BLE001 - never hide the original archive failure
         logger.warning(
-            "could not remove temporary Docker archive container: %s",
+            "could not remove temporary Docker container: %s",
             container_id,
             exc_info=True,
         )
+
+
+async def remove_stopped_watchtower_containers(client: httpx.AsyncClient) -> int:
+    """Remove stopped one-shot updater containers left by older releases."""
+
+    response = await client.get(
+        "/containers/json",
+        params={
+            "all": "true",
+            "filters": json.dumps({"name": [WATCHTOWER_CONTAINER_PREFIX]}),
+        },
+    )
+    raise_for_docker_status(response)
+    payload = response.json()
+    if not isinstance(payload, list):
+        message = "Docker API did not return a container list"
+        raise TypeError(message)
+
+    removed = 0
+    for item in payload:
+        if not isinstance(item, dict) or item.get("State") == "running":
+            continue
+        names = item.get("Names")
+        if not isinstance(names, list) or not any(
+            isinstance(name, str)
+            and name.lstrip("/").startswith(WATCHTOWER_CONTAINER_PREFIX)
+            for name in names
+        ):
+            continue
+        container_id = item.get("Id")
+        if not isinstance(container_id, str) or not container_id:
+            continue
+        delete_response = await client.delete(
+            f"/containers/{quote(container_id, safe='')}",
+            params={"force": "true"},
+        )
+        raise_for_docker_status(delete_response)
+        removed += 1
+    return removed
 
 
 async def pull_docker_image(
@@ -320,7 +361,7 @@ async def create_watchtower_container(
     watchtower: WatchtowerUpdateOptions,
     registry_credentials: DockerRegistryCredentials | None = None,
 ) -> str:
-    updater_name = f"ironsbot-watchtower-once-{uuid4().hex[:12]}"
+    updater_name = f"{WATCHTOWER_CONTAINER_PREFIX}{uuid4().hex[:12]}"
     environment = [f"DOCKER_API_VERSION={watchtower.docker_api_version}"]
     if registry_credentials is not None:
         environment.extend(
@@ -336,8 +377,9 @@ async def create_watchtower_container(
             "Image": watchtower.image,
             "Cmd": ["--run-once", "--cleanup", container_name],
             "Env": environment,
+            "Labels": {"io.ironsbot.role": "watchtower-once"},
             "HostConfig": {
-                "AutoRemove": False,
+                "AutoRemove": True,
                 "Binds": [f"{socket_path}:/var/run/docker.sock"],
             },
         },
