@@ -49,6 +49,9 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
 )
 from ironsbot.integrations.seer_data.peak_repository import PublishedPeakRepository
+from ironsbot.integrations.seer_data.pet_flip_repository import (
+    PublishedPetFlipRepository,
+)
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
@@ -94,6 +97,7 @@ from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.new_content import NewContentService
 from ironsbot.services.seer.new_content_details import NewContentDetailService
 from ironsbot.services.seer.peak import PeakQueryService, PeakRenderSession
+from ironsbot.services.seer.pet_flip import PetFlipService
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -589,6 +593,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 pet, mintmark, equipment, autocard, content_selection_scope
             ),
             external_references,
+            pet_flip=PetFlipService(PublishedPetFlipRepository(seer_database), images),
         ),
         lucky_skin_window=lucky_skin_window,
         team_resource=team_resource,

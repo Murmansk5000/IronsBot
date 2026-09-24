@@ -253,6 +253,7 @@ async def test_empty_affix_entity_lookups_stay_silent(
         "SeerQueryResources",
         SimpleNamespace(
             data_queries=SimpleNamespace(),
+            pet_flip=None,
             team_query=SimpleNamespace(),
             peak_query=SimpleNamespace(),
             pet_query=_empty_query_service(

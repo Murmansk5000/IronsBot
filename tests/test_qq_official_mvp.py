@@ -546,6 +546,7 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
         "SeerQueryResources",
         SimpleNamespace(
             data_queries=_FakeDataQueries(),
+            pet_flip=None,
             team_query=team_query or unused,
             pet_query=pet_query or unused,
             mintmark=mintmark or unused,
