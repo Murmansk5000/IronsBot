@@ -18,15 +18,11 @@ from tests.test_db_sync_runtime import _DownloadClient, _source
 
 
 @pytest.mark.parametrize("source", ["seerapi", "aliases"])
-@pytest.mark.parametrize(
-    "old_version", ["", "invalid", "20261120120000", "20261121120000", "20261122120000"]
-)
 @pytest.mark.asyncio
 async def test_only_changed_persisted_seerapi_notifies_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     source: str,
-    old_version: str,
 ) -> None:
     incoming = tmp_path / "incoming.sqlite"
     with sqlite3.connect(incoming) as conn:
@@ -34,10 +30,6 @@ async def test_only_changed_persisted_seerapi_notifies_once(
     _DownloadClient.content = incoming.read_bytes()
     monkeypatch.setattr(runner.httpx, "AsyncClient", _DownloadClient)
     target = tmp_path / "local.sqlite"
-    if old_version:
-        with sqlite3.connect(target) as conn:
-            conn.execute("CREATE TABLE baseline(id INTEGER)")
-        conn.close()
     databases = DatabaseManager()
     events: list[DataUpdate] = []
 
@@ -46,21 +38,12 @@ async def test_only_changed_persisted_seerapi_notifies_once(
         assert databases.get_engine(source) is not None
         events.append(event)
 
-    sync = DatabaseSync(
-        databases,
-        on_updated=updated,
-        describe_database=lambda _: DataVersion(
-            "test",
-            official_version="20261121120000"
-            if databases.get_engine(source) is not None
-            else old_version,
-        ),
-    )
+    sync = DatabaseSync(databases, on_updated=updated)
     sync.register(source, _source(local_path=str(target)))
     assert all(
         await asyncio.gather(sync.sync_database(source), sync.sync_database(source))
     )
-    assert len(events) == int(source == "seerapi" and old_version == "20261120120000")
+    assert len(events) == (1 if source == "seerapi" else 0)
     databases.close()
 
 
@@ -106,21 +89,8 @@ async def test_failures_do_not_report_false_success_or_revert_data(
     notification = AsyncMock(
         side_effect=RuntimeError("notify") if failure == "notify" else None
     )
-    target = tmp_path / "local.sqlite"
-    with sqlite3.connect(target) as conn:
-        conn.execute("CREATE TABLE baseline(id INTEGER)")
-    conn.close()
-    sync = DatabaseSync(
-        databases,
-        on_updated=notification,
-        describe_database=lambda _: DataVersion(
-            "test",
-            official_version="20261121120000"
-            if databases.get_engine("seerapi") is not None
-            else "20261120120000",
-        ),
-    )
-    sync.register("seerapi", _source(local_path=str(target)))
+    sync = DatabaseSync(databases, on_updated=notification)
+    sync.register("seerapi", _source(local_path=str(tmp_path / "local.sqlite")))
     if failure == "load":
 
         def reject(*_args: object) -> None:
@@ -158,10 +128,9 @@ def test_update_message_has_beijing_time_and_only_changed_season() -> None:
         datetime(2026, 10, 16, 10, tzinfo=TZ_CN),
         datetime(2027, 1, 8, 10, tzinfo=TZ_CN),
     )
-    current = DataVersion("v2", period, official_version="20261121120000")
-    previous = DataVersion("v1", official_version="20261120120000")
-    event = DataUpdate("seerapi", previous, current, period[0])
-    assert "20261120120000 → 20261121120000" in event.message()
+    current = DataVersion("v2", period)
+    event = DataUpdate("seerapi", DataVersion("v1"), current, period[0])
+    assert "v1 → v2" in event.message()
     assert "20261016" in event.message()
     assert "2026-10-16 10:00:00" in event.message()
     assert (
