@@ -374,6 +374,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
 
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "scheduler",
+        "render_crash_capture",
         "local_rank_jobs",
         "rank_page_jobs",
         "bilibili_monitor_jobs",
