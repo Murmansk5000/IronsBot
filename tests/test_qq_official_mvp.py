@@ -3167,6 +3167,40 @@ async def test_portable_router_prompts_for_command_after_empty_group_mention() -
     assert ai.calls == []
 
 
+def test_bare_mention_hint_is_bounded_without_group_features() -> None:
+    router = build_portable_command_router(
+        catalog=_portable_catalog(ai_chat=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=_official_feature_service([]),
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(max_per_window=1),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "unconfigured-member",
+        "member",
+        "unknown-group",
+        "example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "unknown-group", account_id="example-app"
+    )
+    context = _portable_input("", actor, conversation)
+
+    reply = router.bare_mention_hint(context)
+
+    assert reply is not None
+    assert reply.message.parts == (TextPart(DIRECT_COMMAND_HELP_HINT_TEXT),)
+    assert router.bare_mention_hint(context) is None
+    assert router.bare_mention_hint(
+        _portable_input("帮助", actor, conversation)
+    ) is None
+
+
 @pytest.mark.asyncio
 async def test_portable_router_ignores_blacklisted_official_actor() -> None:
     actor = ActorRef(Platform.QQ_OFFICIAL, "blocked-user")

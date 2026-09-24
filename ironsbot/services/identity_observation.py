@@ -194,6 +194,14 @@ class SilentIdentityObservationService:
                 )
             ]
             if len(matches) != 1:
+                if matches:
+                    _LOGGER.warning(
+                        "silent original message ambiguous: app=%s group=%s "
+                        "candidates=%d",
+                        reference_digest(pending.incoming.actor.account_id or ""),
+                        reference_digest(pending.incoming.conversation.id),
+                        len(matches),
+                    )
                 self._remember_official_message(pending)
                 return False
             matched = matches[0]
@@ -216,6 +224,13 @@ class SilentIdentityObservationService:
                 for item in self._pending_official_messages
                 if self._original_messages_match(item, observation, now=now)
             ]
+            if len(original_matches) > 1:
+                _LOGGER.warning(
+                    "silent original message ambiguous: onebot_group=%s "
+                    "candidates=%d",
+                    reference_digest(str(observation.group_id)),
+                    len(original_matches),
+                )
             if len(original_matches) == 1:
                 original = original_matches[0]
                 self._pending_official_messages.remove(original)
@@ -327,9 +342,7 @@ class SilentIdentityObservationService:
             observation.mentioned_qq_ids
         )
         target_qq_ids = self._member_mention_qq_ids(observation)
-        if observation.sender_id == observation.self_id and not (
-            mentions_account_bot and target_qq_ids
-        ):
+        if observation.sender_id == observation.self_id and not mentions_account_bot:
             return False
         group_matches = known_group == observation.group_id or (
             known_group is None
@@ -338,9 +351,19 @@ class SilentIdentityObservationService:
         )
         if not group_matches or now - official.created_at > self.match_window_seconds:
             return False
-        return _normalize_text(observation.text) == official.text and len(
-            target_qq_ids
-        ) == len(official.target_members)
+        if _normalize_text(observation.text) != official.text:
+            return False
+        count_matches = len(target_qq_ids) == len(official.target_members)
+        if not count_matches:
+            _LOGGER.info(
+                "silent original message mention count mismatch: app=%s "
+                "group=%s official=%d onebot=%d",
+                reference_digest(account_id),
+                reference_digest(official.incoming.conversation.id),
+                len(official.target_members),
+                len(target_qq_ids),
+            )
+        return count_matches
 
     async def _link_original_message(
         self,
@@ -363,6 +386,11 @@ class SilentIdentityObservationService:
                     now=now,
                 )
             except GroupLinkConflictError:
+                _LOGGER.warning(
+                    "silent group link conflict: app=%s group=%s",
+                    reference_digest(account_id),
+                    reference_digest(official.incoming.conversation.id),
+                )
                 return False
             self.register_group_link(group_link)
             if self.on_group_link is not None:
@@ -522,12 +550,9 @@ class SilentIdentityObservationService:
         if observation.sender_id != observation.self_id:
             return True
         mentioned = set(observation.mentioned_qq_ids)
-        return bool(
-            self._member_mention_qq_ids(observation)
-            and any(
-                str(account.trusted_onebot_sender_id) in mentioned
-                for account in self.accounts.values()
-            )
+        return any(
+            str(account.trusted_onebot_sender_id) in mentioned
+            for account in self.accounts.values()
         )
 
     def _remember_official_message(self, pending: _PendingOfficialMessage) -> None:

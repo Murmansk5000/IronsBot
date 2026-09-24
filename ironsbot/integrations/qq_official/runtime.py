@@ -15,7 +15,7 @@ from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
-from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.message_input import MessageInputContext, MessageInputKind
 from ironsbot.core.outbound import ExecutionIdentity, OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
@@ -462,13 +462,6 @@ class QQOfficialRuntime:
                 incoming,
                 explicitly_addressed=mentions_bot,
             )
-        if not self._accepts_incoming(
-            app_id,
-            event_type,
-            incoming,
-            explicitly_addressed=mentions_bot,
-        ):
-            return
         context = MessageInputContext(
             incoming,
             mentions_bot=mentions_bot,
@@ -479,6 +472,26 @@ class QQOfficialRuntime:
                 event_type != GROUP_MESSAGE_CREATE or mentions_bot
             ),
         )
+        if not self._accepts_incoming(
+            app_id,
+            event_type,
+            incoming,
+            explicitly_addressed=mentions_bot,
+        ):
+            if (
+                context.kind is MessageInputKind.BOT_MENTION
+                and not context.text.strip()
+                and not context.member_mentions
+            ):
+                hint = router.bare_mention_hint(context)
+                if hint is not None:
+                    await deliver_qq_official_reply(
+                        messenger,
+                        incoming,
+                        hint,
+                        account_label=self._connections[app_id].lifecycle.account,
+                    )
+            return
         recognized = router.recognizes(context)
         logger.info(
             "QQ Official inbound routed: account=%s event_type=%s "

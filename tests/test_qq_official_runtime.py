@@ -10,6 +10,8 @@ import pytest
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -42,6 +44,7 @@ from ironsbot.services.identity_observation import (
 )
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.official_addresses import OfficialAddressService
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -109,6 +112,9 @@ class _CountingRouter:
 
     async def dispatch(self, _context: object) -> None:
         self.dispatch_count += 1
+
+    def bare_mention_hint(self, _context: object) -> PortableReply | None:
+        return None
 
 
 class _RejectingRouter(_CountingRouter):
@@ -591,6 +597,56 @@ def test_unmapped_group_mention_is_observed_but_not_dispatched(
     asyncio.run(run())
 
 
+def test_unmapped_group_bare_mention_sends_help_without_dispatch(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        class _HintRouter(_CountingRouter):
+            def bare_mention_hint(self, _context: object) -> PortableReply:
+                return PortableReply(
+                    OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
+                )
+
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("special-app", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            runtime.configure_ingress_routing(
+                QQOfficialIngressRouting("special-app", {})
+            )
+            messenger = SimpleNamespace(
+                reply=AsyncMock(
+                    return_value=SendResult(delivered=True, message_id="help-reply")
+                )
+            )
+            router = _HintRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", messenger),
+            )
+
+            await runtime.handle_event(
+                "special-app",
+                "GROUP_AT_MESSAGE_CREATE",
+                {
+                    "id": "bare-mention",
+                    "content": "@bot",
+                    "group_openid": "unconfigured-group",
+                    "author": {"member_openid": "member-openid"},
+                    "mentions": [{"is_you": True, "member_openid": "bot-openid"}],
+                },
+            )
+
+            assert router.dispatch_count == 0
+            messenger.reply.assert_awaited_once()
+            sent = messenger.reply.await_args.args[1]
+            assert TextPart(DIRECT_COMMAND_HELP_HINT_TEXT) in sent.parts
+
+    asyncio.run(run())
+
+
 def test_matched_mention_establishes_group_route_before_dispatch(
     tmp_path: Path,
 ) -> None:
@@ -626,7 +682,7 @@ def test_matched_mention_establishes_group_route_before_dispatch(
             )
             assert not await observer.observe_onebot(
                 OneBotGroupMessageObservation(
-                    1621582661,
+                    2947993138,
                     2947993138,
                     10001,
                     ("4019875223",),
@@ -650,6 +706,10 @@ def test_matched_mention_establishes_group_route_before_dispatch(
             links = await store.all_group_links()
             assert len(links) == 1
             assert links[0].onebot_group_id == "10001"
+            sender = await store.for_official(
+                OfficialIdentity("special-app", "member", "member-openid")
+            )
+            assert sender is not None and sender.onebot_qq_id == "2947993138"
             assert router.dispatch_count == 1
 
     asyncio.run(run())

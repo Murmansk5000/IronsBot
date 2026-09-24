@@ -596,8 +596,12 @@ async def test_original_command_pairs_multiple_mentions_in_order(
 
 
 @pytest.mark.asyncio
-async def test_original_command_rejects_mention_count_mismatch(tmp_path: Path) -> None:
+async def test_original_command_rejects_mention_count_mismatch(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     clock = [100.0]
+    caplog.set_level("INFO", logger="ironsbot.services.identity_observation")
     service, store = _service(tmp_path, clock)
     await service.observe_official_message(
         _incoming(
@@ -616,6 +620,8 @@ async def test_original_command_rejects_mention_count_mismatch(tmp_path: Path) -
         )
     )
     assert await store.all_links() == ()
+    assert "silent original message mention count mismatch" in caplog.text
+    assert "target-openid" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -682,23 +688,111 @@ async def test_original_command_can_discover_group_when_bot_is_mentioned(
 
 
 @pytest.mark.asyncio
-async def test_original_command_ignores_napcat_self_messages(tmp_path: Path) -> None:
+async def test_original_command_links_napcat_self_mention(tmp_path: Path) -> None:
     clock = [100.0]
-    service, store = _service(tmp_path, clock)
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    service = SilentIdentityObservationService(
+        store,
+        {
+            APP_ID: IdentityObservationAccount(
+                APP_ID,
+                OFFICIAL_BOT_QQ,
+                {},
+                frozenset({ONEBOT_GROUP}),
+            )
+        },
+        clock=lambda: clock[0],
+    )
     await service.observe_official_message(
-        _incoming("official-command", member_openid="sender-openid", text="帮助")
+        _incoming("official-command", member_openid="sender-openid", text=""),
+        explicitly_addressed=True,
     )
 
-    assert not await service.observe_onebot(
+    assert await service.observe_onebot(
         OneBotGroupMessageObservation(
             99999,
             99999,
             ONEBOT_GROUP,
             (str(OFFICIAL_BOT_QQ),),
-            "帮助",
+            "",
             "self-message",
         )
     )
+    sender = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "sender-openid", OFFICIAL_GROUP)
+    )
+    assert sender is not None and sender.onebot_qq_id == "99999"
+    assert len(await store.all_group_links()) == 1
+
+
+@pytest.mark.asyncio
+async def test_napcat_self_mention_links_multiple_members_onebot_first(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    observation = OneBotGroupMessageObservation(
+        99999,
+        99999,
+        ONEBOT_GROUP,
+        (str(OFFICIAL_BOT_QQ), "50005", "60006"),
+        "",
+        "self-multiple-members",
+    )
+    assert not await service.observe_onebot(observation)
+    assert await service.observe_official_message(
+        _incoming(
+            "official-multiple-members",
+            member_openid="napcat-member-openid",
+            target_openids=("first-openid", "second-openid"),
+            text="",
+        ),
+        explicitly_addressed=True,
+    )
+    for openid, qq_id in (
+        ("napcat-member-openid", "99999"),
+        ("first-openid", "50005"),
+        ("second-openid", "60006"),
+    ):
+        link = await store.for_official(
+            OfficialIdentity(APP_ID, "member", openid, OFFICIAL_GROUP)
+        )
+        assert link is not None and link.onebot_qq_id == qq_id
+
+
+@pytest.mark.asyncio
+async def test_napcat_self_mention_does_not_link_unconfigured_group(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    service = SilentIdentityObservationService(
+        store,
+        {
+            APP_ID: IdentityObservationAccount(
+                APP_ID,
+                OFFICIAL_BOT_QQ,
+                {},
+                frozenset({ONEBOT_GROUP}),
+            )
+        },
+        clock=lambda: clock[0],
+    )
+    assert not await service.observe_onebot(
+        OneBotGroupMessageObservation(
+            99999,
+            99999,
+            ONEBOT_GROUP + 1,
+            (str(OFFICIAL_BOT_QQ),),
+            "",
+            "unconfigured-group-message",
+        )
+    )
+    assert not await service.observe_official_message(
+        _incoming("official-unconfigured", text=""),
+        explicitly_addressed=True,
+    )
+    assert await store.all_group_links() == ()
     assert await store.all_links() == ()
 
 

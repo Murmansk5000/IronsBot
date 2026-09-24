@@ -6,9 +6,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import CommandContext, command_context_from_input
-from ironsbot.core.help import (
-    DIRECT_COMMAND_HELP_HINT_TEXT,  # noqa: F401 - public compatibility
-)
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.core.message_input import MessageInputKind
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.source_context import format_ai_source_context
@@ -205,12 +204,35 @@ class PortableCommandRouter:
             ).recognized
         )
 
+    def bare_mention_hint(
+        self,
+        context: MessageInputContext,
+    ) -> PortableReply | None:
+        """Offer the same bounded help hint even before a group route is known."""
+
+        if (
+            context.kind is not MessageInputKind.BOT_MENTION
+            or context.message.conversation.kind != "group"
+            or context.text.strip()
+            or context.member_mentions
+            or self._message_is_blocked(context)
+            or not self._addressed_input_hints.admit(context)
+        ):
+            return None
+        return PortableReply(OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT))
+
     async def dispatch(  # noqa: C901, PLR0911 - explicit routing precedence
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
         if self._message_is_blocked(context):
             return None
+        if (
+            context.kind is MessageInputKind.BOT_MENTION
+            and not context.text.strip()
+            and not context.member_mentions
+        ):
+            return self.bare_mention_hint(context)
         raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
