@@ -1652,8 +1652,8 @@ cache_path = "data/seer/player_lineup_cache.sqlite"
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
 enabled = false
-# Default: "04:30"; EN: Daily restart times. ZH: 每日重启时间。
-times = "04:30"
+# Default: "01:00"; EN: Daily restart times. ZH: 每日重启时间。
+times = "01:00"
 # Default: 10.0; EN: Grace seconds before signaling. ZH: 发信号前宽限秒数。
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。

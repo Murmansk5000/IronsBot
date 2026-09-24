@@ -19,7 +19,10 @@ from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_session import HeadlessSessionFactory
-from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
+from ironsbot.services.operations.scheduled_restart import (
+    ScheduledRestartService,
+    update_image_and_restart,
+)
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 
@@ -86,6 +89,21 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
         settings.operations.headless,
         request_interval_seconds=request_interval_seconds,
     )
+    docker_update = DockerUpdateService(
+        settings.operations.docker_update,
+        DockerClient(),
+        partial(
+            terminate_bot_process,
+            signal_parent=True,
+            reason="admin requested bot restart",
+        ),
+        handoff_store=DockerStartupPreflightStore(),
+    )
+    scheduled_process_restart = partial(
+        terminate_bot_process,
+        signal_parent=settings.operations.restart.signal_parent,
+        reason="scheduled bot restart",
+    )
     return OperationsComponents(
         data_sync=DataSyncService(settings.operations.data_sync, database_sync),
         seer_database=seer_database,
@@ -96,16 +114,7 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
             HttpServerNoticeSource(http_clients.origin),
             dedicated_sessions=headless_sessions,
         ),
-        docker_update=DockerUpdateService(
-            settings.operations.docker_update,
-            DockerClient(),
-            partial(
-                terminate_bot_process,
-                signal_parent=True,
-                reason="admin requested bot restart",
-            ),
-            handoff_store=DockerStartupPreflightStore(),
-        ),
+        docker_update=docker_update,
         scheduled_restart=ScheduledRestartService(
             restart_times=(
                 tuple(settings.operations.restart.parsed_restart_times)
@@ -114,9 +123,9 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
             ),
             grace_seconds=settings.operations.restart.grace_seconds,
             restart_process=partial(
-                terminate_bot_process,
-                signal_parent=settings.operations.restart.signal_parent,
-                reason="scheduled bot restart",
+                update_image_and_restart,
+                docker_update,
+                scheduled_process_restart,
             ),
         ),
         startup_notice=StartupNoticeService(admin_notices),
