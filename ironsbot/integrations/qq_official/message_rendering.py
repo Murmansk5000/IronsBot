@@ -52,6 +52,7 @@ QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
 _MARKDOWN_MENU_NUMBER = re.compile(
     r"(?m)^(?P<prefix>[ \t]*(?:↳[ \t]*)?)(?P<number>\d+)\.(?=[ \t])"
 )
+_UNESCAPED_MARKDOWN_HASH = re.compile(r"(?<!\\)#")
 
 
 def render_qq_official_outbound_message(
@@ -83,7 +84,7 @@ def render_qq_official_outbound_message(
             raise QQOfficialOutboundMessageError.unsupported_part(part)
     text_payloads: list[QQOfficialPayload] = []
     if mentions:
-        rendered_text = _escape_markdown_menu_numbers("".join(text))
+        rendered_text = _escape_mention_markdown_text("".join(text))
         text_payloads.append(
             QQOfficialTextPayload(
                 _join_markdown_mention_and_text(mentions, rendered_text),
@@ -119,6 +120,15 @@ def _escape_markdown_menu_numbers(text: str) -> str:
     return _MARKDOWN_MENU_NUMBER.sub(
         lambda match: f"{match.group('prefix')}{match.group('number')}\\.",
         text,
+    )
+
+
+def _escape_mention_markdown_text(text: str) -> str:
+    """Keep plain message text literal when a member mention requires Markdown."""
+
+    return _UNESCAPED_MARKDOWN_HASH.sub(
+        r"\\#",
+        _escape_markdown_menu_numbers(text),
     )
 
 
