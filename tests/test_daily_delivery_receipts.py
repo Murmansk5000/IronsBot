@@ -63,7 +63,9 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
     actor = ActorRef(Platform.ONEBOT, "123456")
     principals = IdentityPrincipalService()
     routes = PrivateConversationRoutes(
-        onebot_enabled=False, official_accounts=frozenset({"app"})
+        onebot_enabled=False,
+        official_accounts=frozenset({"app"}),
+        default_account="app",
     )
     link = CrossPlatformIdentityLink(
         actor.id, OfficialIdentity("app", "user", "c2c"), 1

@@ -54,14 +54,16 @@ class PrivateConversationRoutes:
         preferred = [c for c in candidates if c.account_id == self.default_account]
         if len(preferred) == 1:
             return preferred[0]
-        if len(candidates) == 1:
-            return candidates[0]
         if source.id not in self._warned:
             self._warned.add(source.id)
             _LOGGER.warning(
                 "Private route unresolved: recipient=%s reason=%s; "
                 "configure or observe an AppID-scoped OpenID for the intended bot",
                 reference_digest(source.id),
-                "ambiguous C2C endpoints" if candidates else "missing C2C endpoint",
+                (
+                    "missing C2C endpoint for default account"
+                    if candidates
+                    else "missing C2C endpoint"
+                ),
             )
         return source

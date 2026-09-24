@@ -33,7 +33,9 @@ def _link(app: str = "app1", *, member: bool = False) -> CrossPlatformIdentityLi
 
 def test_member_link_becomes_same_app_private_address() -> None:
     routes = BiliPrivateRoutes(
-        onebot_enabled=False, official_accounts=frozenset({"app1"})
+        onebot_enabled=False,
+        official_accounts=frozenset({"app1"}),
+        default_account="app1",
     )
     routes.register(_link(member=True))
     assert routes.resolve(SOURCE) == ConversationRef(
@@ -51,13 +53,13 @@ def test_verified_user_route_selection_and_unlink() -> None:
         default_account="app2",
     )
     routes.register(_link())
-    assert routes.resolve(SOURCE).account_id == "app1"
+    assert routes.resolve(SOURCE) == SOURCE
     routes.register(_link("app2"))
     assert routes.resolve(SOURCE).account_id == "app2"
     routes.default_account = "unlinked"
     assert routes.resolve(SOURCE) == SOURCE
     routes.unregister(_link("app2"))
-    assert routes.resolve(SOURCE).account_id == "app1"
+    assert routes.resolve(SOURCE) == SOURCE
     routes.onebot_enabled = True
     assert routes.resolve(SOURCE) == SOURCE
     routes.onebot_enabled = False
