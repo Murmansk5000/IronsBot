@@ -7,6 +7,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
+from ironsbot.services.portable_interactions import as_portable_reply
+from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import (
     PortableReply,
     progress_operation_reply,
@@ -14,6 +22,8 @@ from ironsbot.services.portable_reply import (
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_models import (
     RANK_PAGE_OVERVIEW_COMMANDS,
+    RankListPreparedReply,
+    RankListSelection,
     RankPlayerCommand,
 )
 from ironsbot.services.seer.rank_list_parsing import (
@@ -28,7 +38,9 @@ from ironsbot.services.seer.rank_list_parsing import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_admin import RankAdminService
@@ -47,8 +59,13 @@ _PUBLIC_RANK_COMMAND_IDS = (
 def build_portable_rank_operations(
     service: RankQueryService,
     resolver: PlayerIdResolver,
+    sessions: PortableQuerySessions,
+    player_query: PortableOperation,
+    features: FeatureService,
 ) -> dict[str, PortableOperation]:
-    owner = _PortableRankOperations(service, resolver)
+    owner = _PortableRankOperations(
+        service, resolver, sessions, player_query, features
+    )
     return {
         **dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query),
         "rank.display_limit": owner.set_display_limit,
@@ -160,6 +177,9 @@ def _prefixed(text: str) -> str:
 class _PortableRankOperations:
     service: RankQueryService
     resolver: PlayerIdResolver
+    sessions: PortableQuerySessions
+    player_query: PortableOperation
+    features: FeatureService
 
     async def set_display_limit(
         self,
@@ -195,21 +215,21 @@ class _PortableRankOperations:
             default_limit=self.service.default_limit(context.message.conversation),
         )
         if listed is not None:
-            result = await self.service.list(
+            result = await self.service.prepare_list(
                 listed,
                 actor=context.message.actor,
                 conversation=context.message.conversation,
             )
-            return OutboundMessage.from_text(result)
+            return self._rank_menu(result, context)
 
         scored = parse_rank_score_command(text)
         if scored is not None:
-            result = await self.service.score(
+            result = await self.service.prepare_score(
                 scored,
                 actor=context.message.actor,
                 conversation=context.message.conversation,
             )
-            return OutboundMessage.from_text(result)
+            return self._rank_menu(result, context)
 
         if player_target is not None:
             return await self._player(
@@ -220,6 +240,76 @@ class _PortableRankOperations:
 
         msg = f"catalog accepted input that its rank parser rejected: {text!r}"
         raise ValueError(msg)
+
+    def _rank_menu(
+        self,
+        result: RankListPreparedReply,
+        context: MessageInputContext,
+    ) -> OutboundMessage | PortableReply:
+        if not result.selections:
+            return OutboundMessage.from_text(result.message)
+
+        async def select(
+            choice: RankListSelection,
+            selection_context: MessageInputContext,
+        ) -> OutboundMessage | PortableReply:
+            reply = await self.player_query(
+                f"米米号{choice.player_id}", selection_context
+            )
+            if reply is None:
+                msg = "player query operation returned no reply"
+                raise ValueError(msg)
+            return as_portable_reply(reply)
+
+        def semantic_request(
+            choice: RankListSelection,
+            _selection_context: MessageInputContext,
+        ) -> SemanticRequest:
+            return SemanticRequest(
+                action=ActionDefinition(
+                    "seer.player.info",
+                    "米米号基础资料",
+                    cooldown_key="seer_player",
+                ),
+                target=SemanticTarget(
+                    key=str(choice.player_id),
+                    display=f"米米号 {choice.player_id}",
+                ),
+                source=SemanticRequestSource.MENU,
+            )
+
+        prompt = OutboundMessage.from_text(
+            f"{result.message}\n\n发送榜单中的名次查询对应玩家，发送 0 退出。"
+        )
+        return PortableReply(
+            self.sessions.offer_menu(
+                context,
+                PortableMenuSpec(
+                    choices=result.selections,
+                    choice_keys=tuple(str(item.rank) for item in result.selections),
+                    labels=tuple(
+                        f"{item.rank}. {item.nick}（{item.player_id}）"
+                        for item in result.selections
+                    ),
+                    select=select,
+                    prompt=prompt,
+                    shareable=True,
+                    can_select=lambda _choice, responder: (
+                        self.features.is_feature_allowed(
+                            responder.message.actor,
+                            responder.message.conversation,
+                            "seer_player",
+                        )
+                    ),
+                    semantic_request=semantic_request,
+                    invalid_choice_message=(
+                        "序号无效，请输入榜单中显示的名次，或输入 0 退出。"
+                    ),
+                    claim_unknown_numeric=False,
+                    exit_message="已退出榜单玩家查询。",
+                ),
+            )
+        )
 
     async def _player(
         self,

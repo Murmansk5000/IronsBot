@@ -19,6 +19,7 @@ from ironsbot.services.seer.rank_list_models import (
     RankCacheBatchCommand,
     RankListCommand,
     RankPlayerCommand,
+    RankScoreCommand,
 )
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_pagination import RankPageConflictError
@@ -147,6 +148,182 @@ async def test_local_rank_query_does_not_require_headless_client() -> None:
 
     assert "样本图鉴积分榜" in message
     assert "先查询一些米米号后再试" in message
+
+
+@pytest.mark.asyncio
+async def test_prepared_local_rank_keeps_rendered_rank_player_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local = FakeLocalRank()
+    monkeypatch.setattr(
+        local,
+        "entries",
+        Mock(
+            return_value=(
+                [
+                    SimpleNamespace(
+                        rank=11,
+                        nick="Alice",
+                        user_id=700011,
+                        display="100分",
+                    )
+                ],
+                50,
+            )
+        ),
+    )
+
+    prepared = await _query_service(local, FakeDisplay()).prepare_list(
+        RankListCommand(
+            kind="local",
+            rank_key="图鉴积分",
+            start_rank=11,
+            limit=10,
+        )
+    )
+
+    assert "11. Alice（700011） 100分" in prepared.message
+    assert [(item.rank, item.player_id) for item in prepared.selections] == [
+        (11, 700011)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> None:
+    missing_score = 99
+    spec = GlobalRankSpec("成就点数榜", key=1, sub_key=2, unit="点")
+
+    class Rank:
+        @staticmethod
+        def get_spec(_rank_key: str) -> GlobalRankSpec:
+            return spec
+
+        @staticmethod
+        def spec_needs_sub_key(_spec: GlobalRankSpec) -> bool:
+            return False
+
+        @staticmethod
+        async def fetch_visible_range_result(
+            *_args: object, **_kwargs: object
+        ) -> object:
+            return SimpleNamespace(
+                items=[SimpleNamespace(id=700011, nick="Alice", score=100)],
+                fetched_at=None,
+            )
+
+        @staticmethod
+        async def fetch_score_segment(*_args: object, **kwargs: object) -> object:
+            if kwargs["target_score"] == missing_score:
+                return SimpleNamespace(
+                    queried=True,
+                    target_score=99,
+                    searched_limit=100,
+                    boundary_score=98,
+                    items=[],
+                    start_rank=None,
+                    end_rank=None,
+                    total_count=0,
+                    truncated=False,
+                    budget_exhausted=False,
+                    higher_gap=SimpleNamespace(
+                        score=100,
+                        start_rank=21,
+                        end_rank=21,
+                        total_count=1,
+                        truncated=False,
+                        items=[
+                            SimpleNamespace(
+                                id=700021,
+                                nick="Alice",
+                                score=100,
+                                rank_index=20,
+                            )
+                        ],
+                    ),
+                    lower_gap=SimpleNamespace(
+                        score=98,
+                        start_rank=22,
+                        end_rank=22,
+                        total_count=1,
+                        truncated=False,
+                        items=[
+                            SimpleNamespace(
+                                id=700022,
+                                nick="Bob",
+                                score=98,
+                                rank_index=21,
+                            )
+                        ],
+                    ),
+                    fetched_at=None,
+                )
+            items = [
+                SimpleNamespace(
+                    id=700021 + index,
+                    nick=f"Player{index}",
+                    score=100,
+                    rank_index=20 + index,
+                )
+                for index in range(3)
+            ]
+            return SimpleNamespace(
+                queried=True,
+                target_score=100,
+                searched_limit=100,
+                boundary_score=100,
+                items=items,
+                start_rank=21,
+                end_rank=23,
+                total_count=3,
+                truncated=False,
+                budget_exhausted=False,
+                higher_gap=None,
+                lower_gap=None,
+                fetched_at=None,
+            )
+
+    class Operations:
+        @staticmethod
+        @contextmanager
+        def track(*_args: object, **_kwargs: object) -> Iterator[None]:
+            yield
+
+    game = SimpleNamespace(operations=Operations())
+    service = _query_service(FakeLocalRank(), FakeDisplay())
+    service._rank = cast("RankService", Rank())
+    service._headless = cast(
+        "HeadlessService", SimpleNamespace(get_game=lambda: game)
+    )
+
+    listed = await service.prepare_list(
+        RankListCommand(
+            kind="global",
+            rank_key="成就点数",
+            start_rank=11,
+            limit=10,
+        )
+    )
+    scored = await service.prepare_score(
+        RankScoreCommand(rank_key="成就点数", score=100),
+        conversation=None,
+    )
+    gap = await service.prepare_score(
+        RankScoreCommand(rank_key="成就点数", score=missing_score),
+        conversation=None,
+    )
+
+    assert [(item.rank, item.player_id) for item in listed.selections] == [
+        (11, 700011)
+    ]
+    assert [(item.rank, item.player_id) for item in scored.selections] == [
+        (21, 700021),
+        (22, 700022),
+        (23, 700023),
+    ]
+    assert [(item.rank, item.player_id) for item in gap.selections] == [
+        (21, 700021),
+        (22, 700022),
+    ]
 
 
 @pytest.mark.asyncio
