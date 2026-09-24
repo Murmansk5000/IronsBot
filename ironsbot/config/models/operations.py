@@ -194,7 +194,7 @@ class RestartConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    times: str = "04:30:00"
+    times: str = "01:00:00"
     grace_seconds: float = Field(default=10.0, ge=0)
     signal_parent: bool = True
 
