@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -21,7 +21,9 @@ from ironsbot.core.platform import ConversationRef, reference_digest
 from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
 from ironsbot.services.bilibili.parser import (
+    dynamic_body_hydration_reason,
     dynamic_content,
+    dynamic_delivery_content,
     dynamic_image_urls,
     dynamic_url,
     item_author_mid,
@@ -157,6 +159,7 @@ class BilibiliDynamicOutboundSender:
             compacted = (
                 await self.content_compactor.compact(dynamic_content(item))
                 if self.content_compactor is not None
+                and dynamic_body_hydration_reason(item) is None
                 else None
             )
             content_override = compacted.display_text if compacted is not None else None
@@ -325,8 +328,7 @@ class BilibiliDynamicOutboundSender:
                 conversation in failed
                 and not result.delivered
                 and result.attempted
-                and result.failure_kind
-                is not DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+                and result.failure_kind is not DeliveryFailureKind.TRANSPORT_UNAVAILABLE
             ):
                 failures[(conversation, stage)] = result
         for conversation in failed - recorded:
@@ -484,7 +486,7 @@ def render_dynamic_text_message(
     """Render dynamic body text independently from source images."""
 
     try:
-        content = (content_override or dynamic_content(item)).strip()
+        content = (content_override or dynamic_delivery_content(item)).strip()
     except (TypeError, ValueError, KeyError):
         _LOGGER.exception("failed to render Bilibili dynamic text")
         return None
@@ -528,9 +530,7 @@ async def prepare_dynamic_image_message(
     parts = tuple(
         RemoteImagePart(image.url)
         if image.url is not None
-        else BinaryImagePart(
-            image.content or b"", image.content_type, image.filename
-        )
+        else BinaryImagePart(image.content or b"", image.content_type, image.filename)
         for image in prepared
     )
     return OutboundMessage(parts) if parts else None
@@ -550,6 +550,40 @@ async def prepare_dynamic_content_messages(
         combine_images=combine_images,
     )
     return tuple(part for part in (text, images) if part is not None)
+
+
+async def iter_dynamic_image_messages(
+    item: dict[str, Any],
+    collage: ImageCollageService | None,
+    *,
+    combine_images: bool = True,
+) -> AsyncIterator[OutboundMessage]:
+    """Yield each prepared media group without waiting for slower groups."""
+
+    original = render_dynamic_image_message(item)
+    if original is None:
+        return
+    urls = tuple(
+        part.url for part in original.parts if isinstance(part, RemoteImagePart)
+    )
+    if collage is None or not combine_images or len(urls) <= 1:
+        for part in original.parts:
+            yield OutboundMessage((part,))
+        return
+    try:
+        async for image in collage.iter_prepared_urls(urls):
+            part = (
+                RemoteImagePart(image.url)
+                if image.url is not None
+                else BinaryImagePart(
+                    image.content or b"", image.content_type, image.filename
+                )
+            )
+            yield OutboundMessage((part,))
+    except ImageCollageError:
+        _LOGGER.warning("Bilibili collage unavailable; using original images")
+        for part in original.parts:
+            yield OutboundMessage((part,))
 
 
 def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:
