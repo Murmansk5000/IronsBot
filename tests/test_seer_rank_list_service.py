@@ -418,8 +418,10 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
 def test_parse_rank_list_command_ignores_unknown_text() -> None:
     assert parse_rank_list_command("榜单帮助") is None
     assert parse_rank_list_command("米米号查询") is None
-    assert parse_rank_list_command("图鉴榜第0页") is None
-    assert parse_rank_list_command("图鉴榜100-1") is None
+    # Invalid positional syntax stays owned by the board and is rejected on execution.
+    assert parse_rank_list_command("图鉴榜第0页") is not None
+    assert parse_rank_list_command("图鉴榜0-1") is not None
+    assert parse_rank_list_command("图鉴榜1-0") is not None
 
 
 def test_parse_rank_cache_batch_command_requires_admin_prefix_and_global_rank() -> None:
@@ -439,7 +441,9 @@ def test_parse_rank_cache_batch_command_requires_admin_prefix_and_global_rank() 
     )
     assert parse_rank_cache_batch_command("缓存榜单 图鉴榜 1-100") is None
     assert parse_rank_cache_batch_command("/缓存榜单 样本图鉴榜 1-100") is None
-    assert parse_rank_cache_batch_command("/缓存榜单 图鉴榜 100-1") is None
+    assert parse_rank_cache_batch_command("/缓存榜单 图鉴榜 100-1") == (
+        RankCacheBatchCommand("图鉴积分", 100, 1)
+    )
 
 
 def test_parse_rank_page_cache_status_command_reads_global_rank() -> None:
@@ -524,7 +528,8 @@ def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
         == "测试榜（第 21 名，截至2026-06-12 10:00:00）\n21. Alice（100） 123分"
     )
     assert (
-        format_global_rank_message(spec, [], timestamp="未知") == "❌找不到测试榜数据。"
+        format_global_rank_message(spec, [], timestamp="未知")
+        == "❌测试榜第 1-10 名未返回记录；空页不代表协议名次上限。"
     )
 
 

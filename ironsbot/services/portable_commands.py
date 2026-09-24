@@ -445,7 +445,10 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         catalog,
         build_portable_rank_operations(
             seer.rank_queries,
-            player_id_resolver, player_shortcut=player_operations["seer.player.default"]),
+            player_id_resolver,
+            sessions,
+            player_operations["seer.player.query"],
+            features, player_shortcut=player_operations["seer.player.default"]),
     )
     rank_admin_operations = _catalog_operation_family(
         catalog,
