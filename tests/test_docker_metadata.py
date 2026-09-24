@@ -89,6 +89,11 @@ async def test_unlabelled_image_never_looks_up_a_deployment_repository(
         ("inspect_remote_image_info", image),
     ):
         monkeypatch.setattr(docker_client, name, AsyncMock(return_value=value))
+    monkeypatch.setattr(
+        docker_client,
+        "remove_stopped_watchtower_containers",
+        AsyncMock(return_value=0),
+    )
     get = AsyncMock(side_effect=AssertionError("unexpected metadata HTTP request"))
     monkeypatch.setattr(httpx.AsyncClient, "get", get)
     request = DockerUpdateRequest(

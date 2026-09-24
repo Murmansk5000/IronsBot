@@ -19,6 +19,7 @@ from ironsbot.services.operations.docker_models import (
 )
 
 from .daemon import (
+    HTTP_NOT_FOUND,
     create_archive_container,
     create_watchtower_container,
     ensure_watchtower_image,
@@ -31,6 +32,7 @@ from .daemon import (
     remove_container_quietly,
     remove_image_if_unused,
     remove_stale_repository_images,
+    remove_stopped_watchtower_containers,
 )
 from .http import raise_for_docker_status
 from .metadata import resolve_image_commit_summary
@@ -109,6 +111,8 @@ class DockerClient:
                 f"/containers/{quote(container_id, safe='')}",
                 params={"force": "true"},
             )
+            if response.status_code == HTTP_NOT_FOUND:
+                return
             raise_for_docker_status(response)
 
     async def remove_image_if_unused(
@@ -193,6 +197,21 @@ class DockerClient:
                 target_commit = await resolve_image_commit_summary(
                     target_image,
                 )
+                try:
+                    removed_updaters = await remove_stopped_watchtower_containers(
+                        client
+                    )
+                except Exception:  # noqa: BLE001 - cleanup must not block updates
+                    logger.warning(
+                        "could not clean stopped Watchtower updater containers",
+                        exc_info=True,
+                    )
+                else:
+                    if removed_updaters:
+                        logger.info(
+                            "stopped Watchtower updater cleanup completed: removed=%s",
+                            removed_updaters,
+                        )
                 if current_image.image_id == target_image.image_id:
                     await self._cleanup_stale_images(
                         client,
@@ -218,8 +237,12 @@ class DockerClient:
                     watchtower=request.watchtower,
                     registry_credentials=request.registry_credentials,
                 )
-                response = await client.post(f"/containers/{updater_id}/start")
-                raise_for_docker_status(response)
+                try:
+                    response = await client.post(f"/containers/{updater_id}/start")
+                    raise_for_docker_status(response)
+                except Exception:
+                    await remove_container_quietly(client, updater_id)
+                    raise
                 logger.warning(
                     "Watchtower handoff started: container=%s updater=%s target=%s",
                     request.container_name,
