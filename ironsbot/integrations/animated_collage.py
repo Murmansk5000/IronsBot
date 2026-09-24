@@ -21,9 +21,7 @@ MAX_OUTPUT_BYTES = 20 * 1024 * 1024
 MIN_ANIMATION_IMAGES = 2
 ALPHA_THRESHOLD = 128
 _QUALITY_STEPS = (
-    (1280, 4096, 4_000_000, 100, 256),
-    (1024, 3200, 3_000_000, 80, 192),
-    (768, 2400, 2_000_000, 60, 96),
+    (720, 2400, 2_000_000, 40, 64),
     (480, 1600, 1_000_000, 40, 32),
 )
 
@@ -48,9 +46,10 @@ class _Animation:
 def inspect_animation(image_bytes: bytes) -> bool:
     try:
         with Image.open(BytesIO(image_bytes)) as image:
-            return bool(getattr(image, "is_animated", False)) and int(
-                getattr(image, "n_frames", 1)
-            ) > 1
+            return (
+                bool(getattr(image, "is_animated", False))
+                and int(getattr(image, "n_frames", 1)) > 1
+            )
     except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as error:
         raise ImageCollageError.decode_failed() from error
 
@@ -120,7 +119,9 @@ def _render_quality(  # noqa: PLR0913 - explicit output quality limits
     colors: int,
 ) -> bytes:
     source_width = max(animation.width for animation in animations)
-    source_height = sum(animation.height for animation in animations)
+    source_height = sum(
+        animation.height * source_width / animation.width for animation in animations
+    )
     scale = min(
         1.0,
         max_width / source_width,
@@ -129,13 +130,19 @@ def _render_quality(  # noqa: PLR0913 - explicit output quality limits
     )
     width = max(1, math.floor(source_width * scale))
     row_sizes = [
-        (
-            max(1, math.floor(animation.width * scale)),
-            max(1, math.floor(animation.height * scale)),
-        )
+        (width, max(1, math.floor(animation.height * width / animation.width)))
         for animation in animations
     ]
     height = sum(row_height for _row_width, row_height in row_sizes)
+    while width > 1 and (height > max_height or width * height > max_pixels):
+        width -= 1
+        row_sizes = [
+            (width, max(1, math.floor(animation.height * width / animation.width)))
+            for animation in animations
+        ]
+        height = sum(row_height for _row_width, row_height in row_sizes)
+    if height > max_height or width * height > max_pixels:
+        raise ImageCollageError.invalid_dimensions()
     duration = min(MAX_DURATION_MS, max(animation.duration for animation in animations))
     timestamps = _timeline(animations, duration, max_frames)
     frames: list[Image.Image] = []
@@ -149,7 +156,7 @@ def _render_quality(  # noqa: PLR0913 - explicit output quality limits
                 frame = animation.frame_at(timestamp).resize(
                     (row_width, row_height), Image.Resampling.LANCZOS
                 )
-                canvas.alpha_composite(frame, ((width - row_width) // 2, y))
+                canvas.alpha_composite(frame, (0, y))
                 frame.close()
                 y += row_height
             indexed = canvas.convert("RGB").quantize(
@@ -196,9 +203,7 @@ def _timeline(
         cycle = 0
         while cycle < duration:
             changes.update(
-                cycle + start
-                for start in animation.starts
-                if cycle + start < duration
+                cycle + start for start in animation.starts if cycle + start < duration
             )
             cycle += animation.duration
     ordered = sorted(changes)

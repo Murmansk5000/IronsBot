@@ -215,12 +215,26 @@ def test_animated_collage_stacks_rows_without_changing_aspect_ratio() -> None:
     with Image.open(BytesIO(result)) as image:
         assert bool(getattr(image, "is_animated", False))
         assert int(getattr(image, "n_frames", 1)) >= EXPECTED_ANIMATION_FRAMES
-        assert image.size == (40, 60)
+        assert image.size == (40, 100)
         image.seek(0)
         rgba = image.convert("RGBA")
         assert rgba.getpixel((20, 10)) == (255, 0, 0, 255)
         assert rgba.getpixel((20, 40)) == (0, 0, 255, 255)
-        assert rgba.getchannel("A").getpixel((5, 40)) == 0
+        assert rgba.getpixel((5, 40)) == (0, 0, 255, 255)
+
+
+def test_animated_collage_uses_qq_thumbnail_width_for_wide_gifs() -> None:
+    expected_size = (720, 194)
+    result = render_vertical_animation(
+        (
+            _gif(1000, 120, ((255, 0, 0, 255), (0, 255, 0, 255))),
+            _gif(800, 120, ((0, 0, 255, 255), (255, 255, 0, 255))),
+        )
+    )
+
+    with Image.open(BytesIO(result)) as image:
+        assert image.size == expected_size
+    assert len(result) <= MAX_OUTPUT_BYTES
 
 
 def test_animated_collage_caps_duration_and_frame_count() -> None:
@@ -275,7 +289,7 @@ def test_animated_collage_uses_the_full_quality_ladder(
     )
 
     assert result == b"fits"
-    assert attempted_widths == [1280, 1024, 768, MIN_QUALITY_WIDTH]
+    assert attempted_widths == [720, MIN_QUALITY_WIDTH]
 
 
 @pytest.mark.asyncio
