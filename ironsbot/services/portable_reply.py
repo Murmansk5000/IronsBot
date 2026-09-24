@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.data_queries import DataQueryImageReply
 
 PortableFollowUp = Callable[[], Awaitable[OutboundMessage]]
+PortableMessageStream = Callable[[], AsyncIterator[OutboundMessage]]
 ProgressReporter = Callable[[str], Awaitable[None]]
 ProgressOperation = Callable[
     [ProgressReporter],
@@ -29,6 +30,7 @@ class PortableReply:
 
     message: OutboundMessage
     additional_messages: tuple[OutboundMessage, ...] = ()
+    additional_stream: PortableMessageStream | None = None
     on_delivered: Callable[[], None] | None = None
     on_delivery_failed: Callable[[], None] | None = None
     follow_up: PortableFollowUp | None = None
@@ -61,9 +63,8 @@ async def deliver_portable_reply(
         if not await transmit(reply.message, "initial"):
             return False
         reply.delivered()
-        for message in reply.additional_messages:
-            if not await transmit(message, "additional"):
-                return False
+        if not await _transmit_additional(reply, transmit):
+            return False
         if reply.follow_up is not None:
             if reply.is_current is not None and not reply.is_current():
                 return False
@@ -79,6 +80,20 @@ async def deliver_portable_reply(
         finally:
             if reply.on_finished is not None:
                 reply.on_finished()
+
+
+async def _transmit_additional(
+    reply: PortableReply,
+    transmit: Callable[[OutboundMessage, DeliveryStage], Awaitable[bool]],
+) -> bool:
+    for message in reply.additional_messages:
+        if not await transmit(message, "additional"):
+            return False
+    if reply.additional_stream is not None:
+        async for message in reply.additional_stream():
+            if not await transmit(message, "additional"):
+                return False
+    return True
 
 
 async def _transmit_reply(
