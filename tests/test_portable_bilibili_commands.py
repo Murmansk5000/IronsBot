@@ -143,7 +143,9 @@ async def test_portable_bilibili_menu_reuses_numeric_session() -> None:
     assert cast("TextPart", menu.parts[0]).text == "动态菜单"
     assert isinstance(detail, PortableReply)
     assert cast("TextPart", detail.message.parts[0]).text == "正文:dynamic-2"
-    assert isinstance(detail.additional_messages[0].parts[0], RemoteImagePart)
+    assert detail.additional_stream is not None
+    streamed = [message async for message in detail.additional_stream()]
+    assert isinstance(streamed[0].parts[0], RemoteImagePart)
     assert sessions.recognizes_response("1", context)
     exited = await sessions.select("0", context)
     assert exited is not None

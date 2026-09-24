@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ironsbot.core.outbound import OutboundMessage, SendResult
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.services.portable_reply import (
     PortableReply,
     deliver_portable_reply,
@@ -15,6 +15,8 @@ from ironsbot.services.portable_reply import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from ironsbot.services.portable_reply import ProgressReporter
 
 
@@ -85,6 +87,37 @@ async def test_follow_up_error_policy_is_explicit(*, present_error: bool) -> Non
             await deliver_portable_reply(reply, send)
         aborted.assert_called_once_with()
         send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_additional_stream_sends_each_message_when_yielded() -> None:
+    release_second = asyncio.Event()
+    sent: list[str] = []
+
+    async def stream() -> AsyncIterator[OutboundMessage]:
+        yield OutboundMessage.from_text("image-one")
+        await release_second.wait()
+        yield OutboundMessage.from_text("image-two")
+
+    async def send(message: OutboundMessage) -> SendResult:
+        part = message.parts[0]
+        assert isinstance(part, TextPart)
+        text = part.text
+        sent.append(text)
+        if text == "image-one":
+            release_second.set()
+        return SendResult(delivered=True, message_id=text)
+
+    completed = await deliver_portable_reply(
+        PortableReply(
+            OutboundMessage.from_text("body"),
+            additional_stream=stream,
+        ),
+        send,
+    )
+
+    assert completed
+    assert sent == ["body", "image-one", "image-two"]
 
 
 @pytest.mark.asyncio

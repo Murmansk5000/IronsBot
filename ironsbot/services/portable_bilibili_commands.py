@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
 from ironsbot.services.bilibili.outbound_delivery import (
+    iter_dynamic_image_messages,
     prepare_dynamic_content_messages,
+    render_dynamic_text_message,
 )
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply
@@ -140,6 +142,16 @@ async def _dynamic_detail(
         detail = await service.prepare_dynamic_detail(
             cast("DynamicHistoryRecord", selection.record)
         )
+        text = render_dynamic_text_message(detail.item, detail.content_override)
+        if text is not None:
+            return PortableReply(
+                text,
+                additional_stream=lambda: iter_dynamic_image_messages(
+                    detail.item,
+                    service.image_collage,
+                    combine_images=service.config.push.combine_images,
+                ),
+            )
         messages = await prepare_dynamic_content_messages(
             detail.item,
             detail.content_override,

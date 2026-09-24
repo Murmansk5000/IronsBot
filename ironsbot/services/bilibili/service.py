@@ -189,6 +189,7 @@ class BilibiliService:
                     pushed=record.pushed,
                 )
             )
+            self.history.clear_summary(record.dynamic_id)
             updated += 1
         return updated
 
@@ -268,7 +269,18 @@ class BilibiliService:
                     pushed=record.pushed,
                 )
             )
+            self.history.clear_summary(record.dynamic_id)
         current = self.history.get(record.dynamic_id) or record
+        from ironsbot.services.bilibili.parser import (
+            dynamic_body_hydration_reason,
+            dynamic_delivery_content,
+        )
+
+        if dynamic_body_hydration_reason(item) in {
+            "truncated",
+            "truncated_article",
+        }:
+            return PreparedDynamicDetail(item, dynamic_delivery_content(item))
         if current.summary:
             persisted = CompactedDynamicContent(
                 text=current.summary,
