@@ -210,6 +210,8 @@ def build_portable_seer_operations(
                 prompt_title="请选择要查询头像的精灵：",
             ),
         )
+    if seer.pet_flip is not None:
+        operations["seer.pet.flip"] = seer.pet_flip.play
     return operations
 
 
