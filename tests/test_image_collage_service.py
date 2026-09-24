@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from io import BytesIO
+from threading import Event
 from typing import TYPE_CHECKING
 
 import httpx
@@ -214,12 +215,26 @@ def test_animated_collage_stacks_rows_without_changing_aspect_ratio() -> None:
     with Image.open(BytesIO(result)) as image:
         assert bool(getattr(image, "is_animated", False))
         assert int(getattr(image, "n_frames", 1)) >= EXPECTED_ANIMATION_FRAMES
-        assert image.size == (40, 60)
+        assert image.size == (40, 100)
         image.seek(0)
         rgba = image.convert("RGBA")
         assert rgba.getpixel((20, 10)) == (255, 0, 0, 255)
         assert rgba.getpixel((20, 40)) == (0, 0, 255, 255)
-        assert rgba.getchannel("A").getpixel((5, 40)) == 0
+        assert rgba.getpixel((5, 40)) == (0, 0, 255, 255)
+
+
+def test_animated_collage_uses_qq_thumbnail_width_for_wide_gifs() -> None:
+    expected_size = (720, 194)
+    result = render_vertical_animation(
+        (
+            _gif(1000, 120, ((255, 0, 0, 255), (0, 255, 0, 255))),
+            _gif(800, 120, ((0, 0, 255, 255), (255, 255, 0, 255))),
+        )
+    )
+
+    with Image.open(BytesIO(result)) as image:
+        assert image.size == expected_size
+    assert len(result) <= MAX_OUTPUT_BYTES
 
 
 def test_animated_collage_caps_duration_and_frame_count() -> None:
@@ -274,7 +289,7 @@ def test_animated_collage_uses_the_full_quality_ladder(
     )
 
     assert result == b"fits"
-    assert attempted_widths == [1280, 1024, 768, MIN_QUALITY_WIDTH]
+    assert attempted_widths == [720, MIN_QUALITY_WIDTH]
 
 
 @pytest.mark.asyncio
@@ -295,9 +310,7 @@ async def test_service_groups_consecutive_static_and_animated_images() -> None:
         render_animation=render_vertical_animation,
         inspect_animation=inspect_animation,
     )
-    outputs = await service.prepare_urls(
-        ("static-1", "static-2", "gif-1", "gif-2")
-    )
+    outputs = await service.prepare_urls(("static-1", "static-2", "gif-1", "gif-2"))
 
     assert len(outputs) == EXPECTED_MEDIA_GROUPS
     assert outputs[0].content_type == "image/png"
@@ -305,6 +318,52 @@ async def test_service_groups_consecutive_static_and_animated_images() -> None:
     assert outputs[1].content_type == "image/gif"
     assert outputs[1].content is not None
     assert inspect_animation(outputs[1].content)
+
+
+@pytest.mark.asyncio
+async def test_service_streams_completed_media_groups_without_waiting_for_slowest() -> (
+    None
+):
+    static_ready = Event()
+    release_animation = Event()
+
+    async def fetch(url: str, _max_bytes: int) -> bytes:
+        if url == "static-1":
+            return _png(10, 10, (255, 0, 0, 255))
+        if url == "static-2":
+            return _png(10, 10, (0, 255, 0, 255))
+        if url == "gif-1":
+            return _gif(10, 10, ((0, 0, 255, 255), (255, 255, 0, 255)))
+        return _gif(10, 10, ((255, 0, 255, 255), (0, 255, 255, 255)))
+
+    def render_static(
+        image_bytes: Sequence[bytes], *, max_side: int, max_pixels: int
+    ) -> bytes:
+        del image_bytes, max_side, max_pixels
+        static_ready.set()
+        return b"static-result"
+
+    def wait_animation(image_bytes: Sequence[bytes]) -> bytes:
+        del image_bytes
+        release_animation.wait(timeout=5)
+        return b"animation-result"
+
+    service = ImageCollageService(
+        fetch,
+        render_static,
+        render_animation=wait_animation,
+        inspect_animation=inspect_animation,
+    )
+    stream = service.iter_prepared_urls(("static-1", "static-2", "gif-1", "gif-2"))
+    first = await anext(stream)
+
+    assert static_ready.is_set()
+    assert first.content == b"static-result"
+    release_animation.set()
+    second = await anext(stream)
+    assert second.content == b"animation-result"
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream)
 
 
 @pytest.mark.asyncio
@@ -336,8 +395,8 @@ async def test_media_limit_is_applied_to_each_consecutive_group() -> None:
             ((index * 19) % 256, 0, 0, 255),
             (0, (index * 23 + 1) % 256, 0, 255),
         )
-        return _gif(2, 2, colors) if url.startswith("animated") else _png(
-            2, 2, colors[0]
+        return (
+            _gif(2, 2, colors) if url.startswith("animated") else _png(2, 2, colors[0])
         )
 
     service = ImageCollageService(
@@ -382,8 +441,10 @@ async def test_service_preserves_failed_url_without_blocking_other_collage() -> 
     async def fetch(url: str, _max_bytes: int) -> bytes:
         if url == "failed":
             raise ImageCollageError.download_failed()
-        return _png(10, 10, (255, 0, 0, 255)) if url == "one" else _png(
-            10, 10, (0, 0, 255, 255)
+        return (
+            _png(10, 10, (255, 0, 0, 255))
+            if url == "one"
+            else _png(10, 10, (0, 0, 255, 255))
         )
 
     service = ImageCollageService(

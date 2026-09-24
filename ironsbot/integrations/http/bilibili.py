@@ -1,7 +1,17 @@
+import logging
+from collections.abc import Mapping
 from typing import Any
 
 from httpx import AsyncClient
 
+from ironsbot.integrations.http.bilibili_body import (
+    article_body,
+    article_id,
+    opus_body,
+    opus_summary_is_truncated,
+    replace_article_body,
+    replace_opus_summary,
+)
 from ironsbot.services.bilibili.auth import (
     BiliLoginPollResponse,
     LoginQrRequest,
@@ -12,11 +22,14 @@ from ironsbot.services.bilibili.service import BiliFeedResponse
 LIST_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all"
 SPACE_FEED_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 DYNAMIC_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
+OPUS_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail"
+ARTICLE_DETAIL_URL = "https://api.bilibili.com/x/article/view"
 ACCOUNT_CARD_URL = "https://api.bilibili.com/x/web-interface/card"
 HTTP_OK = 200
 OPUS_STYLE_FEATURE = "itemOpusStyle"
 QR_GENERATE_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 QR_POLL_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
+logger = logging.getLogger(__name__)
 
 
 async def fetch_bili_feed(client: AsyncClient, cookie: str) -> BiliFeedResponse:
@@ -30,6 +43,82 @@ async def fetch_bili_feed(client: AsyncClient, cookie: str) -> BiliFeedResponse:
     )
     data: Any = response.json()
     return BiliFeedResponse(response.status_code, data)
+
+
+async def _complete_opus_body(
+    client: AsyncClient,
+    cookie: str,
+    dynamic_id: str,
+    detail: object,
+) -> object:
+    try:
+        response = await client.get(
+            OPUS_DETAIL_URL,
+            params={"id": dynamic_id},
+            headers=_dynamic_headers(
+                cookie, referer=f"https://www.bilibili.com/opus/{dynamic_id}"
+            ),
+            timeout=10.0,
+            follow_redirects=True,
+        )
+        payload = response.json()
+    except Exception:
+        logger.exception("Bilibili Opus completion request failed: id=%s", dynamic_id)
+        return detail
+    body = opus_body(payload)
+    if response.status_code == HTTP_OK and _api_code(payload) == 0 and body:
+        return replace_opus_summary(detail, body)
+    logger.warning(
+        "Bilibili Opus completion unavailable: id=%s http=%s code=%s",
+        dynamic_id,
+        response.status_code,
+        _api_code(payload),
+    )
+    return detail
+
+
+async def _complete_article_body(
+    client: AsyncClient,
+    cookie: str,
+    dynamic_id: str,
+    resolved_article_id: int,
+    detail: object,
+) -> object:
+    try:
+        response = await client.get(
+            ARTICLE_DETAIL_URL,
+            params={"id": resolved_article_id},
+            headers=_dynamic_headers(
+                cookie,
+                referer=f"https://www.bilibili.com/read/cv{resolved_article_id}",
+            ),
+            timeout=10.0,
+            follow_redirects=True,
+        )
+        payload = response.json()
+    except Exception:
+        logger.exception(
+            "Bilibili article completion request failed: dynamic=%s article=%s",
+            dynamic_id,
+            resolved_article_id,
+        )
+        return detail
+    body = article_body(payload)
+    if response.status_code == HTTP_OK and _api_code(payload) == 0 and body:
+        return replace_article_body(detail, body)
+    logger.warning(
+        "Bilibili article completion unavailable: dynamic=%s article=%s "
+        "http=%s code=%s",
+        dynamic_id,
+        resolved_article_id,
+        response.status_code,
+        _api_code(payload),
+    )
+    return detail
+
+
+def _api_code(payload: object) -> object:
+    return payload.get("code") if isinstance(payload, Mapping) else None
 
 
 async def fetch_bili_dynamic_detail(
@@ -48,6 +137,14 @@ async def fetch_bili_dynamic_detail(
         follow_redirects=True,
     )
     data: Any = response.json()
+    if response.status_code != HTTP_OK or _api_code(data) != 0:
+        return BiliFeedResponse(response.status_code, data)
+    if (resolved_article_id := article_id(data)) is not None:
+        data = await _complete_article_body(
+            client, cookie, dynamic_id, resolved_article_id, data
+        )
+    elif opus_summary_is_truncated(data):
+        data = await _complete_opus_body(client, cookie, dynamic_id, data)
     return BiliFeedResponse(response.status_code, data)
 
 
