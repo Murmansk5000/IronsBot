@@ -56,6 +56,9 @@ _PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]
     "sign_buff": (
         ("sign_buff", "newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png"),
     ),
+    "soulmark_icon": (
+        ("default", "newseer/assets/art/ui/assets/effecticon/{}.png"),
+    ),
     "suit": (("suit", "newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png"),),
     "title": (("title", "newseer/assets/art/ui/assets/achieve/title/{}.png"),),
 }

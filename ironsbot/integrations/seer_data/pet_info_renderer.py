@@ -110,6 +110,10 @@ async def _load_assets(
             }
         )
     )
+    soulmark_icons = snapshot.display.soulmark_icon_by_id
+    soulmark_icon_ids = tuple(
+        sorted({icon.icon_id for icon in soulmark_icons.values() if icon.icon_id > 0})
+    )
     requested = await asyncio.gather(
         _load_render_asset(images, "pet_head", str(snapshot.pet.resource_id)),
         _load_render_asset(images, "pet_body", str(snapshot.pet.resource_id)),
@@ -127,12 +131,29 @@ async def _load_assets(
             _load_render_asset(images, "sign_buff", str(status_id))
             for status_id in status_ids
         ),
+        *(
+            _load_soulmark_icon_asset(images, icon_id)
+            for icon_id in soulmark_icon_ids
+        ),
     )
     type_offset = 2
     prop_offset = type_offset + len(type_ids)
     mintmark_offset = prop_offset + 1
     item_offset = mintmark_offset + len(mintmark_ids)
     effect_offset = item_offset + len(item_ids)
+    soulmark_offset = effect_offset + len(status_ids)
+    unity_soulmark_icons = {
+        icon_id: requested[soulmark_offset + index]
+        for index, icon_id in enumerate(soulmark_icon_ids)
+    }
+    display_soulmark_icons = tuple(
+        (
+            soulmark_id,
+            result.data if result.error is None else icon.png or result.data,
+        )
+        for soulmark_id, icon in soulmark_icons.items()
+        if (result := unity_soulmark_icons.get(icon.icon_id)) is not None
+    )
     assets = PetInfoAssets(
         gender_icon=_load_gender_icon(snapshot.pet.gender_id),
         pet_head=requested[0].data,
@@ -156,14 +177,29 @@ async def _load_assets(
             (status_id, requested[effect_offset + index].data)
             for index, status_id in enumerate(status_ids)
         ),
+        soulmark_icons=display_soulmark_icons,
     )
     failures = tuple(result for result in requested if result.error is not None)
-    if failures and image_failure_reporter is not None:
+    flash_icon_ids = {
+        icon_id
+        for icon_id in soulmark_icon_ids
+        if all(
+            icon.png is not None
+            for icon in soulmark_icons.values()
+            if icon.icon_id == icon_id
+        )
+    }
+    reportable_failures = tuple(
+        result
+        for result in failures
+        if result.kind != "soulmark_icon" or int(result.key) not in flash_icon_ids
+    )
+    if reportable_failures and image_failure_reporter is not None:
         await report_render_asset_failures(
             image_failure_reporter,
             tuple(
                 (item.kind, item.key, item.error)
-                for item in failures
+                for item in reportable_failures
                 if item.error is not None
             ),
             execution_identity,
@@ -195,6 +231,25 @@ async def _load_render_asset(
         )
         return _LoadedRenderAsset(kind, key, placeholder_image(kind), error)
     return _LoadedRenderAsset(kind, key, data)
+
+
+async def _load_soulmark_icon_asset(
+    images: SeerImageSource, icon_id: int
+) -> _LoadedRenderAsset:
+    key = str(icon_id)
+    try:
+        data = await images.fetch("soulmark_icon", key, fallback=False)
+    except ImageSourceError as error:
+        logger.warning(
+            "Unity soulmark icon unavailable; trying Flash fallback: "
+            "icon_id=%s error_type=%s",
+            icon_id,
+            type(error).__name__,
+        )
+        return _LoadedRenderAsset(
+            "soulmark_icon", key, placeholder_image("soulmark_icon"), error
+        )
+    return _LoadedRenderAsset("soulmark_icon", key, data)
 
 
 def _item_ids(snapshot: PetInfoSnapshot) -> tuple[int, ...]:

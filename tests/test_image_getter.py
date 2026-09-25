@@ -124,6 +124,16 @@ async def _fetch_sign_buff() -> tuple[bytes, list[str]]:
         await clients.close()
 
 
+async def _fetch_soulmark_icon() -> tuple[bytes, list[str]]:
+    cache = _ItemFallbackClient()
+    clients = HttpClients(cache=cache)
+    images = HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot)
+    try:
+        return await images.fetch("soulmark_icon", "42", fallback=False), cache.urls
+    finally:
+        await clients.close()
+
+
 async def _fetch_battle_effect() -> tuple[bytes, list[str]]:
     cache = _ItemFallbackClient()
     clients = HttpClients(cache=cache)
@@ -169,6 +179,17 @@ def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
         "newseer/assets/art/ui/assets/battleeffect/signbuff/33.png"
+    ]
+
+
+def test_soulmark_icon_uses_unity_effect_icon_asset() -> None:
+    data, urls = asyncio.run(_fetch_soulmark_icon())
+
+    assert data == b"item-image"
+    assert urls == [
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+        "newseer/assets/art/ui/assets/effecticon/42.png"
     ]
 
 

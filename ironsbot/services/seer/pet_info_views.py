@@ -154,10 +154,10 @@ class PetSpecialEffectView:
 
 @dataclass(frozen=True, slots=True)
 class SoulmarkIconAsset:
-    """A pre-rendered soulmark icon published with SeerAPI data."""
+    """A soulmark icon ID and its optional published Flash PNG fallback."""
 
     icon_id: int
-    png: bytes
+    png: bytes | None
     content_type: str
 
 
@@ -211,6 +211,7 @@ class PetInfoAssets:
     mintmark_icons: tuple[tuple[int, bytes], ...]
     item_icons: tuple[tuple[int, bytes], ...]
     special_effect_icons: tuple[tuple[int, bytes], ...]
+    soulmark_icons: tuple[tuple[int, bytes], ...] = ()
 
     @property
     def type_icon_by_id(self) -> Mapping[int | str, bytes]:
@@ -227,6 +228,10 @@ class PetInfoAssets:
     @property
     def special_effect_icon_by_status_id(self) -> Mapping[int, bytes]:
         return dict(self.special_effect_icons)
+
+    @property
+    def soulmark_icon_by_id(self) -> Mapping[int, bytes]:
+        return dict(self.soulmark_icons)
 
 
 @dataclass(frozen=True, slots=True)
