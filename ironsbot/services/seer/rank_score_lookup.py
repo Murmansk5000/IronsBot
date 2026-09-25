@@ -147,9 +147,10 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
     result: RankLookupResult,
     fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
     parallelism: Callable[[], int] | None = None,
+    ascending: bool = False,
 ) -> RankLookupResult:
     start = 0
-    sequence = RankPageSequence()
+    sequence = RankPageSequence(ascending=ascending)
 
     async def fetch(start: int) -> RankPageResult:
         return await fetch_rank_page(

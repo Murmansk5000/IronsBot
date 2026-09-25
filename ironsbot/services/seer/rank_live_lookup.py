@@ -38,6 +38,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
     result: RankLookupResult,
     anchor_only: bool,
     fallback_item: Any | None,
+    ascending: bool = False,
 ) -> RankLookupResult:
     try:
         cached = await find_rank_by_cached_position(
@@ -96,6 +97,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 result=result,
                 fetch_rank_page=service.fetch_page_result,
                 parallelism=service.page_parallelism,
+                ascending=ascending,
             )
     except (TimeoutError, asyncio.TimeoutError):
         if fallback_item is not None:

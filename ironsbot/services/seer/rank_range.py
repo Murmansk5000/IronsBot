@@ -17,6 +17,7 @@ async def fetch_rank_range_result(  # noqa: PLR0913
     use_cache: bool,
     rank_page_size: Callable[[], int],
     fetch_rank_page_result: Callable[..., Awaitable[RankPageResult]],
+    ascending: bool = False,
 ) -> RankRangeResult:
     if count <= 0:
         return RankRangeResult(items=[], fetched_at=None)
@@ -29,7 +30,7 @@ async def fetch_rank_range_result(  # noqa: PLR0913
     items: list[Any] = []
     observation = ObservationTime()
     from_cache = True
-    sequence = RankPageSequence()
+    sequence = RankPageSequence(ascending=ascending)
 
     for page_start in range(first_page_start, last_page_start + 1, page_size):
         page_result = await fetch_rank_page_result(
