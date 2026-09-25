@@ -974,8 +974,10 @@ def test_target_image_pull_retries_transient_registry_eof(
     assert sleep_delays == [2.0]
 
 
-def test_docker_restart_only_uses_process_without_socket() -> None:
-    service = build_docker_service(DockerUpdateConfig())
+def test_docker_restart_only_uses_process_without_socket(tmp_path: Path) -> None:
+    service = build_docker_service(
+        DockerUpdateConfig(docker_socket_path=str(tmp_path / "missing.sock"))
+    )
 
     message, restart_action = asyncio.run(service.prepare_restart_only())
 

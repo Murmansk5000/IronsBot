@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
 BASELINE_COMMIT = "b97cb3ec"
 ARCHIVE_COMMIT = "55a39fd12c8b562f8ac3eb8b95d5a71325e8981f"
+SEED_COMMIT = "b4d10dd940012a50cd533a7f854233c5bad472a4"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -115,8 +116,8 @@ def _git_object_exists(revision: str) -> bool:
 def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
     _git_lines("merge-base", "--is-ancestor", BASELINE_COMMIT, "HEAD")
     ids = tuple(command_ids)
-    commands = _introduced_timestamps(ids)
     if _git_object_exists(ARCHIVE_COMMIT):
+        commands = _introduced_timestamps(ids)
         # The archived history is authoritative when it is available locally.
         archived = _introduced_timestamps(ids, ARCHIVE_COMMIT)
         baseline_time = _git_lines("show", "-s", "--format=%aI", BASELINE_COMMIT)[0]
@@ -129,14 +130,14 @@ def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
                 commands[command_id] = introduced
     else:
         # CI does not have access to the private history archive. Keep the reviewed,
-        # checked-in pre-refactor results and combine them with current Git history.
-        commands.update(
-            {
-                command_id: introduced
-                for command_id, introduced in _seed_commands(MANIFEST_PATH).items()
-                if command_id in ids
-            }
-        )
+        # checked-in results and scan only commits made after that seed. Scanning
+        # from the older baseline would mistake refactored commands for new ones.
+        commands = {
+            command_id: introduced
+            for command_id, introduced in _seed_commands(MANIFEST_PATH).items()
+            if command_id in ids
+        }
+        commands.update(_introduced_timestamps(ids, f"{SEED_COMMIT}..HEAD"))
     return {
         "schema_version": 1,
         "baseline_commit": BASELINE_COMMIT,
