@@ -10,16 +10,18 @@ class RankPageConflictError(ValueError):
 
 @dataclass(slots=True)
 class RankPageSequence:
-    """Validate distinct players and descending scores across ordered pages."""
+    """Validate distinct players and score order across ordered pages."""
 
+    ascending: bool = False
     _players: set[int] = field(default_factory=set)
     _last_score: int | None = None
 
     def include(self, entries: Iterable[tuple[int, int]]) -> None:
         for user_id, score in entries:
-            if user_id in self._players or (
-                self._last_score is not None and score > self._last_score
-            ):
+            out_of_order = self._last_score is not None and (
+                score < self._last_score if self.ascending else score > self._last_score
+            )
+            if user_id in self._players or out_of_order:
                 raise RankPageConflictError
             self._players.add(user_id)
             self._last_score = score
