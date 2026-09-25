@@ -64,10 +64,12 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
         return None
 
     spec = GLOBAL_RANKS[rank_key]
+    if spec.score_format == "completion_time":
+        return None
     unit_pattern = "|".join(
         re.escape(unit)
         for unit in sorted(
-            {rank_spec.unit for rank_spec in GLOBAL_RANKS.values()}
+            {rank_spec.unit for rank_spec in GLOBAL_RANKS.values() if rank_spec.unit}
             | {spec.unit, "分数", "积分"},
             key=len,
             reverse=True,

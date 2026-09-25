@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from ironsbot.core.time import ObservationTime
+from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 from ironsbot.services.seer.rank_models import (
     RankLookupResult,
     RankRangeResult,
@@ -17,6 +18,11 @@ from ironsbot.services.seer.rank_pagination import (
     RankPageConflictError,
     RankPageSequence,
 )
+
+
+def _rank_page_sequence(rank_key: str | None) -> RankPageSequence:
+    spec = GLOBAL_RANKS.get(rank_key) if rank_key is not None else None
+    return RankPageSequence(ascending=spec.ascending if spec is not None else False)
 
 
 async def fetch_visible_rank_range(  # noqa: PLR0913
@@ -49,7 +55,7 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
     visible_items: list[Any] = []
     observation = ObservationTime()
     from_cache = True
-    sequence = RankPageSequence()
+    sequence = _rank_page_sequence(rank_key)
     page_size = service.page_size()
     raw_start = 0
     while len(visible_items) < visible_until:
@@ -127,7 +133,7 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
         return raw_rank
 
     raw_target_index = raw_rank - 1
-    sequence = RankPageSequence()
+    sequence = _rank_page_sequence(rank_key)
     remaining_ids = set(excluded_ids)
     visible_count = 0
     page_size = service.page_size()
