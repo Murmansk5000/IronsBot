@@ -32,6 +32,7 @@ ImageKind = Literal[
     "pet_body",
     "pet_head",
     "sign_buff",
+    "soulmark_icon",
     "suit",
     "title",
 ]
@@ -50,6 +51,7 @@ _PLACEHOLDER_SIZES: dict[ImageKind, int] = {
     "pet_body": 300,
     "pet_head": 160,
     "sign_buff": 96,
+    "soulmark_icon": 96,
     "suit": 160,
     "title": 160,
 }
