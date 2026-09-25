@@ -42,6 +42,14 @@ jobs:
                   python -m pip install --user uv
                   python -m uv sync --frozen --no-install-project
 
+            - name: Verify application behavior before publishing
+              shell: bash
+              timeout-minutes: 30
+              run: |
+                  python -m uv run --no-sync pytest -q --tb=short
+                  python -m uv run --no-sync ruff check ironsbot tests
+                  python -m uv run --no-sync python scripts/check_repo.py --static
+
             - name: Audit locked runtime dependencies
               shell: bash
               timeout-minutes: 10
