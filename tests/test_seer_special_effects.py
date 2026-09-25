@@ -28,6 +28,7 @@ SARMON_STATUS_ID = 188
 BASE_SOULMARK_ID = 9
 UPGRADED_SOULMARK_ID = 10
 SOULMARK_ICON_ID = 32
+UPGRADED_ICON_ID = 33
 
 
 def _create_published_fact_tables(session: Session) -> None:
@@ -160,7 +161,10 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
     }
     icon = display.soulmark_icon_by_id[BASE_SOULMARK_ID]
     assert (icon.icon_id, icon.png) == (SOULMARK_ICON_ID, b"published-png")
-    assert UPGRADED_SOULMARK_ID not in display.soulmark_icon_by_id
+    assert display.soulmark_icon_by_id[UPGRADED_SOULMARK_ID].icon_id == (
+        UPGRADED_ICON_ID
+    )
+    assert display.soulmark_icon_by_id[UPGRADED_SOULMARK_ID].png is None
 
 
 def test_effect_colors_reuse_official_highlights_with_default() -> None:
