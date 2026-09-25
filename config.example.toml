@@ -129,6 +129,11 @@ default_account = "example_bot"
 [bot.qq_official.group_routes]
 # example_official_group = "example_bot"
 
+# 私聊主动推送指定账号。用户别名须有 QQ 身份及该账号下已核实的 OpenID；
+# 缺少对应地址时不会改用其他机器人。
+[bot.qq_official.private_routes]
+# owner = "example_bot"
+
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
 #     A TOML AppID plus APP_SECRET_<AppID> activates the account and

@@ -216,6 +216,11 @@ def build_common_components(
         onebot_enabled=platform_selection.onebot_outbound_enabled,
         official_accounts=frozenset(account.app_id for account in accounts.values()),
         default_account=None if default is None else default.app_id,
+        preferred_accounts={
+            str(settings.identities.users[user].qq): accounts[alias].app_id
+            for user, alias in settings.bot.qq_official.private_routes.items()
+            if settings.identities.users[user].qq is not None
+        },
     )
     return CommonComponents(
         prompt_sessions=PromptSessionManager(),

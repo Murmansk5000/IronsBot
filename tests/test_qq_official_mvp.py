@@ -981,6 +981,35 @@ features = ["about"]
     ]
 
 
+def test_qq_official_private_routes_select_named_users(tmp_path: Path) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[identities.users]
+person_a = { qq = 123456 }
+person_b = { qq = 234567 }
+
+[bot.qq_official]
+default_account = "example_a"
+
+[bot.qq_official.private_routes]
+person_a = "example_b"
+
+[bot.qq_official.accounts.example_a]
+app_id = "10001"
+
+[bot.qq_official.accounts.example_b]
+app_id = "10002"
+""".strip(),
+        encoding="utf-8",
+    )
+    settings = load_settings(
+        path,
+        env={"APP_SECRET_10001": "secret-a", "APP_SECRET_10002": "secret-b"},
+    )
+    assert settings.bot.qq_official.private_routes == {"person_a": "example_b"}
+
+
 def test_multiple_official_accounts_require_explicit_default(
     tmp_path: Path,
 ) -> None:

@@ -15,6 +15,7 @@ class PrivateConversationRoutes:
     onebot_enabled: bool = True
     official_accounts: frozenset[str] = frozenset()
     default_account: str | None = None
+    preferred_accounts: dict[str, str] = field(default_factory=dict)
     _links: dict[ConversationRef, str] = field(default_factory=dict)
     _warned: set[str] = field(default_factory=set)
 
@@ -51,7 +52,8 @@ class PrivateConversationRoutes:
             for endpoint, qq_id in self._links.items()
             if qq_id == source.id and endpoint.account_id in self.official_accounts
         ]
-        preferred = [c for c in candidates if c.account_id == self.default_account]
+        account = self.preferred_accounts.get(source.id, self.default_account)
+        preferred = [c for c in candidates if c.account_id == account]
         if len(preferred) == 1:
             return preferred[0]
         if source.id not in self._warned:
@@ -61,7 +63,7 @@ class PrivateConversationRoutes:
                 "configure or observe an AppID-scoped OpenID for the intended bot",
                 reference_digest(source.id),
                 (
-                    "missing C2C endpoint for default account"
+                    "missing C2C endpoint for selected account"
                     if candidates
                     else "missing C2C endpoint"
                 ),

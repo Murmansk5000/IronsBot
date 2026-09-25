@@ -67,6 +67,21 @@ def test_verified_user_route_selection_and_unlink() -> None:
     assert routes.resolve(SOURCE) == SOURCE
 
 
+def test_explicit_private_account_does_not_fall_back_to_other_bot() -> None:
+    routes = BiliPrivateRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"app1", "app2"}),
+        default_account="app1",
+        preferred_accounts={SOURCE.id: "app2"},
+    )
+    routes.register(_link("app1"))
+    assert routes.resolve(SOURCE) == SOURCE
+    routes.register(_link("app2"))
+    assert routes.resolve(SOURCE).account_id == "app2"
+    routes.unregister(_link("app2"))
+    assert routes.resolve(SOURCE) == SOURCE
+
+
 def test_private_principal_merges_same_app_member_and_unlinks() -> None:
     principals = IdentityPrincipalService()
     endpoint = ConversationRef(
