@@ -341,11 +341,20 @@ class RankQueryService:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
             return RankListPreparedReply("❌找不到当前巅峰赛季数据。")
+        if spec.max_rank is not None and command.start_rank > spec.max_rank:
+            return RankListPreparedReply(
+                f"{spec.title}仅记录前 {spec.max_rank} 名。"
+            )
+        count = (
+            min(command.limit, spec.max_rank - command.start_rank + 1)
+            if spec.max_rank is not None
+            else command.limit
+        )
         with game.operations.track(
             "榜单查询",
             (
                 f"{spec.title} 第 "
-                f"{command.start_rank}-{command.start_rank + command.limit - 1}名"
+                f"{command.start_rank}-{command.start_rank + count - 1}名"
             ),
             source="榜单查询",
             conversation=conversation,
@@ -356,7 +365,7 @@ class RankQueryService:
                 key=spec.key,
                 sub_key=spec.sub_key,
                 start_rank=command.start_rank,
-                count=command.limit,
+                count=count,
             )
         return RankListPreparedReply(
             format_global_rank_message(
@@ -364,7 +373,7 @@ class RankQueryService:
                 result.items,
                 timestamp=timestamp_text(result.fetched_at),
                 start_rank=command.start_rank,
-                requested_count=command.limit,
+                requested_count=count,
             ),
             tuple(
                 RankListSelection(
@@ -385,6 +394,8 @@ class RankQueryService:
         conversation: ConversationRef | None,
     ) -> RankListPreparedReply:
         spec = self._rank.get_spec(command.rank_key)
+        if spec.score_format == "completion_time":
+            return RankListPreparedReply(f"{spec.title}不支持按分数反查。")
         if self._rank.spec_needs_sub_key(spec):
             return RankListPreparedReply("❌找不到当前巅峰赛季数据。")
         with game.operations.track(

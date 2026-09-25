@@ -11,6 +11,9 @@ from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
     AUTOCARD_RANK_SUB_KEY,
+    BEIMING_TRIAL_RANK_KEY,
+    BEIMING_TRIAL_RANK_LIMIT,
+    BEIMING_TRIAL_RANK_SUB_KEY,
     PET_KIND_RANK_KEY,
     PET_KIND_RANK_SUB_KEY,
 )
@@ -324,6 +327,8 @@ class RankService(RankCacheQueryMixin):
             use_cache=use_cache,
             rank_page_size=self.page_size,
             fetch_rank_page_result=self.fetch_page_result,
+            ascending=(key, sub_key)
+            == (BEIMING_TRIAL_RANK_KEY, BEIMING_TRIAL_RANK_SUB_KEY),
         )
 
     async def fetch_range_result(  # noqa: PLR0913
@@ -345,6 +350,8 @@ class RankService(RankCacheQueryMixin):
             use_cache=use_cache,
             rank_page_size=self.page_size,
             fetch_rank_page_result=self.fetch_page_result,
+            ascending=(key, sub_key)
+            == (BEIMING_TRIAL_RANK_KEY, BEIMING_TRIAL_RANK_SUB_KEY),
         )
 
     async def fetch_visible_range_result(  # noqa: PLR0913
@@ -392,6 +399,12 @@ class RankService(RankCacheQueryMixin):
             if score_target is not None
             else self._online_search_limit(rank_key, search_limit)
         )
+        ascending = (key, sub_key) == (
+            BEIMING_TRIAL_RANK_KEY,
+            BEIMING_TRIAL_RANK_SUB_KEY,
+        )
+        if ascending:
+            limit = min(limit, BEIMING_TRIAL_RANK_LIMIT)
         page_size = self.page_size()
         result = RankLookupResult(
             title=title,
@@ -439,6 +452,7 @@ class RankService(RankCacheQueryMixin):
             result=result,
             anchor_only=anchor_only,
             fallback_item=fallback_item,
+            ascending=ascending,
         )
 
     async def find_pet_kind_rank(

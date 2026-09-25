@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.seer.local_rank_formatting import format_peak_rating_score
 from ironsbot.services.seer.rank_list_models import RANK_LIST_SIZE, GlobalRankSpec
 
@@ -26,9 +28,20 @@ def format_global_rank_score(score: int, spec: GlobalRankSpec) -> str:
 
 
 def _format_score(score: int, spec: GlobalRankSpec) -> str:
+    if spec.score_format == "completion_time":
+        return f"完成时间：{format_completion_time(score)}"
     if spec.score_format == "peak_rating":
         return f"{format_peak_rating_score(score)}（{score}）"
     return f"{score}{spec.unit}"
+
+
+def format_completion_time(score: int) -> str:
+    if score <= 0:
+        return "未知"
+    try:
+        return datetime.fromtimestamp(score, TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
+    except (OverflowError, OSError, ValueError):
+        return "未知"
 
 
 def format_global_rank_message(

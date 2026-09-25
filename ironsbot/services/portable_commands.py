@@ -473,6 +473,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         sessions,
         features,
         seer.player_detail_extensions,
+        seer.rank_queries,
     )
     identity_link_operations = _catalog_operations(
         catalog,

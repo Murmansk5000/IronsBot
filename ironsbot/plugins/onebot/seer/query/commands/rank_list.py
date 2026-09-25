@@ -258,6 +258,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.query_sessions,
         group.features,
         group.resources.player_detail_extensions,
+        group.resources.rank_queries,
     )["seer.player.query"]
     operations = build_portable_rank_operations(
         query,

@@ -16,6 +16,7 @@ from ironsbot.services.seer.player_formatting_common import (
 )
 from ironsbot.services.seer.player_query import calculate_player_peak_scores
 from ironsbot.services.seer.rank_formatting import format_rank_position_text
+from ironsbot.services.seer.rank_list_global_messages import format_completion_time
 from ironsbot.services.seer.rank_list_models import LOCAL_RANKS, RankPlayerCommand
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.sequ_extra import fetch_unity_part_one, fetch_unity_peak
@@ -119,7 +120,7 @@ async def fetch_rank_player_result(
     )
     metric_text = join_metric_parts(
         display or "暂无数据",
-        format_rank_position_text(result),
+        _rank_position_text(result, command.rank_key),
         local_summary.sample_rank(metric_key),
     )
     title = spec.title.removesuffix("榜")
@@ -205,6 +206,7 @@ async def _find_player_rank(  # noqa: PLR0913
             search_limit=None,
             anchor_only=anchor_only,
         )
+    search_limit = rank.get_spec(command.rank_key).max_rank
     return await rank.find_rank(
         game,
         user_id=command.player_id,
@@ -213,6 +215,7 @@ async def _find_player_rank(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         target_score=target.value,
+        search_limit=search_limit,
         anchor_only=anchor_only,
     )
 
@@ -243,7 +246,7 @@ def fetch_cached_rank_player_result(
     display = _format_score(metric_key, result.score, spec.unit, spec.score_format)
     metric_text = join_metric_parts(
         display or "暂无数据",
-        format_rank_position_text(result),
+        _rank_position_text(result, command.rank_key),
     )
     identity = format_player_identity(
         command.player_id,
@@ -270,11 +273,25 @@ def _format_score(
 ) -> str:
     if score is None:
         return ""
+    if score_format == "completion_time":
+        return f"完成时间：{format_completion_time(score)}"
     if score_format == "peak_rating":
         return format_peak_rating_score(score)
     if metric_key in {"peak_standard", "peak_wild", "peak_expert"}:
         return format_metric_display(metric_key, score)
     return f"{score}{unit}"
+
+
+def _rank_position_text(result: RankLookupResult, rank_key: str) -> str:
+    if rank_key != "北冥试炼":
+        return format_rank_position_text(result)
+    if result.failure is not None:
+        if result.rank is not None:
+            return f"全服第{result.rank}（上次记录，本次{result.failure}）"
+        return f"排名未确认：{result.failure}"
+    if result.rank is None and result.queried:
+        return f"前 {result.searched_limit} 名未发现"
+    return format_rank_position_text(result)
 
 
 async def _update_sample_metric(  # noqa: PLR0913

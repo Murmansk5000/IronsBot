@@ -11,7 +11,7 @@ import pytest
 from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -40,6 +40,7 @@ from ironsbot.services.seer.player_service_models import (
     PlayerQueryResult,
 )
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.rank_queries import RankPlayerPreparedReply
 
 if TYPE_CHECKING:
     from ironsbot.services.portable_reply import PortableOperation
@@ -47,6 +48,93 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutCommand,
     )
+    from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_beast_rank_menu_is_lazy_and_shared_query_uses_responder(
+    platform: Platform,
+) -> None:
+    player_id = 700001
+    owner = _context(f"米米号{player_id}", platform=platform)
+    features = FeatureService(
+        {owner.message.conversation: frozenset({"seer_player", "seer_rank"})},
+        {},
+        frozenset(),
+    )
+    charged: list[str] = []
+    rank = SimpleNamespace(
+        prepare_player=AsyncMock(
+            return_value=RankPlayerPreparedReply(
+                "玄武榜玩家结果", on_delivered=lambda: charged.append("responder")
+            )
+        )
+    )
+    sessions = PortableQuerySessions()
+    operations = _build_player_operations(
+        cast("PlayerService", _PlayerService()),
+        _resolver(),
+        sessions,
+        features,
+        PlayerDetailExtensionRegistry(),
+        cast("RankQueryService", rank),
+    )
+    initial = cast(
+        "PortableReply",
+        await operations["seer.player.query"](owner.text, owner),
+    )
+    assert "4. 【神兽榜】" in _text(initial)
+    initial.delivered()
+    rank.prepare_player.assert_not_awaited()
+    category = await sessions.select("4", owner, allow_deferred=True)
+    assert isinstance(category, OutboundMessage)
+    assert isinstance(category.parts[0], TextPart)
+    assert "1. 【北冥试炼·玄武】" in category.parts[0].text
+    rank.prepare_player.assert_not_awaited()
+    sessions.record_delivery(
+        owner, category, SendResult(delivered=True, message_id="beast-menu")
+    )
+    responder = _context(
+        "1", platform=platform, actor_id="another-member", reply_to_id="beast-menu"
+    )
+    selected = await sessions.select_shared(
+        "1", owner, responder, allow_deferred=True
+    )
+    assert isinstance(selected, PortableReply)
+    assert "玄武榜玩家结果" in _text(selected)
+    assert rank.prepare_player.await_args.kwargs["actor"] == responder.message.actor
+    assert rank.prepare_player.await_args.args[0].player_id == player_id
+    assert sessions.has_active_session(owner)
+    assert sessions.has_active_session(responder)
+    assert charged == []
+    selected.delivered()
+    assert charged == ["responder"]
+
+
+@pytest.mark.asyncio
+async def test_beast_rank_menu_requires_rank_permission() -> None:
+    owner = _context("米米号700001")
+    features = FeatureService(
+        {owner.message.conversation: frozenset({"seer_player"})},
+        {},
+        frozenset(),
+    )
+    rank = SimpleNamespace(prepare_player=AsyncMock())
+    operations = _build_player_operations(
+        cast("PlayerService", _PlayerService()),
+        _resolver(),
+        PortableQuerySessions(),
+        features,
+        PlayerDetailExtensionRegistry(),
+        cast("RankQueryService", rank),
+    )
+    initial = cast(
+        "PortableReply",
+        await operations["seer.player.query"](owner.text, owner),
+    )
+    assert "神兽榜" not in _text(initial)
+    rank.prepare_player.assert_not_awaited()
 
 
 class _PlayerService:

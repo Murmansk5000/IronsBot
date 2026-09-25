@@ -7,6 +7,9 @@ from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_SUB_KEY,
     AUTOCARD_RANK_KEY,
     AUTOCARD_RANK_SUB_KEY,
+    BEIMING_TRIAL_RANK_KEY,
+    BEIMING_TRIAL_RANK_LIMIT,
+    BEIMING_TRIAL_RANK_SUB_KEY,
     BOOK_RANK_KEY,
     BOOK_RANK_SUB_KEY,
     COUNTERMARK_RANK_KEY,
@@ -49,6 +52,8 @@ class GlobalRankSpec:
     unit: str
     sub_key_source: Literal["fixed", "peak_season", "master_season"] = "fixed"
     score_format: str = ""
+    ascending: bool = False
+    max_rank: int | None = None
 
     @property
     def season_limited(self) -> bool:
@@ -146,6 +151,15 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
     ),
     "群星牌": GlobalRankSpec(
         "群星之巅榜", AUTOCARD_RANK_KEY, AUTOCARD_RANK_SUB_KEY, "分"
+    ),
+    "北冥试炼": GlobalRankSpec(
+        "北冥试炼·玄武榜",
+        BEIMING_TRIAL_RANK_KEY,
+        BEIMING_TRIAL_RANK_SUB_KEY,
+        "",
+        score_format="completion_time",
+        ascending=True,
+        max_rank=BEIMING_TRIAL_RANK_LIMIT,
     ),
     "竞技段位": GlobalRankSpec(
         "竞技段位榜",
