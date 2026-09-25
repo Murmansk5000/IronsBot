@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.config.models.features import build_feature_service
@@ -23,6 +23,9 @@ from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStor
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
+from ironsbot.services.messaging.private_push_failure_notice import (
+    report_private_push_failures,
+)
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
     ProactiveMessageDelivery,
@@ -222,6 +225,16 @@ def build_common_components(
             if settings.identities.users[user].qq is not None
         },
     )
+    admin_notices = AdminNoticeService(
+        features,
+        OutboundAdminNoticeSender(proactive_delivery, private_routes),
+    )
+    monitored_delivery = replace(
+        proactive_delivery,
+        private_failure_notice=lambda action, summary: report_private_push_failures(
+            admin_notices, action, summary
+        ),
+    )
     return CommonComponents(
         prompt_sessions=PromptSessionManager(),
         features=features,
@@ -231,11 +244,8 @@ def build_common_components(
         bot_router=bot_router,
         outbound_messenger=outbound_messenger,
         qq_official=qq_official,
-        proactive_delivery=proactive_delivery,
-        admin_notices=AdminNoticeService(
-            features,
-            OutboundAdminNoticeSender(proactive_delivery, private_routes),
-        ),
+        proactive_delivery=monitored_delivery,
+        admin_notices=admin_notices,
         private_routes=private_routes,
     )
 

@@ -386,6 +386,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         private_routes,
         query_sessions,
         identity_principals.actor_principal,
+        admin_notices=admin_notices,
     )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,

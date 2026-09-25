@@ -121,6 +121,8 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
 
     delivery.send = send
     store = SqliteDailyDeliveryStore(tmp_path / "runtime.sqlite")
+    notices = Mock()
+    notices.send_private_to_superusers = AsyncMock()
     sender = LuckySkinWindowOutboundSender(
         delivery,
         subscriptions,
@@ -129,6 +131,7 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
         sessions,
         principals.actor_principal,
         render,
+        admin_notices=notices,
     )
     result = cast("Any", object())
     assert await sender.send_daily_notice(actor, result, day="2026-09-23") == (
@@ -153,3 +156,7 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
     else:
         assert store.claim("lucky:qq:123456", "2026-09-23") == (outcome != "uncertain")
     assert len(sends) == (0 if outcome in {"unavailable", "td"} else 1)
+    if outcome == "unavailable":
+        notices.send_private_to_superusers.assert_awaited_once()
+    else:
+        notices.send_private_to_superusers.assert_not_awaited()
