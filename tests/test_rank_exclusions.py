@@ -29,6 +29,15 @@ class FakeRankCache:
     def page(self, **_kwargs: object) -> None:
         return None
 
+    def item(self, **_kwargs: object) -> None:
+        return None
+
+    def last_seen_item(self, **_kwargs: object) -> None:
+        return None
+
+    def miss(self, **_kwargs: object) -> None:
+        return None
+
     def save(
         self,
         *,
@@ -97,6 +106,41 @@ def test_public_pet_kind_rank_filters_configured_accounts_and_renumbers() -> Non
     )
 
     assert [item.id for item in result.items] == [298227103, 123456789]
+
+
+def test_beiming_rank_filters_internal_accounts_with_ascending_times() -> None:
+    rank = _rank(
+        [
+            RankEntry(DEFAULT_TAOMEE_INTERNAL_USER_IDS[0], "内部账号", 1_790_233_075),
+            RankEntry(700001, "玩家甲", 1_790_233_076),
+            RankEntry(700002, "玩家乙", 1_790_233_077),
+        ]
+    )
+
+    visible = asyncio.run(
+        rank.fetch_visible_range_result(
+            GAME,
+            rank_key="北冥试炼",
+            key=267,
+            sub_key=1,
+            start_rank=1,
+            count=2,
+        )
+    )
+    assert [item.id for item in visible.items] == [700001, 700002]
+
+    player = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=700002,
+            title="北冥试炼·玄武榜",
+            score_name="完成时间",
+            key=267,
+            sub_key=1,
+            search_limit=10,
+        )
+    )
+    assert (player.rank, player.score, player.failure) == (2, 1_790_233_077, None)
 
 
 def test_pet_kind_score_lookup_filters_only_that_rank() -> None:
