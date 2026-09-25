@@ -92,6 +92,25 @@ def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_docker_release_requires_behavior_checks_before_build_and_publish() -> None:
+    steps = _steps()
+    names = [step["name"] for step in steps]
+    verification = next(
+        step
+        for step in steps
+        if step["name"] == "Verify application behavior before publishing"
+    )
+
+    assert names.index("Install command manifest dependencies") < names.index(
+        verification["name"]
+    ) < names.index("Build runtime candidate")
+    assert names.index(verification["name"]) < names.index("Build and Publish")
+    assert "if" not in verification
+    assert "pytest -q --tb=short" in verification["run"]
+    assert "ruff check ironsbot tests" in verification["run"]
+    assert "scripts/check_repo.py --static" in verification["run"]
+
+
 def test_dockerhub_description_is_optional_without_repository_secrets() -> None:
     workflow = yaml.safe_load(
         DOCKERHUB_DESCRIPTION_WORKFLOW.read_text(encoding="utf-8")
