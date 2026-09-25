@@ -92,7 +92,11 @@ def test_manifest_generator_uses_checked_in_seed_without_archive(
     )
     monkeypatch.setattr(
         "scripts.generate_poke_command_introductions._introduced_timestamps",
-        lambda _ids: {"new.command": "2026-09-23T00:00:00+08:00"},
+        lambda _ids, revision: (
+            {"new.command": "2026-09-23T00:00:00+08:00"}
+            if revision.endswith("..HEAD")
+            else {}
+        ),
     )
     monkeypatch.setattr(
         "scripts.generate_poke_command_introductions.MANIFEST_PATH",
