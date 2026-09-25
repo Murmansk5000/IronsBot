@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -14,8 +15,10 @@ from ironsbot.services.seer.pet_info_views import (
     PetInfoSnapshot,
     PetItemSnapshot,
     PetMintmarkSnapshot,
+    PetSoulmarkSnapshot,
     PetSpecialEffectView,
     PetStatsSnapshot,
+    SoulmarkIconAsset,
 )
 from ironsbot.services.seer.render_cache import RenderCacheEntry
 
@@ -226,3 +229,92 @@ async def test_asset_failure_uses_placeholder_without_caching(
     assert rendered
     assert reported and reported[0][0] == missing_kind
     assert not cache.values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flash_png", [b"flash", None])
+async def test_soulmark_icon_prefers_unity_and_retries_flash_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    flash_png: bytes | None,
+) -> None:
+    data, cache = FakeData(), FakeCache()
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        soulmarks=(
+            PetSoulmarkSnapshot(
+                id=7,
+                desc="测试魂印",
+                analyze_desc=None,
+                formatting_adjustment=None,
+                intensified=False,
+                intensified_to_id=None,
+                is_adv=False,
+                pve_effective=None,
+                tags=(),
+            ),
+        ),
+        display=replace(
+            snapshot.display,
+            soulmark_icons=((7, SoulmarkIconAsset(42, flash_png, "image/png")),),
+        ),
+    )
+    monkeypatch.setattr(
+        pet_info_renderer, "load_pet_info_snapshot", lambda *_: snapshot
+    )
+    monkeypatch.setattr(pet_info_renderer, "_load_gender_icon", lambda _: b"x")
+
+    class Images:
+        def __init__(self) -> None:
+            self.unity_available = False
+            self.requests: list[tuple[object, object]] = []
+
+        async def fetch(self, kind: object, key: object, *, fallback: bool) -> bytes:
+            assert fallback is False
+            self.requests.append((kind, key))
+            if kind == "soulmark_icon":
+                if not self.unity_available:
+                    raise ImageSourceError
+                return b"unity"
+            return b"image"
+
+    images = Images()
+    documents: list[dict[str, Any]] = []
+    reported: list[tuple[str, str, ImageSourceError]] = []
+
+    async def render_html(**kwargs: Any) -> bytes:
+        documents.append(kwargs["templates"])
+        return b"rendered"
+
+    async def report_failure(
+        kind: str, key: str, error: ImageSourceError
+    ) -> None:
+        reported.append((kind, key, error))
+
+    async def render() -> bytes:
+        return await pet_info_renderer.render_published_pet_info(
+            cast("RenderCache", cache),
+            cast("SeerDataAccess", data),
+            cast("SeerImageSource", images),
+            cast("HtmlTemplateRenderer", render_html),
+            1,
+            image_failure_reporter=report_failure,
+        )
+
+    assert await render() == b"rendered"
+    assert ("soulmark_icon", "42") in images.requests
+    fallback_icon = documents[-1]["soulmarks"][0]["icon"]
+    if flash_png is None:
+        assert fallback_icon.startswith("data:image/png;base64,")
+        assert reported and reported[0][:2] == ("soulmark_icon", "42")
+    else:
+        assert fallback_icon == "data:image/png;base64,Zmxhc2g="
+        assert not reported
+    assert not cache.values
+
+    images.unity_available = True
+    assert await render() == b"rendered"
+    assert documents[-1]["soulmarks"][0]["icon"] == (
+        "data:image/png;base64,dW5pdHk="
+    )
+    assert cache.values

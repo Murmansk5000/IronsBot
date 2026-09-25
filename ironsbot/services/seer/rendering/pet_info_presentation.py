@@ -61,7 +61,9 @@ def present_pet_info(
         for effect in special_effects
         if (color := effect.get("color")) is not None
     }
-    soulmarks = _soulmark_views(snapshot, effect_colors)
+    soulmarks = _soulmark_views(
+        snapshot, effect_colors, assets.soulmark_icon_by_id
+    )
     soulmarks.extend(
         _soulmark_display_addition_views(
             snapshot.display.soulmark_display_additions,
@@ -192,6 +194,7 @@ def _special_effect_views(
 def _soulmark_views(
     snapshot: PetInfoSnapshot,
     effect_colors: Mapping[str, str],
+    unity_icons: Mapping[int, bytes],
 ) -> list[SoulmarkDict]:
     order = snapshot.display.soulmark_order_by_id
     icons = snapshot.display.soulmark_icon_by_id
@@ -205,6 +208,9 @@ def _soulmark_views(
         ),
     ):
         icon = icons.get(soulmark.id)
+        icon_png = unity_icons.get(soulmark.id)
+        if icon_png is None and icon is not None:
+            icon_png = icon.png
         result.append(
             SoulmarkDict(
                 id=soulmark.id,
@@ -217,7 +223,7 @@ def _soulmark_views(
                 icon_id=icon.icon_id if icon is not None else None,
                 icon_asset_url=None,
                 icon=(
-                    _data_uri(icon.png, icon.content_type) if icon is not None else None
+                    _data_uri(icon_png, "image/png") if icon_png is not None else None
                 ),
             )
         )

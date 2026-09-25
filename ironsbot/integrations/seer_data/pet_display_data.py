@@ -178,8 +178,6 @@ def _load_soulmark_icons(
             FROM soulmark_icon
             WHERE pet_id = :pet_id
               AND soulmark_id IN ({placeholders})
-              AND icon_png_available = 1
-              AND icon_png IS NOT NULL
             ORDER BY soulmark_id, icon_id
             """
         ),
@@ -189,7 +187,9 @@ def _load_soulmark_icons(
     result: dict[int, SoulmarkIconAsset] = {}
     for row in rows:
         raw_png = row["icon_png"]
-        png = raw_png.tobytes() if isinstance(raw_png, memoryview) else bytes(raw_png)
+        png = (
+            raw_png.tobytes() if isinstance(raw_png, memoryview) else bytes(raw_png)
+        ) if raw_png is not None else None
         result[int(row["soulmark_id"])] = SoulmarkIconAsset(
             icon_id=int(row["icon_id"]),
             png=png,
