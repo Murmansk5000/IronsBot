@@ -40,6 +40,7 @@ from ironsbot.services.seer.player_service_models import (
     PlayerQueryResult,
 )
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_queries import RankPlayerPreparedReply
 
 if TYPE_CHECKING:
@@ -53,7 +54,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
-async def test_beast_rank_menu_is_lazy_and_shared_query_uses_responder(
+async def test_beast_rank_choice_is_lazy_and_shared_query_uses_responder(
     platform: Platform,
 ) -> None:
     player_id = 700001
@@ -67,7 +68,14 @@ async def test_beast_rank_menu_is_lazy_and_shared_query_uses_responder(
     rank = SimpleNamespace(
         prepare_player=AsyncMock(
             return_value=RankPlayerPreparedReply(
-                "玄武榜玩家结果", on_delivered=lambda: charged.append("responder")
+                "玄武榜玩家结果",
+                on_delivered=lambda: charged.append("responder"),
+                lookup=RankLookupResult(
+                    title="北冥试炼·玄武",
+                    score_name="完成时间",
+                    rank=224,
+                    score=1_790_272_228,
+                ),
             )
         )
     )
@@ -87,22 +95,21 @@ async def test_beast_rank_menu_is_lazy_and_shared_query_uses_responder(
     assert "4. 【神兽榜】" in _text(initial)
     initial.delivered()
     rank.prepare_player.assert_not_awaited()
-    category = await sessions.select("4", owner, allow_deferred=True)
-    assert isinstance(category, OutboundMessage)
-    assert isinstance(category.parts[0], TextPart)
-    assert "1. 【北冥试炼·玄武】" in category.parts[0].text
-    rank.prepare_player.assert_not_awaited()
     sessions.record_delivery(
-        owner, category, SendResult(delivered=True, message_id="beast-menu")
+        owner, initial.message, SendResult(delivered=True, message_id="player-menu")
     )
     responder = _context(
-        "1", platform=platform, actor_id="another-member", reply_to_id="beast-menu"
+        "4", platform=platform, actor_id="another-member", reply_to_id="player-menu"
     )
     selected = await sessions.select_shared(
-        "1", owner, responder, allow_deferred=True
+        "4", owner, responder, allow_deferred=True
     )
     assert isinstance(selected, PortableReply)
-    assert "玄武榜玩家结果" in _text(selected)
+    expected = (
+        "【神兽榜】\n\n1. 【北冥试炼·玄武】"
+        "完成时间：2026-09-25 01:50:28｜全服第224"
+    )
+    assert _text(selected) == expected
     assert rank.prepare_player.await_args.kwargs["actor"] == responder.message.actor
     assert rank.prepare_player.await_args.args[0].player_id == player_id
     assert sessions.has_active_session(owner)
@@ -110,6 +117,11 @@ async def test_beast_rank_menu_is_lazy_and_shared_query_uses_responder(
     assert charged == []
     selected.delivered()
     assert charged == ["responder"]
+    direct = await sessions.select("4", owner, allow_deferred=True)
+    assert isinstance(direct, PortableReply)
+    assert _text(direct) == expected
+    assert rank.prepare_player.await_args.kwargs["actor"] == owner.message.actor
+    assert sessions.has_active_session(owner)
 
 
 @pytest.mark.asyncio

@@ -30,6 +30,7 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     parse_player_shortcut_command,
     player_shortcut_semantic_request,
 )
+from ironsbot.services.seer.rank_list_global_messages import format_completion_time
 from ironsbot.services.seer.rank_list_models import RankPlayerCommand
 
 if TYPE_CHECKING:
@@ -333,8 +334,28 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     ) -> OutboundMessage | PortableReply:
         if command == "beast_rank":
             assert rank_queries is not None
-            return _beast_rank_menu(
-                sessions, context, pending.player_id, features, rank_queries
+            prepared = await rank_queries.prepare_player(
+                RankPlayerCommand("北冥试炼", pending.player_id),
+                actor=context.message.actor,
+                conversation=context.message.conversation,
+            )
+            message = prepared.message
+            lookup = prepared.lookup
+            if (
+                lookup is not None
+                and lookup.rank is not None
+                and lookup.score is not None
+                and lookup.failure is None
+            ):
+                message = (
+                    "【神兽榜】\n\n"
+                    "1. 【北冥试炼·玄武】"
+                    f"完成时间：{format_completion_time(lookup.score)}"
+                    f"｜全服第{lookup.rank}"
+                )
+            return PortableReply(
+                OutboundMessage.from_text(message),
+                on_delivered=prepared.delivered,
             )
         if isinstance(command, str):
             service.save_binding_choice(
@@ -472,54 +493,6 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         )
 
     return PortableReply(menu, on_delivered=delivered)
-
-
-def _beast_rank_menu(
-    sessions: PortableQuerySessions,
-    context: MessageInputContext,
-    player_id: int,
-    features: FeatureService,
-    rank_queries: RankQueryService,
-) -> OutboundMessage:
-    async def select(
-        command: RankPlayerCommand,
-        selection_context: MessageInputContext,
-    ) -> PortableReply:
-        prepared = await rank_queries.prepare_player(
-            command,
-            actor=selection_context.message.actor,
-            conversation=selection_context.message.conversation,
-        )
-        return PortableReply(
-            OutboundMessage.from_text(prepared.message),
-            on_delivered=prepared.delivered,
-        )
-
-    def allowed(responder: MessageInputContext) -> bool:
-        return all(
-            features.is_feature_allowed(
-                responder.message.actor, responder.message.conversation, feature
-            )
-            for feature in ("seer_player", "seer_rank")
-        )
-
-    return sessions.offer_menu(
-        context,
-        PortableMenuSpec(
-            choices=(RankPlayerCommand("北冥试炼", player_id),),
-            labels=("【北冥试炼·玄武】",),
-            text_inputs=(frozenset({"北冥试炼", "玄武"}),),
-            select=select,
-            prompt=OutboundMessage.from_text(
-                "【神兽榜】\n1. 【北冥试炼·玄武】\n0. 【退出】"
-            ),
-            shareable=True,
-            access=allowed,
-            can_select=lambda _choice, responder: allowed(responder),
-            keep_open=True,
-            exit_message="已退出神兽榜查询。",
-        ),
-    )
 
 
 async def _select_shared_player_detail(

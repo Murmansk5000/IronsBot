@@ -206,7 +206,6 @@ async def _find_player_rank(  # noqa: PLR0913
             search_limit=None,
             anchor_only=anchor_only,
         )
-    search_limit = rank.get_spec(command.rank_key).max_rank
     return await rank.find_rank(
         game,
         user_id=command.player_id,
@@ -215,7 +214,7 @@ async def _find_player_rank(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         target_score=target.value,
-        search_limit=search_limit,
+        search_limit=None,
         anchor_only=anchor_only,
     )
 

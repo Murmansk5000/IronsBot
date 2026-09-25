@@ -12,7 +12,6 @@ from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
     AUTOCARD_RANK_SUB_KEY,
     BEIMING_TRIAL_RANK_KEY,
-    BEIMING_TRIAL_RANK_LIMIT,
     BEIMING_TRIAL_RANK_SUB_KEY,
     PET_KIND_RANK_KEY,
     PET_KIND_RANK_SUB_KEY,
@@ -403,8 +402,6 @@ class RankService(RankCacheQueryMixin):
             BEIMING_TRIAL_RANK_KEY,
             BEIMING_TRIAL_RANK_SUB_KEY,
         )
-        if ascending:
-            limit = min(limit, BEIMING_TRIAL_RANK_LIMIT)
         page_size = self.page_size()
         result = RankLookupResult(
             title=title,

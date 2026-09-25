@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ironsbot.services.seer.rank_constants import BEIMING_TRIAL_RANK_LIMIT
 from ironsbot.services.seer.rank_list_global_messages import format_global_rank_message
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
@@ -35,10 +34,9 @@ _FINISHED_AT = 1790233075
 
 def test_beiming_commands_and_beijing_completion_time() -> None:
     spec = GLOBAL_RANKS["北冥试炼"]
-    assert (spec.key, spec.sub_key, spec.max_rank, spec.ascending) == (
+    assert (spec.key, spec.sub_key, spec.ascending) == (
         267,
         1,
-        1000,
         True,
     )
     for alias in ("玄武榜", "北冥试炼榜"):
@@ -121,7 +119,7 @@ async def test_beiming_player_failure_is_not_reported_as_absence() -> None:
             return_value=RankLookupResult(
                 "北冥试炼·玄武",
                 "",
-                searched_limit=1000,
+                searched_limit=1200,
                 queried=True,
                 failure="连接已断开",
             )
@@ -138,9 +136,7 @@ async def test_beiming_player_failure_is_not_reported_as_absence() -> None:
     )
     assert "排名未确认：连接已断开" in result.message
     assert "未发现" not in result.message
-    assert rank.find_rank.await_args.kwargs["search_limit"] == (
-        BEIMING_TRIAL_RANK_LIMIT
-    )
+    assert rank.find_rank.await_args.kwargs["search_limit"] is None
     rank.find_rank.return_value.failure = None
     result = await fetch_rank_player_result(
         cast("Any", rank),
@@ -148,11 +144,13 @@ async def test_beiming_player_failure_is_not_reported_as_absence() -> None:
         game,
         command=RankPlayerCommand("北冥试炼", 700001),
     )
-    assert "前 1000 名未发现" in result.message
+    assert "前 1200 名未发现" in result.message
 
 
 @pytest.mark.asyncio
-async def test_beiming_list_clamps_to_first_thousand() -> None:
+async def test_beiming_list_accepts_ranks_beyond_thousand() -> None:
+    beyond_thousand = 1001
+    page_size = 10
     fetch = AsyncMock(return_value=SimpleNamespace(items=[], fetched_at=0))
     rank = SimpleNamespace(
         get_spec=lambda _key: GLOBAL_RANKS["北冥试炼"],
@@ -173,13 +171,15 @@ async def test_beiming_list_clamps_to_first_thousand() -> None:
             player_error=lambda _id, error: str(error), player_timeout_seconds=5
         ),
     )
-    outside = await service.prepare_list(
-        RankListCommand("global", "北冥试炼", start_rank=1001)
+    beyond = await service.prepare_list(
+        RankListCommand("global", "北冥试炼", start_rank=beyond_thousand)
     )
-    assert "仅记录前 1000 名" in outside.message
-    fetch.assert_not_awaited()
+    assert "仅记录前 1000 名" not in beyond.message
+    assert fetch.await_args is not None
+    assert fetch.await_args.kwargs["start_rank"] == beyond_thousand
+    assert fetch.await_args.kwargs["count"] == page_size
     await service.prepare_list(
-        RankListCommand("global", "北冥试炼", start_rank=995, limit=10)
+        RankListCommand("global", "北冥试炼", start_rank=995, limit=page_size)
     )
     assert fetch.await_args is not None
-    assert fetch.await_args.kwargs["count"] == 1000 - 995 + 1
+    assert fetch.await_args.kwargs["count"] == page_size

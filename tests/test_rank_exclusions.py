@@ -143,6 +143,31 @@ def test_beiming_rank_filters_internal_accounts_with_ascending_times() -> None:
     assert (player.rank, player.score, player.failure) == (2, 1_790_233_077, None)
 
 
+def test_beiming_player_lookup_scans_beyond_thousand() -> None:
+    entries = [
+        RankEntry(700000 + index, f"玩家{index}", 1_790_233_075 + index)
+        for index in range(1101)
+    ]
+    rank = _rank(entries)
+
+    result = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=701100,
+            title="北冥试炼·玄武榜",
+            score_name="完成时间",
+            key=267,
+            sub_key=1,
+        )
+    )
+
+    assert (result.rank, result.score, result.failure) == (
+        1101,
+        1_790_234_175,
+        None,
+    )
+
+
 def test_pet_kind_score_lookup_filters_only_that_rank() -> None:
     rank = _rank(
         [

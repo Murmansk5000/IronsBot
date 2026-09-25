@@ -75,6 +75,7 @@ if TYPE_CHECKING:
         RankPlayerCommand,
         RankScoreCommand,
     )
+    from ironsbot.services.seer.rank_models import RankLookupResult
 
     PlayerErrorFormatter = Callable[
         [int, SocketRecvError | NotLoggedInError | DisconnectedError],
@@ -95,6 +96,7 @@ class RankQueryPolicy:
 class RankPlayerPreparedReply:
     message: str
     on_delivered: Callable[[], None] | None = None
+    lookup: RankLookupResult | None = None
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -290,6 +292,7 @@ class RankQueryService:
                 if should_record_quota
                 else None
             ),
+            lookup=result.lookup,
         )
 
     async def _fetch_player_message(
@@ -341,15 +344,7 @@ class RankQueryService:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
             return RankListPreparedReply("❌找不到当前巅峰赛季数据。")
-        if spec.max_rank is not None and command.start_rank > spec.max_rank:
-            return RankListPreparedReply(
-                f"{spec.title}仅记录前 {spec.max_rank} 名。"
-            )
-        count = (
-            min(command.limit, spec.max_rank - command.start_rank + 1)
-            if spec.max_rank is not None
-            else command.limit
-        )
+        count = command.limit
         with game.operations.track(
             "榜单查询",
             (
