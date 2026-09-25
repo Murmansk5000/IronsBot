@@ -148,6 +148,7 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
         resources=SimpleNamespace(
             player=service,
             player_detail_extensions=extensions,
+            rank_queries=None,
         ),
         features=Mock(),
         player_id_resolver=PlayerIdResolver(lambda *_: None, lambda _: 700001),
