@@ -41,6 +41,7 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
     count: int,
     page_size: int,
     excluded_user_ids: Collection[int],
+    ascending: bool = False,
 ) -> RankRangeResult | None:
     """Return a complete requested public window without opening a game socket."""
 
@@ -57,10 +58,11 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
             start_index=requested_start - 1,
             count=count,
             page_size=page_size,
+            ascending=ascending,
         )
 
     visible_items: list[Any] = []
-    sequence = RankPageSequence()
+    sequence = RankPageSequence(ascending=ascending)
     observation = ObservationTime()
     raw_start = 0
     while len(visible_items) < requested_end:
@@ -306,13 +308,14 @@ def _fetch_cached_raw_range(  # noqa: PLR0913
     start_index: int,
     count: int,
     page_size: int,
+    ascending: bool = False,
 ) -> RankRangeResult | None:
     request_end = start_index + count - 1
     first_page_start = start_index // page_size * page_size
     last_page_start = request_end // page_size * page_size
     items: list[Any] = []
     observation = ObservationTime()
-    sequence = RankPageSequence()
+    sequence = RankPageSequence(ascending=ascending)
     for page_start in range(first_page_start, last_page_start + 1, page_size):
         page = _cached_page(
             cache,

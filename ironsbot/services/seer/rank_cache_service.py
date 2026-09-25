@@ -10,6 +10,7 @@ from ironsbot.services.seer.rank_cache_queries import (
     fetch_cached_score_segment,
     fetch_cached_visible_rank_range,
 )
+from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
@@ -69,6 +70,7 @@ class RankCacheQueryMixin:
             count=count,
             page_size=self.page_size(),
             excluded_user_ids=self.exclusion_policy.excluded_user_ids(rank_key),
+            ascending=(rank_key in GLOBAL_RANKS and GLOBAL_RANKS[rank_key].ascending),
         )
 
     def cached_score_segment(  # noqa: PLR0913
