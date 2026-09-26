@@ -4,11 +4,19 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 import pytest
 
+from ironsbot.integrations.http.clients import HttpClients
+from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.services.seer.equipment import EquipmentQueryService
+from ironsbot.services.seer.images import (
+    PublishedAssetRepository,
+    PublishedRenderAssetSnapshot,
+)
 
 NOT_FOUND_IMAGE_ERROR = "404 Not Found"
+CONNECTION_FAILED = "connection failed"
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -262,6 +270,98 @@ async def test_mount_uses_generated_mount_asset_kind() -> None:
     assert result.reply.image == b"image:1301170"
     assert result.reply.image_error == ""
     assert requested == [("mount", "1301170")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("generated_state", ["published", "missing"])
+async def test_mount_query_uses_published_generated_png_after_unity_404(
+    generated_state: str,
+) -> None:
+    data = FakeData()
+    data.values[data.equip] = (
+        SimpleNamespace(
+            id=1301170,
+            name="帝皇驹",
+            part_type=SimpleNamespace(id=6),
+            suit=None,
+            bonus=None,
+        ),
+    )
+    snapshot = PublishedRenderAssetSnapshot(
+        repositories={
+            "default": PublishedAssetRepository("example/unity", "a" * 40),
+            "mount": PublishedAssetRepository("example/generated", "b" * 40),
+        },
+        manifest_revision="assets-v3",
+        scopes=frozenset({"new_content_standard"}),
+    )
+    requested: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        is_generated = "/mount/1301170.png" in request.url.path
+        published = is_generated and generated_state == "published"
+        return httpx.Response(
+            200 if published else 404,
+            content=b"generated-png" if published else b"",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=lambda: snapshot,
+        )
+        result = await _service(data, source).select("equip", 1301170)
+
+    assert result.reply is not None
+    assert any("/item/cloth/prev/1301170.png" in url for url in requested)
+    assert any("/item/cloth/icon/1301170.png" in url for url in requested)
+    assert any("/mount/1301170.png" in url for url in requested)
+    if generated_state == "published":
+        assert result.reply.image == b"generated-png"
+        assert "暂未上线" not in result.reply.text
+    else:
+        assert result.reply.image is None
+        assert result.reply.text.endswith("图片：官方图片暂未上线，暂无法展示。")
+
+
+@pytest.mark.asyncio
+async def test_mount_transport_error_is_not_reported_as_missing_image() -> None:
+    data = FakeData()
+    data.values[data.equip] = (
+        SimpleNamespace(
+            id=1301170,
+            name="帝皇驹",
+            part_type=SimpleNamespace(id=6),
+            suit=None,
+            bonus=None,
+        ),
+    )
+    snapshot = PublishedRenderAssetSnapshot(
+        repositories={
+            "default": PublishedAssetRepository("example/unity", "a" * 40),
+            "mount": PublishedAssetRepository("example/generated", "b" * 40),
+        },
+        manifest_revision="assets-v3",
+        scopes=frozenset({"new_content_standard"}),
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if "/item/cloth/prev/" in request.url.path:
+            raise httpx.ConnectError(CONNECTION_FAILED, request=request)
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=lambda: snapshot,
+        )
+        result = await _service(data, source).select("equip", 1301170)
+
+    assert result.reply is not None
+    assert result.reply.image is None
+    assert result.reply.image_error == "图片素材获取失败，暂时无法显示。"
+    assert "暂未上线" not in result.reply.text
 
 
 @pytest.mark.asyncio

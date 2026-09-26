@@ -66,6 +66,9 @@ _PINNED_ASSET_ROOTS = (
     "https://raw.githubusercontent.com/{repository}/{revision}/",
     "https://cdn.jsdelivr.net/gh/{repository}@{revision}/",
 )
+_MISSING_IMAGE_STATUSES = frozenset({404, 410})
+
+
 class HttpSeerImageSource:
     def __init__(
         self,
@@ -113,6 +116,7 @@ class HttpSeerImageSource:
         urls: tuple[str, ...],
     ) -> bytes:
         last_error: ImageSourceError | None = None
+        non_missing_error: ImageSourceError | None = None
         for url in urls:
             try:
                 return await self._get(
@@ -121,7 +125,14 @@ class HttpSeerImageSource:
                 )
             except (HTTPStatusError, RequestError) as error:  # noqa: PERF203
                 last_error = _image_source_error(error)
-        error = last_error or ImageSourceError("所有图片 URL 均请求失败")
+                if (
+                    not isinstance(last_error, ImageSourceStatusError)
+                    or last_error.status_code not in _MISSING_IMAGE_STATUSES
+                ):
+                    non_missing_error = last_error
+        error = non_missing_error or last_error or ImageSourceError(
+            "所有图片 URL 均请求失败"
+        )
         raise error
 
     def _urls_for(
