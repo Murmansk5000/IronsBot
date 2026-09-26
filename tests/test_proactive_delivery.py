@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -20,6 +20,7 @@ from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.integrations.storage.daily_delivery import SqliteDailyDeliveryStore
 from ironsbot.services.activity.delivery import ActivityReminderDelivery
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
+from ironsbot.services.identity_link_store import OfficialIdentity
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import (
@@ -409,6 +410,55 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
     assert messenger.calls[4][1].parts[0].actor == MENTION
     assert isinstance(messenger.calls[6][1].parts[0], MentionPart)
     assert messenger.calls[6][1].parts[0].actor == MENTION
+
+
+@pytest.mark.asyncio
+async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
+    class RecordingDelivery:
+        requests: tuple[ProactiveDeliveryRequest, ...] = ()
+
+        async def send_many(
+            self,
+            requests: tuple[ProactiveDeliveryRequest, ...],
+            **_kwargs: object,
+        ) -> None:
+            self.requests = requests
+
+    recording = RecordingDelivery()
+    principals = IdentityPrincipalService()
+    official = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "opaque-group", account_id="example-app"
+    )
+    target = ScheduledMessageDelivery(
+        messages=("示例提醒",),
+        private_conversations=(),
+        group_conversations=(official, GROUP),
+        group_mentions=(MENTION,),
+        action_name="example-schedule",
+        subscription_key="example-schedule",
+    )
+    sender = ScheduledMessageOutboundSender(
+        cast("Any", recording), principals.official_group_member_for_qq
+    )
+
+    await sender.send(target)
+    assert [request.conversation for request in recording.requests] == [GROUP]
+
+    principals.register_official_link(
+        onebot_qq_id=MENTION.id,
+        official=OfficialIdentity("example-app", "member", "target-openid"),
+    )
+    await sender.send(target)
+    assert [request.conversation for request in recording.requests] == [official, GROUP]
+    assert recording.requests[0].message.parts[0] == MentionPart(
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            "opaque-group",
+            account_id="example-app",
+        )
+    )
 
 
 @pytest.mark.asyncio
