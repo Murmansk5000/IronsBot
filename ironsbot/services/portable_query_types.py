@@ -69,6 +69,10 @@ class PortableQuerySessionError(ValueError):
             "and match the choice count"
         )
 
+    @classmethod
+    def invalid_hidden_choices(cls) -> PortableQuerySessionError:
+        return cls("hidden menu choices require explicit non-numeric keys")
+
 
 @dataclass(frozen=True, slots=True)
 class QueryOperationSpec(Generic[_T]):
@@ -95,6 +99,7 @@ class PortableMenuSpec(Generic[_T]):
     labels: tuple[str, ...] = ()
     choice_keys: tuple[str, ...] = ()
     text_inputs: tuple[frozenset[str], ...] = ()
+    hidden_choice_indexes: frozenset[int] = frozenset()
     shared_select: MenuSelect[_T] | None = None
     semantic_request: MenuSemanticRequest[_T] | None = None
     shared_choice_indexes: frozenset[int] = frozenset()
@@ -118,6 +123,19 @@ class PortableMenuSpec(Generic[_T]):
             raise PortableQuerySessionError.invalid_choice_keys()
         if self.text_inputs and len(self.text_inputs) != len(self.choices):
             raise ValueError("menu text inputs must match the choice count")  # noqa: TRY003
+        if any(
+            index < 1 or index > len(self.choices)
+            for index in self.hidden_choice_indexes
+        ):
+            raise PortableQuerySessionError.invalid_hidden_choices()
+        if self.hidden_choice_indexes and (
+            not self.choice_keys
+            or any(
+                self.choice_keys[index - 1].isdecimal()
+                for index in self.hidden_choice_indexes
+            )
+        ):
+            raise PortableQuerySessionError.invalid_hidden_choices()
         if any(
             index < 1 or index > len(self.choices)
             for index in self.shared_choice_indexes

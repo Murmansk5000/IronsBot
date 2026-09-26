@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -236,6 +236,47 @@ async def test_sdk_client_sends_opt_in_command_keyboard() -> None:
         "enter": True,
         "unsupport_tips": "请发送对应序号",
     }
+
+
+@pytest.mark.asyncio
+async def test_sdk_keyboard_omits_hidden_prompt_choices() -> None:
+    api = _FakeApi()
+    prompt = _prompt()
+    prompt = replace(
+        prompt,
+        choices=(
+            prompt.choices[0],
+            PromptChoice("b", "隐藏分类", frozenset({"b"}), is_visible=False),
+            prompt.choices[1],
+        ),
+    )
+    payloads = render_qq_official_outbound_message(
+        OutboundMessage(OutboundMessage.from_text("选择").parts, prompt=prompt),
+        supports_interactive_prompts=True,
+    )
+    await TencentQQClient(
+        cast("QQApiClient", api),
+        cast("QQOfficialMediaUpload", _FakeMedia()),
+        custom_keyboards=True,
+    ).send_to_group(
+        "group-openid",
+        payloads,
+        msg_id="incoming-id",
+        msg_seq=PASSIVE_SEQUENCE,
+    )
+
+    keyboard = api.keyboards[0]
+    assert keyboard is not None
+    rows = keyboard.to_dict()["content"]["rows"]
+    labels = [
+        button["render_data"]["label"]
+        for row in rows
+        for button in row["buttons"]
+    ]
+    assert labels == [
+        "确认",
+        "取消",
+    ]
 
 
 @pytest.mark.asyncio

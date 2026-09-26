@@ -73,11 +73,22 @@ def test_focus_preserves_item_order_and_uses_numeric_adapter_keys() -> None:
     focused = focus_new_content_category(layout, "pet")
     menu = build_new_content_menu(snapshot, focused)
     assert focused.display_categories == ("pet",)
-    assert [choice.action.item for choice in menu.choices] == [
+    assert focused.root_categories == ("pet", "skill")
+    assert [choice.action.item for choice in menu.choices if choice.is_visible] == [
         snapshot.items[0],
         snapshot.items[2],
     ]
-    assert all(choice.key is None for choice in menu.choices)
+    assert [choice.key for choice in menu.choices] == [None, None, "b"]
+    assert not menu.choices[-1].is_visible
+    switched = focus_new_content_category(focused, "skill")
+    assert switched.root_categories == focused.root_categories
+    switched_keys = [
+        choice.key for choice in build_new_content_menu(snapshot, switched).choices
+    ]
+    assert switched_keys == [
+        None,
+        "a",
+    ]
 
 
 @pytest.mark.parametrize(("count", "expanded"), [(5, True), (6, False)])

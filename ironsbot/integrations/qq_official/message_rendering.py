@@ -160,7 +160,11 @@ def _attach_prompt(
 
 
 def _prompt_text(prompt: PromptSession) -> str:
-    choices = "\n".join(f"{choice.id}. {choice.label}" for choice in prompt.choices)
+    choices = "\n".join(
+        f"{choice.id}. {choice.label}"
+        for choice in prompt.choices
+        if choice.is_visible
+    )
     return f"请选择：\n{choices}\n\n回复序号选择"
 
 

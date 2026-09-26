@@ -172,6 +172,7 @@ class PortableQuerySessions(PortableSessionState):
                     | (
                         spec.text_inputs[index - 1] if spec.text_inputs else frozenset()
                     ),
+                    is_visible=index not in spec.hidden_choice_indexes,
                 )
                 for index in range(1, len(spec.choices) + 1)
             ),
@@ -306,9 +307,13 @@ class PortableQuerySessions(PortableSessionState):
             choice = pending.session.choice_from_text(text)
         if choice is None:
             if text.strip().isdigit():
+                visible_count = sum(
+                    choice.is_visible and choice.id != "0"
+                    for choice in pending.session.choices
+                )
                 return OutboundMessage.from_text(
                     pending.invalid_choice_message
-                    or f"序号无效，输入 1～{len(pending.choices)}，或输入 0 退出。"
+                    or f"序号无效，输入 1～{visible_count}，或输入 0 退出。"
                 )
             return None
         return await self._select_choice(

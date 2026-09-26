@@ -288,6 +288,7 @@ class _PromptKeyboard:
                 },
             }
             for choice in self.prompt.choices
+            if choice.is_visible
         ]
         return {
             "content": {
@@ -300,6 +301,6 @@ class _PromptKeyboard:
 
 
 def _prompt_keyboard(prompt: PromptSession) -> InlineKeyboard | None:
-    if len(prompt.choices) > _MAX_KEYBOARD_CHOICES:
+    if sum(choice.is_visible for choice in prompt.choices) > _MAX_KEYBOARD_CHOICES:
         return None
     return cast("InlineKeyboard", _PromptKeyboard(prompt))

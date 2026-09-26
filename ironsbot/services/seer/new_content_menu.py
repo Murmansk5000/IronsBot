@@ -33,6 +33,7 @@ class NewContentMenuLayout:
     focused_category: NewContentCategory | None = None
     expanded_categories: frozenset[NewContentCategory] = frozenset()
     preview_max_items: int = DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS
+    root_categories: tuple[NewContentCategory, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,7 @@ class NewContentChoice:
     description: str
     action: NewContentAction
     key: str | None = None
+    is_visible: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +78,7 @@ def plan_new_content_menu(
         return "本周暂未检测到可验证的新增或修改内容。"
     return NewContentMenuLayout(
         display_categories=visible,
+        root_categories=visible,
         focused_category=(
             requested[0] if requested is not None and len(requested) == 1 else None
         ),
@@ -101,10 +104,15 @@ def plan_new_content_menu(
 def focus_new_content_category(
     layout: NewContentMenuLayout, category: NewContentCategory
 ) -> NewContentMenuLayout:
-    if category not in layout.display_categories:
+    if category not in (layout.root_categories or layout.display_categories):
         msg = "new-content category is not available in this menu"
         raise ValueError(msg)
-    return replace(layout, display_categories=(category,), focused_category=category)
+    return replace(
+        layout,
+        display_categories=(category,),
+        focused_category=category,
+        root_categories=layout.root_categories or layout.display_categories,
+    )
 
 
 def build_new_content_menu(
@@ -115,9 +123,23 @@ def build_new_content_menu(
         if category not in layout.display_categories:
             msg = "focused new-content category is not visible"
             raise ValueError(msg)
+        choices = [_item_choice(item) for item in snapshot.items_for(category)]
+        choices.extend(
+            NewContentChoice(
+                name=CATEGORY_NAMES[root_category],
+                description="",
+                action=NewContentAction("category", root_category),
+                key=chr(ord("a") + index),
+                is_visible=False,
+            )
+            for index, root_category in enumerate(
+                layout.root_categories or layout.display_categories
+            )
+            if root_category != category
+        )
         return NewContentMenu(
             title=f"🆕【{CATEGORY_NAMES[category]}】输入编号查看详情：",
-            choices=tuple(_item_choice(item) for item in snapshot.items_for(category)),
+            choices=tuple(choices),
         )
     choices: list[NewContentChoice] = []
     for index, category in enumerate(layout.display_categories):

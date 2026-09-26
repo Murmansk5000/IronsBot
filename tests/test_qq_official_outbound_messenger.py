@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -314,6 +314,35 @@ async def test_image_prompt_adds_one_keyboard_text_payload_when_enabled() -> Non
             "请选择：\n1. 第一项\n\n回复序号选择",
             prompt=prompt,
         ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_prompt_text_omits_hidden_choices() -> None:
+    bot = _Bot()
+    prompt = _image_prompt()
+    prompt = replace(
+        prompt,
+        choices=(
+            prompt.choices[0],
+            PromptChoice("b", "隐藏分类", frozenset({"b"}), is_visible=False),
+        ),
+    )
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+        account_custom_keyboards={"app": True},
+    )
+
+    result = await messenger.reply(
+        _reply(GROUP, "event-id"),
+        OutboundMessage((BinaryImagePart(b"image", "image/png"),), prompt=prompt),
+    )
+
+    assert result.delivered
+    assert bot.calls[0][2][-1] == QQOfficialTextPayload(
+        "请选择：\n1. 第一项\n\n回复序号选择",
+        prompt=prompt,
     )
 
 
