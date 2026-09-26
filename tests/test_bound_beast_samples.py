@@ -65,6 +65,13 @@ def test_completion_sample_rank_uses_earlier_time_and_ties(tmp_path: Path) -> No
     assert standings[key] == (3, 3, 1)
     rows, _ = repo.entries(key, limit=10, start_rank=1, season_sub_key=1)
     assert [row[0] for row in rows] == [1, 1, 3]
+    service = LocalRankService(
+        repo, LocalRankConfig(enabled=True), PlayerQueryConfig(), cast("Any", None)
+    )
+    summary = service.current_summary(
+        100001, {key: {"value": 100, "season_sub_key": 1}}, peak_sub_key=1
+    )
+    assert summary.sample_rank(key) == "样本前33.3%"
 
 
 @pytest.mark.asyncio

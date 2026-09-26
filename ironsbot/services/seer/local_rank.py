@@ -22,7 +22,6 @@ from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
 )
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
-from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 from ironsbot.services.seer.rank_peak import (
     build_peak_rating_score,
 )
@@ -429,10 +428,6 @@ class LocalRankService:
                 rank / sample_count * 100
             )
             sample_ranks[spec.key] = f"样本前{percent_text}%"
-            if any(item.beast_metric == spec.key for item in GLOBAL_RANKS.values()):
-                sample_ranks[spec.key] = (
-                    f"样本第{rank}/{sample_count}｜样本前{percent_text}%"
-                )
             display_text = local_rank_formatting.format_metric_display(
                 spec.key,
                 value,
