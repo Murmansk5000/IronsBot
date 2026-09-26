@@ -176,13 +176,14 @@ async def test_real_event_cross_member_sessions_are_independent(
     await handle_event(bot, group_message_event("1", user_id=101))
     await handle_event(bot, _reply("2", user=102, anchor=101, shape=shape))
     await handle_event(bot, group_message_event("3", user_id=102))
+    await handle_event(bot, _reply("3", user=102, anchor=101, shape=shape))
     await handle_event(bot, group_message_event("0", user_id=101))
     await handle_event(bot, group_message_event("7", user_id=102))
-    assert ingress.selected == [("101", 1), ("102", 2), ("102", 3), ("102", 7)]
+    assert ingress.selected == [("101", 1), ("102", 2), ("102", 3)]
     assert not ingress.sessions.has_active_session(
         message_input_context(group_message_event(user_id=101))
     )
-    assert ingress.sessions.has_active_session(
+    assert not ingress.sessions.has_active_session(
         message_input_context(group_message_event(user_id=102))
     )
     for sent in ingress.sends[2:4]:
