@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser
 
+from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -18,6 +20,7 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 )
 from ironsbot.integrations.qq_official.runtime import deliver_qq_official_reply
 from ironsbot.integrations.qq_official.sdk_client import QQOfficialSendReceipt
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.portable_commands import PortableCommandRouter
@@ -218,3 +221,89 @@ async def test_bare_shortcut_does_not_select_previous_players_menu() -> None:
     assert bare.message.parts[0].text == "own binding"
     selected.assert_not_awaited()
     assert not router.recognizes(_event("A", "1", quote="menu"))
+
+
+@pytest.mark.asyncio
+async def test_official_direct_pet_aliases_warn_once_while_rendering() -> None:
+    sessions = PortableQuerySessions()
+    context = _event("A", "精灵测试精灵")
+    features = FeatureService(
+        {context.message.conversation: frozenset({"help"})}, {}, frozenset()
+    )
+    sessions.interactions.request_service = InFlightRequestService(
+        features,
+        CommandCooldownConfig(
+            duplicate_window_seconds=60.0,
+            duplicate_message="该指令重复发送；后续重复不再提醒。",
+        ),
+    )
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="test",
+                commands=(
+                    CommandContract(
+                        id="seer.pet.query",
+                        plugin_id="test",
+                        section="test",
+                        examples=("精灵测试精灵",),
+                        description="pet",
+                        features_all=("help",),
+                        routing_matcher=lambda text, _ctx: text.startswith(
+                            ("精灵", "魂印", "技能")
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        known_features=("help",),
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+    render = Mock()
+
+    async def operation(text: str, context: MessageInputContext) -> OutboundMessage:
+        del context
+        render(text)
+        started.set()
+        await release.wait()
+        return OutboundMessage.from_text("资料图")
+
+    router = PortableCommandRouter(
+        catalog,
+        {"seer.pet.query": operation},
+        features,
+        ai=cast("Any", None),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+    first_task = asyncio.create_task(router.dispatch(context))
+    await started.wait()
+    duplicate = await router.dispatch(_event("A", "魂印测试精灵"))
+    assert duplicate is not None
+    assert isinstance(duplicate.message.parts[0], TextPart)
+    assert "重复" in duplicate.message.parts[0].text
+    assert await router.dispatch(_event("A", "技能测试精灵")) is None
+    other_task = asyncio.create_task(router.dispatch(_event("B", "精灵测试精灵")))
+    await asyncio.sleep(0)
+    assert [call.args[0] for call in render.call_args_list] == [
+        "精灵测试精灵",
+        "精灵测试精灵",
+    ]
+    release.set()
+    first, other = await asyncio.gather(first_task, other_task)
+    assert first is not None and other is not None
+    assert first.on_finished is not None and other.on_finished is not None
+    first.on_finished()
+    other.delivery_failed()
+    other.on_finished()
+    assert await router.dispatch(_event("A", "魂印测试精灵")) is None
+    retry = await router.dispatch(_event("B", "魂印测试精灵"))
+    assert retry is not None
+    assert isinstance(retry.message.parts[0], TextPart)
+    assert retry.message.parts[0].text == "资料图"
+    retry.delivery_failed()
+    assert retry.on_finished is not None
+    retry.on_finished()
