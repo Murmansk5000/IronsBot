@@ -142,7 +142,7 @@ class ProactiveMessageDelivery:
                     / self.policy.retry_batch_divisor ** (attempt - 1)
                 ),
             )
-            next_pending, transport_unavailable = await self._run_attempt(
+            next_pending = await self._run_attempt(
                 pending,
                 state,
                 batch_size=batch_size,
@@ -151,8 +151,6 @@ class ProactiveMessageDelivery:
                 subscription_key=subscription_key,
                 include_promotions=include_promotions,
             )
-            if transport_unavailable:
-                break
             if attempt == attempts:
                 state.failed.update(request.conversation for request in next_pending)
                 break
@@ -212,7 +210,7 @@ class ProactiveMessageDelivery:
         interval_seconds: float,
         subscription_key: str | None,
         include_promotions: bool,
-    ) -> tuple[list[ProactiveDeliveryRequest], bool]:
+    ) -> list[ProactiveDeliveryRequest]:
         next_pending: list[ProactiveDeliveryRequest] = []
         for start in range(0, len(pending), batch_size):
             batch = pending[start : start + batch_size]
@@ -230,7 +228,7 @@ class ProactiveMessageDelivery:
                 )
             )
             self._record_batch(batch, results, state, next_pending)
-        return next_pending, False
+        return next_pending
 
     @staticmethod
     def _record_batch(
@@ -238,8 +236,7 @@ class ProactiveMessageDelivery:
         results: list[SendResult],
         state: _DeliveryState,
         next_pending: list[ProactiveDeliveryRequest],
-    ) -> bool:
-        transport_unavailable = False
+    ) -> None:
         for request, result in zip(batch, results, strict=True):
             state.results[request.conversation] = result
             kind = result.failure_kind or DeliveryFailureKind.PERMANENT
@@ -251,10 +248,6 @@ class ProactiveMessageDelivery:
                 state.failed.add(request.conversation)
                 if kind is DeliveryFailureKind.UNCERTAIN:
                     state.uncertain.add(request.conversation)
-                transport_unavailable |= (
-                    kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
-                )
-        return transport_unavailable
 
     def _filter_subscribed(
         self,
@@ -326,7 +319,7 @@ class ProactiveMessageDelivery:
             return SendResult(
                 delivered=False,
                 error_code="delivery_exception",
-                failure_kind=DeliveryFailureKind.RETRYABLE,
+                failure_kind=DeliveryFailureKind.UNCERTAIN,
             )
         if result.delivered:
             return result

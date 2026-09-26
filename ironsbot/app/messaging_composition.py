@@ -10,7 +10,6 @@ from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
-from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
     OneBotTeamAuditPolicy,
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
+    from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.bilibili.targets import BiliTargetService
@@ -53,7 +52,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     proactive_delivery: ProactiveMessageDelivery,
     subscriptions: PushUnsubscribeStore,
     bot_router: BotRouter,
-    outbound: GroupOutboundRateLimitService,
+    onebot_messenger: OneBotOutboundMessenger,
     bili_targets: BiliTargetService,
     lucky_skin_window: LuckySkinWindowService,
     identity_principals: IdentityPrincipalService,
@@ -131,7 +130,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             settings.messaging.team_audit_welcome,
             SqliteTeamAuditReminderStore(settings.paths.runtime_state),
             OneBotTeamAuditPolicy(features),
-            OneBotOutboundMessenger(bot_router, outbound),
+            onebot_messenger,
             OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
         ),
     )

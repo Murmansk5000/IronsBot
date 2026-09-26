@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from time import monotonic
 from typing import TYPE_CHECKING, Any, Protocol
 
 from nonebot.log import logger
@@ -23,6 +24,7 @@ from ironsbot.integrations.onebot.message_rendering import (
 )
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
+    OutboundRateLimitDecision,
     use_preacquired_push_permit,
 )
 
@@ -67,11 +69,17 @@ class OneBotOutboundMessenger:
         outbound: GroupOutboundRateLimitService,
         *,
         enabled: bool = True,
+        transport_failure_cooldown_seconds: float = 60.0,
     ) -> None:
         self._router = router
         self._outbound = outbound
         self._enabled = enabled
         self._identities: dict[str, ExecutionIdentity] = {}
+        self._push_locks: dict[str, asyncio.Lock] = {}
+        self._transport_unavailable_until: dict[str, float] = {}
+        self._transport_failure_cooldown_seconds = max(
+            0.0, transport_failure_cooldown_seconds
+        )
 
     async def _identity(self, bot: Any) -> ExecutionIdentity:
         account_id = str(getattr(bot, "self_id", "")).strip()
@@ -188,6 +196,7 @@ class OneBotOutboundMessenger:
                 failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
         identity = await self._identity(bot)
+        account_key = str(getattr(bot, "self_id", "") or id(bot))
         decision = (
             await self._outbound.acquire_push(
                 _group_id(conversation),
@@ -205,6 +214,60 @@ class OneBotOutboundMessenger:
                 failure_kind=DeliveryFailureKind.RETRYABLE,
                 execution_identity=identity,
             )
+        if proactive:
+            lock = self._push_locks.setdefault(account_key, asyncio.Lock())
+            try:
+                await lock.acquire()
+            except asyncio.CancelledError:
+                if decision is not None:
+                    self._outbound.rollback(decision.permit)
+                raise
+            try:
+                return await self._send_to_bot(
+                    bot,
+                    conversation,
+                    rendered,
+                    identity=identity,
+                    decision=decision,
+                    account_key=account_key,
+                    proactive=True,
+                )
+            finally:
+                lock.release()
+        return await self._send_to_bot(
+            bot,
+            conversation,
+            rendered,
+            identity=identity,
+            decision=decision,
+            account_key=account_key,
+            proactive=False,
+        )
+
+    async def _send_to_bot(  # noqa: PLR0913
+        self,
+        bot: Any,
+        conversation: ConversationRef,
+        rendered: Message,
+        *,
+        identity: ExecutionIdentity,
+        decision: OutboundRateLimitDecision | None,
+        account_key: str,
+        proactive: bool,
+    ) -> SendResult:
+        if (
+            proactive
+            and self._transport_unavailable_until.get(account_key, 0) > monotonic()
+        ):
+            if decision is not None:
+                self._outbound.rollback(decision.permit)
+            return SendResult(
+                delivered=False,
+                error_code="transport_circuit_open",
+                attempted=False,
+                failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
+                execution_identity=identity,
+            )
         try:
             with use_preacquired_push_permit(
                 self._outbound,
@@ -212,21 +275,30 @@ class OneBotOutboundMessenger:
             ):
                 result = await _send_onebot_message(bot, conversation, rendered)
         except Exception as error:  # noqa: BLE001 - delivery boundary
-            if decision is not None:
+            kind = _onebot_failure_kind(error)
+            if decision is not None and kind is not DeliveryFailureKind.UNCERTAIN:
                 self._outbound.rollback(decision.permit)
             logger.warning(
-                "OneBot outbound delivery failed: kind={} ref={} error={}",
+                "OneBot outbound delivery failed: kind={} ref={} error_type={}",
                 conversation.kind,
                 reference_digest(conversation.id),
-                error,
+                type(error).__name__,
             )
+            if kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE:
+                if self._transport_failure_cooldown_seconds > 0:
+                    self._transport_unavailable_until[account_key] = (
+                        monotonic() + self._transport_failure_cooldown_seconds
+                    )
+                if proactive and conversation.kind == "group":
+                    self._outbound.discard_pending_pushes(int(conversation.id))
             return SendResult(
                 delivered=False,
                 error_code="delivery_failed",
-                error_message=str(error),
-                failure_kind=_onebot_failure_kind(error),
+                error_message=type(error).__name__,
+                failure_kind=kind,
                 execution_identity=identity,
             )
+        self._transport_unavailable_until.pop(account_key, None)
         message_id = onebot_result_message_id(result)
         if message_id is None:
             return SendResult(
@@ -292,6 +364,4 @@ def _onebot_failure_kind(error: Exception) -> DeliveryFailureKind:
         )
     ):
         return DeliveryFailureKind.TRANSPORT_UNAVAILABLE
-    if "timeout" in text:
-        return DeliveryFailureKind.UNCERTAIN
-    return DeliveryFailureKind.RETRYABLE
+    return DeliveryFailureKind.UNCERTAIN

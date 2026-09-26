@@ -796,6 +796,10 @@ max_parallel_targets = 5
 retry_batch_divisor = 3
 # Default: 2.0; pause before each retry round.
 retry_delay_seconds = 2.0
+# Default: 60.0; pause proactive sends from one OneBot account after a clear
+# transport failure. Other accounts and direct replies remain available.
+# OneBot 传输确认离线后，该账号的后台推送暂缓秒数；其他账号和用户回复不受影响。
+transport_failure_cooldown_seconds = 60.0
 
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]

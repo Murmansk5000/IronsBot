@@ -165,6 +165,17 @@ class _ConcurrentMessenger(FakeMessenger):
             self.active -= 1
 
 
+@dataclass
+class _ExplodingMessenger(FakeMessenger):
+    async def send(
+        self,
+        conversation: ConversationRef,
+        message: OutboundMessage,
+    ) -> SendResult:
+        self.calls.append((conversation, message))
+        raise TimeoutError
+
+
 def _delivery(
     *,
     features: FakeFeatures | None = None,
@@ -296,6 +307,23 @@ async def test_proactive_delivery_does_not_retry_uncertain_delivery() -> None:
         OutboundMessage((TextPart("通知"),)),
         (GROUP,),
         action_name="uncertain",
+        interval_seconds=0,
+    )
+
+    assert summary.failed == (GROUP,)
+    assert summary.uncertain == (GROUP,)
+    assert len(messenger.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_does_not_retry_uncaught_send_exception() -> None:
+    messenger = _ExplodingMessenger()
+    delivery, _messenger, _subscriptions = _delivery(messenger=messenger)
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("通知"),)),
+        (GROUP,),
+        action_name="exception",
         interval_seconds=0,
     )
 

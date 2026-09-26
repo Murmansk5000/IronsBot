@@ -178,6 +178,11 @@ AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；
 `GROUP_MSG_RECEIVE/GROUP_MSG_REJECT`、`C2C_MSG_RECEIVE/C2C_MSG_REJECT` 以及机器人
 加入/移除事件；目标明确关闭主动消息或移除机器人后，所有主动推送会在调用平台接口前
 停止。重新开启后自动恢复，被动命令回复不受该状态影响。
+OneBot 主动推送以返回消息 ID 作为平台受理回执；超时、无法判定是否发送的
+异常或缺少回执时标记为送达不确定，不自动重发，避免重复推送。确认账号断线后，后台推送
+按该账号暂缓，默认 60 秒，可通过
+`messaging.proactive_delivery.transport_failure_cooldown_seconds` 调整；
+其他账号和直接命令回复不受影响。平台受理不等于接收者已读。
 
 在 `ironsbot.toml` 中启用：
 

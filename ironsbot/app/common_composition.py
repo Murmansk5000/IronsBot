@@ -55,9 +55,9 @@ class CommonComponents:
     prompt_sessions: PromptSessionManager
     features: FeatureService
     promotions: PromotionCatalog
-    outbound: GroupOutboundRateLimitService
     subscriptions: PushUnsubscribeStore
     bot_router: BotRouter
+    onebot_messenger: OneBotOutboundMessenger
     outbound_messenger: PlatformOutboundMessenger
     qq_official: QQOfficialRuntime | None
     proactive_delivery: ProactiveMessageDelivery
@@ -127,12 +127,16 @@ def build_common_components(
     )
     promotions = PromotionCatalog(settings.promotions)
     platform_selection = settings.outbound_platform_selection
-    platform_messengers: dict[Platform, OutboundMessenger] = {
-        Platform.ONEBOT: OneBotOutboundMessenger(
-            bot_router,
-            outbound,
-            enabled=platform_selection.onebot_outbound_enabled,
+    onebot_messenger = OneBotOutboundMessenger(
+        bot_router,
+        outbound,
+        enabled=platform_selection.onebot_outbound_enabled,
+        transport_failure_cooldown_seconds=(
+            settings.messaging.proactive_delivery.transport_failure_cooldown_seconds
         ),
+    )
+    platform_messengers: dict[Platform, OutboundMessenger] = {
+        Platform.ONEBOT: onebot_messenger,
     }
     qq_official = None
     if settings.bot.qq_official.enabled_accounts:
@@ -239,9 +243,9 @@ def build_common_components(
         prompt_sessions=PromptSessionManager(),
         features=features,
         promotions=promotions,
-        outbound=outbound,
         subscriptions=subscriptions,
         bot_router=bot_router,
+        onebot_messenger=onebot_messenger,
         outbound_messenger=outbound_messenger,
         qq_official=qq_official,
         proactive_delivery=monitored_delivery,
