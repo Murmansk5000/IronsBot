@@ -129,6 +129,11 @@ default_account = "example_bot"
 [bot.qq_official.group_routes]
 # example_official_group = "example_bot"
 
+# 私聊主动推送指定账号。用户别名须有 QQ 身份及该账号下已核实的 OpenID；
+# 缺少对应地址时不会改用其他机器人。
+[bot.qq_official.private_routes]
+# owner = "example_bot"
+
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
 #     A TOML AppID plus APP_SECRET_<AppID> activates the account and
@@ -916,10 +921,12 @@ cnb_repo = ""
 # Example: "data/sendpic"
 local_root = "sendpic"
 
-# EN: Image commands are empty by default. Every command uses one schema:
+# EN: The packaged commands are enabled by default: 学习力, 巅峰姬, 必先,
+# 技能石, 周年庆伪随机表. Every custom command uses one schema:
 # mode="single" requires image_file; mode="indexed" requires image_dir and
 # image_filename_template. Local paths are relative to local_root.
-# ZH: 图片命令默认为空。所有图片命令共用一套配置：mode="single" 需要
+# ZH: 默认启用内置口令：学习力、巅峰姬、必先、技能石、周年庆伪随机表。
+# 自定义图片命令共用一套配置：mode="single" 需要
 # image_file；mode="indexed" 需要 image_dir 和 image_filename_template。
 # 本地图片路径相对于 local_root。
 #
@@ -932,6 +939,12 @@ local_root = "sendpic"
 # mode = "single"
 # image_file = "example.png"
 # message_template = "{image}"
+#
+# EN: Override a packaged command by repeating its id. For example, disable one:
+# ZH: 使用相同 id 可覆盖内置口令，例如关闭“技能石”：
+# [[messaging.sendpic.configs]]
+# id = "skill-stone"
+# enabled = false
 
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
 # Incoming command replies use the receiving bot; proactive pushes use these routes.
@@ -1644,8 +1657,8 @@ cache_path = "data/seer/player_lineup_cache.sqlite"
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
 enabled = false
-# Default: "04:30"; EN: Daily restart times. ZH: 每日重启时间。
-times = "04:30"
+# Default: "01:00"; EN: Daily restart times. ZH: 每日重启时间。
+times = "01:00"
 # Default: 10.0; EN: Grace seconds before signaling. ZH: 发信号前宽限秒数。
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。
