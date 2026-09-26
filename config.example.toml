@@ -1061,6 +1061,14 @@ sections = ["all"]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
 # ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
 change_cooldown_days = 3
+# ZH: 未绑定用户能否按数字米米号查询。
+allow_unbound_numeric_queries = true
+# ZH: 未绑定用户能否按可见别名查询。
+allow_unbound_alias_queries = true
+# ZH: 未绑定用户能否 @成员 代查。
+allow_unbound_member_queries = false
+# ZH: 其他人能否快捷查询超级管理员绑定账号；关闭后只能输入完整数字米米号。
+allow_others_superuser_bound_shortcuts = false
 
 [seer.player.query_limits]
 # EN: Persistent daily budgets for live player-related queries, reset by Beijing date.

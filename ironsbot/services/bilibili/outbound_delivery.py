@@ -150,9 +150,13 @@ class BilibiliDynamicOutboundSender:
             failures=failures,
         )
 
-        text_targets = self._subscribed_full_targets(
-            full_targets,
-            bili_media_subscription_key(author_mid, "text"),
+        text_targets = (
+            self._subscribed_full_targets(
+                full_targets, bili_media_subscription_key(author_mid, "text")
+            )
+            if self.has_category_subscriptions is not None
+            and self.has_category_subscriptions(author_mid)
+            else full_targets
         )
         text_targets = self._pending_targets(text_targets, dynamic_id, "text")
         if text_targets.has_targets:
@@ -185,9 +189,13 @@ class BilibiliDynamicOutboundSender:
                 stage="text",
             )
 
-        image_targets = self._subscribed_full_targets(
-            full_targets,
-            bili_media_subscription_key(author_mid, "image"),
+        image_targets = (
+            self._subscribed_full_targets(
+                full_targets, bili_media_subscription_key(author_mid, "image")
+            )
+            if self.has_category_subscriptions is not None
+            and self.has_category_subscriptions(author_mid)
+            else full_targets
         )
         image_targets = self._pending_targets(image_targets, dynamic_id, "image")
         image_message = (

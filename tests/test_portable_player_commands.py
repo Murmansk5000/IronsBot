@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.config.models.seer import PlayerBindingConfig
 from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -121,6 +122,44 @@ async def test_beast_rank_choice_is_lazy_and_shared_query_uses_responder(
 
 
 @pytest.mark.asyncio
+async def test_shared_player_menu_cannot_launder_numeric_superuser_target() -> None:
+    player_id = 700001
+    owner = _context(f"米米号{player_id}", actor_id="owner")
+    features = FeatureService(
+        {owner.message.conversation: frozenset({"seer_player"})},
+        {},
+        frozenset(),
+    )
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            int(reference) if reference.isdecimal() else None
+        ),
+        lambda actor: player_id if actor.id == "owner" else 600001,
+        binding_config=PlayerBindingConfig(),
+        superuser_actors=lambda: (owner.message.actor,),
+    )
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    operations = _build_player_operations(
+        cast("PlayerService", service),
+        resolver,
+        sessions,
+        features,
+        PlayerDetailExtensionRegistry(),
+    )
+    initial = await operations["seer.player.query"](owner.text, owner)
+    assert isinstance(initial, PortableReply)
+    sessions.record_delivery(
+        owner, initial.message, SendResult(delivered=True, message_id="owner-menu")
+    )
+    responder = _context("1", actor_id="responder", reply_to_id="owner-menu")
+    selected = await sessions.select_shared("1", owner, responder, allow_deferred=True)
+    assert isinstance(selected, OutboundMessage)
+    assert isinstance(selected.parts[0], TextPart)
+    assert "完整数字" in selected.parts[0].text
+
+
+@pytest.mark.asyncio
 async def test_beast_rank_menu_requires_rank_permission() -> None:
     owner = _context("米米号700001")
     features = FeatureService(
@@ -190,6 +229,13 @@ class _PlayerService:
         del actor
         return None if self.unbound else 600001
 
+    def should_offer_binding(self, actor: ActorRef) -> bool:
+        return self.default_player_id(actor) is None and not self.choice_completed
+
+    def decline_binding_offer(self, actor: ActorRef) -> None:
+        del actor
+        self.choice_completed = True
+
     def __init__(self, *, replacement: bool = False, team_id: int = 0) -> None:
         self.queried: list[int] = []
         self.returned: list[tuple[ActorRef, int]] = []
@@ -198,6 +244,7 @@ class _PlayerService:
         self.replacement = replacement
         self.team_id = team_id
         self.unbound = False
+        self.choice_completed = False
         self.replacement_choices: list[tuple[ActorRef, int]] = []
 
     async def query(
@@ -629,7 +676,7 @@ async def test_player_query_menu_accepts_short_binding_confirmation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unbound_shortcut_asks_each_time_without_profile_fetch() -> None:
+async def test_unbound_shortcut_decline_is_not_offered_again() -> None:
     service = _PlayerService()
     service.unbound = True
     sessions = PortableQuerySessions()
@@ -637,14 +684,17 @@ async def test_unbound_shortcut_asks_each_time_without_profile_fetch() -> None:
         cast("PlayerService", service), _resolver(), sessions
     )
     context = _context("收集700002")
-    for _ in range(2):
-        reply = await operations["seer.player.default"](context.text, context)
-        assert isinstance(reply, PortableReply)
-        assert "是否绑定" in _text(reply)
-        reply.delivered()
-        result = await sessions.select("n", context, allow_deferred=True)
-        assert isinstance(result, PortableReply)
-        assert "collection:700002" in _text(result)
+    reply = await operations["seer.player.default"](context.text, context)
+    assert isinstance(reply, PortableReply)
+    assert "是否绑定" in _text(reply)
+    reply.delivered()
+    result = await sessions.select("n", context, allow_deferred=True)
+    assert isinstance(result, PortableReply)
+    assert "collection:700002" in _text(result)
+    again = await operations["seer.player.default"](context.text, context)
+    assert isinstance(again, PortableReply)
+    assert "是否绑定" not in _text(again)
+    assert "collection:700002" in _text(again)
     assert service.queried == []
     assert service.bound == []
 

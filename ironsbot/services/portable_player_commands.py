@@ -45,7 +45,10 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
     )
-    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.player_id_resolver import (
+        PlayerIdResolver,
+        PlayerTargetSource,
+    )
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_service_models import PlayerQueryResult
     from ironsbot.services.seer.rank_queries import RankQueryService
@@ -88,6 +91,13 @@ class _PortablePlayerOperations:
         if reference is None:
             msg = f"catalog accepted input that its player parser rejected: {text!r}"
             raise ValueError(msg)
+        target_source: PlayerTargetSource = (
+            "member"
+            if context.has_member_mentions
+            else self.resolver.reference_source(reference)
+            if reference.strip()
+            else "default"
+        )
 
         async def query(player_id: int, context: MessageInputContext) -> PortableReply:
             reservation = self.sessions.reserve_responses(
@@ -112,6 +122,7 @@ class _PortablePlayerOperations:
                     self.features,
                     self.extensions,
                     self.rank_queries,
+                    target_source=target_source,
                 )
             except BaseException:
                 reservation.cancel()
@@ -373,6 +384,8 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     features: FeatureService,
     extensions: PlayerDetailExtensionRegistry,
     rank_queries: RankQueryService | None,
+    *,
+    target_source: PlayerTargetSource = "numeric",
 ) -> PortableReply:
     if result.message:
         return _text_reply(result.message)
@@ -423,6 +436,11 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         ),
         context: MessageInputContext,
     ) -> OutboundMessage | PortableReply:
+        error = resolver.query_access_error(
+            context.message.actor, pending.player_id, target_source
+        )
+        if error is not None:
+            return OutboundMessage.from_text(error)
         if command == "beast_rank":
             rank_service = rank_queries
             assert rank_service is not None
@@ -458,6 +476,11 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         ),
         context: MessageInputContext,
     ) -> OutboundMessage | PortableReply:
+        error = resolver.query_access_error(
+            context.message.actor, pending.player_id, "shared_menu"
+        )
+        if error is not None:
+            return OutboundMessage.from_text(error)
         return await _select_shared_player_detail(
             command,
             context,

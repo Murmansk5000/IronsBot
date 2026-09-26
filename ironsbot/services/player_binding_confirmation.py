@@ -28,18 +28,22 @@ async def confirm_shortcut_binding(
     if (
         context.has_member_mentions
         or not context.offer_player_binding
-        or service.default_player_id(context.message.actor) is not None
+        or not service.should_offer_binding(context.message.actor)
     ):
         return await query(player_id, context)
 
     async def confirm(
         choice: Literal["confirm", "skip"], selected: MessageInputContext
     ) -> PortableReply:
-        status = (
-            service.bind_shortcut_target(selected.message.actor, player_id)
-            if choice == "confirm"
-            else ""
-        )
+        if choice == "confirm":
+            status = (
+                service.bind_shortcut_target(selected.message.actor, player_id)
+                if service.should_offer_binding(selected.message.actor)
+                else "当前绑定状态已变化，请重新发送查询指令。"
+            )
+        else:
+            service.decline_binding_offer(selected.message.actor)
+            status = ""
         reply = await query(player_id, selected)
         if not status:
             return reply

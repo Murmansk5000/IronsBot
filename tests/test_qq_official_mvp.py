@@ -2971,7 +2971,10 @@ async def test_router_builds_extension_without_platform_handler() -> None:
         about=AboutService("test"),
         seer=_fake_seer(
             player_details=extensions,
-            player=SimpleNamespace(default_player_id=lambda _actor: 700001),
+            player=SimpleNamespace(
+                default_player_id=lambda _actor: 700001,
+                should_offer_binding=lambda _actor: False,
+            ),
         ),
         player_id_resolver=_FakePlayerIdResolver(),
         identity_links=_identity_links(),

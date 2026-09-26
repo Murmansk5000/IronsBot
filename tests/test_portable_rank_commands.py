@@ -14,6 +14,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_rank_commands import (
     build_portable_rank_admin_operations,
@@ -318,6 +319,39 @@ async def test_portable_rank_dispatches_list_score_and_alias_player_queries() ->
 
 
 @pytest.mark.asyncio
+async def test_rank_partial_alias_selects_one_player() -> None:
+    service = _RankQueryService()
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: 600001,
+        reference_search=lambda *_: (
+            PlayerReferenceChoice(700001, "玩家甲"),
+            PlayerReferenceChoice(700002, "玩家乙"),
+        ),
+    )
+    sessions = PortableQuerySessions()
+
+    async def player_query(text: str, context: MessageInputContext) -> PortableReply:
+        del text, context
+        return PortableReply(OutboundMessage.from_text("unused"))
+
+    operations = build_portable_rank_operations(
+        cast("RankQueryService", service),
+        resolver,
+        sessions,
+        player_query,
+        cast("FeatureService", _Features()),
+    )
+    context = _context("成就榜玩家")
+    menu = await operations["rank.global_collection"](context.text, context)
+    assert isinstance(menu, PortableReply)
+    assert "玩家甲" in _text(menu.message)
+    selected = await sessions.select("2", context, allow_deferred=True)
+    assert isinstance(selected, PortableReply)
+    assert _text(selected.message) == "player:成就点数:700002"
+
+
+@pytest.mark.asyncio
 async def test_rank_menu_preserves_displayed_rank_and_opens_player_query() -> None:
     service = _RankQueryService()
     service.list_prepared = RankListPreparedReply(
@@ -499,9 +533,7 @@ def test_rank_catalog_claims_a_direct_member_mention_as_player_query() -> None:
 
 @pytest.mark.asyncio
 async def test_rank_reports_an_unbound_mentioned_openid() -> None:
-    operations = _rank_operations(
-        _RankQueryService(), _resolver(target_binding=None)
-    )
+    operations = _rank_operations(_RankQueryService(), _resolver(target_binding=None))
     context = _context("成就榜", mentions=(_target(),))
 
     result = cast(
