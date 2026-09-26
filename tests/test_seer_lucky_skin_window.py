@@ -36,6 +36,7 @@ from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingSto
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
 from ironsbot.services.identity.player_accounts import build_player_account_registry
+from ironsbot.services.identity_link_store import OfficialIdentity
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
@@ -671,6 +672,34 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
         ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
         == []
     )
+
+
+def test_official_private_subscription_uses_verified_qq_identity(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
+    principals = IdentityPrincipalService()
+    options = OneBotLuckySkinWindowSubscriptionOptions(
+        service,
+        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+        principals,
+    )
+    official = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "opaque-user",
+        account_id="example-app",
+    )
+    assert options.subscription_options(official) == []
+
+    principals.register_official_link(
+        onebot_qq_id="1001",
+        official=OfficialIdentity("example-app", "user", "opaque-user"),
+    )
+
+    assert [option.key for option in options.subscription_options(official)] == [
+        LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY
+    ]
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])

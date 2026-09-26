@@ -69,7 +69,10 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             settings.activity,
             subscriptions,
             features,
-            ScheduledMessageOutboundSender(proactive_delivery),
+            ScheduledMessageOutboundSender(
+                proactive_delivery,
+                identity_principals.official_group_member_for_qq,
+            ),
             build_onebot_message_schedule_targets(
                 settings.messaging,
                 settings.onebot_references,
@@ -79,6 +82,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                 OneBotLuckySkinWindowSubscriptionOptions(
                     lucky_skin_window,
                     subscriptions,
+                    identity_principals,
                 ).subscription_options,
             ),
             _prepare_extra_push_options=bili_targets.prepare_subscription_labels,
@@ -99,6 +103,18 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                     settings.messaging.mention_replies
                 )
             ),
+            _command_mentions={
+                action.id: tuple(
+                    settings.onebot_references.actor_refs(
+                        action.at_user_ids,
+                        location=f"messaging.commands.{action.id}.at_user_ids",
+                    )
+                )
+                for action in (
+                    *settings.messaging.commands,
+                    *settings.messaging.keyword_replies,
+                )
+            },
             _actor_principal=identity_principals.actor_principal,
         ),
         sendpic=SendpicService(

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches, normalize_command_text
@@ -26,7 +26,7 @@ from ironsbot.services.messaging.subscriptions import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterable
+    from collections.abc import Awaitable, Callable, Iterable, Mapping
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
@@ -93,6 +93,7 @@ class MessagingService:
     _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
     _mention_reply_targets: tuple[tuple[ActorRef, ...], ...] = ()
     _actor_principal: Callable[[ActorRef], ActorPrincipal] | None = None
+    _command_mentions: Mapping[str, tuple[ActorRef, ...]] = field(default_factory=dict)
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -102,13 +103,12 @@ class MessagingService:
 
     @property
     def portable_command_actions(self) -> tuple[MessageReplyAction, ...]:
-        """Return enabled commands without OneBot-only mention targets."""
+        """Return enabled commands for both platform adapters."""
 
-        return tuple(
-            action
-            for action in self._config.commands
-            if action.enabled and not action.at_user_ids
-        )
+        return tuple(action for action in self._config.commands if action.enabled)
+
+    def command_mentions(self, action_id: str) -> tuple[ActorRef, ...]:
+        return self._command_mentions.get(action_id, ())
 
     @property
     def has_enabled_mention_replies(self) -> bool:

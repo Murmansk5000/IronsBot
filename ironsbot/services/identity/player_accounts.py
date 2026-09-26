@@ -12,9 +12,9 @@ from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.seer_ids import is_valid_player_id
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ConversationPrincipal, ConversationRef
 
 
 class PlayerAccountReferenceError(ValueError):
@@ -111,6 +111,15 @@ class PlayerAccountRegistry:
         self._private_by_conversation = self._build_private_alias_groups(
             private_alias_groups or {},
         )
+        self._conversation_principal: (
+            Callable[[ConversationRef], ConversationPrincipal] | None
+        ) = None
+
+    def bind_conversation_principals(
+        self,
+        resolver: Callable[[ConversationRef], ConversationPrincipal],
+    ) -> None:
+        self._conversation_principal = resolver
 
     @property
     def accounts(self) -> tuple[PlayerAccount, ...]:
@@ -156,6 +165,18 @@ class PlayerAccountRegistry:
         )
         if account is None and conversation is not None:
             aliases = self._private_by_conversation.get(conversation)
+            if aliases is None and self._conversation_principal is not None:
+                principal = self._conversation_principal(conversation)
+                aliases = next(
+                    (
+                        configured_aliases
+                        for configured, configured_aliases in (
+                            self._private_by_conversation.items()
+                        )
+                        if self._conversation_principal(configured) == principal
+                    ),
+                    None,
+                )
             account = (
                 aliases.resolve_alias(normalized).unique_value
                 if aliases is not None
