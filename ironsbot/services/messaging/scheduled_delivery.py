@@ -20,6 +20,8 @@ class ScheduledMessageDelivery:
     group_mentions: tuple[ActorRef, ...]
     action_name: str
     subscription_key: str
+    unresolved_mentions_as_text: bool = False
+    mention_fallback_name: str = ""
 
 
 class ScheduledMessageSender(Protocol):

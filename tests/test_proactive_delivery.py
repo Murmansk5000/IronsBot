@@ -462,6 +462,42 @@ async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
 
 
 @pytest.mark.asyncio
+async def test_scheduled_mentions_can_fall_back_to_text_for_one_task() -> None:
+    class RecordingDelivery:
+        requests: tuple[ProactiveDeliveryRequest, ...] = ()
+
+        async def send_many(
+            self,
+            requests: tuple[ProactiveDeliveryRequest, ...],
+            **_kwargs: object,
+        ) -> None:
+            self.requests = requests
+
+    recording = RecordingDelivery()
+    official = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "example-group", account_id="example-app"
+    )
+    sender = ScheduledMessageOutboundSender(
+        cast("Any", recording), lambda _user_id, _group: None
+    )
+    await sender.send(
+        ScheduledMessageDelivery(
+            messages=("还有 3 天",),
+            private_conversations=(),
+            group_conversations=(official,),
+            group_mentions=(MENTION,),
+            action_name="exam countdown",
+            subscription_key="exam_countdown",
+            unresolved_mentions_as_text=True,
+            mention_fallback_name="student",
+        )
+    )
+
+    assert len(recording.requests) == 1
+    assert recording.requests[0].message.parts == (TextPart("student，还有 3 天"),)
+
+
+@pytest.mark.asyncio
 async def test_activity_sender_skips_empty_reminders() -> None:
     delivery, messenger, _subscriptions = _delivery()
 
