@@ -369,7 +369,7 @@ async def test_query_selection_accepts_rapid_consecutive_choices() -> None:
 
 
 @pytest.mark.asyncio
-async def test_shareable_group_choice_clones_session_for_quoted_responder() -> None:
+async def test_shareable_group_choice_does_not_transfer_menu_ownership() -> None:
     sessions = PortableQuerySessions()
     owner = _context("owner")
     responder = _context("responder", reply_to_id="current-menu")
@@ -402,7 +402,10 @@ async def test_shareable_group_choice_clones_session_for_quoted_responder() -> N
     assert _text(result) == "selected"
     selected.assert_awaited_once_with("read-only", responder)
     assert sessions.has_active_session(owner)
-    assert sessions.has_active_session(responder)
+    assert not sessions.has_active_session(responder)
+    assert not sessions.recognizes_response("1", _context("responder"))
+    assert not sessions.recognizes_response("0", responder)
+    assert sessions.recognizes_shared_response("1", owner, responder)
 
 
 @pytest.mark.asyncio
