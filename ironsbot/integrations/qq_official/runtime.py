@@ -28,6 +28,7 @@ from ironsbot.integrations.qq_official.group_message_events import (
 )
 from ironsbot.integrations.qq_official.identity import (
     qq_official_event_mentions_bot,
+    qq_official_event_mentions_everyone,
     qq_official_incoming_message,
 )
 from ironsbot.integrations.qq_official.inbound_deduplication import (
@@ -403,7 +404,7 @@ class QQOfficialRuntime:
             connection.started = False
             connection.lifecycle.stopped()
 
-    async def handle_event(  # noqa: C901, PLR0912 - transport boundary owns event outcomes
+    async def handle_event(  # noqa: C901, PLR0911, PLR0912 - transport boundary owns event outcomes
         self,
         app_id: str,
         event_type: str,
@@ -452,6 +453,8 @@ class QQOfficialRuntime:
                 event_type,
                 reference_digest(incoming.message_id),
             )
+            return
+        if qq_official_event_mentions_everyone(event):
             return
         if self._union_identity is not None:
             await self._union_identity.observe(incoming)
