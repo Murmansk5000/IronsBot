@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from ironsbot.core.platform import ActorPrincipal
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.daily_delivery import DailyDeliveryStore
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
@@ -46,6 +47,7 @@ class LuckySkinWindowOutboundSender:
         ]
         | None
     ) = None
+    admin_notices: AdminNoticeService | None = None
 
     async def send_daily_notice(
         self, actor: ActorRef, message: str | LuckySkinWindowResult, *, day: str
@@ -68,6 +70,20 @@ class LuckySkinWindowOutboundSender:
                 reference_digest(actor.id),
                 conversation.platform.value,
             )
+            if self.admin_notices is not None:
+                try:
+                    await self.admin_notices.send_private_to_superusers(
+                        "⚠️ 橱窗私聊推送未发送\n"
+                        f"日期：{day}\n"
+                        f"目标用户：{actor.id}\n"
+                        "原因：没有可用的官方机器人私聊地址或主动发送能力。\n"
+                        "执行机器人：未确定",
+                        subscription_key="admin_notice",
+                        action_name="lucky skin window route failure notice",
+                        interval_seconds=0,
+                    )
+                except Exception:
+                    _LOGGER.exception("daily lucky route failure notice failed")
             return False
         principal = self.principal_for(actor)
         key = f"lucky:{principal.kind}:{principal.id}"
