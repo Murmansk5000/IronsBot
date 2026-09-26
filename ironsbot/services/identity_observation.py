@@ -342,8 +342,6 @@ class SilentIdentityObservationService:
             observation.mentioned_qq_ids
         )
         target_qq_ids = self._member_mention_qq_ids(observation)
-        if observation.sender_id == observation.self_id and not mentions_account_bot:
-            return False
         group_matches = known_group == observation.group_id or (
             known_group is None
             and mentions_account_bot
@@ -542,16 +540,26 @@ class SilentIdentityObservationService:
         self,
         observation: OneBotGroupMessageObservation,
     ) -> bool:
-        if not observation.mentioned_qq_ids or any(
+        if any(
             observation.sender_id == account.trusted_onebot_sender_id
             for account in self.accounts.values()
         ):
             return False
+        if any(
+            observation.group_id in account.groups.values()
+            for account in self.accounts.values()
+        ):
+            return bool(
+                _normalize_text(observation.text) or observation.mentioned_qq_ids
+            )
         if observation.sender_id != observation.self_id:
-            return True
+            return bool(observation.mentioned_qq_ids)
+        if not observation.mentioned_qq_ids:
+            return False
         mentioned = set(observation.mentioned_qq_ids)
         return any(
-            str(account.trusted_onebot_sender_id) in mentioned
+            observation.group_id in account.candidate_onebot_group_ids
+            and str(account.trusted_onebot_sender_id) in mentioned
             for account in self.accounts.values()
         )
 

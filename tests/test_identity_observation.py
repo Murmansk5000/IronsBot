@@ -761,6 +761,91 @@ async def test_napcat_self_mention_links_multiple_members_onebot_first(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("onebot_first", [True, False])
+async def test_napcat_command_without_bot_mention_links_sender_and_target(
+    tmp_path: Path,
+    *,
+    onebot_first: bool,
+) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    observation = OneBotGroupMessageObservation(
+        99999,
+        99999,
+        ONEBOT_GROUP,
+        ("50005",),
+        "米米号",
+        "napcat-command",
+    )
+    incoming = _incoming(
+        "official-command",
+        member_openid="napcat-member-openid",
+        target_openids=("target-openid",),
+        text="米米号",
+    )
+
+    if onebot_first:
+        assert not await service.observe_onebot(observation)
+        assert await service.observe_official_message(incoming)
+    else:
+        assert not await service.observe_official_message(incoming)
+        assert await service.observe_onebot(observation)
+
+    for openid, qq_id in (
+        ("napcat-member-openid", "99999"),
+        ("target-openid", "50005"),
+    ):
+        link = await store.for_official(
+            OfficialIdentity(APP_ID, "member", openid, OFFICIAL_GROUP)
+        )
+        assert link is not None and link.onebot_qq_id == qq_id
+
+
+@pytest.mark.asyncio
+async def test_napcat_command_without_mentions_links_sender(tmp_path: Path) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    assert not await service.observe_onebot(
+        _observation(sender=99999, text="帮助", mentions=())
+    )
+    assert await service.observe_official_message(
+        _incoming("official-help", member_openid="napcat-member-openid")
+    )
+    link = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "napcat-member-openid", OFFICIAL_GROUP)
+    )
+    assert link is not None and link.onebot_qq_id == "99999"
+
+
+@pytest.mark.asyncio
+async def test_napcat_command_without_bot_mention_cannot_discover_group(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    service = SilentIdentityObservationService(
+        store,
+        {
+            APP_ID: IdentityObservationAccount(
+                APP_ID,
+                OFFICIAL_BOT_QQ,
+                {},
+                frozenset({ONEBOT_GROUP}),
+            )
+        },
+        clock=lambda: clock[0],
+    )
+    assert not await service.observe_onebot(
+        _observation(sender=99999, text="帮助", mentions=())
+    )
+    assert not await service.observe_official_message(
+        _incoming("official-help", member_openid="napcat-member-openid")
+    )
+    assert await store.all_group_links() == ()
+    assert await store.all_links() == ()
+
+
+@pytest.mark.asyncio
 async def test_napcat_self_mention_does_not_link_unconfigured_group(
     tmp_path: Path,
 ) -> None:
@@ -928,6 +1013,46 @@ async def test_silent_ingress_observes_napcat_message_sent_then_blocks(
     with pytest.raises(IgnoredException):
         await policy.process(_message_sent_event(target_qq=50005))
 
+    target = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "target-openid", OFFICIAL_GROUP)
+    )
+    assert target is not None and target.onebot_qq_id == "50005"
+
+
+@pytest.mark.asyncio
+async def test_silent_ingress_links_napcat_command_without_bot_mention(
+    tmp_path: Path,
+) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    event = Adapter.json_to_event(
+        {
+            "time": 100,
+            "self_id": 99999,
+            "post_type": "message_sent",
+            "user_id": 99999,
+            "message_id": 12346,
+            "message_type": "group",
+            "group_id": ONEBOT_GROUP,
+            "message": [
+                {"type": "text", "data": {"text": "米米号"}},
+                {"type": "at", "data": {"qq": "50005"}},
+            ],
+        }
+    )
+    assert event is not None
+    policy = OneBotIngressPolicy(messages_enabled=False, identity_observer=service)
+
+    with pytest.raises(IgnoredException):
+        await policy.process(event)
+    assert await service.observe_official_message(
+        _incoming(
+            "official-command",
+            member_openid="napcat-member-openid",
+            target_openids=("target-openid",),
+            text="米米号",
+        )
+    )
     target = await store.for_official(
         OfficialIdentity(APP_ID, "member", "target-openid", OFFICIAL_GROUP)
     )
