@@ -257,6 +257,12 @@ class PortableQuerySessions(PortableSessionState):
         allow_deferred: bool = False,
     ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
+        owner = self.quoted_owner(context) or context
+        text = self._quoted_selection_text(text, owner, context)
+        if self._is_direct_command_over_selection(
+            text, context, self._pending.get(key)
+        ):
+            return None
         if text.strip() == "0":
             pending = self._pending.get(key)
             if pending is not None or key in self._reservations:
@@ -357,6 +363,7 @@ class PortableQuerySessions(PortableSessionState):
         pending = self._shared_pending(owner, responder)
         if pending is None:
             return None
+        text = self._quoted_selection_text(text, owner, responder)
         choice = self._selection_choice(pending, text)
         if choice is None or choice.id not in pending.shared_choice_ids:
             return None
@@ -414,6 +421,7 @@ class PortableQuerySessions(PortableSessionState):
             pending = self._shared_pending(owner, responder)
             if pending is None:
                 return None
+        text = self._quoted_selection_text(text, owner, context)
         choice = self._selection_choice(pending, text)
         if choice is None or choice.id == "0" or pending.semantic_request is None:
             return None
