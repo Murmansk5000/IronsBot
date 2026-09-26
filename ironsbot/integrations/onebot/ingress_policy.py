@@ -46,14 +46,6 @@ class OneBotIngressPolicy:
             await self.identity_observer.observe_onebot(observation)
         if not self.messages_enabled:
             raise IgnoredException(_SILENT_REASON)
-        if isinstance(event, GroupMessageEvent) and self.router is not None:
-            conversation = ConversationRef(
-                Platform.ONEBOT,
-                "group",
-                str(event.group_id),
-            )
-            if not self.router.allows_incoming(event.self_id, conversation):
-                raise IgnoredException(_ROUTING_REASON)
         if (
             isinstance(event, GroupMessageEvent)
             and event.user_id == event.self_id
@@ -64,6 +56,16 @@ class OneBotIngressPolicy:
             )
         ):
             raise IgnoredException(_SELF_REASON)
+        if isinstance(event, GroupMessageEvent) and self.router is not None:
+            conversation = ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(event.group_id),
+            )
+            if not (
+                isinstance(event, SelfCommandEvent) and event.admin_binding
+            ) and not self.router.allows_incoming(event.self_id, conversation):
+                raise IgnoredException(_ROUTING_REASON)
         if isinstance(event, GroupMessageEvent) and message_input_context(
             event
         ).mentions_everyone:
