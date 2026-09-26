@@ -387,6 +387,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         )
 
     extension_contexts = {
+        "scheduled_messages": messaging.schedule_renderers,
         "player_lineup": PlayerLineupExtensionServices(
             lineup_render_session=seer_components.lineup_render_session,
             lineup_query=PlayerLineupQueryServices(
