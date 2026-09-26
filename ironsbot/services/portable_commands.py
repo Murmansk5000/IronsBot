@@ -3,12 +3,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.command_catalog import CommandContext, command_context_from_input
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputKind
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    normalized_text_target,
+)
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.source_context import format_ai_source_context
 from ironsbot.services.identity_link_commands import (
@@ -70,6 +77,7 @@ from ironsbot.services.portable_team_resource_commands import (
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.query_commands import pet_query_input
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -226,7 +234,7 @@ class PortableCommandRouter:
             return None
         return PortableReply(OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT))
 
-    async def dispatch(  # noqa: C901, PLR0911, PLR0912 - explicit routing precedence
+    async def dispatch(  # noqa: PLR0911 - explicit routing precedence
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
@@ -285,23 +293,88 @@ class PortableCommandRouter:
                         )(command, context),
                     )
             return await self._fallback_reply(context, command_context, command)
+        return await self._dispatch_contract(contract.id, command, context)
+
+    async def _dispatch_contract(  # noqa: C901 - admission and delivery cleanup
+        self, command_id: str, command: str, context: MessageInputContext
+    ) -> PortableReply | None:
+        request_service = self._query_sessions.interactions.request_service
+        request = self._direct_request(command_id, command)
+        admission = (
+            request_service.admit(actor=context.message.actor, request=request)
+            if request_service is not None and request is not None
+            else None
+        )
+        if admission is not None and not admission.allowed:
+            return (
+                PortableReply(OutboundMessage.from_text(admission.feedback))
+                if admission.feedback is not None
+                else None
+            )
+        token = admission.token if admission is not None else None
         try:
             result = await self._query_sessions.interactions.execute(
-                self._operations[contract.id], command, context
+                self._operations[command_id], command, context
             )
         except DataUnavailableError:
+            if request_service is not None:
+                request_service.release(token)
             return PortableReply(
                 OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
             )
+        except BaseException:
+            if request_service is not None:
+                request_service.release(token)
+            raise
         if result is None:
+            if request_service is not None:
+                request_service.release(token)
             return None
         if isinstance(result, PortableReply):
-            return result
-        if isinstance(result, OutboundMessage):
-            return PortableReply(result)
-        if isinstance(result, DataQueryImageReply):
-            return PortableReply(result.to_outbound())
-        return PortableReply(OutboundMessage.from_text(result))
+            reply = result
+        elif isinstance(result, OutboundMessage):
+            reply = PortableReply(result)
+        elif isinstance(result, DataQueryImageReply):
+            reply = PortableReply(result.to_outbound())
+        else:
+            reply = PortableReply(OutboundMessage.from_text(result))
+        if request_service is None or token is None:
+            return reply
+        failed = False
+
+        def delivery_failed() -> None:
+            nonlocal failed
+            failed = True
+            if reply.on_delivery_failed is not None:
+                reply.on_delivery_failed()
+
+        def finished() -> None:
+            try:
+                if reply.on_finished is not None:
+                    reply.on_finished()
+            finally:
+                if failed:
+                    request_service.release(token)
+                else:
+                    request_service.finish(token)
+
+        return replace(reply, on_delivery_failed=delivery_failed, on_finished=finished)
+
+    @staticmethod
+    def _direct_request(command_id: str, command: str) -> SemanticRequest | None:
+        target_text = (
+            pet_query_input().parse_argument(command)
+            if command_id == "seer.pet.query"
+            else command
+        )
+        target = normalized_text_target(target_text or "")
+        if target is None:
+            return None
+        return SemanticRequest(
+            action=ActionDefinition(id=command_id, label=command_id),
+            target=target,
+            source=SemanticRequestSource.DIRECT,
+        )
 
     def _matching_contract(
         self,
