@@ -1,5 +1,6 @@
 import asyncio
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -215,9 +216,9 @@ def test_format_docker_image_check_does_not_offer_side_effects() -> None:
         ),
     )
 
-    assert "检测到新镜像：ironsbot" in reply
-    assert "当前镜像ID" in reply
-    assert "最新镜像ID" in reply
+    assert "检测到远端新镜像：ironsbot" in reply
+    assert "本机镜像ID" in reply
+    assert "Docker Hub 镜像ID" in reply
     assert "oldcommitabc old change" in reply
     assert "newcommitabc new change" in reply
     assert "2026-07-05 02:00:00" in reply
@@ -238,8 +239,51 @@ def test_format_docker_image_check_reports_matching_remote_digest() -> None:
         ),
     )
 
-    assert "Docker 镜像已是最新" in reply
+    assert "本机镜像与 Docker Hub 目标镜像一致" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
+
+
+def test_image_check_does_not_confuse_registry_digest_with_main_revision() -> None:
+    main = "b" * 40
+    base = DockerImageCheckResult(
+        ok=True,
+        up_to_date=True,
+        current_image_id="sha256:current",
+        remote_image_id="sha256:remote",
+        current_image_revision="a" * 40,
+        remote_image_revision="a" * 40,
+        github_main_revision=main,
+    )
+    reply = format_docker_image_check_reply(
+        container_name="ironsbot", image="example/ironsbot:latest", result=base
+    )
+    assert "Docker Hub 目标镜像一致" in reply
+    assert "本机代码对照：未对齐 GitHub main" in reply
+    assert "目标镜像代码对照：未对齐 GitHub main" in reply
+    assert "镜像已是最新" not in reply
+
+    aligned = format_docker_image_check_reply(
+        container_name="ironsbot",
+        image="example/ironsbot:latest",
+        result=replace(
+            base, current_image_revision=main, remote_image_revision=main
+        ),
+    )
+    assert "本机代码对照：已对齐 GitHub main" in aligned
+    assert "目标镜像代码对照：已对齐 GitHub main" in aligned
+
+    unknown = format_docker_image_check_reply(
+        container_name="ironsbot",
+        image="example/ironsbot:latest",
+        result=replace(
+            base,
+            remote_image_revision="",
+            github_main_revision="",
+            github_main_error="HTTP 403",
+        ),
+    )
+    assert "GitHub main 对照不可用：HTTP 403" in unknown
+    assert "已对齐 GitHub main" not in unknown
 
 
 def test_inspect_registry_image_info_reads_remote_oci_config() -> None:
@@ -677,7 +721,7 @@ def test_docker_update_service_checks_without_starting_an_update() -> None:
     reply = asyncio.run(service.check_image_update(progress=ignore_progress))
 
     assert docker.check_request is not None
-    assert "Docker 镜像已是最新" in reply
+    assert "本机镜像与 Docker Hub 目标镜像一致" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 

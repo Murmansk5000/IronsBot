@@ -777,6 +777,9 @@ startup_trigger_remote_build = true
 超级管理员发送 `/重启机器人`、`/机器人重启`、`/更新镜像` 或 `/更新Docker` 会打开
 统一维护菜单。选择 `1` 只重启当前容器或进程，不检查镜像；选择 `2` 检查并在需要时
 启动一次性 Watchtower 更新，然后完成重启。`/检查更新镜像` 仍只读检查，不执行更新。
+检查结果会分别显示本机与 Docker Hub 镜像是否一致，以及镜像 revision 是否与源码仓库
+GitHub `main` 对齐。缺少 revision 标签或无法访问 GitHub 时会标记为无法确认，不把
+Docker Hub 镜像一致误判为代码已对齐。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 

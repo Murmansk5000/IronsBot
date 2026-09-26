@@ -115,23 +115,67 @@ def format_docker_image_check_reply(
     result: DockerImageCheckResult,
 ) -> str:
     """Format a read-only registry comparison for an administrator."""
-    return format_docker_update_reply(
-        container_name=container_name,
-        image=image,
-        result=DockerUpdateResult(
-            ok=result.ok,
-            message=result.message,
-            up_to_date=result.up_to_date,
-            current_image_id=result.current_image_id,
-            current_image_created=result.current_image_created,
-            current_image_commit=result.current_image_commit,
-            target_image_id=result.remote_image_id or result.remote_digest,
-            target_image_created=result.remote_image_created,
-            target_image_commit=result.remote_image_commit,
-            missing_socket=result.missing_socket,
+    if not result.ok or result.missing_socket:
+        return format_docker_update_reply(
+            container_name=container_name,
+            image=image,
+            result=DockerUpdateResult(
+                ok=result.ok,
+                message=result.message,
+                missing_socket=result.missing_socket,
+            ),
+            check_only=True,
+        )
+    lines = [
+        (
+            f"本机镜像与 Docker Hub 目标镜像一致：{container_name}"
+            if result.up_to_date
+            else f"检测到远端新镜像：{container_name}"
         ),
-        check_only=True,
-    )
+        f"目标镜像：{image}",
+        "本机镜像ID："
+        + format_image_version(result.current_image_id, result.current_image_created),
+        "Docker Hub 镜像ID："
+        + format_image_version(
+            result.remote_image_id or result.remote_digest,
+            result.remote_image_created,
+        ),
+    ]
+    if current_commit := visible_image_commit_summary(result.current_image_commit):
+        lines.append(f"本机代码：{current_commit}")
+    if remote_commit := visible_image_commit_summary(result.remote_image_commit):
+        lines.append(f"Docker Hub 代码：{remote_commit}")
+    if result.github_main_revision:
+        lines.append(f"GitHub main：{result.github_main_revision[:12]}")
+        lines.append(
+            "本机代码对照："
+            + _revision_alignment(
+                result.current_image_revision, result.github_main_revision
+            )
+        )
+        lines.append(
+            "目标镜像代码对照："
+            + _revision_alignment(
+                result.remote_image_revision, result.github_main_revision
+            )
+        )
+    else:
+        lines.append(
+            f"GitHub main 对照不可用：{result.github_main_error or '未提供分支信息'}"
+        )
+    if not result.up_to_date:
+        lines.append("操作：可发送 /更新镜像 更新并重启；更新前请核对目标镜像代码。")
+    lines.append("本次只检查，未拉取镜像、未创建 Watchtower、未重启容器。")
+    return "\n".join(lines)
+
+
+def _revision_alignment(image_revision: str, main_revision: str) -> str:
+    image_revision = image_revision.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", image_revision):
+        return "镜像缺少完整 revision 标签，无法确认。"
+    if image_revision == main_revision.lower():
+        return "已对齐 GitHub main。"
+    return "未对齐 GitHub main。"
 
 
 def short_image_id(image_id: str) -> str:

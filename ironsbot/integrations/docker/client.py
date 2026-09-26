@@ -35,7 +35,11 @@ from .daemon import (
     remove_stopped_watchtower_containers,
 )
 from .http import raise_for_docker_status
-from .metadata import resolve_image_commit_summary
+from .metadata import (
+    github_repo_from_image_labels,
+    resolve_github_main_revision,
+    resolve_image_commit_summary,
+)
 from .registry import inspect_remote_image_info
 
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
@@ -346,6 +350,26 @@ class DockerClient:
                 )
                 remote_image = DockerImageInfo(image_id="")
                 remote_commit = ""
+            remote_repo = github_repo_from_image_labels(remote_image.labels)
+            current_repo = github_repo_from_image_labels(current_image.labels)
+            source_repo = remote_repo or current_repo
+            github_main_revision = ""
+            github_main_error = ""
+            if source_repo is None:
+                github_main_error = "镜像缺少可识别的 GitHub 源码仓库标签。"
+            else:
+                try:
+                    github_main_revision = await resolve_github_main_revision(
+                        source_repo
+                    )
+                except Exception as error:  # noqa: BLE001 - optional check
+                    logger.warning(
+                        "GitHub main revision check failed: repo=%s/%s type=%s",
+                        source_repo[0],
+                        source_repo[1],
+                        type(error).__name__,
+                    )
+                    github_main_error = f"{type(error).__name__}"
         except Exception as error:
             logger.exception("docker image check failed")
             return DockerImageCheckResult(ok=False, message=str(error))
@@ -361,10 +385,24 @@ class DockerClient:
             current_image_id=current_image.image_id,
             current_image_created=current_image.created,
             current_image_commit=current_commit,
+            current_image_revision=(
+                current_image.labels.get(
+                    "org.opencontainers.image.revision", ""
+                ).strip()
+                if current_repo == source_repo
+                else ""
+            ),
             remote_digest=remote_digest,
             remote_image_id=remote_image.image_id,
             remote_image_created=remote_image.created,
             remote_image_commit=remote_commit,
+            remote_image_revision=(
+                remote_image.labels.get("org.opencontainers.image.revision", "").strip()
+                if remote_repo == source_repo
+                else ""
+            ),
+            github_main_revision=github_main_revision,
+            github_main_error=github_main_error,
         )
 
     async def fetch_image_archive(
