@@ -59,6 +59,9 @@ class IdentityPrincipalService:
         default_factory=dict
     )
     _explicit_qq_links: dict[tuple[str, str], str] = field(default_factory=dict)
+    _member_endpoints_by_qq_app: dict[tuple[str, str], set[str]] = field(
+        default_factory=dict
+    )
     _configured_actor_principals: dict[tuple[str, str], ActorPrincipal] = field(
         default_factory=dict
     )
@@ -139,6 +142,10 @@ class IdentityPrincipalService:
     ) -> tuple[ActorPrincipalMerge, ...]:
         endpoint = (official.app_id, official.openid)
         self._explicit_qq_links[endpoint] = onebot_qq_id
+        if official.kind == "member":
+            self._member_endpoints_by_qq_app.setdefault(
+                (onebot_qq_id, official.app_id), set()
+            ).add(official.openid)
         current = self._official_principals.get(endpoint)
         target = ActorPrincipal("qq", onebot_qq_id)
         merges = self._replace_actor_principals(
@@ -175,6 +182,12 @@ class IdentityPrincipalService:
         if self._explicit_qq_links.get(endpoint) != link.onebot_qq_id:
             return
         self._explicit_qq_links.pop(endpoint)
+        if link.official.kind == "member":
+            members = self._member_endpoints_by_qq_app.get(
+                (link.onebot_qq_id, link.official.app_id)
+            )
+            if members is not None:
+                members.discard(link.official.openid)
         component = self._official_component(endpoint)
         target = self._component_target(component)
         for member in component:
@@ -238,6 +251,29 @@ class IdentityPrincipalService:
         if principal.kind != "qq":
             return None
         return ActorRef(Platform.ONEBOT, principal.id)
+
+    def official_group_member_for_qq(
+        self,
+        qq_id: str,
+        conversation: ConversationRef,
+    ) -> ActorRef | None:
+        if (
+            conversation.platform is not Platform.QQ_OFFICIAL
+            or conversation.kind != "group"
+        ):
+            return None
+        members = self._member_endpoints_by_qq_app.get(
+            (qq_id, conversation.account_id or ""), set()
+        )
+        if len(members) != 1:
+            return None
+        return ActorRef(
+            Platform.QQ_OFFICIAL,
+            next(iter(members)),
+            "member",
+            conversation.id,
+            account_id=conversation.account_id,
+        )
 
     def register_private_link(
         self,
