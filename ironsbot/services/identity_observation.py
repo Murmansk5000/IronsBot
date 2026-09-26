@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import TextPart
-from ironsbot.core.platform import Platform, reference_digest
+from ironsbot.core.platform import ActorRef, Platform, reference_digest
 from ironsbot.services.identity_link_store import (
     CrossPlatformGroupLink,
     GroupLinkConflictError,
@@ -100,6 +100,65 @@ class SilentIdentityObservationService:
     )
     _next_token: int = field(default=1, init=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    _mirror_changed: asyncio.Event = field(default_factory=asyncio.Event, init=False)
+
+    async def missing_member_target(  # noqa: PLR0911 - fail closed at trust boundaries
+        self, incoming: IncomingMessageRef, *, timeout: float = 2.0
+    ) -> ActorRef | None:
+        """Recover a target only from an already-linked sender and group."""
+        pending = self._official_message(incoming, explicitly_addressed=True)
+        if pending is None or incoming.direct_mentions:
+            return None
+        account_id = incoming.actor.account_id
+        assert account_id is not None
+        account = self.accounts[account_id]
+        group_id = account.groups.get(incoming.conversation.id)
+        if group_id is None:
+            return None
+        linked = await self.store.for_official(
+            canonical_official_identity(
+                OfficialIdentity(
+                    account_id, "member", incoming.actor.id, incoming.conversation.id
+                )
+            )
+        )
+        if linked is None:
+            return None
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            self._mirror_changed.clear()
+            self._prune(self.clock())
+            matches = [
+                item
+                for item in self._pending_onebot_messages
+                if item.observation.group_id == group_id
+                and str(item.observation.sender_id) == linked.onebot_qq_id
+                and _normalize_text(item.observation.text) == pending.text
+                and str(account.trusted_onebot_sender_id)
+                in item.observation.mentioned_qq_ids
+            ]
+            if len(matches) > 1:
+                return None
+            if matches:
+                matched = matches[0]
+                targets = tuple(
+                    value
+                    for value in matched.observation.mentioned_qq_ids
+                    if value != str(account.trusted_onebot_sender_id)
+                )
+                if len(targets) != 1 or not targets[0].isdigit():
+                    return None
+                self._pending_onebot_messages.remove(matched)
+                return ActorRef(
+                    Platform.ONEBOT, targets[0], kind="member", scope_id=str(group_id)
+                )
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return None
+            try:
+                await asyncio.wait_for(self._mirror_changed.wait(), remaining)
+            except TimeoutError:
+                return None
 
     def __post_init__(self) -> None:
         if self.confirmation_count < _MIN_CONFIRMATIONS:
@@ -226,8 +285,7 @@ class SilentIdentityObservationService:
             ]
             if len(original_matches) > 1:
                 _LOGGER.warning(
-                    "silent original message ambiguous: onebot_group=%s "
-                    "candidates=%d",
+                    "silent original message ambiguous: onebot_group=%s candidates=%d",
                     reference_digest(str(observation.group_id)),
                     len(original_matches),
                 )
@@ -242,6 +300,7 @@ class SilentIdentityObservationService:
 
             if self._is_original_message_candidate(observation):
                 self._remember_onebot_message(observation, now=now)
+                self._mirror_changed.set()
 
             match = self._match_onebot_reply(observation, now=now)
             if match is None:

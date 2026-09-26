@@ -299,6 +299,7 @@ class IncomingMessageRef:
     sequence: str | None = None
     reply_deadline: datetime | None = None
     official_union_identity: OfficialUnionIdentity | None = None
+    reply_reference_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
