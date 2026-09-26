@@ -664,6 +664,7 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
 def test_retained_content_index_is_checked_against_bound_publication(
     tmp_path: Path,
 ) -> None:
+    publication_time = datetime(2026, 9, 12, 12, tzinfo=timezone.utc)
     source = tmp_path / "seerapi.sqlite"
     engine, _ = _create_release(source, ("new_content_standard",))
     with engine.begin() as connection:
@@ -692,7 +693,9 @@ def test_retained_content_index_is_checked_against_bound_publication(
         databases.load_from_file("seerapi", str(source))
         with data.read_snapshot() as bound:
             bound.require_current()
-            service = NewContentService(PublishedNewContentRepository(bound))
+            service = NewContentService(
+                PublishedNewContentRepository(bound), now=lambda: publication_time
+            )
             menu = service.snapshot()
             with engine.begin() as connection:
                 connection.exec_driver_sql("UPDATE new_content_item SET name = 'new'")
@@ -703,7 +706,9 @@ def test_retained_content_index_is_checked_against_bound_publication(
             assert service.snapshot().items[0].name == "old"
             with data.read_snapshot() as fresh:
                 fresh.require_current()
-                current = NewContentService(PublishedNewContentRepository(fresh))
+                current = NewContentService(
+                    PublishedNewContentRepository(fresh), now=lambda: publication_time
+                )
                 with pytest.raises(NewContentSnapshotChangedError):
                     current.require_snapshot(menu)
                 assert current.snapshot().items[0].name == "new"
@@ -717,7 +722,9 @@ def test_retained_content_index_is_checked_against_bound_publication(
                 connection.exec_driver_sql("UPDATE new_content_item SET name = 'old'")
             databases.load_from_file("seerapi", str(source))
             assert (
-                NewContentService(PublishedNewContentRepository(data)).snapshot()
+                NewContentService(
+                    PublishedNewContentRepository(data), now=lambda: publication_time
+                ).snapshot()
                 == menu
             )
             with pytest.raises(DataPublicationChangedError):
