@@ -27,5 +27,14 @@ def build_onebot_message_schedule_targets(
                 )
             )
             for index, schedule in enumerate(config.schedules)
-        )
+        ),
+        group_targets=tuple(
+            tuple(
+                references.group_conversation_refs(
+                    schedule.target_groups,
+                    location=f"messaging.schedules[{index}].target_groups",
+                )
+            )
+            for index, schedule in enumerate(config.schedules)
+        ),
     )

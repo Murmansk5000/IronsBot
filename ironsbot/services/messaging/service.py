@@ -13,6 +13,7 @@ from ironsbot.core.platform import (
     ConversationRef,
     private_conversation_for_actor,
 )
+from ironsbot.core.schedule_rendering import ScheduleRendererRegistry
 from ironsbot.core.time import daily_time_parts_with_seconds
 from ironsbot.services.messaging.push_time import PUSH_TIME_COMMANDS
 from ironsbot.services.messaging.subscription_options import (
@@ -94,6 +95,9 @@ class MessagingService:
     _mention_reply_targets: tuple[tuple[ActorRef, ...], ...] = ()
     _actor_principal: Callable[[ActorRef], ActorPrincipal] | None = None
     _command_mentions: Mapping[str, tuple[ActorRef, ...]] = field(default_factory=dict)
+    schedule_renderers: ScheduleRendererRegistry = field(
+        default_factory=ScheduleRendererRegistry
+    )
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -405,9 +409,11 @@ class MessagingService:
         self,
         conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
+        from .schedules import eligible_group_schedule_conversations
+
         tasks = self._config.schedules
         features = {task.feature for task in tasks if task.enabled}
-        return build_schedule_subscription_options(
+        options = build_schedule_subscription_options(
             conversation=conversation,
             tasks=tasks,
             eligible_conversations_for_feature=self._eligible_conversations(
@@ -416,6 +422,14 @@ class MessagingService:
             ),
             store=self._store,
         )
+        restricted_keys = {
+            task.id
+            for index, task in enumerate(tasks, start=1)
+            if task.target_groups
+            and conversation
+            not in eligible_group_schedule_conversations(task, index, messaging=self)
+        }
+        return [option for option in options if option.key not in restricted_keys]
 
     def _prune_stale_preferences(self) -> PushPreferencePruneResult:
         valid_unsubscriptions: dict[ConversationRef, set[str]] = {}
