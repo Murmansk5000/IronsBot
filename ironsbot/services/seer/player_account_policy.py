@@ -13,7 +13,10 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.seer.player_binding import PlayerBindingStore
+    from ironsbot.services.seer.player_binding import (
+        PlayerBindingState,
+        PlayerBindingStore,
+    )
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_service_models import PendingPlayerQuery
 
@@ -81,6 +84,44 @@ class PlayerAccountPolicyMixin:
                 status = f"⚠️ 默认米米号设置保存失败：{error}"
         pending.player_message = f"{status}\n\n{pending.player_message}"
         return status
+
+    def binding_offer(
+        self,
+        pending: PendingPlayerQuery,
+        *,
+        replacement: PlayerBindingState | None = None,
+    ) -> str:
+        nick = str(pending.user_info.nick)
+        if replacement is not None and replacement.player_id is not None:
+            current = str(replacement.player_id)
+            if replacement.player_nick.strip():
+                current += f"（{replacement.player_nick.strip()}）"
+            return (
+                f"当前默认米米号：{current}\n"
+                f"已查到米米号：{pending.player_id}（{nick}）\n\n"
+                "是否将默认米米号改为该账号？\n"
+                "回复“是”或“y”确认，回复“否”或“n”保留当前绑定。"
+            )
+        limits = self._config.player.query_limits
+        quota_hint = ""
+        if (
+            limits.enabled
+            and limits.bound_default_daily_limit > limits.unbound_daily_limit
+        ):
+            quota_hint = (
+                "设为默认米米号后，查询该米米号的每日查询额度可从 "
+                f"{limits.unbound_daily_limit} 项提升至 "
+                f"{limits.bound_default_daily_limit} 项。\n"
+                "额度按成功获取的数据项目结算；缓存、预热和超时不计入。\n"
+            )
+        return (
+            f"已查到米米号：{pending.player_id}（{nick}）\n\n"
+            "是否将其设为默认米米号？\n"
+            "回复“是”或“y”确认，回复“否”或“n”跳过。\n"
+            f"{quota_hint}"
+            "设置后发送“米米号 / 收集 / 巅峰 / 群星牌”即可快捷查询。\n"
+            "以后可发送“解绑米米号”解除绑定。"
+        )
 
     def _check_quota(
         self,

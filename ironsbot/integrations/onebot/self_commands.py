@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import OrderedDict
 from time import monotonic
 from typing import TYPE_CHECKING, Any
@@ -17,15 +18,17 @@ if TYPE_CHECKING:
 
 _RETENTION_SECONDS = 600
 _MAX_RECORDS = 4096
+_ADMIN_BIND = re.compile(r"^绑定米米号\s*\d+$")
 
 
 class SelfCommandEvent(GroupMessageEvent):
     _accepted: bool = PrivateAttr(default=False)
+    _admin_binding: bool = PrivateAttr(default=False)
 
     def accept(self, text: str) -> None:
         references = Message(
             segment for segment in (self.original_message or self.message)
-            if segment.type == "reply"
+            if segment.type in {"reply", "at"}
         )
         self.message = references + Message(text)
         self.original_message = self.message.copy()
@@ -36,6 +39,10 @@ class SelfCommandEvent(GroupMessageEvent):
     @property
     def accepted(self) -> bool:
         return self._accepted
+
+    @property
+    def admin_binding(self) -> bool:
+        return self._admin_binding
 
 
 class SelfCommandAdapter(Adapter):
@@ -81,15 +88,28 @@ class SelfCommandGate:
         self._prune(now)
 
     def accept(self, event: SelfCommandEvent) -> bool:
-        if not self.config.enabled or event.user_id != event.self_id:
+        if event.user_id != event.self_id:
             return False
         message = event.original_message or event.message
-        if any(segment.type not in {"text", "reply"} for segment in message):
-            return False
         text = message.extract_plain_text()
-        prefix = next((p for p in self.config.prefixes if text.startswith(p)), None)
-        if prefix is None or not (command := text[len(prefix):].strip()):
-            return False
+        mentions = [segment for segment in message if segment.type == "at"]
+        admin_bind = (
+            _ADMIN_BIND.fullmatch(text.strip()) is not None
+            and len(mentions) == 1
+            and str(mentions[0].data.get("qq", "")).isdecimal()
+            and str(mentions[0].data["qq"]) != str(event.self_id)
+            and all(segment.type in {"text", "reply", "at"} for segment in message)
+        )
+        if admin_bind:
+            command = text.strip()
+        else:
+            if not self.config.enabled or any(
+                segment.type not in {"text", "reply"} for segment in message
+            ):
+                return False
+            prefix = next((p for p in self.config.prefixes if text.startswith(p)), None)
+            if prefix is None or not (command := text[len(prefix):].strip()):
+                return False
         now = monotonic()
         self._prune(now)
         scope = (str(event.self_id), str(event.group_id))
@@ -98,6 +118,7 @@ class SelfCommandGate:
             return False
         self._remember(key, now)
         event.accept(command)
+        event._admin_binding = admin_bind
         return True
 
     async def record_outbound(self, bot: Bot, api: str, data: dict[str, Any]) -> None:

@@ -244,6 +244,11 @@ def _reply_reference(
 ) -> str | None:
     if event.message_type != MSG_TYPE_QUOTE:
         return None
+    reference = raw.get("message_reference")
+    if isinstance(reference, Mapping):
+        message_id = reference.get("message_id")
+        if isinstance(message_id, str) and message_id.strip():
+            return message_id
     if reference := _scene_value(raw, "ref_msg_idx"):
         return reference
     elements = raw.get("msg_elements")
@@ -251,11 +256,6 @@ def _reply_reference(
         reference = elements[0].get("msg_idx")
         if isinstance(reference, (str, int)) and str(reference).strip():
             return str(reference)
-    reference = raw.get("message_reference")
-    if isinstance(reference, Mapping):
-        message_id = reference.get("message_id")
-        if isinstance(message_id, str) and message_id.strip():
-            return message_id
     return f"quoted:{event.message_id}"
 
 

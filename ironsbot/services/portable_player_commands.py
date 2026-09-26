@@ -103,6 +103,7 @@ class _PortablePlayerOperations:
                 )
                 reply = _prepare_player_query_reply(
                     self.service,
+                    self.resolver,
                     self.sessions,
                     context,
                     result,
@@ -178,49 +179,9 @@ class _PortablePlayerOperations:
             target=target,
         )
         if result.pending is not None and result.binding_replacement is not None:
-            pending = result.pending
-            previous = result.binding_replacement
-
-            async def confirm(
-                choice: Literal["confirm", "keep"],
-                context: MessageInputContext,
-            ) -> PortableReply:
-                self.service.save_binding_choice(
-                    context.message.actor,
-                    pending,
-                    accepted=choice == "confirm",
-                    replacing_existing=True,
-                )
-                return _prepare_player_query_reply(
-                    self.service,
-                    self.sessions,
-                    context,
-                    replace(result, offer_binding=False, binding_replacement=None),
-                    self.features,
-                    self.extensions,
-                    self.rank_queries,
-                )
-
-            prompt = OutboundMessage.from_text(
-                f"当前默认米米号：{previous.player_id}\n"
-                f"新的默认米米号：{pending.player_id}\n"
-                "1. 确认换绑\n2. 保留原绑定\n0. 退出"
-            )
-            reply = PortableReply(
-                self.sessions.offer_menu(
-                    context,
-                    PortableMenuSpec(
-                        choices=("confirm", "keep"),
-                        select=confirm,
-                        prompt=prompt,
-                        labels=("确认换绑", "保留原绑定"),
-                        exit_message="已保留原绑定。",
-                    ),
-                )
-            )
-        else:
-            reply = _prepare_player_query_reply(
+            return _offer_binding_confirmation(
                 self.service,
+                self.resolver,
                 self.sessions,
                 context,
                 result,
@@ -228,7 +189,16 @@ class _PortablePlayerOperations:
                 self.extensions,
                 self.rank_queries,
             )
-        return reply
+        return _prepare_player_query_reply(
+            self.service,
+            self.resolver,
+            self.sessions,
+            context,
+            result,
+            self.features,
+            self.extensions,
+            self.rank_queries,
+        )
 
     async def unbind(
         self,
@@ -283,8 +253,104 @@ async def _player_shortcut_reply(
     return await progress_operation_reply(execute)
 
 
+async def _beast_rank_reply(
+    rank_queries: RankQueryService,
+    player_id: int,
+    context: MessageInputContext,
+) -> PortableReply:
+    prepared = await rank_queries.prepare_player(
+        RankPlayerCommand("北冥试炼", player_id),
+        actor=context.message.actor,
+        conversation=context.message.conversation,
+    )
+    message = prepared.message
+    lookup = prepared.lookup
+    if (
+        lookup is not None
+        and lookup.rank is not None
+        and lookup.score is not None
+        and lookup.failure is None
+    ):
+        message = (
+            "【神兽榜】\n\n"
+            "1. 【北冥试炼·玄武】"
+            f"完成时间：{format_completion_time(lookup.score)}"
+            f"｜全服第{lookup.rank}"
+        )
+    return PortableReply(
+        OutboundMessage.from_text(message),
+        on_delivered=prepared.delivered,
+    )
+
+
+def _offer_binding_confirmation(  # noqa: PLR0913 - preserves query context
+    service: PlayerService,
+    resolver: PlayerIdResolver,
+    sessions: PortableQuerySessions,
+    context: MessageInputContext,
+    result: PlayerQueryResult,
+    features: FeatureService,
+    extensions: PlayerDetailExtensionRegistry,
+    rank_queries: RankQueryService | None,
+) -> PortableReply:
+    pending = result.pending
+    if pending is None:
+        msg = "binding confirmation requires a pending player query"
+        raise ValueError(msg)
+
+    async def confirm(
+        choice: Literal["confirm", "keep"],
+        selection_context: MessageInputContext,
+    ) -> PortableReply:
+        service.save_binding_choice(
+            selection_context.message.actor,
+            pending,
+            accepted=choice == "confirm",
+            replacing_existing=result.binding_replacement is not None,
+        )
+        return _prepare_player_query_reply(
+            service,
+            resolver,
+            sessions,
+            selection_context,
+            replace(result, offer_binding=False, binding_replacement=None),
+            features,
+            extensions,
+            rank_queries,
+        )
+
+    return PortableReply(
+        sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=("confirm", "keep"),
+                choice_keys=("confirm", "keep"),
+                select=confirm,
+                prompt=OutboundMessage.from_text(
+                    service.binding_offer(
+                        pending,
+                        replacement=result.binding_replacement,
+                    )
+                ),
+                labels=("确认绑定", "保留原绑定"),
+                text_inputs=(
+                    frozenset({"是", "y", "yes", "确认", "确定"}),
+                    frozenset({"否", "n", "no", "取消"}),
+                ),
+                invalid_choice_message="请回复“是”或“否”，或输入 0 退出。",
+                exit_message=(
+                    "已保留原绑定。"
+                    if result.binding_replacement is not None
+                    else "已退出绑定选择。"
+                ),
+            ),
+        )
+    )
+
+
 def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     service: PlayerService,
+    resolver: PlayerIdResolver,
     sessions: PortableQuerySessions,
     context: MessageInputContext,
     result: PlayerQueryResult,
@@ -314,9 +380,11 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         context.message.conversation,
         "seer_rank",
     )
+    team_id = int(getattr(pending.user_info, "team_id", 0) or 0)
     extension_actions = tuple(
         action
         for action in extensions.actions()
+        if action.id != "player_team" or team_id > 0
         if features.is_feature_allowed(
             context.message.actor,
             context.message.conversation,
@@ -333,30 +401,20 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         context: MessageInputContext,
     ) -> OutboundMessage | PortableReply:
         if command == "beast_rank":
-            assert rank_queries is not None
-            prepared = await rank_queries.prepare_player(
-                RankPlayerCommand("北冥试炼", pending.player_id),
-                actor=context.message.actor,
-                conversation=context.message.conversation,
-            )
-            message = prepared.message
-            lookup = prepared.lookup
-            if (
-                lookup is not None
-                and lookup.rank is not None
-                and lookup.score is not None
-                and lookup.failure is None
-            ):
-                message = (
-                    "【神兽榜】\n\n"
-                    "1. 【北冥试炼·玄武】"
-                    f"完成时间：{format_completion_time(lookup.score)}"
-                    f"｜全服第{lookup.rank}"
+            rank_service = rank_queries
+            assert rank_service is not None
+            if not context.is_reply and context.text.strip() == "神兽榜":
+                return await select_player_target(
+                    "",
+                    context,
+                    resolver,
+                    sessions,
+                    lambda player_id, query_context: _beast_rank_reply(
+                        rank_service, player_id, query_context
+                    ),
+                    title="请选择要查询的玩家：",
                 )
-            return PortableReply(
-                OutboundMessage.from_text(message),
-                on_delivered=prepared.delivered,
-            )
+            return await _beast_rank_reply(rank_service, pending.player_id, context)
         if isinstance(command, str):
             service.save_binding_choice(
                 context.message.actor,
@@ -366,6 +424,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             )
             return _prepare_player_query_reply(
                 service,
+                resolver,
                 sessions,
                 context,
                 replace(result, offer_binding=False, binding_replacement=None),
@@ -427,7 +486,14 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     labels = (
         *(f"【{request.menu_label}】" for request in requests),
         *(("【神兽榜】",) if show_beast_rank else ()),
-        *(f"【{action.label}】" for action in extension_actions),
+        *(
+            f"【{action.label}】"
+            f"{(pending.base_snapshot.team_name.strip() or '未知战队')}"
+            f"（战队ID：{team_id}）"
+            if action.id == "player_team" and pending.base_snapshot is not None
+            else f"【{action.label}】"
+            for action in extension_actions
+        ),
         *(("【设为默认米米号】", "【暂不绑定】") if result.offer_binding else ()),
     )
     menu = sessions.offer_menu(
