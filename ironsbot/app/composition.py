@@ -387,6 +387,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         return feature_is_visible_in_help(features, context, feature)
 
     extension_contexts = {
+        "scheduled_messages": messaging.schedule_renderers,
         "player_lineup": PlayerLineupExtensionServices(
             lineup_render_session=seer_components.lineup_render_session,
             lineup_query=PlayerLineupQueryServices(
@@ -404,7 +405,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings=settings.operations.private_extensions.settings.get(
                 "player_lineup", {}
             ),
-        )
+        ),
     }
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()

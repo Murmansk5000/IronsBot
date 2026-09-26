@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
+from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +11,8 @@ from ironsbot.core.platform import (
     ConversationRef,
     private_conversation_for_actor,
 )
+from ironsbot.core.schedule_rendering import ScheduledRenderRequest
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.messaging.scheduled_delivery import (
     ScheduledMessageDelivery,
 )
@@ -30,6 +34,37 @@ if TYPE_CHECKING:
     from .service import MessagingService
 
 MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
+logger = logging.getLogger(__name__)
+
+
+def render_schedule_messages(
+    task: MessageScheduledAction, *, messaging: MessagingService
+) -> tuple[str, ...]:
+    if not task.renderer:
+        return tuple(task.messages)
+    request = ScheduledRenderRequest(
+        today=datetime.now(TZ_CN).date(),
+        messages=tuple(task.messages),
+        parameters=task.renderer_parameters,
+    )
+    try:
+        rendered = messaging.schedule_renderers.render(task.renderer, request)
+    except (KeyError, ValueError) as error:
+        logger.warning(
+            "scheduled message rendering failed: task=%s renderer=%s error=%s",
+            task.id,
+            task.renderer,
+            error,
+        )
+        return ()
+    if rendered is None:
+        logger.warning(
+            "scheduled message renderer unavailable: task=%s renderer=%s",
+            task.id,
+            task.renderer,
+        )
+        return ()
+    return rendered
 
 
 async def send_private_schedule(
@@ -38,7 +73,14 @@ async def send_private_schedule(
     target_conversations: tuple[ConversationRef, ...] | None = None,
     *,
     messaging: MessagingService,
+    messages: tuple[str, ...] | None = None,
 ) -> None:
+    if task.target_groups:
+        return
+    if messages is None:
+        messages = render_schedule_messages(task, messaging=messaging)
+    if not messages:
+        return
     eligible = tuple(
         private_conversation_for_actor(actor)
         for actor in messaging._features.private_actors_for_feature(task.feature)
@@ -62,7 +104,7 @@ async def send_private_schedule(
 
     await messaging._schedule_sender.send(
         ScheduledMessageDelivery(
-            messages=tuple(task.messages),
+            messages=messages,
             private_conversations=recipients,
             group_conversations=(),
             group_mentions=(),
@@ -78,8 +120,15 @@ async def send_group_schedule(
     target_conversations: tuple[ConversationRef, ...] | None = None,
     *,
     messaging: MessagingService,
+    messages: tuple[str, ...] | None = None,
 ) -> None:
-    eligible = tuple(messaging._features.conversations_for_feature(task.feature))
+    if messages is None:
+        messages = render_schedule_messages(task, messaging=messaging)
+    if not messages:
+        return
+    eligible = eligible_group_schedule_conversations(task, index, messaging=messaging)
+    if task.target_groups and not eligible:
+        return
     if target_conversations is None:
         overrides = cron_override_conversations(
             messaging._store,
@@ -99,14 +148,40 @@ async def send_group_schedule(
 
     await messaging._schedule_sender.send(
         ScheduledMessageDelivery(
-            messages=tuple(task.messages),
+            messages=messages,
             private_conversations=(),
             group_conversations=recipients,
             group_mentions=messaging.schedule_mentions(index),
             action_name=f"group scheduled message {task.id or '<unnamed>'}",
             subscription_key=schedule_key(index, task),
+            unresolved_mentions_as_text=task.unresolved_mentions == "text",
+            mention_fallback_name=task.mention_fallback_name,
         )
     )
+
+
+def eligible_group_schedule_conversations(
+    task: MessageScheduledAction, index: int, *, messaging: MessagingService
+) -> tuple[ConversationRef, ...]:
+    eligible = tuple(messaging._features.conversations_for_feature(task.feature))
+    if task.target_groups:
+        principals = messaging._features.principals
+        targets = messaging._schedule_targets.groups_for(index)
+        if not targets:
+            logger.warning(
+                "scheduled message target groups unavailable: task=%s", task.id
+            )
+            return ()
+        if principals is None:
+            eligible = tuple(item for item in eligible if item in targets)
+        else:
+            allowed = {principals.conversation_principal(target) for target in targets}
+            eligible = tuple(
+                conversation
+                for conversation in eligible
+                if principals.conversation_principal(conversation) in allowed
+            )
+    return eligible
 
 
 async def send_schedule(
@@ -115,8 +190,11 @@ async def send_schedule(
     *,
     messaging: MessagingService,
 ) -> None:
-    await send_private_schedule(task, index, messaging=messaging)
-    await send_group_schedule(task, index, messaging=messaging)
+    messages = render_schedule_messages(task, messaging=messaging)
+    if not messages:
+        return
+    await send_private_schedule(task, index, messaging=messaging, messages=messages)
+    await send_group_schedule(task, index, messaging=messaging, messages=messages)
 
 
 def cron_override_conversations(
@@ -164,6 +242,8 @@ def _register_private_schedule_overrides(
     task: MessageScheduledAction,
     messaging: MessagingService,
 ) -> None:
+    if task.target_groups:
+        return
     key = schedule_key(index, task)
     eligible = {
         private_conversation_for_actor(actor)
@@ -205,7 +285,9 @@ def _register_group_schedule_overrides(
     messaging: MessagingService,
 ) -> None:
     key = schedule_key(index, task)
-    eligible = set(messaging._features.conversations_for_feature(task.feature))
+    eligible = set(
+        eligible_group_schedule_conversations(task, index, messaging=messaging)
+    )
     for preference in messaging._store.all_time_preferences(
         conversation_kind="group",
         subscription_key=key,
