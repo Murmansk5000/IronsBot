@@ -46,7 +46,9 @@ async def test_member_binding_is_reused_as_private_address_within_same_app(
     )
     principals.register_identity_link(link)
     routes = PrivateConversationRoutes(
-        onebot_enabled=False, official_accounts=frozenset({"app", "other"})
+        onebot_enabled=False,
+        official_accounts=frozenset({"app", "other"}),
+        default_account="app",
     )
     store = SqliteOfficialAddressStore(tmp_path / "state.sqlite")
     service = OfficialAddressService(
@@ -82,3 +84,30 @@ async def test_member_binding_is_reused_as_private_address_within_same_app(
     principals.unregister_identity_link(link)
     service.refresh()
     assert routes.resolve(source) == source
+
+
+def test_private_route_never_falls_back_to_a_different_official_bot() -> None:
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"local-app", "public-app"}),
+        default_account="public-app",
+    )
+    source = ConversationRef(Platform.ONEBOT, "private", "123456")
+    routes.register(
+        CrossPlatformIdentityLink(
+            "123456", OfficialIdentity("local-app", "member", "local-openid"), 1
+        )
+    )
+    assert routes.resolve(source) == source
+
+    routes.register(
+        CrossPlatformIdentityLink(
+            "123456", OfficialIdentity("public-app", "member", "public-openid"), 2
+        )
+    )
+    assert routes.resolve(source) == ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "public-openid",
+        account_id="public-app",
+    )

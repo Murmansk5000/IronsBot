@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.config.models.messaging import MessageMentionReplyAction
+from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.messaging import (
+    MessageConfig,
+    MessageKeywordReplyAction,
+    MessageMentionReplyAction,
+)
 from ironsbot.core.command_catalog import (
     CommandCatalog,
     CommandContract,
@@ -22,13 +27,13 @@ from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.portable_commands import PortableCommandRouter
 
 if TYPE_CHECKING:
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.services.ai.actions import AiIntentActionExecutor
     from ironsbot.services.ai.service import AiService
-    from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.portable_reply import PortableOperation
 
 ACTOR = ActorRef(Platform.QQ_OFFICIAL, "actor", account_id="app")
@@ -196,6 +201,48 @@ async def _run_silent_query(
     context: MessageInputContext,
 ) -> None:
     del text, context
+
+
+@pytest.mark.asyncio
+async def test_official_unaddressed_keyword_reply_precedes_ai() -> None:
+    ai = _Ai(action=ACTION)
+    catalog = _catalog()
+    features = _features()
+    messaging = MessagingService(
+        MessageConfig(
+            keyword_replies=[
+                MessageKeywordReplyAction(
+                    id="example-keyword",
+                    keywords=["示例触发词"],
+                    messages=["固定回复"],
+                    feature="example",
+                )
+            ]
+        ),
+        ActivityConfig(),
+        cast("Any", object()),
+        features,
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    router = PortableCommandRouter(
+        catalog,
+        {"example.query": _run_query},
+        features,
+        ai=cast("AiService", ai),
+        ai_intent_actions=cast("AiIntentActionExecutor", _Executor()),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        messaging=messaging,
+    )
+    context = _context(GROUP, "这里有示例触发词")
+
+    assert router.recognizes(context)
+    reply = await router.dispatch(context)
+
+    assert reply is not None
+    assert reply.message.parts == (TextPart("固定回复"),)
+    assert ai.intent_calls == []
 
 
 @pytest.mark.parametrize("input_form", ["direct", "mentioned"])

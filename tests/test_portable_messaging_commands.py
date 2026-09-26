@@ -32,6 +32,8 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.services.identity_link_store import OfficialIdentity
+from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.portable_messaging_commands import (
@@ -94,7 +96,7 @@ def _group_context(
 
 
 @pytest.mark.asyncio
-async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
+async def test_portable_text_commands_include_configured_mention_targets() -> None:
     messaging = MessagingService(
         MessageConfig(
             commands=[
@@ -125,6 +127,7 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
 
     assert set(operations) == {
         "messaging.portable",
+        "messaging.onebot-only",
         "messaging.push_subscription",
     }
     result = cast(
@@ -136,6 +139,53 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
     assert (
         cast("TextPart", result.additional_messages[0].parts[0]).text
         == "https://example.test"
+    )
+
+
+@pytest.mark.asyncio
+async def test_official_configured_mention_requires_verified_member() -> None:
+    qq_actor = ActorRef(Platform.ONEBOT, "123456789")
+    principals = IdentityPrincipalService()
+    messaging = MessagingService(
+        MessageConfig(
+            commands=[
+                MessageCommandAction(
+                    id="notice",
+                    commands=["提醒"],
+                    messages=["提醒内容"],
+                    at_user_ids=[123456789],
+                )
+            ]
+        ),
+        ActivityConfig(),
+        cast("Any", object()),
+        cast("Any", object()),
+        cast("Any", object()),
+        cast("Any", object()),
+        _command_mentions={"notice": (qq_actor,)},
+    )
+    operation = build_portable_messaging_operations(
+        messaging,
+        PortableQuerySessions(),
+        identity_principals=principals,
+    )["messaging.notice"]
+
+    unresolved = cast("PortableReply", await operation("提醒", _group_context("提醒")))
+    assert "未发送" in cast("TextPart", unresolved.message.parts[0]).text
+
+    principals.register_official_link(
+        onebot_qq_id=qq_actor.id,
+        official=OfficialIdentity("app-id", "member", "target-openid"),
+    )
+    resolved = cast("PortableReply", await operation("提醒", _group_context("提醒")))
+    assert resolved.message.parts[0] == MentionPart(
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "target-openid",
+            "member",
+            "group-openid",
+            account_id="app-id",
+        )
     )
 
 
