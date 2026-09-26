@@ -10,7 +10,7 @@ from qqbot_agent_sdk.event_parser import EventParser
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.outbound_messenger import (
@@ -43,6 +43,9 @@ def _event(
             raw["message_scene"] = {"ext": [f"ref_msg_idx={quote}"]}
         elif shape == "elements":
             raw["msg_elements"] = [{"msg_idx": quote}]
+        elif shape == "mixed":
+            raw["message_scene"] = {"ext": ["ref_msg_idx=local-index"]}
+            raw["message_reference"] = {"message_id": quote}
         else:
             raw["message_reference"] = {"message_id": quote}
     event = EventParser.parse("GROUP_AT_MESSAGE_CREATE", raw)
@@ -53,7 +56,7 @@ def _event(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("shape", ["scene", "elements", "reference"])
+@pytest.mark.parametrize("shape", ["scene", "elements", "reference", "mixed"])
 async def test_parsed_official_quote_uses_actual_receipt_and_independent_sessions(
     shape: str,
 ) -> None:
@@ -125,7 +128,11 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
 
     await dispatch(context)
     await dispatch(_event("A", "1"))
-    await dispatch(_event("B", "2", quote="actual-index", shape=shape))
+    anchor = "actual-message" if shape == "mixed" else "actual-index"
+    assert not router.recognizes(
+        _event("B", "@环源 2", quote="unrelated-message", shape=shape)
+    )
+    await dispatch(_event("B", "@环源 2", quote=anchor, shape=shape))
     assert select.await_count == len(("A", "B"))
     assert select.await_args_list[1].args[1].message.actor.id == "B"
     # Source exits; the new participant continues without quoting again.
@@ -134,3 +141,80 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
     assert select.await_args is not None
     assert select.await_args.args[1].message.actor.id == "B"
     assert not router.recognizes(_event("B", "2", quote="stale-result", shape=shape))
+
+
+@pytest.mark.asyncio
+async def test_bare_shortcut_does_not_select_previous_players_menu() -> None:
+    sessions = PortableQuerySessions()
+    context = _event("A", "菜单")
+    features = FeatureService(
+        {context.message.conversation: frozenset({"help"})}, {}, frozenset()
+    )
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="test",
+                commands=(
+                    CommandContract(
+                        id="test.menu",
+                        plugin_id="test",
+                        section="test",
+                        examples=("菜单",),
+                        description="menu",
+                        features_all=("help",),
+                    ),
+                    CommandContract(
+                        id="test.shortcut",
+                        plugin_id="test",
+                        section="test",
+                        examples=("收集",),
+                        description="shortcut",
+                        features_all=("help",),
+                    ),
+                ),
+            ),
+        ),
+        known_features=("help",),
+    )
+    selected = AsyncMock(return_value=OutboundMessage.from_text("old player"))
+
+    async def opening(text: str, context: MessageInputContext) -> OutboundMessage:
+        del text
+        return sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=("collection",),
+                text_inputs=(frozenset({"收集"}),),
+                select=selected,
+                prompt=OutboundMessage.from_text("1. 收集\n0. 退出"),
+                keep_open=True,
+            ),
+        )
+
+    async def shortcut(text: str, context: MessageInputContext) -> OutboundMessage:
+        del text, context
+        return OutboundMessage.from_text("own binding")
+
+    router = PortableCommandRouter(
+        catalog,
+        {"test.menu": opening, "test.shortcut": shortcut},
+        features,
+        ai=cast("Any", None),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+    opened = await router.dispatch(context)
+    assert opened is not None
+    sessions.record_delivery(
+        context,
+        opened.message,
+        SendResult(delivered=True, message_id="menu"),
+    )
+    bare = await router.dispatch(_event("A", "收集"))
+    assert bare is not None
+    assert isinstance(bare.message.parts[0], TextPart)
+    assert bare.message.parts[0].text == "own binding"
+    selected.assert_not_awaited()
+    assert not router.recognizes(_event("A", "1", quote="menu"))

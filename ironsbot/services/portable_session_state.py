@@ -170,11 +170,14 @@ class PortableSessionState:
         )
         return PortableResponseReservation(self, key, token)
 
-    def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
+    def recognizes_response(  # noqa: PLR0911 - ordered menu routing decisions
+        self, text: str, context: MessageInputContext
+    ) -> bool:
         key = self._key(context)
+        owner = self.quoted_owner(context)
+        text = self._quoted_selection_text(text, owner or context, context)
         if text.strip() == "0" and (key in self._pending or key in self._reservations):
             return True
-        owner = self.quoted_owner(context)
         if owner is not None and self._key(owner) != key:
             return self.recognizes_shared_response(text, owner, context)
         if (
@@ -195,6 +198,8 @@ class PortableSessionState:
             self._pending.pop(key, None)
         self._drop_expired(key)
         pending = self._pending.get(key)
+        if self._is_direct_command_over_selection(text, context, pending):
+            return False
         return (
             isinstance(pending, _PendingTextInput)
             and not (self.explicit_command and self.explicit_command(context))
@@ -233,8 +238,31 @@ class PortableSessionState:
         pending = self._shared_pending(owner, responder)
         if pending is None:
             return False
+        text = self._quoted_selection_text(text, owner, responder)
         choice = self._selection_choice(pending, text)
         return choice is not None and choice.id in pending.shared_choice_ids
+
+    def _quoted_selection_text(
+        self,
+        text: str,
+        owner: MessageInputContext,
+        responder: MessageInputContext,
+    ) -> str:
+        if not responder.is_reply or not text.lstrip().startswith(("@", "＠")):
+            return text
+        pending = self._pending.get(self._key(owner))
+        if (
+            not isinstance(pending, _PendingSelection)
+            or responder.message.reply_to_id not in pending.anchor_ids
+        ):
+            return text
+        parts = text.split()
+        for index in range(1, len(parts)):
+            candidate = " ".join(parts[index:])
+            choice = self._selection_choice(pending, candidate)
+            if choice is not None and choice.id != "0":
+                return candidate
+        return text
 
     def _drop_expired(self, key: _SessionKey) -> None:
         pending = self._pending.get(key)
@@ -292,6 +320,20 @@ class PortableSessionState:
             pending.session.choice_from_action(text) is not None
             or pending.session.choice_from_text(text) is not None
             or (pending.claim_unknown_numeric and text.strip().isdigit())
+        )
+
+    def _is_direct_command_over_selection(
+        self,
+        text: str,
+        context: MessageInputContext,
+        pending: _PendingSelection | _PendingTextInput | None,
+    ) -> bool:
+        return (
+            isinstance(pending, _PendingSelection)
+            and not context.is_reply
+            and not text.strip().isdigit()
+            and self.explicit_command is not None
+            and self.explicit_command(context)
         )
 
     def _shared_pending(
