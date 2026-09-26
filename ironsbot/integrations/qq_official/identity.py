@@ -97,6 +97,22 @@ def qq_official_event_mentions_bot(event: InboundEvent) -> bool:
     return _bot_mention(raw) is not None
 
 
+def qq_official_event_mentions_everyone(event: InboundEvent) -> bool:
+    raw = event.raw if isinstance(event.raw, Mapping) else {}
+    if raw.get("at_all") is True:
+        return True
+    mentions = raw.get("mentions")
+    if not isinstance(mentions, Sequence) or isinstance(mentions, (str, bytes)):
+        return False
+    return any(
+        isinstance(mention, Mapping)
+        and (
+            mention.get("at_all") is True or mention.get("type") in ("all", "everyone")
+        )
+        for mention in mentions
+    )
+
+
 def _message_text(event: InboundEvent, raw: Mapping[str, object]) -> str:
     text = event.content.strip()
     if event.event_type == GROUP_MESSAGE_CREATE:
@@ -228,6 +244,11 @@ def _reply_reference(
 ) -> str | None:
     if event.message_type != MSG_TYPE_QUOTE:
         return None
+    reference = raw.get("message_reference")
+    if isinstance(reference, Mapping):
+        message_id = reference.get("message_id")
+        if isinstance(message_id, str) and message_id.strip():
+            return message_id
     if reference := _scene_value(raw, "ref_msg_idx"):
         return reference
     elements = raw.get("msg_elements")
@@ -235,11 +256,6 @@ def _reply_reference(
         reference = elements[0].get("msg_idx")
         if isinstance(reference, (str, int)) and str(reference).strip():
             return str(reference)
-    reference = raw.get("message_reference")
-    if isinstance(reference, Mapping):
-        message_id = reference.get("message_id")
-        if isinstance(message_id, str) and message_id.strip():
-            return message_id
     return f"quoted:{event.message_id}"
 
 

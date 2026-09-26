@@ -84,7 +84,8 @@ def message_input_context(event: Event) -> MessageInputContext:
             group_role=str(role) if group_id is not None and role is not None else None,
         ),
         mentions_bot=mentions_bot,
-        mentions_everyone=any(
+        mentions_everyone="all" in raw_targets
+        or any(
             getattr(segment, "type", "") == "at"
             and str(getattr(segment, "data", {}).get("qq", "")) == "all"
             for segment in _current_message(event)
