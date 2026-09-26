@@ -64,6 +64,34 @@ def _menu(
     return message
 
 
+@pytest.mark.asyncio
+async def test_queued_choice_acknowledges_before_previous_query_finishes() -> None:
+    sessions = PortableQuerySessions()
+    context = _context(101)
+    started, release = asyncio.Event(), asyncio.Event()
+    order = []
+
+    async def select(value: int, _context: MessageInputContext) -> OutboundMessage:
+        if value == 1:
+            started.set()
+            await release.wait()
+        order.append(value)
+        return OutboundMessage.from_text(f"result:{value}")
+
+    _menu(sessions, context, select)
+    first = asyncio.create_task(sessions.interactions.select("1", context))
+    await started.wait()
+    queued = await sessions.interactions.select("2", context)
+    assert queued is not None and queued.continuation is not None
+    assert order == []
+    delivering = asyncio.create_task(_deliver(queued))
+    await asyncio.sleep(0)
+    release.set()
+    await _deliver(await first)
+    await delivering
+    assert order == [1, 2]
+
+
 async def _deliver(reply: PortableReply | None) -> None:
     assert reply is not None
     await deliver_portable_reply(
@@ -107,7 +135,7 @@ async def test_clone_admission_belongs_to_responder_and_denial_preserves_menu() 
         allowed=True, token="cooldown"
     )
     await _deliver(await sessions.interactions.select("1", responder))
-    assert sessions.active_prompt(responder) != own.prompt
+    assert sessions.active_prompt(responder) == own.prompt
     select.assert_awaited_once_with(1, responder)
     assert requests.admit.call_args.kwargs["actor"] == responder.message.actor
     requests.finish.assert_called_once_with("request")

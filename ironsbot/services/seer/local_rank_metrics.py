@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.value_coercion import coerce_positive_int
 from ironsbot.services.seer import local_rank_formatting
+from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
@@ -19,9 +20,20 @@ class MetricSpec:
     key: str
     title: str
     season_limited: bool = False
+    ascending: bool = False
 
 
 LOCAL_METRICS: tuple[MetricSpec, ...] = (
+    *(
+        MetricSpec(
+            spec.beast_metric,
+            spec.title,
+            season_limited=True,
+            ascending=spec.ascending,
+        )
+        for spec in GLOBAL_RANKS.values()
+        if spec.beast_metric
+    ),
     MetricSpec("book_score", "图鉴积分"),
     MetricSpec("achievement_score", "成就点数"),
     MetricSpec("achievement_count", "成就数量"),

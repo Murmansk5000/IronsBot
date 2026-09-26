@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from secrets import token_urlsafe
 from time import monotonic
 from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
@@ -358,7 +357,7 @@ class PortableQuerySessions(PortableSessionState):
         *,
         allow_deferred: bool = False,
     ) -> OutboundMessage | PortableReply | None:
-        """Clone one shareable group menu choice for the replying member."""
+        """Execute a quoted choice without transferring direct menu ownership."""
 
         pending = self._shared_pending(owner, responder)
         if pending is None:
@@ -372,34 +371,24 @@ class PortableQuerySessions(PortableSessionState):
             pending.can_select is not None and not pending.can_select(value, responder)
         ):
             return OutboundMessage.from_text("当前会话没有使用该选项的权限。")
-        key = self._key(responder)
-        self._cancel_reservation(key)
-        expires_at = self._now() + self._ttl_seconds
-        cloned = replace(
-            pending,
-            select=cast("_UntypedMenuSelect", pending.shared_select),
-            session=replace(
-                pending.session,
-                id=token_urlsafe(18),
-                actor=responder.message.actor,
-                request_message_id=responder.message.message_id,
-                expires_at=expires_at,
-                choices=tuple(
-                    option
-                    for option in pending.session.choices
-                    if option.id == "0" or option.id in pending.shared_choice_ids
-                ),
-            ),
-            expires_at=expires_at,
-            owner_context=responder,
-        )
-        self._pending[key] = cloned
-        return await self._select_choice(
+        assert pending.shared_select is not None
+        access_token = _MENU_ACCESS.set(pending.access)
+        try:
+            result = await pending.shared_select(value, responder)
+        finally:
+            _MENU_ACCESS.reset(access_token)
+        if isinstance(result, PortableReply) and not allow_deferred:
+            raise PortableQuerySessionError.deferred_result_not_enabled()
+        if isinstance(result, (PortableReply, OutboundMessage)):
+            return result
+        return self._present(
             responder,
-            key=key,
-            pending=cloned,
-            choice=choice,
-            allow_deferred=allow_deferred,
+            result,
+            select=pending.shared_select,
+            prompt_title=pending.prompt_title,
+            not_found_message=pending.not_found_message,
+            keep_open=True,
+            action=pending.action,
         )
 
     def resolve_semantic_request(

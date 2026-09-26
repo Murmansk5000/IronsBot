@@ -37,6 +37,7 @@ from ironsbot.services.seer.peak import (
     PEAK_TITLE_RANK_COMMANDS,
     PEAK_VOTE_COMMANDS,
 )
+from ironsbot.services.seer.player_shortcut_contracts import PLAYER_SHORTCUT_NAMES
 from ironsbot.services.seer.query_commands import (
     AUTOCARD_QUERY,
     BATTLE_EFFECT_QUERY,
@@ -67,7 +68,7 @@ def seer_command_contracts(
         player_id_resolver.has_reference_choices,
     )
     player_shortcut_input = player_reference_input_matcher(
-        ("收集", "巅峰", "群星牌"),
+        PLAYER_SHORTCUT_NAMES,
         player_id_resolver.has_reference_choices,
     )
     player_binding_input = player_reference_input_matcher(
@@ -91,7 +92,7 @@ def seer_command_contracts(
                 ),
                 (
                     "seer.player.default",
-                    ("米米号", "收集", "巅峰", "群星牌"),
+                    ("米米号", *PLAYER_SHORTCUT_NAMES),
                     "查询默认或指定玩家数据；可追加米米号/玩家别名，"
                     "群聊可直接 @已绑定成员",
                     {"routing_matcher": player_shortcut_input},

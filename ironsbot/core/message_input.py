@@ -30,6 +30,8 @@ class MessageInputContext:
     automatic_fallback_allowed: bool = True
     execution_identity: ExecutionIdentity | None = None
     mentions_everyone: bool = False
+    offer_player_binding: bool = True
+    verified_member_mentions: tuple[ActorRef, ...] = ()
 
     @property
     def text(self) -> str:
@@ -37,11 +39,19 @@ class MessageInputContext:
 
     @property
     def is_reply(self) -> bool:
-        return self.message.reply_to_id is not None
+        return bool(self.reply_reference_ids)
+
+    @property
+    def reply_reference_ids(self) -> frozenset[str]:
+        return frozenset(
+            value
+            for value in (self.message.reply_to_id, *self.message.reply_reference_ids)
+            if value
+        )
 
     @property
     def member_mentions(self) -> tuple[ActorRef, ...]:
-        return self.message.direct_mentions
+        return self.verified_member_mentions or self.message.direct_mentions
 
     @property
     def has_any_mention(self) -> bool:

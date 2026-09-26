@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
@@ -63,9 +63,7 @@ def build_portable_rank_operations(
     player_query: PortableOperation,
     features: FeatureService,
 ) -> dict[str, PortableOperation]:
-    owner = _PortableRankOperations(
-        service, resolver, sessions, player_query, features
-    )
+    owner = _PortableRankOperations(service, resolver, sessions, player_query, features)
     return {
         **dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query),
         "rank.display_limit": owner.set_display_limit,
@@ -254,7 +252,8 @@ class _PortableRankOperations:
             selection_context: MessageInputContext,
         ) -> OutboundMessage | PortableReply:
             reply = await self.player_query(
-                f"米米号{choice.player_id}", selection_context
+                f"米米号{choice.player_id}",
+                replace(selection_context, offer_player_binding=False),
             )
             if reply is None:
                 msg = "player query operation returned no reply"

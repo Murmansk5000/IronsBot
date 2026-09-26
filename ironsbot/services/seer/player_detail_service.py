@@ -15,6 +15,7 @@ from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
     _BackgroundRefresh,
@@ -158,7 +159,9 @@ class PlayerDetailService:
         future = None if refresh is None else refresh.replies.get(kind)
         if future is None or future.done():
             return None
-        return (await asyncio.shield(future)) or self._cached_reply(player_id, kind)
+        await send_request_feedback(queued=True)
+        reply = await asyncio.shield(future)
+        return reply.refreshed() if reply else self._cached_reply(player_id, kind)
 
     async def _fetch_shortcut(
         self,
@@ -279,7 +282,7 @@ class PlayerDetailService:
         if cached is None:
             return None
         if cached.expires_at > monotonic() and self._cache_remaining(cached.reply) > 0:
-            return cached.reply
+            return cached.reply.refreshed()
         self._cached_replies.pop(cache_key, None)
         return None
 

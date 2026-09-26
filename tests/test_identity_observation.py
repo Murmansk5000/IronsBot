@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import pytest
@@ -41,6 +42,54 @@ OFFICIAL_GROUP = "official-group"
 ONEBOT_GROUP = 10001
 OFFICIAL_BOT_QQ = 20002
 MEMBER_QQ = 30003
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sender", [MEMBER_QQ, 40004])
+@pytest.mark.parametrize("mirror_later", [False, True])
+async def test_missing_rank_target_requires_linked_sender(
+    tmp_path: Path, sender: int, *, mirror_later: bool
+) -> None:
+    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    await store.link_verified(
+        onebot_qq_id=str(MEMBER_QQ),
+        official=OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP),
+        now=100,
+    )
+    service = SilentIdentityObservationService(
+        store,
+        {
+            APP_ID: IdentityObservationAccount(
+                APP_ID, OFFICIAL_BOT_QQ, {OFFICIAL_GROUP: ONEBOT_GROUP}
+            )
+        },
+        clock=lambda: 100,
+    )
+    incoming = _incoming("query", text="玄武榜")
+    await service.observe_official_message(incoming, explicitly_addressed=True)
+    lookup = (
+        asyncio.create_task(service.missing_member_target(incoming, timeout=0.05))
+        if mirror_later else None
+    )
+    if lookup is not None:
+        await asyncio.sleep(0)
+    await service.observe_onebot(
+        _observation(
+            sender=sender,
+            text="玄武榜",
+            mentions=(str(OFFICIAL_BOT_QQ), "50005"),
+        )
+    )
+    target = (
+        await lookup if lookup is not None
+        else await service.missing_member_target(incoming, timeout=0.001)
+    )
+    if sender == MEMBER_QQ:
+        assert target == ActorRef(
+            Platform.ONEBOT, "50005", kind="member", scope_id=str(ONEBOT_GROUP)
+        )
+    else:
+        assert target is None
 
 
 def _incoming(  # noqa: PLR0913 - compact identity fixture builder

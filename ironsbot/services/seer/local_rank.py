@@ -22,6 +22,7 @@ from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
 )
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
+from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 from ironsbot.services.seer.rank_peak import (
     build_peak_rating_score,
 )
@@ -51,6 +52,10 @@ logger = logging.getLogger(__name__)
 
 class LocalRankRepository(Protocol):
     max_players: int
+
+    def metric_standings(
+        self, player_id: int, inputs: Mapping[str, tuple[int, int | None]]
+    ) -> dict[str, tuple[int, int, int]]: ...
 
     def entries(
         self,
@@ -160,6 +165,29 @@ class LocalRankService:
 
     def stats(self) -> LocalRankCacheStats:
         return self.repository.stats(LOCAL_METRICS)
+
+    def current_summary(
+        self,
+        player_id: int,
+        metrics: Mapping[str, MetricValue],
+        *,
+        peak_sub_key: int | None,
+    ) -> LocalRankSummary:
+        if not self.config.enabled or self.exclusion_policy.excludes_from_sample(
+            player_id
+        ):
+            return LocalRankSummary()
+        inputs = {
+            spec.key: (value, peak_sub_key if spec.season_limited else None)
+            for spec in LOCAL_METRICS
+            if (metric := metrics.get(spec.key)) is not None
+            and (value := coerce_positive_int(metric.get("value"))) is not None
+        }
+        return self._format_summary(
+            metrics,
+            self.repository.metric_standings(player_id, inputs),
+            peak_sub_key=peak_sub_key,
+        )
 
     def can_cache(self, player_id: int) -> bool:
         return not self.exclusion_policy.excludes_from_sample(
@@ -401,6 +429,10 @@ class LocalRankService:
                 rank / sample_count * 100
             )
             sample_ranks[spec.key] = f"样本前{percent_text}%"
+            if any(item.beast_metric == spec.key for item in GLOBAL_RANKS.values()):
+                sample_ranks[spec.key] = (
+                    f"样本第{rank}/{sample_count}｜样本前{percent_text}%"
+                )
             display_text = local_rank_formatting.format_metric_display(
                 spec.key,
                 value,

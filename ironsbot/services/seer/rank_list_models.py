@@ -52,6 +52,7 @@ class GlobalRankSpec:
     sub_key_source: Literal["fixed", "peak_season", "master_season"] = "fixed"
     score_format: str = ""
     ascending: bool = False
+    beast_metric: str = ""
 
     @property
     def season_limited(self) -> bool:
@@ -157,6 +158,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         "",
         score_format="completion_time",
         ascending=True,
+        beast_metric="beast_beiming_completion",
     ),
     "竞技段位": GlobalRankSpec(
         "竞技段位榜",
@@ -192,6 +194,11 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
 }
 
 LOCAL_RANKS: dict[str, LocalRankSpec] = {
+    **{
+        key: LocalRankSpec(f"样本{spec.title}", spec.beast_metric, season_limited=True)
+        for key, spec in GLOBAL_RANKS.items()
+        if spec.beast_metric
+    },
     "图鉴积分": LocalRankSpec("样本图鉴积分榜", "book_score"),
     "成就点数": LocalRankSpec("样本成就点数榜", "achievement_score"),
     "精灵数量": LocalRankSpec("样本精灵总数榜", "pet_total_count"),

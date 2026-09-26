@@ -82,6 +82,7 @@ def qq_official_incoming_message(
         direct_mentions=direct_mentions,
         group_role=group_role,
         reply_to_id=_reply_reference(event, raw),
+        reply_reference_ids=_reply_references(event, raw),
         sequence=_message_sequence(raw),
         reply_deadline=_reply_deadline(event, conversation.kind),
         official_union_identity=_official_union_identity(raw),
@@ -257,6 +258,18 @@ def _reply_reference(
         if isinstance(reference, (str, int)) and str(reference).strip():
             return str(reference)
     return f"quoted:{event.message_id}"
+
+
+def _reply_references(
+    event: InboundEvent, raw: Mapping[str, object]
+) -> tuple[str, ...]:
+    primary = _reply_reference(event, raw)
+    if primary is None:
+        return ()
+    values = [primary]
+    if sequence := _scene_value(raw, "ref_msg_idx"):
+        values.append(sequence)
+    return tuple(dict.fromkeys(values))
 
 
 def _message_sequence(raw: Mapping[str, object]) -> str | None:

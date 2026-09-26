@@ -105,6 +105,7 @@ async def fetch_rank_player_result(
     local_summary = (
         LocalRankSummary()
         if local_spec is None
+        or (spec.beast_metric and (result.failure or score is None))
         else await _update_sample_metric(
             local_rank,
             player_id=command.player_id,
@@ -113,7 +114,9 @@ async def fetch_rank_player_result(
             score=score,
             display=display,
             season_sub_key=(
-                spec.sub_key if command.rank_key in _SEASON_RANK_KEYS else None
+                spec.sub_key
+                if command.rank_key in _SEASON_RANK_KEYS or spec.beast_metric
+                else None
             ),
             clear_when_missing=command.rank_key in _SEASON_RANK_KEYS,
         )

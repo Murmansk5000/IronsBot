@@ -428,6 +428,10 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     local_rank_repository = SqliteLocalRankRepository(
         settings.seer.local_rank.path,
         settings.seer.local_rank.max_players,
+        eligible_player_ids=lambda: (
+            player_bindings.bound_player_ids()
+            - rank.exclusion_policy.taomee_internal_user_ids
+        ),
     )
     local_rank = LocalRankService(
         local_rank_repository,

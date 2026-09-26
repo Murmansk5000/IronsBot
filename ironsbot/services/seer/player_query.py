@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ironsbot.core.selection import (
     EXIT_SELECTION_LINE,
 )
+from ironsbot.services.seer.player_shortcut_contracts import PLAYER_SHORTCUT_SPECS
 from ironsbot.services.seer.rank_peak import build_peak_rating_score
 
 if TYPE_CHECKING:
@@ -49,25 +50,12 @@ class PlayerDetailReplyRequest:
     menu_label: str
 
 
-_PLAYER_DETAIL_REQUESTS = (
+_PLAYER_DETAIL_REQUESTS = tuple(
     PlayerDetailReplyRequest(
-        key=PLAYER_COLLECTION_KEY,
-        kind="collection",
-        label="收集与排行",
-        menu_label="收集",
-    ),
-    PlayerDetailReplyRequest(
-        key=PLAYER_PEAK_KEY,
-        kind="peak",
-        label="巅峰之战",
-        menu_label="巅峰",
-    ),
-    PlayerDetailReplyRequest(
-        key=PLAYER_AUTOCARD_KEY,
-        kind="autocard",
-        label="群星牌排名",
-        menu_label="群星牌",
-    ),
+        key=spec.cache_key, kind=spec.kind, label=spec.label, menu_label=spec.name
+    )
+    for spec in PLAYER_SHORTCUT_SPECS
+    if spec.cache_key
 )
 _PLAYER_DETAIL_REQUEST_BY_KEY = {
     request.key: request for request in _PLAYER_DETAIL_REQUESTS

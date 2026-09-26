@@ -467,7 +467,12 @@ class RankQueryService:
     def _local_message(self, command: RankListCommand) -> RankListPreparedReply:
         spec = LOCAL_RANKS[command.rank_key]
         season_sub_key = (
-            self._rank.current_peak_sub_key() if spec.season_limited else None
+            self._rank.get_spec(command.rank_key).sub_key
+            if (global_spec := GLOBAL_RANKS.get(command.rank_key)) is not None
+            and global_spec.beast_metric
+            else self._rank.current_peak_sub_key()
+            if spec.season_limited
+            else None
         )
         entries, sample_count = self._local_rank.entries(
             spec.metric_key,

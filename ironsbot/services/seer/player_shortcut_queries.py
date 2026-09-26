@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import replace
+from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +40,8 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
@@ -139,8 +142,14 @@ def _detail_reply(
     *,
     base_complete: bool,
     fetched_at: float | None,
+    refresh_text: Callable[[], str] | None = None,
 ) -> QueryReply:
-    reply = QueryReply(text=text, rank_lookups=rank_lookups, fetched_at=fetched_at)
+    reply = QueryReply(
+        text=text,
+        rank_lookups=rank_lookups,
+        fetched_at=fetched_at,
+        refresh_text=refresh_text,
+    )
     return replace(reply, complete=base_complete and reply.rank_lookup_complete)
 
 
@@ -228,28 +237,34 @@ async def _fetch_collection_message(  # noqa: PLR0913
         on_error=_log_extra_error,
         timeout_seconds=deadline.remaining(timeout_seconds),
     )
-    message = _append_extra_errors(
-        format_collection_info(
-            more_info,
-            unity_part_one=unity_part_one,
-            rank_summary=rank_summary,
-            local_summary=local_summary,
-            fetched_at=_detail_observation_time(
-                observation, _player_rank_results(rank_summary)
-            ),
-            player_identity=format_player_identity(
-                player_id,
-                nick,
-                nick_error,
-            ),
+    render = partial(
+        format_collection_info,
+        more_info,
+        unity_part_one=unity_part_one,
+        rank_summary=rank_summary,
+        fetched_at=_detail_observation_time(
+            observation, _player_rank_results(rank_summary)
         ),
-        extra_errors,
+        player_identity=format_player_identity(
+            player_id,
+            nick,
+            nick_error,
+        ),
     )
+    message = _append_extra_errors(render(local_summary=local_summary), extra_errors)
     return _detail_reply(
         message,
         _player_rank_results(rank_summary),
         base_complete=not extra_errors and nick_error is None,
         fetched_at=observation.fetched_at,
+        refresh_text=lambda: _append_extra_errors(
+            render(
+                local_summary=_current_sample_summary(
+                    local_rank, player_id, metrics, peak_sub_key=None
+                )
+            ),
+            extra_errors,
+        ),
     )
 
 
@@ -370,28 +385,26 @@ async def _fetch_peak_message(  # noqa: PLR0913
         on_error=_log_extra_error,
         timeout_seconds=deadline.remaining(timeout_seconds),
     )
-    message = _append_extra_errors(
-        format_compact_peak_section(
-            unity_peak,
-            rank_summary,
-            local_summary,
-            fetched_at=_detail_observation_time(
-                observation,
-                (
-                    rank_summary.standard,
-                    rank_summary.wild,
-                    rank_summary.expert,
-                    rank_summary.master,
-                ),
+    render = partial(
+        format_compact_peak_section,
+        unity_peak,
+        rank_summary,
+        fetched_at=_detail_observation_time(
+            observation,
+            (
+                rank_summary.standard,
+                rank_summary.wild,
+                rank_summary.expert,
+                rank_summary.master,
             ),
-            player_id=player_id,
-            nick=nick,
-            nick_error=nick_error,
-            available_modes=peak_result.available_modes,
-            mode_errors=dict(peak_result.mode_errors),
         ),
-        extra_errors,
+        player_id=player_id,
+        nick=nick,
+        nick_error=nick_error,
+        available_modes=peak_result.available_modes,
+        mode_errors=dict(peak_result.mode_errors),
     )
+    message = _append_extra_errors(render(local_summary=local_summary), extra_errors)
     return _detail_reply(
         message,
         (
@@ -404,6 +417,21 @@ async def _fetch_peak_message(  # noqa: PLR0913
         and nick_error is None
         and not peak_result.mode_errors,
         fetched_at=observation.fetched_at,
+        refresh_text=lambda: _append_extra_errors(
+            render(
+                local_summary=_current_sample_summary(
+                    local_rank,
+                    player_id,
+                    {
+                        key: value
+                        for key, value in metrics.items()
+                        if key in peak_metric_keys
+                    },
+                    peak_sub_key=peak_sub_key,
+                )
+            ),
+            extra_errors,
+        ),
     )
 
 
@@ -473,25 +501,43 @@ async def _fetch_autocard_message(  # noqa: PLR0913
         on_error=_log_extra_error,
         timeout_seconds=deadline.remaining(timeout_seconds),
     )
-    message = _append_extra_errors(
-        format_autocard_rank_info(
-            result,
-            player_identity=format_player_identity(
-                player_id,
-                nick,
-                nick_error,
-            ),
-            local_summary=local_summary,
-            fetched_at=_detail_observation_time(observation, (result,)),
+    render = partial(
+        format_autocard_rank_info,
+        result,
+        player_identity=format_player_identity(
+            player_id,
+            nick,
+            nick_error,
         ),
-        extra_errors,
+        fetched_at=_detail_observation_time(observation, (result,)),
     )
+    message = _append_extra_errors(render(local_summary=local_summary), extra_errors)
     return _detail_reply(
         message,
         (result,),
         base_complete=not extra_errors and nick_error is None,
         fetched_at=observation.fetched_at,
+        refresh_text=lambda: _append_extra_errors(
+            render(
+                local_summary=_current_sample_summary(
+                    local_rank, player_id, metrics, peak_sub_key=None
+                )
+            ),
+            extra_errors,
+        ),
     )
+
+
+def _current_sample_summary(
+    local_rank: LocalRankService,
+    player_id: int,
+    metrics: dict[str, MetricValue],
+    *,
+    peak_sub_key: int | None,
+) -> LocalRankSummary:
+    if not local_rank.config.enabled:
+        return LocalRankSummary()
+    return local_rank.current_summary(player_id, metrics, peak_sub_key=peak_sub_key)
 
 
 async def _resolve_shortcut_nick(

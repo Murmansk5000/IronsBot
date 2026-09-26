@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
 from ironsbot.core.semantic_requests import SemanticRequest, SemanticRequestSource
+from ironsbot.services.player_binding_confirmation import confirm_shortcut_binding
 from ironsbot.services.player_extension_commands import query_player_extension
 from ironsbot.services.player_reference_selection import (
     select_player_reference,
@@ -30,8 +31,7 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     parse_player_shortcut_command,
     player_shortcut_semantic_request,
 )
-from ironsbot.services.seer.rank_list_global_messages import format_completion_time
-from ironsbot.services.seer.rank_list_models import RankPlayerCommand
+from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, RankPlayerCommand
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -101,6 +101,8 @@ class _PortablePlayerOperations:
                     explicit=bool(reference.strip()),
                     conversation=context.message.conversation,
                 )
+                if not context.offer_player_binding or context.has_member_mentions:
+                    result = replace(result, offer_binding=False)
                 reply = _prepare_player_query_reply(
                     self.service,
                     self.resolver,
@@ -219,10 +221,25 @@ class _PortablePlayerOperations:
             raise ValueError(msg)
 
         async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+            if parsed.kind == "beast_rank":
+                if self.rank_queries is None or not self.features.is_feature_allowed(
+                    context.message.actor, context.message.conversation, "seer_rank"
+                ):
+                    return _text_reply("该功能当前未对你开放。")
+                return await _beast_rank_reply(self.rank_queries, player_id, context)
             return await _player_shortcut_reply(
                 self.service,
                 PlayerShortcutCommand(parsed.kind, player_id),
                 context,
+            )
+
+        async def confirmed_query(
+            player_id: int, query_context: MessageInputContext
+        ) -> PortableReply:
+            if not parsed.player_reference:
+                return await query(player_id, query_context)
+            return await confirm_shortcut_binding(
+                self.service, self.sessions, player_id, query_context, query
             )
 
         return await select_player_target(
@@ -230,7 +247,7 @@ class _PortablePlayerOperations:
             context,
             self.resolver,
             self.sessions,
-            query,
+            confirmed_query,
             title="请选择要查询的玩家：",
         )
 
@@ -258,28 +275,27 @@ async def _beast_rank_reply(
     player_id: int,
     context: MessageInputContext,
 ) -> PortableReply:
-    prepared = await rank_queries.prepare_player(
-        RankPlayerCommand("北冥试炼", player_id),
-        actor=context.message.actor,
-        conversation=context.message.conversation,
-    )
-    message = prepared.message
-    lookup = prepared.lookup
-    if (
-        lookup is not None
-        and lookup.rank is not None
-        and lookup.score is not None
-        and lookup.failure is None
-    ):
-        message = (
-            "【神兽榜】\n\n"
-            "1. 【北冥试炼·玄武】"
-            f"完成时间：{format_completion_time(lookup.score)}"
-            f"｜全服第{lookup.rank}"
+    replies = []
+    for key, spec in GLOBAL_RANKS.items():
+        if not spec.beast_metric:
+            continue
+        replies.append(
+            await rank_queries.prepare_player(
+                RankPlayerCommand(key, player_id),
+                actor=context.message.actor,
+                conversation=context.message.conversation,
+            )
         )
+
+    def delivered() -> None:
+        for reply in replies:
+            reply.delivered()
+
     return PortableReply(
-        OutboundMessage.from_text(message),
-        on_delivered=prepared.delivered,
+        OutboundMessage.from_text(
+            "【神兽榜】\n\n" + "\n\n".join(reply.message for reply in replies)
+        ),
+        on_delivered=delivered,
     )
 
 
@@ -367,8 +383,15 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
 
     player_message = pending.player_message
     if result.offer_binding:
-        player_message += (
-            "\n\n是否将其设为默认米米号？回复“是”或“y”确认，回复“否”或“n”跳过。"
+        return _offer_binding_confirmation(
+            service,
+            resolver,
+            sessions,
+            context,
+            result,
+            features,
+            extensions,
+            rank_queries,
         )
     requests = available_player_detail_requests(
         has_collection=pending.section_plan.has_collection,
@@ -416,22 +439,8 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 )
             return await _beast_rank_reply(rank_service, pending.player_id, context)
         if isinstance(command, str):
-            service.save_binding_choice(
-                context.message.actor,
-                pending,
-                accepted=command == "bind",
-                replacing_existing=result.binding_replacement is not None,
-            )
-            return _prepare_player_query_reply(
-                service,
-                resolver,
-                sessions,
-                context,
-                replace(result, offer_binding=False, binding_replacement=None),
-                features,
-                extensions,
-                rank_queries,
-            ).message
+            msg = "unknown player detail action"
+            raise TypeError(msg)
         if isinstance(command, PlayerDetailExtensionAction):
             return await query_player_extension(
                 command,
@@ -481,7 +490,6 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         ),
         *(("beast_rank",) if show_beast_rank else ()),
         *extension_actions,
-        *(("bind", "decline") if result.offer_binding else ()),
     )
     labels = (
         *(f"【{request.menu_label}】" for request in requests),
@@ -494,7 +502,6 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             else f"【{action.label}】"
             for action in extension_actions
         ),
-        *(("【设为默认米米号】", "【暂不绑定】") if result.offer_binding else ()),
     )
     menu = sessions.offer_menu(
         context,
@@ -506,14 +513,6 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 *(frozenset({request.menu_label}) for request in requests),
                 *((frozenset({"神兽榜"}),) if show_beast_rank else ()),
                 *(frozenset(action.aliases) for action in extension_actions),
-                *(
-                    (
-                        frozenset({"y", "yes", "是", "设为默认米米号"}),
-                        frozenset({"n", "no", "否", "暂不绑定"}),
-                    )
-                    if result.offer_binding
-                    else ()
-                ),
             ),
             shared_select=shared_select,
             access=lambda responder: features.is_feature_allowed(
@@ -532,10 +531,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             shared_choice_indexes=frozenset(
                 range(
                     1,
-                    len(requests)
-                    + int(show_beast_rank)
-                    + len(extension_actions)
-                    + 1,
+                    len(requests) + int(show_beast_rank) + len(extension_actions) + 1,
                 )
             ),
             keep_open=True,
