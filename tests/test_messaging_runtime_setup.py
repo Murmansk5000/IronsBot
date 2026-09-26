@@ -19,7 +19,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.config.models.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageConfig,
@@ -57,6 +57,7 @@ from ironsbot.plugins.onebot.messaging.push_management_runtime import (
     PromptFlow,
 )
 from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.identity_link_store import CrossPlatformGroupLink
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging import schedules as message_schedules
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
@@ -1056,6 +1057,137 @@ def test_unified_schedule_delivers_to_private_and_group_targets(
     assert sent[1].group_conversations == (_group(1001),)
     assert sent[1].group_mentions == (_actor(3001),)
     assert sent[1].subscription_key == "daily"
+
+
+def test_private_renderer_limits_countdown_to_configured_group(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent = _capture_scheduled_deliveries(monkeypatch)
+    task = MessageScheduledAction(
+        id="exam_countdown",
+        feature="text_push",
+        messages=["{days} days"],
+        time="12:00",
+        renderer="private.exam_countdown",
+        target_groups=[1001],
+        at_user_ids=[3001],
+        unresolved_mentions="text",
+        mention_fallback_name="student",
+    )
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        user_policy={"2001": ["text_push"]},
+        group_policy={"1001": ["text_push"], "1002": ["text_push"]},
+        schedules=[task],
+    )
+    messaging.schedule_renderers.register(
+        task.renderer,
+        lambda _request: ("3 days",),
+    )
+
+    asyncio.run(message_schedules.send_schedule(task, messaging=messaging))
+
+    assert len(sent) == 1
+    assert sent[0].group_conversations == (_group(1001),)
+    assert sent[0].private_conversations == ()
+    assert sent[0].messages == ("3 days",)
+    assert sent[0].unresolved_mentions_as_text
+    assert sent[0].mention_fallback_name == "student"
+
+
+def test_targeted_schedule_only_appears_in_target_group_subscription_menu(
+    tmp_path: Path,
+) -> None:
+    task = MessageScheduledAction(
+        id="exam_countdown",
+        name="Exam countdown",
+        feature="text_push",
+        messages=["{days} days"],
+        time="12:00",
+        renderer="private.exam_countdown",
+        target_groups=[1001],
+    )
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        user_policy={"2001": ["text_push"]},
+        group_policy={"1001": ["text_push"], "1002": ["text_push"]},
+        schedules=[task],
+    )
+
+    assert [option.key for option in messaging.subscription_options(_group(1001))] == [
+        task.id
+    ]
+    assert messaging.subscription_options(_group(1002)) == []
+    assert messaging.subscription_options(_private(2001)) == []
+
+
+def test_target_group_follows_verified_official_group_link(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent = _capture_scheduled_deliveries(monkeypatch)
+    task = MessageScheduledAction(
+        id="exam_countdown",
+        feature="text_push",
+        messages=["Reminder"],
+        time="12:00",
+        target_groups=[1001],
+    )
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        group_policy={"1001": ["text_push"], "1002": ["text_push"]},
+        schedules=[task],
+    )
+    principals = IdentityPrincipalService()
+    messaging = replace(
+        messaging,
+        _features=build_feature_service(
+            FeatureConfig(
+                group_policy={"1001": ["text_push"], "1002": ["text_push"]}
+            ),
+            (),
+            principals=principals,
+        ),
+    )
+    official = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "example-group", account_id="example-app"
+    )
+    principals.register_group_link(
+        CrossPlatformGroupLink("1001", "example-app", "example-group", 1.0)
+    )
+
+    asyncio.run(message_schedules.send_group_schedule(task, messaging=messaging))
+
+    assert set(sent[0].group_conversations) == {_group(1001), official}
+    assert [option.key for option in messaging.subscription_options(official)] == [
+        task.id
+    ]
+
+
+def test_missing_private_renderer_never_sends_template(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sent = _capture_scheduled_deliveries(monkeypatch)
+    task = MessageScheduledAction(
+        id="exam_countdown",
+        feature="text_push",
+        messages=["{days} days"],
+        time="12:00",
+        renderer="private.exam_countdown",
+    )
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        group_policy={"1001": ["text_push"]},
+        schedules=[task],
+    )
+
+    asyncio.run(message_schedules.send_schedule(task, messaging=messaging))
+
+    assert sent == []
+    assert "scheduled message renderer unavailable" in caplog.text
 
 
 def test_scheduled_messages_build_typed_private_and_group_deliveries(

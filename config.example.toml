@@ -775,7 +775,14 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
 # Example task fields: id, name, enabled, feature, messages, time,
-# day_of_week, at_user_ids.
+# day_of_week, at_user_ids, target_groups.
+# `target_groups` makes a task group-only and limits delivery even when other
+# groups inherit the feature through `all`; empty preserves normal recipients.
+# `renderer` selects an optional private message renderer. Missing renderers
+# skip delivery rather than sending unresolved template placeholders.
+# `renderer_parameters` is passed to that renderer. `unresolved_mentions =
+# "text"` permits text-only delivery if an official group member cannot be
+# resolved; otherwise the existing skip behavior applies.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
 [messaging.proactive_delivery]
