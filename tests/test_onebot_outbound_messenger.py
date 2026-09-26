@@ -10,9 +10,12 @@ from ironsbot.config.models.messaging import OutboundRateLimitConfig
 from ironsbot.core.outbound import (
     BinaryImagePart,
     DeliveryFailureKind,
+    DeliveryHistoryStatus,
+    ExecutionIdentity,
     MentionPart,
     OutboundMessage,
     ReplyContext,
+    SendResult,
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -29,6 +32,7 @@ if TYPE_CHECKING:
 
 GROUP_ID = 1001
 MENTIONED_USER_ID = 2002
+HISTORY_MESSAGE_ID = 101
 TIMEOUT_ATTEMPTS = 2
 RECOVERY_ATTEMPTS = 3
 
@@ -267,7 +271,7 @@ async def test_onebot_timeout_is_uncertain_without_opening_circuit() -> None:
 
 @pytest.mark.asyncio
 async def test_onebot_transport_circuit_is_per_account_and_reply_can_recover() -> None:
-    bot = _FlakyBot(failure=ConnectionError("connection closed"))
+    bot = _FlakyBot(failure=RuntimeError("账号状态为离线"))
     other = _FlakyBot(self_id="654321")
     router = _Router(bot)
     runtime = build_test_runtime(
@@ -297,6 +301,168 @@ async def test_onebot_transport_circuit_is_per_account_and_reply_can_recover() -
     assert after_recovery.delivered
     assert bot.attempts == RECOVERY_ATTEMPTS
     assert other.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_onebot_disconnect_after_send_started_is_uncertain() -> None:
+    bot = _FlakyBot(failure=ConnectionError("connection closed"))
+    conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+    messenger = _messenger(bot)
+
+    result = await messenger.send(
+        conversation, OutboundMessage((TextPart("hello"),))
+    )
+    blocked = await messenger.send(
+        conversation, OutboundMessage((TextPart("hello"),))
+    )
+
+    assert result.failure_kind is DeliveryFailureKind.UNCERTAIN
+    assert blocked.error_code == "transport_circuit_open"
+    assert not blocked.attempted
+    assert bot.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_onebot_history_check_uses_receipt_account_and_message_id() -> None:
+    @dataclass
+    class HistoryBot(_Bot):
+        history_ids: list[int] = field(default_factory=list)
+
+        async def get_msg(self, *, message_id: int) -> object:
+            self.history_ids.append(message_id)
+            return {"message_id": message_id}
+
+    bot = HistoryBot()
+    other = HistoryBot(self_id="654321")
+    router = _Router(bot)
+    runtime = build_test_runtime(
+        outbound_config=OutboundRateLimitConfig(enabled=False),
+    )
+    messenger = OneBotOutboundMessenger(cast("Any", router), runtime.outbound)
+    conversation = ConversationRef(Platform.ONEBOT, "private", "1001")
+    receipt = SendResult(
+        delivered=True,
+        message_id="101",
+        execution_identity=ExecutionIdentity(Platform.ONEBOT, bot.self_id),
+    )
+
+    assert (
+        await messenger.verify_history(conversation, receipt)
+        is DeliveryHistoryStatus.CONFIRMED
+    )
+    router.bot = other
+    assert (
+        await messenger.verify_history(conversation, receipt)
+        is DeliveryHistoryStatus.UNSUPPORTED
+    )
+    assert bot.history_ids == [101]
+    assert other.history_ids == []
+
+
+@pytest.mark.asyncio
+async def test_onebot_half_open_circuit_allows_one_probe_per_cooldown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [0.0]
+    probe_entered = asyncio.Event()
+    release_probe = asyncio.Event()
+
+    @dataclass
+    class OfflineProbeBot(_Bot):
+        attempts: int = 0
+
+        async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("账号状态为离线")
+            if self.attempts == TIMEOUT_ATTEMPTS:
+                probe_entered.set()
+                await release_probe.wait()
+                raise RuntimeError("账号状态为离线")
+            return await super().send_group_msg(group_id=group_id, message=message)
+
+    monkeypatch.setattr(
+        "ironsbot.integrations.onebot.outbound_messenger.monotonic",
+        lambda: now[0],
+    )
+    bot = OfflineProbeBot()
+    messenger = _messenger(bot)
+    conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+    message = OutboundMessage((TextPart("hello"),))
+
+    first = await messenger.send(conversation, message)
+    assert first.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+    now[0] = 61.0
+    probe = asyncio.create_task(messenger.send(conversation, message))
+    await probe_entered.wait()
+    queued = asyncio.create_task(messenger.send(conversation, message))
+    await asyncio.sleep(0)
+    release_probe.set()
+    probe_result, queued_result = await asyncio.gather(probe, queued)
+
+    assert probe_result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+    assert queued_result.error_code == "transport_circuit_open"
+    assert not queued_result.attempted
+    assert bot.attempts == TIMEOUT_ATTEMPTS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("history_result", "expected"),
+    [
+        ({"message_id": 999}, DeliveryHistoryStatus.MISSING),
+        ({}, DeliveryHistoryStatus.MISSING),
+    ],
+)
+async def test_onebot_history_mismatch_is_not_a_send_failure(
+    history_result: object,
+    expected: DeliveryHistoryStatus,
+) -> None:
+    class HistoryBot(_Bot):
+        async def get_msg(self, *, message_id: int) -> object:
+            assert message_id == HISTORY_MESSAGE_ID
+            return history_result
+
+    bot = HistoryBot()
+    receipt = SendResult(
+        delivered=True,
+        message_id="101",
+        execution_identity=ExecutionIdentity(Platform.ONEBOT, bot.self_id),
+    )
+    result = await _messenger(bot).verify_history(
+        ConversationRef(Platform.ONEBOT, "private", "1001"), receipt
+    )
+
+    assert result is expected
+    assert receipt.delivered
+
+
+@pytest.mark.asyncio
+async def test_onebot_history_timeout_does_not_retry_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SlowHistoryBot(_Bot):
+        async def get_msg(self, *, message_id: int) -> object:
+            assert message_id == HISTORY_MESSAGE_ID
+            await asyncio.sleep(0.05)
+            return {"message_id": message_id}
+
+    monkeypatch.setattr(
+        "ironsbot.integrations.onebot.outbound_messenger._HISTORY_TIMEOUT_SECONDS",
+        0.001,
+    )
+    bot = SlowHistoryBot()
+    receipt = SendResult(
+        delivered=True,
+        message_id="101",
+        execution_identity=ExecutionIdentity(Platform.ONEBOT, bot.self_id),
+    )
+    result = await _messenger(bot).verify_history(
+        ConversationRef(Platform.ONEBOT, "private", "1001"), receipt
+    )
+
+    assert result is DeliveryHistoryStatus.ERROR
+    assert bot.private_messages == []
 
 
 @pytest.mark.asyncio

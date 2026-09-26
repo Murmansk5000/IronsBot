@@ -291,6 +291,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         admin_notices,
         query_sessions,
         common.private_routes,
+        common.onebot_messenger.verify_history,
     )
     _apply_conversation_merges(
         configured_conversation_merges,

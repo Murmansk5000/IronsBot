@@ -1132,6 +1132,11 @@ time = "00:02"
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
+# Default: false; optionally check OneBot get_msg after a daily private push.
+# History lookup uses the sending QQ account, waits at most 5 seconds, and never
+# resends on a missing or failed lookup. QQ Official has no equivalent lookup.
+# 可选：橱窗私聊推送后由实际发送的 OneBot 账号查询消息历史；核验失败不重发。
+verify_onebot_history = false
 # Add one table per QQ user allowed to query and receive a configured account's
 # window. `user` accepts an [identities.users] alias or QQ ID. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must

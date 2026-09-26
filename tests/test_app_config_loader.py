@@ -1198,6 +1198,7 @@ owner = 123456789
 [seer.lucky_skin_window]
 enabled = true
 time = "0:2"
+verify_onebot_history = true
 
 [[seer.player_accounts]]
 player_id = 712345678
@@ -1215,6 +1216,7 @@ watched_skin_ids = [1400538]
     env = {account_password_env: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
+    assert config.seer.lucky_skin_window.verify_onebot_history
     assert config.seer.lucky_skin_window.time == "00:02:00"
     assert config.seer.lucky_skin_window.accounts[0].account == "sample_account"
     assert (

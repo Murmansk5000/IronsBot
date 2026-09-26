@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import asyncio
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from nonebot.log import logger
 
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
+    DeliveryHistoryStatus,
     ExecutionIdentity,
     OutboundMessage,
     ReplyContext,
@@ -29,6 +30,8 @@ from ironsbot.integrations.onebot.outbound import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from nonebot.adapters.onebot.v11 import Message
 
     from ironsbot.integrations.onebot.router import BotRouter
@@ -50,6 +53,7 @@ _UNSUPPORTED_CAPABILITIES = DeliveryCapabilities(
     supports_private_context=False,
     supports_images=False,
 )
+_HISTORY_TIMEOUT_SECONDS = 5.0
 
 
 class OneBotMessageSender(Protocol):
@@ -133,6 +137,44 @@ class OneBotOutboundMessenger:
             message,
             reply_to_id=context.message_id,
             proactive=False,
+        )
+
+    async def verify_history(
+        self,
+        conversation: ConversationRef,
+        receipt: SendResult,
+    ) -> DeliveryHistoryStatus:
+        message_id = receipt.message_id or ""
+        if (
+            conversation.platform is not Platform.ONEBOT
+            or not receipt.delivered
+            or receipt.execution_identity is None
+            or receipt.execution_identity.platform is not Platform.ONEBOT
+            or not message_id.isdecimal()
+        ):
+            return DeliveryHistoryStatus.UNSUPPORTED
+        bot = self._router.for_conversation(conversation)
+        if bot is None or str(bot.self_id) != receipt.execution_identity.account_id:
+            return DeliveryHistoryStatus.UNSUPPORTED
+        get_msg = getattr(bot, "get_msg", None)
+        if not callable(get_msg):
+            return DeliveryHistoryStatus.UNSUPPORTED
+        try:
+            get_msg_call = cast("Callable[..., Awaitable[object]]", get_msg)
+            result = await asyncio.wait_for(
+                get_msg_call(message_id=int(message_id)),
+                timeout=_HISTORY_TIMEOUT_SECONDS,
+            )
+        except Exception as error:  # noqa: BLE001 - optional history lookup
+            logger.warning(
+                "OneBot history verification failed: error_type={}",
+                type(error).__name__,
+            )
+            return DeliveryHistoryStatus.ERROR
+        return (
+            DeliveryHistoryStatus.CONFIRMED
+            if onebot_result_message_id(result) == message_id
+            else DeliveryHistoryStatus.MISSING
         )
 
     async def _deliver(
@@ -255,6 +297,7 @@ class OneBotOutboundMessenger:
         account_key: str,
         proactive: bool,
     ) -> SendResult:
+        probing = proactive and account_key in self._transport_unavailable_until
         if (
             proactive
             and self._transport_unavailable_until.get(account_key, 0) > monotonic()
@@ -275,7 +318,7 @@ class OneBotOutboundMessenger:
             ):
                 result = await _send_onebot_message(bot, conversation, rendered)
         except Exception as error:  # noqa: BLE001 - delivery boundary
-            kind = _onebot_failure_kind(error)
+            kind, interrupted = _classify_onebot_failure(error)
             if decision is not None and kind is not DeliveryFailureKind.UNCERTAIN:
                 self._outbound.rollback(decision.permit)
             logger.warning(
@@ -284,7 +327,11 @@ class OneBotOutboundMessenger:
                 reference_digest(conversation.id),
                 type(error).__name__,
             )
-            if kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE:
+            if (
+                kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+                or interrupted
+                or probing
+            ):
                 if self._transport_failure_cooldown_seconds > 0:
                     self._transport_unavailable_until[account_key] = (
                         monotonic() + self._transport_failure_cooldown_seconds
@@ -298,9 +345,12 @@ class OneBotOutboundMessenger:
                 failure_kind=kind,
                 execution_identity=identity,
             )
-        self._transport_unavailable_until.pop(account_key, None)
         message_id = onebot_result_message_id(result)
         if message_id is None:
+            if probing and self._transport_failure_cooldown_seconds > 0:
+                self._transport_unavailable_until[account_key] = (
+                    monotonic() + self._transport_failure_cooldown_seconds
+                )
             return SendResult(
                 delivered=False,
                 error_code="missing_message_id",
@@ -308,6 +358,7 @@ class OneBotOutboundMessenger:
                 failure_kind=DeliveryFailureKind.UNCERTAIN,
                 execution_identity=identity,
             )
+        self._transport_unavailable_until.pop(account_key, None)
         return SendResult(
             delivered=True, message_id=message_id, execution_identity=identity
         )
@@ -346,22 +397,28 @@ def onebot_result_message_id(result: object) -> str | None:
     return text or None
 
 
-def _onebot_failure_kind(error: Exception) -> DeliveryFailureKind:
-    """Classify OneBot-specific failures at the adapter boundary."""
+def _classify_onebot_failure(
+    error: Exception,
+) -> tuple[DeliveryFailureKind, bool]:
+    """Return the send disposition and whether the account needs a cooldown."""
 
     text = " ".join((type(error).__name__, str(error), repr(error))).casefold()
     if any(
         marker in text
         for marker in (
             "1006514",
-            "网络连接异常",
             "账号状态为离线",
             "账号已离线",
-            "not connected",
+        )
+    ):
+        return DeliveryFailureKind.TRANSPORT_UNAVAILABLE, True
+    interrupted = isinstance(error, ConnectionError) or any(
+        marker in text
+        for marker in (
             "connection closed",
             "connection reset",
             "websocket is closed",
+            "网络连接异常",
         )
-    ):
-        return DeliveryFailureKind.TRANSPORT_UNAVAILABLE
-    return DeliveryFailureKind.UNCERTAIN
+    )
+    return DeliveryFailureKind.UNCERTAIN, interrupted
