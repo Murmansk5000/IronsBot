@@ -37,6 +37,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
+    PlayerBaseSnapshot,
     PlayerQueryResult,
 )
 from ironsbot.services.seer.query_result import QueryReply
@@ -149,13 +150,48 @@ async def test_beast_rank_menu_requires_rank_permission() -> None:
     rank.prepare_player.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_bare_beast_rank_uses_own_binding_even_with_another_player_menu() -> None:
+    owner = _context("米米号700001")
+    own_player_id = 600001
+    features = FeatureService(
+        {owner.message.conversation: frozenset({"seer_player", "seer_rank"})},
+        {},
+        frozenset(),
+    )
+    rank = SimpleNamespace(
+        prepare_player=AsyncMock(
+            return_value=RankPlayerPreparedReply("rank result", lookup=None)
+        )
+    )
+    sessions = PortableQuerySessions()
+    operations = _build_player_operations(
+        cast("PlayerService", _PlayerService()),
+        _resolver(),
+        sessions,
+        features,
+        PlayerDetailExtensionRegistry(),
+        cast("RankQueryService", rank),
+    )
+    opened = cast(
+        "PortableReply", await operations["seer.player.query"](owner.text, owner)
+    )
+    opened.delivered()
+    selected = await sessions.select(
+        "神兽榜", _context("神兽榜"), allow_deferred=True
+    )
+    assert isinstance(selected, PortableReply)
+    assert rank.prepare_player.await_args.args[0].player_id == own_player_id
+
+
 class _PlayerService:
-    def __init__(self, *, replacement: bool = False) -> None:
+    def __init__(self, *, replacement: bool = False, team_id: int = 0) -> None:
         self.queried: list[int] = []
         self.returned: list[tuple[ActorRef, int]] = []
         self.refreshed: list[int] = []
         self.bound: list[tuple[ActorRef, int]] = []
         self.replacement = replacement
+        self.team_id = team_id
         self.replacement_choices: list[tuple[ActorRef, int]] = []
 
     async def query(
@@ -169,7 +205,7 @@ class _PlayerService:
         del actor, conversation
         self.queried.append(player_id)
         return PlayerQueryResult(
-            pending=_pending(player_id),
+            pending=_pending(player_id, team_id=self.team_id),
             offer_binding=explicit,
         )
 
@@ -220,6 +256,25 @@ class _PlayerService:
         )
         return "replaced"
 
+    def binding_offer(
+        self,
+        pending: PendingPlayerQuery,
+        *,
+        replacement: PlayerBindingState | None = None,
+    ) -> str:
+        if replacement is not None:
+            return (
+                f"当前默认米米号：{replacement.player_id}\n"
+                f"已查到米米号：{pending.player_id}（tester）\n\n"
+                "是否将默认米米号改为该账号？\n"
+                "回复“是”或“y”确认，回复“否”或“n”保留当前绑定。"
+            )
+        return (
+            f"已查到米米号：{pending.player_id}（tester）\n\n"
+            "是否将其设为默认米米号？\n"
+            "回复“是”或“y”确认，回复“否”或“n”跳过。"
+        )
+
     async def shortcut(
         self,
         command: PlayerShortcutCommand,
@@ -250,11 +305,13 @@ class _PlayerService:
         self.refreshed.append(pending.player_id)
 
 
-def _pending(player_id: int) -> PendingPlayerQuery:
+def _pending(player_id: int, *, team_id: int = 0) -> PendingPlayerQuery:
+    user_info = SimpleNamespace(nick="tester", team_id=team_id)
+    more_info = SimpleNamespace()
     return PendingPlayerQuery(
         player_id=player_id,
-        user_info=SimpleNamespace(nick="tester"),
-        more_info=SimpleNamespace(),
+        user_info=user_info,
+        more_info=more_info,
         player_message=f"player:{player_id}",
         section_plan=PlayerQuerySectionPlan(
             show_local_rank=False,
@@ -263,6 +320,18 @@ def _pending(player_id: int) -> PendingPlayerQuery:
             has_autocard_rank=True,
             needs_online_info=False,
             local_rank_enabled=False,
+        ),
+        base_snapshot=(
+            PlayerBaseSnapshot(
+                player_id,
+                user_info,
+                more_info,
+                None,
+                "星痕",
+                None,
+            )
+            if team_id
+            else None
         ),
     )
 
@@ -677,7 +746,7 @@ async def test_player_query_menu_includes_available_shared_extension(
     revoke: bool,
     manage: bool,
 ) -> None:
-    service = _PlayerService()
+    service = _PlayerService(team_id=9001)
     sessions = PortableQuerySessions()
     extensions = PlayerDetailExtensionRegistry()
 
@@ -726,7 +795,7 @@ async def test_player_query_menu_includes_available_shared_extension(
     )
     reply.delivered()
 
-    assert "4. 【战队】" in _text(reply)
+    assert "4. 【战队】星痕（战队ID：9001）" in _text(reply)
     allowed = not revoke
     selection_context = replace(
         context,
@@ -743,6 +812,47 @@ async def test_player_query_menu_includes_available_shared_extension(
     ).parts[0]
     assert isinstance(part, TextPart)
     assert part.text == ("当前会话没有使用该选项的权限。" if revoke else "team detail")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("team_id", [0, 9001])
+async def test_player_team_option_requires_membership_and_permission(
+    team_id: int,
+) -> None:
+    context = _context("米米号700002")
+    extensions = PlayerDetailExtensionRegistry()
+
+    async def query(_request: PlayerDetailActionRequest) -> QueryReply:
+        return QueryReply(text="team detail")
+
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="player_team",
+            feature="seer_team",
+            label="战队",
+            aliases=("战队",),
+            command_help_id="seer.team.query",
+            query=query,
+            action=ActionDefinition("player_team", "玩家所属战队"),
+        )
+    )
+    features = FeatureService(
+        {context.message.conversation: frozenset({"seer_player"})},
+        {},
+        frozenset(),
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", _PlayerService(team_id=team_id)),
+        _resolver(),
+        PortableQuerySessions(),
+        features,
+        extensions,
+    )
+    reply = cast(
+        "PortableReply",
+        await operations["seer.player.query"](context.text, context),
+    )
+    assert "【战队】" not in _text(reply)
 
 
 @pytest.mark.asyncio
@@ -885,7 +995,7 @@ async def test_superuser_binds_explicit_player_to_mentioned_member(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("selection", ["1", "2", "0"])
+@pytest.mark.parametrize("selection", ["y", "n", "0"])
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 async def test_existing_binding_waits_for_explicit_confirmation(
     selection: str,
@@ -905,19 +1015,44 @@ async def test_existing_binding_waits_for_explicit_confirmation(
         await operations["seer.player.bind"](context.text, context),
     )
 
-    assert "确认换绑" in _text(reply)
+    assert "当前默认米米号：600001" in _text(reply)
+    assert "已查到米米号：700001（tester）" in _text(reply)
+    assert "回复“是”或“y”确认" in _text(reply)
     assert service.replacement_choices == []
     assert service.returned == []
     selected = await sessions.select(selection, context, allow_deferred=True)
     assert selected is not None
     assert service.replacement_choices == (
-        [(context.message.actor, 700001)] if selection == "1" else []
+        [(context.message.actor, 700001)] if selection == "y" else []
     )
     assert service.returned == []
     if selection != "0":
         selected = cast("PortableReply", selected)
         selected.delivered()
         assert service.returned == [(context.message.actor, 700001)]
+
+
+@pytest.mark.asyncio
+async def test_binding_replacement_rejects_numeric_and_other_member_choice() -> None:
+    service = _PlayerService(replacement=True)
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+    )
+    context = _context("绑定米米号700001")
+    await operations["seer.player.bind"](context.text, context)
+
+    invalid = await sessions.select("1", context, allow_deferred=True)
+    assert isinstance(invalid, OutboundMessage)
+    assert "请回复“是”或“否”" in cast("TextPart", invalid.parts[0]).text
+    stranger = _context("y", actor_id="another-member")
+    assert await sessions.select("y", stranger, allow_deferred=True) is None
+    assert service.replacement_choices == []
+    assert sessions.has_active_session(context)
+    assert await sessions.select("是", context, allow_deferred=True) is not None
+    assert service.replacement_choices == [(context.message.actor, 700001)]
 
 
 @pytest.mark.asyncio
