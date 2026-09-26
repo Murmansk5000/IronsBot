@@ -46,7 +46,10 @@ async def test_everyone_mention_is_silent_even_when_addressing_bot(
     with pytest.raises(IgnoredException):
         await OneBotIngressPolicy(messages_enabled=True).process(event)
     for rule in (
-        explicit_command(), member_target_command(), bot_mention(), natural_language()
+        explicit_command(),
+        member_target_command(),
+        bot_mention(),
+        natural_language(),
     ):
         assert not await rule(cast("Bot", None), event, {})
 
@@ -59,6 +62,19 @@ async def test_quoted_everyone_mention_does_not_block_current_command() -> None:
     assert not message_input_context(event).mentions_everyone
     await OneBotIngressPolicy(messages_enabled=True).process(event)
     assert await explicit_command()(cast("Bot", None), event, {})
+
+
+@pytest.mark.asyncio
+async def test_raw_everyone_mention_is_silent_when_adapter_removed_segment() -> None:
+    event = group_message_event(
+        "帮助",
+        raw_message="[CQ:at,qq=all] 帮助",
+        to_me=True,
+    )
+
+    assert message_input_context(event).mentions_everyone
+    with pytest.raises(IgnoredException):
+        await OneBotIngressPolicy(messages_enabled=True).process(event)
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.integrations.onebot import self_commands
 from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
@@ -80,6 +81,40 @@ def test_self_command_rejects_mention_and_image_segments() -> None:
         assert not gate.accept(event)
 
 
+def test_self_admin_binding_keeps_one_member_mention() -> None:
+    gate = SelfCommandGate(SelfCommandsConfig())
+    event = _event("绑定米米号123456")
+    event.original_message = Message("绑定米米号123456") + MessageSegment.at(42)
+    assert gate.accept(event)
+    assert event.get_plaintext() == "绑定米米号123456"
+    assert [segment.type for segment in event.message] == ["at", "text"]
+    targets = message_input_context(event).member_mentions
+    assert tuple(actor.id for actor in targets) == (
+        "42",
+    )
+    assert not gate.accept(event)
+
+
+@pytest.mark.parametrize("text", ["绑定米米号", "绑定米米号123456 extra", "收集"])
+def test_self_admin_binding_rejects_other_commands(text: str) -> None:
+    gate = SelfCommandGate(SelfCommandsConfig())
+    event = _event(text)
+    event.original_message = Message(text) + MessageSegment.at(42)
+    assert not gate.accept(event)
+
+
+def test_self_admin_binding_requires_exactly_one_other_member() -> None:
+    gate = SelfCommandGate(SelfCommandsConfig())
+    for mentions in (
+        Message(),
+        MessageSegment.at(1),
+        MessageSegment.at(42) + MessageSegment.at(43),
+    ):
+        event = _event("绑定米米号123456")
+        event.original_message = Message("绑定米米号123456") + mentions
+        assert not gate.accept(event)
+
+
 def test_other_senders_are_not_converted_to_self_commands() -> None:
     data = group_message_event("demo help").model_dump()
     data["post_type"] = "message_sent"
@@ -105,6 +140,28 @@ async def test_self_reply_quotes_request_without_mentioning_self() -> None:
     message = build_event_reply_message(event, "result")
     assert [segment.type for segment in message] == ["reply", "text"]
     assert message[0].data["id"] == "-3"
+
+
+@pytest.mark.asyncio
+async def test_admin_binding_passes_group_routing() -> None:
+    gate = SelfCommandGate(SelfCommandsConfig())
+    router = Mock()
+    router.allows_incoming.return_value = False
+    event = _event("绑定米米号123456")
+    event.original_message = Message("绑定米米号123456") + MessageSegment.at(42)
+    await OneBotIngressPolicy(
+        messages_enabled=True,
+        self_commands=gate,
+        router=router,
+    ).process(event)
+    assert event.admin_binding
+    router.allows_incoming.assert_not_called()
+    with pytest.raises(IgnoredException):
+        await OneBotIngressPolicy(
+            messages_enabled=True,
+            self_commands=gate,
+            router=router,
+        ).process(_event("收集"))
 
 
 def test_self_command_replay_retention_is_bounded_and_expires(
