@@ -38,6 +38,7 @@ from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.integrations.qq_official.token_lifecycle import QQOfficialTokenObserver
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
+from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -458,6 +459,7 @@ class QQOfficialRuntime:
             return
         if self._union_identity is not None:
             await self._union_identity.observe(incoming)
+        verified_targets = ()
         if self._identity_observer is not None and (
             incoming.conversation.kind == "group" and mentions_bot
         ):
@@ -465,8 +467,19 @@ class QQOfficialRuntime:
                 incoming,
                 explicitly_addressed=mentions_bot,
             )
+            if (
+                not incoming.direct_mentions
+                and incoming.reply_to_id is None
+                and parse_rank_player_target_command(incoming.text) is not None
+            ):
+                target = await self._identity_observer.missing_member_target(incoming)
+                if target is not None:
+                    verified_targets = (target,)
+                else:
+                    logger.debug("QQ Official rank target mirror unavailable")
         context = MessageInputContext(
             incoming,
+            verified_member_mentions=verified_targets,
             mentions_bot=mentions_bot,
             execution_identity=ExecutionIdentity(
                 incoming.platform, app_id, self._connections[app_id].lifecycle.account
