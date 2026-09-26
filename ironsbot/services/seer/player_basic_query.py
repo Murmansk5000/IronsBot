@@ -161,7 +161,6 @@ async def fetch_pending_player_query(
     player_message = format_compact_player_info(
         user_info,
         more_info,
-        team_name=team_name,
         online_info=online_info,
         unity_peak=UnityPeakInfo(),
         peak_rank_summary=PeakSeasonRankSummary.empty(),
