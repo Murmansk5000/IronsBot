@@ -23,7 +23,7 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ActorRef, ConversationRef, reference_digest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Awaitable, Callable, Iterable
 
     from ironsbot.config.models.messaging import PushUnsubscribeConfig
     from ironsbot.core.feature_policy import FeatureService
@@ -80,6 +80,9 @@ class ProactiveMessageDelivery:
     subscriptions: PushDeliverySubscriptions
     unsubscribe: PushUnsubscribeConfig
     policy: ProactiveDeliveryPolicy = field(default_factory=ProactiveDeliveryPolicy)
+    private_failure_notice: (
+        Callable[[str, ProactiveDeliverySummary], Awaitable[None]] | None
+    ) = None
 
     async def send(  # noqa: PLR0913 - explicit active delivery policy controls
         self,
@@ -184,7 +187,20 @@ class ProactiveMessageDelivery:
                 action_name,
                 skipped,
             )
+        await self._notify_private_failures(action_name, summary)
         return summary
+
+    async def _notify_private_failures(
+        self, action_name: str, summary: ProactiveDeliverySummary
+    ) -> None:
+        if self.private_failure_notice is None or not any(
+            conversation.kind == "private" for conversation in summary.failed
+        ):
+            return
+        try:
+            await self.private_failure_notice(action_name, summary)
+        except Exception:
+            _LOGGER.exception("%s private failure notice failed", action_name)
 
     async def _run_attempt(  # noqa: PLR0913 - explicit delivery controls
         self,

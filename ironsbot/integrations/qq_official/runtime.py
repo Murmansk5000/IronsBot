@@ -15,7 +15,7 @@ from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
-from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.message_input import MessageInputContext, MessageInputKind
 from ironsbot.core.outbound import ExecutionIdentity, OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
@@ -403,7 +403,7 @@ class QQOfficialRuntime:
             connection.started = False
             connection.lifecycle.stopped()
 
-    async def handle_event(  # noqa: C901 - transport boundary owns event outcomes
+    async def handle_event(  # noqa: C901, PLR0912 - transport boundary owns event outcomes
         self,
         app_id: str,
         event_type: str,
@@ -455,13 +455,13 @@ class QQOfficialRuntime:
             return
         if self._union_identity is not None:
             await self._union_identity.observe(incoming)
-        if not self._accepts_incoming(
-            app_id,
-            event_type,
-            incoming,
-            explicitly_addressed=mentions_bot,
+        if self._identity_observer is not None and (
+            incoming.conversation.kind == "group" and mentions_bot
         ):
-            return
+            await self._identity_observer.observe_official_message(
+                incoming,
+                explicitly_addressed=mentions_bot,
+            )
         context = MessageInputContext(
             incoming,
             mentions_bot=mentions_bot,
@@ -472,6 +472,26 @@ class QQOfficialRuntime:
                 event_type != GROUP_MESSAGE_CREATE or mentions_bot
             ),
         )
+        if not self._accepts_incoming(
+            app_id,
+            event_type,
+            incoming,
+            explicitly_addressed=mentions_bot,
+        ):
+            if (
+                context.kind is MessageInputKind.BOT_MENTION
+                and not context.text.strip()
+                and not context.member_mentions
+            ):
+                hint = router.bare_mention_hint(context)
+                if hint is not None:
+                    await deliver_qq_official_reply(
+                        messenger,
+                        incoming,
+                        hint,
+                        account_label=self._connections[app_id].lifecycle.account,
+                    )
+            return
         recognized = router.recognizes(context)
         logger.info(
             "QQ Official inbound routed: account=%s event_type=%s "
@@ -481,7 +501,7 @@ class QQOfficialRuntime:
             context.kind.value,
             recognized,
         )
-        if self._identity_observer is not None and (recognized or mentions_bot):
+        if self._identity_observer is not None and recognized and not mentions_bot:
             await self._identity_observer.observe_official_message(
                 incoming,
                 explicitly_addressed=mentions_bot,
