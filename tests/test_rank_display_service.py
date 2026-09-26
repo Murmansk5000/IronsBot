@@ -70,6 +70,29 @@ def test_rank_display_limit_uses_configured_alias(
     assert service.limit_for_conversation(_group()) == ALIAS_LIMIT
 
 
+def test_configured_limit_applies_to_linked_official_group(tmp_path: Path) -> None:
+    principals = IdentityPrincipalService()
+    official = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    service = RankDisplayService(
+        _rank_config(),
+        {_group(): ALIAS_LIMIT},
+        SqliteRankDisplayStore(tmp_path / "qq_state.sqlite"),
+        principals.conversation_principal,
+    )
+    assert service.limit_for_conversation(official) == DEFAULT_LIMIT
+
+    principals.register_group_link(
+        CrossPlatformGroupLink(str(GROUP_ID), "example-app", "opaque-group", 1.0)
+    )
+
+    assert service.limit_for_conversation(official) == ALIAS_LIMIT
+
+
 def test_rank_display_limits_are_isolated_by_platform(tmp_path: Path) -> None:
     service = _service(_rank_config(), {}, tmp_path / "qq_state.sqlite")
     onebot_group = _group()

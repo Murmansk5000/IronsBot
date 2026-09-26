@@ -278,6 +278,7 @@ class QQOfficialConfig(BaseModel):
     startup_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     default_account: str = ""
     group_routes: dict[str, str] = Field(default_factory=dict)
+    private_routes: dict[str, str] = Field(default_factory=dict)
     accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
 
     @field_validator("default_account", mode="before")
@@ -285,7 +286,7 @@ class QQOfficialConfig(BaseModel):
     def normalize_default_account(cls, value: object) -> str:
         return str(value or "").strip()
 
-    @field_validator("group_routes", mode="before")
+    @field_validator("group_routes", "private_routes", mode="before")
     @classmethod
     def normalize_group_routes(cls, value: object) -> dict[str, str]:
         if not isinstance(value, Mapping):
@@ -498,6 +499,40 @@ class Settings(BaseModel):
             raise ValueError(
                 "bot.qq_official.group_routes reference inactive accounts: "
                 + ", ".join(inactive_route_accounts)
+            )
+        self._validate_private_routes(declared, active)
+
+    def _validate_private_routes(
+        self, declared: set[str], active: set[str]
+    ) -> None:
+        unknown_users = sorted(
+            set(self.bot.qq_official.private_routes) - set(self.identities.users)
+        )
+        if unknown_users:
+            raise ValueError(
+                "bot.qq_official.private_routes reference unknown users: "
+                + ", ".join(unknown_users)
+            )
+        users_without_qq = sorted(
+            alias
+            for alias in self.bot.qq_official.private_routes
+            if self.identities.users[alias].qq is None
+        )
+        if users_without_qq:
+            raise ValueError(
+                "bot.qq_official.private_routes require users with QQ IDs: "
+                + ", ".join(users_without_qq)
+            )
+        private_accounts = set(self.bot.qq_official.private_routes.values())
+        if unknown := sorted(private_accounts - declared):
+            raise ValueError(
+                "bot.qq_official.private_routes reference undeclared accounts: "
+                + ", ".join(unknown)
+            )
+        if inactive := sorted(private_accounts - active):
+            raise ValueError(
+                "bot.qq_official.private_routes reference inactive accounts: "
+                + ", ".join(inactive)
             )
 
     def _validate_platform_selection(self) -> None:
