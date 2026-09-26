@@ -17,6 +17,7 @@ from .new_content import (
     is_new_content_category_auto_expanded,
     new_content_category_preview_items,
     new_content_category_unavailable_message,
+    new_content_stale_week_message,
 )
 
 
@@ -63,6 +64,8 @@ def plan_new_content_menu(
 
     if requested is not None and not set(requested).issubset(available):
         return "当前群未开放此新增内容分类。"
+    if not snapshot.is_current_week:
+        return new_content_stale_week_message(snapshot)
     categories = available if requested is None else requested
     comparable: tuple[NewContentCategory, ...] = tuple(
         category for category in categories if snapshot.is_category_comparable(category)

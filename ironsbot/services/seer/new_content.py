@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Literal, Protocol
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.value_coercion import require_int
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 NewContentCategory = Literal[
     "achievement",
@@ -122,6 +125,10 @@ class NewContentSnapshotChangedError(RuntimeError):
     """A retained menu does not describe the selected publication's index."""
 
 
+class NewContentWeekExpiredError(NewContentSnapshotChangedError):
+    """A retained menu belongs to an earlier content week."""
+
+
 @dataclass(frozen=True, slots=True)
 class NewContentItem:
     category: NewContentCategory
@@ -148,6 +155,8 @@ class NewContentSnapshot:
     weekly_cycle: str
     items: tuple[NewContentItem, ...]
     category_states: tuple[NewContentCategoryState, ...] = ()
+    source_weekly_cycle: str = ""
+    is_current_week: bool = True
 
     def items_for(self, category: NewContentCategory) -> tuple[NewContentItem, ...]:
         return tuple(item for item in self.items if item.category == category)
@@ -260,19 +269,37 @@ def format_new_content_category_count(
 class NewContentService:
     """Read-only access to the publication index; no local baseline is kept."""
 
-    def __init__(self, repository: NewContentRepository) -> None:
+    def __init__(
+        self,
+        repository: NewContentRepository,
+        *,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
         self._repository = repository
+        self._now = now or (lambda: datetime.now(timezone.utc))
 
     def snapshot(self) -> NewContentSnapshot:
         try:
-            return _snapshot_from_index(self._repository.load())
+            index = self._repository.load()
+            snapshot = _snapshot_from_index(index)
+            if index.weekly_cycle == current_new_content_weekly_cycle(self._now()):
+                return snapshot
+            return replace(
+                snapshot,
+                is_current_week=False,
+                items=(),
+                category_states=(),
+            )
         except (NewContentIndexRepositoryError, TypeError, ValueError) as error:
             raise NewContentIndexUnavailableError from error
 
     def require_snapshot(self, expected: NewContentSnapshot) -> None:
         """Validate retained menu facts against an already-bound data reader."""
 
-        if self.snapshot() != expected:
+        current = self.snapshot()
+        if not current.is_current_week:
+            raise NewContentWeekExpiredError
+        if current != expected:
             raise NewContentSnapshotChangedError
 
 
@@ -379,7 +406,24 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
         ),
         items=tuple(items),
         category_states=tuple(category_states),
+        source_weekly_cycle=index.weekly_cycle,
     )
+
+
+def current_new_content_weekly_cycle(now: datetime | None = None) -> str:
+    """Return the Friday-starting content week in Shanghai time."""
+
+    shanghai = ZoneInfo("Asia/Shanghai")
+    if now is None:
+        current = datetime.now(shanghai)
+    elif now.tzinfo is None:
+        current = now.replace(tzinfo=shanghai)
+    else:
+        current = now.astimezone(shanghai)
+    current_date = current.date()
+    return (
+        current_date - timedelta(days=(current_date.weekday() - 4) % 7)
+    ).isoformat()
 
 
 def _current_content_date(config_version: str, fallback: str) -> str:
@@ -414,6 +458,13 @@ def _current_content_date(config_version: str, fallback: str) -> str:
 
 def new_content_unavailable_message() -> str:
     return "当前数据版本尚未提供新增内容记录。"
+
+
+def new_content_stale_week_message(snapshot: NewContentSnapshot) -> str:
+    return (
+        f"当前数据版本仍为 {snapshot.source_weekly_cycle} 周期，"
+        "本周暂未获得可验证的新增或修改内容。"
+    )
 
 
 def new_content_category_unavailable_message(

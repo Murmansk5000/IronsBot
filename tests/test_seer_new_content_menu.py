@@ -65,6 +65,23 @@ def test_explicit_denied_category_returns_notice() -> None:
     )
 
 
+def test_stale_week_notice_preserves_permission_denial() -> None:
+    snapshot = replace(
+        _snapshot("pet"),
+        is_current_week=False,
+        source_weekly_cycle="2026-09-04",
+        items=(),
+        category_states=(),
+    )
+    assert plan_new_content_menu(snapshot, ("pet",)) == (
+        "当前数据版本仍为 2026-09-04 周期，"
+        "本周暂未获得可验证的新增或修改内容。"
+    )
+    assert plan_new_content_menu(snapshot, ("skill",), ("pet",)) == (
+        "当前群未开放此新增内容分类。"
+    )
+
+
 def test_focus_preserves_item_order_and_uses_numeric_adapter_keys() -> None:
     snapshot = _snapshot("pet", "skill", "pet")
     layout = plan_new_content_menu(snapshot, ("pet", "skill"))

@@ -1,5 +1,6 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -17,6 +18,8 @@ from ironsbot.services.seer.new_content import (
     NewContentService,
     NewContentSnapshot,
     NewContentSnapshotChangedError,
+    NewContentWeekExpiredError,
+    current_new_content_weekly_cycle,
     format_new_content_category_count,
     format_new_content_item_description,
     new_content_category_preview_items,
@@ -36,15 +39,19 @@ class FakeData:
             yield operation(session)  # type: ignore[operator]
 
 
-def _service(path: Path) -> NewContentService:
+def _service(
+    path: Path, *, now: Callable[[], datetime] | None = None
+) -> NewContentService:
     return NewContentService(
-        PublishedNewContentRepository(cast("SeerDataAccess", FakeData(path)))
+        PublishedNewContentRepository(cast("SeerDataAccess", FakeData(path))),
+        now=now,
     )
 
 
 def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     path = tmp_path / "seer.sqlite"
-    service = _service(path)
+    clock = [datetime(2026, 7, 30, 16, 0, tzinfo=timezone.utc)]
+    service = _service(path, now=lambda: clock[0])
     with Session(create_engine(f"sqlite:///{path}")) as session:
         session.connection().exec_driver_sql(
             """
@@ -101,6 +108,8 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
 
     assert snapshot.baseline_established is True
     assert snapshot.weekly_cycle == "2026-07-31"
+    assert snapshot.source_weekly_cycle == "2026-07-31"
+    assert snapshot.is_current_week
     assert snapshot.items_for("achievement")[0].payload["point"] == 0
     assert snapshot.items_for("pet_skin")[0].payload["pet_name"] == "测试精灵"
     assert snapshot.items_for("pet_skin")[0].change_kind == "modified"
@@ -127,6 +136,28 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     with pytest.raises(NewContentSnapshotChangedError):
         service.require_snapshot(snapshot)
     service.require_snapshot(service.snapshot())
+
+    clock[0] = datetime(2026, 8, 6, 15, 59, tzinfo=timezone.utc)
+    assert service.snapshot().is_current_week
+    clock[0] = datetime(2026, 8, 6, 16, 0, tzinfo=timezone.utc)
+    expired = service.snapshot()
+    assert not expired.is_current_week
+    assert expired.source_weekly_cycle == "2026-07-31"
+    assert expired.items == ()
+    assert expired.category_states == ()
+    with pytest.raises(NewContentWeekExpiredError):
+        service.require_snapshot(snapshot)
+    with pytest.raises(NewContentWeekExpiredError):
+        service.require_snapshot(expired)
+
+
+def test_content_week_starts_at_friday_midnight_in_shanghai() -> None:
+    assert current_new_content_weekly_cycle(
+        datetime(2026, 9, 3, 15, 59, tzinfo=timezone.utc)
+    ) == "2026-08-28"
+    assert current_new_content_weekly_cycle(
+        datetime(2026, 9, 3, 16, 0, tzinfo=timezone.utc)
+    ) == "2026-09-04"
 
 
 def test_new_content_order_places_peak_pools_before_skins() -> None:
