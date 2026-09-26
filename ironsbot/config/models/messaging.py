@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from string import Formatter
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
@@ -345,8 +346,13 @@ class MessageMentionReplyAction(BaseModel):
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
     at_user_ids: OneBotReferenceList = Field(default_factory=list)
+    target_groups: OneBotReferenceList = Field(default_factory=list)
     time: str
     day_of_week: str | None = None
+    renderer: str = ""
+    renderer_parameters: dict[str, str] = Field(default_factory=dict)
+    unresolved_mentions: Literal["skip", "text"] = "skip"
+    mention_fallback_name: str = ""
 
     @field_validator("time")
     @classmethod

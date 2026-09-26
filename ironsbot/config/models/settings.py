@@ -752,6 +752,10 @@ class Settings(BaseModel):
                 action.at_user_ids,
                 location=f"messaging.schedules[{index}].at_user_ids",
             )
+            references.resolve_groups(
+                action.target_groups,
+                location=f"messaging.schedules[{index}].target_groups",
+            )
 
     def _validate_mention_reply_references(
         self,
