@@ -43,21 +43,30 @@ class ScheduledMessageOutboundSender:
                 mentions = self._mentions_for(conversation, delivery.group_mentions)
                 if mentions is None:
                     logger.warning(
-                        "Scheduled text skipped unresolved group mentions: "
+                        "Scheduled text unresolved group mentions: "
                         "platform=%s account=%s group=%s action=%s",
                         conversation.platform.value,
                         conversation.account_id,
                         reference_digest(conversation.id),
                         delivery.action_name,
                     )
-                    continue
+                    if not delivery.unresolved_mentions_as_text:
+                        continue
+                    message_text = (
+                        f"{delivery.mention_fallback_name}，{message}"
+                        if delivery.mention_fallback_name
+                        else message
+                    )
+                    mentions = ()
+                else:
+                    message_text = message
                 requests.append(
                     ProactiveDeliveryRequest(
                         conversation,
                         OutboundMessage(
                             (
                                 *[MentionPart(actor) for actor in mentions],
-                                TextPart(message),
+                                TextPart(message_text),
                             )
                         ),
                     )
