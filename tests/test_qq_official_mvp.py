@@ -584,6 +584,7 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
     rank_queries: object | None = None,
     rank_admin: object | None = None,
     player_details: PlayerDetailExtensionRegistry | None = None,
+    player: object | None = None,
 ) -> SeerQueryResources:
     unused = _UnusedQueryService()
     return cast(
@@ -597,7 +598,7 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
             type_query=unused,
             battle_effect=unused,
             peak_query=peak_query or unused,
-            player=unused,
+            player=player or unused,
             player_detail_extensions=player_details or PlayerDetailExtensionRegistry(),
             rank_queries=rank_queries or unused,
             rank_admin=rank_admin or unused,
@@ -2968,7 +2969,10 @@ async def test_router_builds_extension_without_platform_handler() -> None:
     router = build_portable_command_router(
         catalog=_portable_catalog(extra_commands=(contract,)),
         about=AboutService("test"),
-        seer=_fake_seer(player_details=extensions),
+        seer=_fake_seer(
+            player_details=extensions,
+            player=SimpleNamespace(default_player_id=lambda _actor: 700001),
+        ),
         player_id_resolver=_FakePlayerIdResolver(),
         identity_links=_identity_links(),
         features=features,
@@ -3470,3 +3474,16 @@ def test_qq_official_quoted_command_is_dispatched() -> None:
         account_id="example-app",
         router=router,
     )
+
+
+def test_qq_official_keeps_all_explicit_reply_anchors() -> None:
+    event = _sdk_event(
+        content="2",
+        message_type=MSG_TYPE_QUOTE,
+        raw={
+            "message_reference": {"message_id": "quoted-id"},
+            "message_scene": {"ext": ["ref_msg_idx=quoted-sequence"]},
+        },
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    assert incoming.reply_reference_ids == ("quoted-id", "quoted-sequence")

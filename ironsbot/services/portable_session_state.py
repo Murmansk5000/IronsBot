@@ -100,7 +100,7 @@ class PortableSessionState:
         if (
             isinstance(own, _PendingSelection)
             and own.expires_at > self._now()
-            and context.message.reply_to_id in own.anchor_ids
+            and bool(context.reply_reference_ids & own.anchor_ids)
         ):
             return own.owner_context
         for key in tuple(self._pending):
@@ -109,7 +109,7 @@ class PortableSessionState:
             if (
                 isinstance(pending, _PendingSelection)
                 and key[1:] == self._key(context)[1:]
-                and context.message.reply_to_id in pending.anchor_ids
+                and bool(context.reply_reference_ids & pending.anchor_ids)
                 and pending.owner_context is not None
             ):
                 return pending.owner_context
@@ -148,7 +148,8 @@ class PortableSessionState:
         context: MessageInputContext,
     ) -> bool:
         return not context.is_reply or (
-            pending is not None and context.message.reply_to_id in pending.anchor_ids
+            pending is not None
+            and bool(context.reply_reference_ids & pending.anchor_ids)
         )
 
     def reserve_responses(
@@ -251,9 +252,8 @@ class PortableSessionState:
         if not responder.is_reply or not text.lstrip().startswith(("@", "＠")):
             return text
         pending = self._pending.get(self._key(owner))
-        if (
-            not isinstance(pending, _PendingSelection)
-            or responder.message.reply_to_id not in pending.anchor_ids
+        if not isinstance(pending, _PendingSelection) or not (
+            responder.reply_reference_ids & pending.anchor_ids
         ):
             return text
         parts = text.split()
@@ -354,7 +354,7 @@ class PortableSessionState:
         pending = self._pending.get(key)
         if not isinstance(pending, _PendingSelection):
             return None
-        if responder.message.reply_to_id not in pending.anchor_ids:
+        if not (responder.reply_reference_ids & pending.anchor_ids):
             return None
         return (
             pending
