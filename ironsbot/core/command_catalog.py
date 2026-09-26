@@ -155,7 +155,7 @@ def command_context_from_input(context: MessageInputContext) -> CommandContext:
         actor=message.actor,
         conversation=message.conversation,
         group_role=message.group_role,
-        member_mentions=message.direct_mentions,
+        member_mentions=context.member_mentions,
     )
 
 
