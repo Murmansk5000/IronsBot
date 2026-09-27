@@ -237,8 +237,9 @@ def _parse_rank_window(  # noqa: PLR0911
     if range_match is not None:
         start_rank = int(range_match.group(1))
         end_rank = int(range_match.group(2))
-        if start_rank <= 0 or end_rank < start_rank:
+        if start_rank <= 0 or end_rank <= 0:
             return None
+        start_rank, end_rank = sorted((start_rank, end_rank))
         return start_rank, min(end_rank - start_rank + 1, max_limit)
 
     single_match = re.fullmatch(r"第?(\d+)名", suffix)
