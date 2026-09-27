@@ -22,6 +22,7 @@ from ironsbot.services.messaging.subscription_options import (
     push_subscription_command_texts,
 )
 from ironsbot.services.messaging.subscriptions import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
     BUILTIN_PUSH_OPTIONS,
     PushSubscriptionOption,
 )
@@ -397,13 +398,29 @@ class MessagingService:
         return [
             PushSubscriptionOption(
                 key=option.key,
-                label=option.label,
+                label=self._builtin_subscription_label(conversation, option),
                 feature=option.feature,
                 unsubscribed=option.key in unsubscribed,
             )
             for option in BUILTIN_PUSH_OPTIONS
             if conversation in eligible.get(option.feature, set())
         ]
+
+    def _builtin_subscription_label(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str:
+        if option.key != "seer_activity_push":
+            return option.label
+        lead_hours = self._store.get_time_preference(
+            conversation,
+            option.key,
+            ACTIVITY_LEAD_HOURS_PREFERENCE,
+        ) or ",".join(str(hour) for hour in self._activity.lead_hours)
+        if not lead_hours:
+            return f"{option.label}（未设置提前时间）"
+        return f"{option.label}（截止前 {lead_hours.replace(',', '、')} 小时）"
 
     def _schedule_subscription_options(
         self,

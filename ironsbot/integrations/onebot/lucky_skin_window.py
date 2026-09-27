@@ -11,6 +11,7 @@ from ironsbot.core.platform import (
     ConversationRef,
     Platform,
 )
+from ironsbot.services.messaging.subscription_options import timed_subscription_label
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -61,7 +62,11 @@ class OneBotLuckySkinWindowSubscriptionOptions:
         return [
             PushSubscriptionOption(
                 key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
-                label="幸运橱窗提醒",
+                label=timed_subscription_label(
+                    "幸运橱窗提醒",
+                    self.service.config.time,
+                    timezone=self.service.config.timezone,
+                ),
                 feature="lucky_skin_window",
                 unsubscribed=self.subscriptions.is_unsubscribed(
                     conversation,

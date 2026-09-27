@@ -284,6 +284,8 @@ class _PluginPet:
 def _service(
     tmp_path: Path,
     *,
+    time: str = "00:01:05",
+    timezone: str = "Asia/Shanghai",
     renderer: Callable[
         [LuckySkinWindowResult, tuple[LuckySkinWindowOffer, ...]],
         Awaitable[bytes],
@@ -303,6 +305,8 @@ def _service(
     sessions = _Sessions(game)
     config = LuckySkinWindowConfig(
         enabled=True,
+        time=time,
+        timezone=timezone,
         accounts=[
             LuckySkinWindowAccountConfig(
                 user="owner",
@@ -652,7 +656,7 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     assert options == [
         PushSubscriptionOption(
             key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
-            label="幸运橱窗提醒",
+            label="幸运橱窗提醒（每日 00:01:05）",
             feature="lucky_skin_window",
         )
     ]
@@ -672,6 +676,22 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
         ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
         == []
     )
+
+
+def test_subscription_option_displays_configured_time_and_timezone(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, _headless = _service(
+        tmp_path,
+        time="06:20",
+        timezone="UTC",
+    )
+    option = OneBotLuckySkinWindowSubscriptionOptions(
+        service,
+        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+    ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
+
+    assert option[0].label == "幸运橱窗提醒（每日 06:20:00，UTC）"
 
 
 def test_official_private_subscription_uses_verified_qq_identity(
@@ -700,6 +720,9 @@ def test_official_private_subscription_uses_verified_qq_identity(
     assert [option.key for option in options.subscription_options(official)] == [
         LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY
     ]
+    assert options.subscription_options(official)[0].label == (
+        "幸运橱窗提醒（每日 00:01:05）"
+    )
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
