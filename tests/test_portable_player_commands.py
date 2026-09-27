@@ -547,7 +547,7 @@ async def test_player_selection_rechecks_reference_visibility(
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("prefix", ["米米号", "查询玩家信息", "收集", "巅峰", "群星牌"])
 @pytest.mark.parametrize("selection", ["2", "button", "0"])
-async def test_player_queries_use_declared_reference_selection(
+async def test_unclaimed_partial_player_queries_keep_internal_selection_safe(
     monkeypatch: pytest.MonkeyPatch,
     platform: Platform,
     prefix: str,
@@ -577,7 +577,9 @@ async def test_player_queries_use_declared_reference_selection(
         item for item in seer_command_contracts(resolver) if item.id == operation_id
     )
     assert contract.routing_matcher is not None
-    assert contract.routing_matcher(context.text, command_context_from_input(context))
+    assert not contract.routing_matcher(
+        context.text, command_context_from_input(context)
+    )
     operation = build_portable_player_operations(
         cast("PlayerService", service),
         resolver,

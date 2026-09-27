@@ -15,6 +15,8 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.core.command_catalog import command_context_from_input
+from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.permissions import can_manage_group_event
@@ -104,6 +106,12 @@ def _is_rank_player_command(
     if requested is None:
         return False
     context = message_input_context(event)
+    if requested.player_reference is not None and not is_player_reference_input(
+        requested.player_reference,
+        command_context_from_input(context),
+        group.player_id_resolver.has_exact_reference_choices,
+    ):
+        return False
     if requested.player_reference is None and not context.has_member_mentions:
         return False
     target = resolve_player_target(

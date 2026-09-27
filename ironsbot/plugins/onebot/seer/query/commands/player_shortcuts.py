@@ -11,12 +11,15 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.core.command_catalog import command_context_from_input
+from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.core.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import member_target_command
 from ironsbot.services.player_extension_commands import build_player_extension_operation
@@ -96,6 +99,10 @@ async def _is_player_shortcut(
     command = parse_player_shortcut_command(event.get_plaintext())
     if command is None:
         return False
+    if command.player_reference and not _known_target(
+        command.player_reference, event, dependencies.player_id_resolver
+    ):
+        return False
     state[_SHORTCUT_COMMAND_KEY] = _resolve_player_shortcut_command(
         dependencies,
         event,
@@ -118,6 +125,10 @@ async def _is_player_extension_shortcut(
     if resolved is None:
         return False
     action, player_reference = resolved
+    if player_reference and not _known_target(
+        player_reference, event, dependencies.player_id_resolver
+    ):
+        return False
     if not event_is_feature_allowed(dependencies.features, event, action.feature):
         return False
     state[_EXTENSION_SHORTCUT_COMMAND_KEY] = _resolve_extension_shortcut_command(
@@ -129,6 +140,19 @@ async def _is_player_extension_shortcut(
         ),
     )
     return True
+
+
+def _known_target(
+    reference: str, event: MessageEvent, resolver: PlayerIdResolver | None
+) -> bool:
+    context = message_input_context(event)
+    return is_player_reference_input(
+        reference,
+        command_context_from_input(context),
+        resolver.has_exact_reference_choices
+        if resolver is not None
+        else lambda *_: False,
+    )
 
 
 def _resolve_player_shortcut_command(

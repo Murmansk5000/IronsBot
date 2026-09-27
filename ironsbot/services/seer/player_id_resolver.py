@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.platform import ActorRef
 from ironsbot.core.player_references import PlayerReferenceChoice
 
@@ -186,6 +187,19 @@ class PlayerIdResolver:
         conversation: ConversationRef,
     ) -> bool:
         return bool(self.reference_choices(reference, actor, conversation))
+
+    def has_exact_reference_choices(
+        self,
+        reference: str,
+        actor: ActorRef,
+        conversation: ConversationRef,
+    ) -> bool:
+        """Recognize only complete visible aliases, including ambiguous ones."""
+        normalized = normalize_command_text(reference)
+        return bool(normalized) and any(
+            normalize_command_text(choice.label) == normalized
+            for choice in self.reference_choices(reference, actor, conversation)
+        )
 
     def _lookup_reference(
         self,
