@@ -120,12 +120,16 @@ from ironsbot.services.team.resource import TeamResourceService
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Awaitable, Callable, Iterator
 
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.outbound import ExecutionIdentity
+    from ironsbot.core.outbound import (
+        DeliveryHistoryStatus,
+        ExecutionIdentity,
+        SendResult,
+    )
     from ironsbot.extensions.contracts import PlayerLineupRenderSessionFactory
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.seer_data.database import SeerDatabase
@@ -186,6 +190,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     admin_notices: AdminNoticeService,
     query_sessions: PortableQuerySessions,
     private_routes: PrivateConversationRoutes,
+    verify_onebot_history: Callable[
+        [ConversationRef, SendResult], Awaitable[DeliveryHistoryStatus]
+    ],
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -387,6 +394,8 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         query_sessions,
         identity_principals.actor_principal,
         admin_notices=admin_notices,
+        verify_history=verify_onebot_history,
+        verify_onebot_history=settings.seer.lucky_skin_window.verify_onebot_history,
     )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,

@@ -19,6 +19,10 @@ from ironsbot.integrations.storage.conversation_principal_rows import (
 from ironsbot.integrations.storage.platform_identity import (
     ConversationIdentityColumns,
 )
+from ironsbot.integrations.storage.push_preference_pruning import (
+    prune_time_preferences,
+    prune_unsubscriptions,
+)
 from ironsbot.integrations.storage.sqlite import (
     SqliteDatabase,
     SqliteMigration,
@@ -575,99 +579,25 @@ class PushUnsubscribeStore:
             ConversationRef,
             AbstractSet[PushTimePreferenceIdentity],
         ],
+        preserve_unlisted_private: bool = False,
     ) -> PushPreferencePruneResult:
         with self._connect() as con:
-            deleted_unsubscriptions = self._prune_unsubscriptions(
+            deleted_unsubscriptions = prune_unsubscriptions(
                 con,
                 valid_unsubscription_keys,
+                self._owner_values,
+                preserve_unlisted_private=preserve_unlisted_private,
             )
-            deleted_time_preferences = self._prune_time_preferences(
+            deleted_time_preferences = prune_time_preferences(
                 con,
                 valid_time_preferences,
+                self._owner_values,
+                preserve_unlisted_private=preserve_unlisted_private,
             )
         return PushPreferencePruneResult(
             unsubscriptions_deleted=deleted_unsubscriptions,
             time_preferences_deleted=deleted_time_preferences,
         )
-
-    def _prune_unsubscriptions(
-        self,
-        con: sqlite3.Connection,
-        valid: Mapping[ConversationRef, AbstractSet[str]],
-    ) -> int:
-        valid_by_owner: dict[tuple[str, str], set[str]] = {}
-        for conversation, keys in valid.items():
-            valid_by_owner.setdefault(self._owner_values(conversation), set()).update(
-                keys
-            )
-        rows = con.execute(
-            """
-            SELECT principal_kind, principal_id, subscription_key
-            FROM push_unsubscriptions
-            """
-        ).fetchall()
-        deleted = 0
-        for principal_kind, principal_id, key in rows:
-            owner = (str(principal_kind), str(principal_id))
-            if str(key) in valid_by_owner.get(owner, set()):
-                continue
-            con.execute(
-                """
-                DELETE FROM push_unsubscriptions
-                WHERE principal_kind = ? AND principal_id = ?
-                  AND subscription_key = ?
-                """,
-                (*owner, key),
-            )
-            deleted += 1
-        return deleted
-
-    def _prune_time_preferences(
-        self,
-        con: sqlite3.Connection,
-        valid: Mapping[
-            ConversationRef,
-            AbstractSet[PushTimePreferenceIdentity],
-        ],
-    ) -> int:
-        valid_by_owner: dict[
-            tuple[str, str], set[PushTimePreferenceIdentity]
-        ] = {}
-        for conversation, identities in valid.items():
-            valid_by_owner.setdefault(self._owner_values(conversation), set()).update(
-                identities
-            )
-        rows = con.execute(
-            """
-            SELECT principal_kind, principal_id,
-                   subscription_key, preference_type
-            FROM push_time_preferences
-            """
-        ).fetchall()
-        deleted = 0
-        for principal_kind, principal_id, key, preference_type in rows:
-            owner = (str(principal_kind), str(principal_id))
-            identity = (str(key), cast("PushPreferenceType", preference_type))
-            if (
-                preference_type in {"cron_time", "activity_lead_hours"}
-                and identity in valid_by_owner.get(owner, set())
-            ):
-                continue
-            con.execute(
-                """
-                DELETE FROM push_time_preferences
-                WHERE principal_kind = ? AND principal_id = ?
-                  AND subscription_key = ?
-                  AND preference_type = ?
-                """,
-                (
-                    *owner,
-                    key,
-                    preference_type,
-                ),
-            )
-            deleted += 1
-        return deleted
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
         return self._database.connect()
