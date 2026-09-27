@@ -134,6 +134,7 @@ class PushSubscriptionRepository(PushDeliverySubscriptions, Protocol):
             ConversationRef,
             AbstractSet[PushTimePreferenceIdentity],
         ],
+        preserve_unlisted_private: bool = False,
     ) -> PushPreferencePruneResult: ...
 
 
