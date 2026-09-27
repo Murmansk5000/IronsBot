@@ -6,7 +6,10 @@ from ironsbot.config.models.features import (
     FeatureConfig,
     build_feature_service,
 )
+from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.settings import Settings
+from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.features import (
     FEATURE_KEYS,
     SEER_FEATURES,
@@ -46,6 +49,73 @@ def test_feature_service_reads_feature_config() -> None:
     assert feature_service.actors_for_feature("ai_chat") == [_actor(456)]
     assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_pet")
     assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "text")
+
+
+def test_configured_groups_get_help_and_about_without_other_features() -> None:
+    identities = IdentityConfig.model_validate(
+        {"groups": {"known": {"qq": 123}, "blocked": {"qq": 456}}}
+    )
+    references = build_platform_reference_resolver(
+        OneBotReferenceResolver({"known": 123, "blocked": 456}, {}),
+        identities,
+        {},
+    )
+    features = build_feature_service(
+        FeatureConfig(
+            bundles={"standard": ["seer_player"]},
+            group_policy={"known": ["standard"], "blocked": ["blacklist"]},
+            user_policy={"789": ["blacklist"]},
+            superuser_bypass=False,
+        ),
+        (),
+        configured_groups=identities.groups,
+        references=references,
+    )
+
+    for feature in ("help", "about", "seer_player"):
+        assert features.is_feature_allowed(_ACTOR, _group(123), feature)
+    assert not features.is_feature_allowed(_ACTOR, _group(123), "ai_chat")
+    for feature in ("help", "about"):
+        assert features.conversation_has_feature(_group(456), feature)
+        assert not features.is_feature_allowed(_ACTOR, _group(456), feature)
+        assert not features.is_feature_allowed(_actor(789), _group(123), feature)
+        assert not features.is_feature_allowed(_ACTOR, _group(321), feature)
+        assert not features.is_feature_allowed(_ACTOR, _private(999), feature)
+
+
+def test_later_linked_official_group_inherits_default_commands() -> None:
+    principals = IdentityPrincipalService()
+    features = build_feature_service(
+        FeatureConfig(superuser_bypass=False),
+        (),
+        configured_groups=("known",),
+        references=build_platform_reference_resolver(
+            OneBotReferenceResolver({"known": 123}, {}),
+            IdentityConfig.model_validate({"groups": {"known": {"qq": 123}}}),
+            {},
+        ),
+        principals=principals,
+    )
+    official_group = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "linked-openid", account_id="example-app"
+    )
+    official_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        "linked-openid",
+        "example-app",
+    )
+
+    assert not features.is_feature_allowed(official_member, official_group, "help")
+    principals.register_group_link(
+        CrossPlatformGroupLink("123", "example-app", "linked-openid", 1.0)
+    )
+    for feature in ("help", "about"):
+        assert features.is_feature_allowed(official_member, official_group, feature)
+    assert not features.is_feature_allowed(
+        official_member, official_group, "seer_player"
+    )
 
 
 def test_user_policy_does_not_bypass_group_policy() -> None:
