@@ -59,11 +59,10 @@ class FeatureService:
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
-        """Return the atomic feature keys explicitly enabled by configuration.
+        """Return atomic features enabled for configured policy targets.
 
-        This is a configuration fact, not an authorization result: superuser
-        bypass remains intentionally absent so compact plugin profiles validate
-        only the features their policies actually request.
+        This includes baseline group features but not superuser bypass, so
+        compact plugin profiles validate only features their targets can use.
         """
 
         return frozenset(
