@@ -20,7 +20,29 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
 BASELINE_COMMIT = "c83f48e8dd65ba71dd4227c8251083b9443ded4b"
 ARCHIVE_COMMIT = "55a39fd12c8b562f8ac3eb8b95d5a71325e8981f"
-SEED_COMMIT = "13ce5d3c9faac7cfc4c856b6b1db50a04a2de95e"
+SEED_COMMIT = "8e435a1be5f87bae6d7d605180fa763d013abe57"
+_RETAINED_DISPLAY_DATES = {
+    "about.official_identity_info": (
+        "2026-09-15T19:24:00+08:00",
+        "2026-09-15T21:28:37+08:00",
+    ),
+    "seer.player.identity.begin": (
+        "2026-09-15T03:32:09+08:00",
+        "2026-09-15T04:08:49+08:00",
+    ),
+    "seer.player.identity.confirm": (
+        "2026-09-15T03:32:09+08:00",
+        "2026-09-15T04:08:49+08:00",
+    ),
+    "seer.player.identity.revoke": (
+        "2026-09-15T03:32:09+08:00",
+        "2026-09-15T04:08:49+08:00",
+    ),
+    "seer.player.identity.status": (
+        "2026-09-15T03:32:09+08:00",
+        "2026-09-15T04:08:49+08:00",
+    ),
+}
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -113,6 +135,41 @@ def _git_object_exists(revision: str) -> bool:
     return result.returncode == 0
 
 
+def _command_literal_existed_at_seed(command_id: str) -> bool:
+    result = subprocess.run(
+        [
+            "git",
+            "grep",
+            "-q",
+            "-F",
+            f'"{command_id}"',
+            SEED_COMMIT,
+            "--",
+            "ironsbot",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode not in (0, 1):
+        msg = f"cannot inspect command at seed: {command_id}"
+        raise RuntimeError(msg)
+    return result.returncode == 0
+
+
+def _retain_reviewed_display_dates(commands: dict[str, str]) -> None:
+    """Keep V3 display dates while rejecting drift from the audited raw history."""
+
+    for command_id, (raw_date, display_date) in _RETAINED_DISPLAY_DATES.items():
+        observed = commands.get(command_id)
+        if observed is None:
+            continue
+        if observed not in (raw_date, display_date):
+            msg = f"reviewed command introduction changed: {command_id}={observed}"
+            raise ValueError(msg)
+        commands[command_id] = display_date
+
+
 def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
     _git_lines("merge-base", "--is-ancestor", BASELINE_COMMIT, "HEAD")
     ids = tuple(command_ids)
@@ -137,7 +194,14 @@ def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
             for command_id, introduced in _seed_commands(MANIFEST_PATH).items()
             if command_id in ids
         }
-        commands.update(_introduced_timestamps(ids, f"{SEED_COMMIT}..HEAD"))
+        commands.update(
+            (command_id, introduced)
+            for command_id, introduced in _introduced_timestamps(
+                ids, f"{SEED_COMMIT}..HEAD"
+            ).items()
+            if not _command_literal_existed_at_seed(command_id)
+        )
+    _retain_reviewed_display_dates(commands)
     return {
         "schema_version": 1,
         "baseline_commit": BASELINE_COMMIT,

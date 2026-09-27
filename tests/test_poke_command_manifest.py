@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,9 +37,32 @@ def test_manifest_generator_marks_sanctuary_command_after_baseline(
 
     assert result.returncode == 0, result.stdout + result.stderr
     manifest = json.loads(output_path.read_text(encoding="utf-8"))
-    assert manifest["baseline_commit"] == "c83f48e8dd65ba71dd4227c8251083b9443ded4b"
+    assert manifest["baseline_commit"] == "421b5b14637d0fef16d2e922d5422752da72e69e"
     assert "seer.autocard.sanctuary" in manifest["commands"]
     assert "help" not in manifest["commands"]
+
+
+def test_manifest_generator_seed_is_ancestor_of_head() -> None:
+    from scripts.generate_poke_command_introductions import SEED_COMMIT
+
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", SEED_COMMIT, "HEAD"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    assert result.returncode == 0
+
+
+def test_manifest_generator_identifies_commands_already_in_seed() -> None:
+    from scripts.generate_poke_command_introductions import (
+        _command_literal_existed_at_seed,
+    )
+
+    assert _command_literal_existed_at_seed("rank.global_collection")
+    assert _command_literal_existed_at_seed("seer.pet.query")
+    assert _command_literal_existed_at_seed("seer.player.query")
+    assert not _command_literal_existed_at_seed("never.registered.command")
 
 
 def test_manifest_generator_scans_git_history_once(monkeypatch: MonkeyPatch) -> None:
@@ -99,6 +124,10 @@ def test_manifest_generator_uses_checked_in_seed_without_archive(
         ),
     )
     monkeypatch.setattr(
+        "scripts.generate_poke_command_introductions._command_literal_existed_at_seed",
+        lambda _command_id: False,
+    )
+    monkeypatch.setattr(
         "scripts.generate_poke_command_introductions.MANIFEST_PATH",
         seed,
     )
@@ -110,3 +139,25 @@ def test_manifest_generator_uses_checked_in_seed_without_archive(
         "legacy.command": "2026-08-01T00:00:00+08:00",
         "new.command": "2026-09-23T00:00:00+08:00",
     }
+
+
+def test_reviewed_display_dates_preserve_output_and_reject_history_drift() -> None:
+    from scripts.generate_poke_command_introductions import (
+        _retain_reviewed_display_dates,
+    )
+
+    commands = {
+        "seer.player.identity.begin": "2026-09-15T03:32:09+08:00",
+        "about.official_identity_info": "2026-09-15T19:24:00+08:00",
+        "unrelated": "2026-09-15T01:00:00+08:00",
+    }
+    _retain_reviewed_display_dates(commands)
+    assert commands == {
+        "seer.player.identity.begin": "2026-09-15T04:08:49+08:00",
+        "about.official_identity_info": "2026-09-15T21:28:37+08:00",
+        "unrelated": "2026-09-15T01:00:00+08:00",
+    }
+
+    commands["seer.player.identity.begin"] = "2026-09-15T05:00:00+08:00"
+    with pytest.raises(ValueError, match=r"seer\.player\.identity\.begin"):
+        _retain_reviewed_display_dates(commands)
