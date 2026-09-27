@@ -39,6 +39,7 @@ class LuckySkinWindowConfig(BaseModel):
     time: str = "00:01:05"
     timezone: str = "Asia/Shanghai"
     timeout_seconds: float = Field(default=15.0, gt=0)
+    verify_onebot_history: bool = False
     accounts: list[LuckySkinWindowAccountConfig] = Field(default_factory=list)
 
     @field_validator("time")

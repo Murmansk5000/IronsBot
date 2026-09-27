@@ -52,7 +52,7 @@ class FakeSchedule:
     feature: str
     name: str = ""
     messages: list[str] = field(default_factory=lambda: ["消息"])
-    time: str = "23:00"
+    time: str = "23:00:00"
     day_of_week: str | None = None
     enabled: bool = True
 
@@ -70,7 +70,7 @@ def test_schedule_label_uses_configured_name_before_internal_id() -> None:
         feature="web_activity_push",
     )
 
-    assert schedule_label(1, task) == "周年庆签到提醒（23:00）"
+    assert schedule_label(1, task) == "周年庆签到提醒（每日 23:00:00）"
 
 
 def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
@@ -80,7 +80,7 @@ def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
         messages=["周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"],
     )
 
-    assert schedule_label(1, task) == "周年庆主题站签到活动（23:00）"
+    assert schedule_label(1, task) == "周年庆主题站签到活动（每日 23:00:00）"
 
 
 def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> None:
@@ -90,7 +90,16 @@ def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> Non
         messages=["https://seerm.61.com/events/17years/#sign"],
     )
 
-    assert schedule_label(1, task) == "游戏外活动推送（23:00）"
+    assert schedule_label(1, task) == "游戏外活动推送（每日 23:00:00）"
+
+
+def test_schedule_label_shows_weekday_and_effective_time() -> None:
+    task = FakeSchedule(id="weekly", feature="text_push", day_of_week="fri")
+
+    assert schedule_label(1, task) == "消息（fri 23:00:00）"
+    assert schedule_label(1, task, effective_time="12:30:15") == (
+        "消息（fri 12:30:15）"
+    )
 
 
 def test_builtin_push_options_split_startup_admin_notices() -> None:
@@ -447,6 +456,28 @@ def test_build_schedule_subscription_options_marks_subscription_state(
 
     assert [option.key for option in options] == ["daily", "weekly"]
     assert [option.unsubscribed for option in options] == [True, False]
+
+
+def test_schedule_subscription_label_uses_current_conversation_override(
+    tmp_path: Path,
+) -> None:
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+    conversation = _private(1001)
+    task = FakeSchedule(id="daily", feature="text_push")
+    store.set_time_preference(conversation, "daily", CRON_TIME_PREFERENCE, "08:30:00")
+
+    def label() -> str:
+        options = build_schedule_subscription_options(
+            conversation=conversation,
+            tasks=[task],
+            eligible_conversations_for_feature={"text_push": {conversation}},
+            store=store,
+        )
+        return options[0].label
+
+    assert label() == "消息（每日 08:30:00）"
+    store.clear_time_preference(conversation, "daily", CRON_TIME_PREFERENCE)
+    assert label() == "消息（每日 23:00:00）"
 
 
 def test_build_push_subscription_menu_shows_subscription_state() -> None:

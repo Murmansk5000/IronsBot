@@ -10,7 +10,6 @@ from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
-from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
     OneBotTeamAuditPolicy,
@@ -31,12 +30,13 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ConversationRef
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
+    from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+    from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 
 
@@ -56,10 +56,11 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     proactive_delivery: ProactiveMessageDelivery,
     subscriptions: PushUnsubscribeStore,
     bot_router: BotRouter,
-    outbound: GroupOutboundRateLimitService,
+    onebot_messenger: OneBotOutboundMessenger,
     bili_targets: BiliTargetService,
     lucky_skin_window: LuckySkinWindowService,
     identity_principals: IdentityPrincipalService,
+    private_routes: PrivateConversationRoutes,
 ) -> MessagingComponents:
     """Build configuration-backed messaging, image, and team-audit services."""
     from ironsbot.integrations.onebot.lucky_skin_window import (
@@ -116,6 +117,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                     lucky_skin_window,
                     subscriptions,
                     identity_principals,
+                    private_routes,
                 ).subscription_options,
             ),
             _prepare_extra_push_options=bili_targets.prepare_subscription_labels,
@@ -150,6 +152,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                 )
             },
             _actor_principal=identity_principals.actor_principal,
+            _private_routes=private_routes,
         ),
         sendpic=SendpicService(
             settings.messaging.sendpic,
@@ -165,7 +168,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             settings.messaging.team_audit_welcome,
             SqliteTeamAuditReminderStore(settings.paths.runtime_state),
             OneBotTeamAuditPolicy(features),
-            OneBotOutboundMessenger(bot_router, outbound),
+            onebot_messenger,
             OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
         ),
     )
