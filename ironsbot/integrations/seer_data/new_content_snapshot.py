@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -400,13 +401,31 @@ def _fallback_details(item: NewContentItem) -> NewContentItemDetails:
     if item.category == "autocard_chip":
         current = str(item.payload.get("description", "")).strip()
         previous = str(item.payload.get("previous_description", "")).strip()
+        summary = item.payload.get("change_summary", [])
+        changes = []
+        if isinstance(summary, list):
+            for value in summary:
+                line = str(value)
+                rarity = re.fullmatch(r"rarity：(\d+) → (\d+)", line)
+                if rarity:
+                    names = {"1": "普通", "2": "稀有", "3": "传说"}
+                    line = (
+                        f"档位：{names.get(rarity[1], rarity[1])} → "
+                        f"{names.get(rarity[2], rarity[2])}"
+                    )
+                if not line.startswith("效果说明"):
+                    changes.append(line)
+        if previous and previous != current:
+            detail = f"原效果：{previous}\n新效果：{current}"
+        else:
+            detail = f"效果：{current}" if current else ""
+        if changes:
+            detail = "\n".join((*changes, detail)) if detail else "\n".join(changes)
         return NewContentItemDetails(
             metadata=f"{change}｜ID：{item.entity_id}",
             description=str(item.payload.get("category", "战斗芯片")),
-            side_title="效果变化" if previous else "芯片效果",
-            side_description=(
-                f"原效果：{previous}\n新效果：{current}" if previous else current
-            ),
+            side_title="芯片变化" if previous else "芯片效果",
+            side_description=detail,
         )
     if item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()

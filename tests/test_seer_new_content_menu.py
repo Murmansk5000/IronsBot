@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from ironsbot.integrations.seer_data.new_content_snapshot import _fallback_details
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     NEW_CONTENT_CATEGORIES,
@@ -95,6 +96,23 @@ def test_chip_modifications_preview_five_and_join_autocard_menu() -> None:
         snapshot, focus_new_content_category(layout, "autocard_chip")
     )
     assert len(focused.choices) == chip_count
+
+
+def test_chip_rarity_change_does_not_claim_effect_changed() -> None:
+    item = NewContentItem(
+        "autocard_chip", 84, "星能震荡", 84,
+        {
+            "category": "战斗输出类",
+            "description": "每个战斗阶段开始时造成伤害",
+            "previous_description": "每个战斗阶段开始时造成伤害",
+            "change_summary": ["rarity：1 → 2"],
+        },
+        "modified",
+    )
+    details = _fallback_details(item)
+    assert "档位：普通 → 稀有" in details.side_description
+    assert "原效果" not in details.side_description
+    assert "效果：每个战斗阶段开始时造成伤害" in details.side_description
 
 
 def test_explicit_denied_category_returns_notice() -> None:
