@@ -10,11 +10,17 @@ import pytest
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import (
     DeliveryFailureKind,
+    DeliveryHistoryStatus,
     ExecutionIdentity,
     OutboundMessage,
     SendResult,
 )
-from ironsbot.core.platform import ActorRef, IncomingMessageRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    IncomingMessageRef,
+    Platform,
+    private_conversation_for_actor,
+)
 from ironsbot.integrations.storage.daily_delivery import SqliteDailyDeliveryStore
 from ironsbot.services.identity_link_store import (
     CrossPlatformIdentityLink,
@@ -123,6 +129,7 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
     store = SqliteDailyDeliveryStore(tmp_path / "runtime.sqlite")
     notices = Mock()
     notices.send_private_to_superusers = AsyncMock()
+    history_check = AsyncMock(return_value=DeliveryHistoryStatus.CONFIRMED)
     sender = LuckySkinWindowOutboundSender(
         delivery,
         subscriptions,
@@ -132,6 +139,8 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
         principals.actor_principal,
         render,
         admin_notices=notices,
+        verify_history=history_check,
+        verify_onebot_history=True,
     )
     result = cast("Any", object())
     assert await sender.send_daily_notice(actor, result, day="2026-09-23") == (
@@ -160,3 +169,54 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
         notices.send_private_to_superusers.assert_awaited_once()
     else:
         notices.send_private_to_superusers.assert_not_awaited()
+    history_check.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("history_outcome", ["missing", "error"])
+async def test_daily_onebot_history_check_never_retries_accepted_send(
+    tmp_path: Path,
+    history_outcome: str,
+) -> None:
+    actor = ActorRef(Platform.ONEBOT, "123456")
+    target = private_conversation_for_actor(actor)
+    receipt = SendResult(
+        delivered=True,
+        message_id="101",
+        execution_identity=ExecutionIdentity(Platform.ONEBOT, "654321"),
+    )
+    delivery = Mock()
+    delivery.messenger.capabilities_for.return_value = SimpleNamespace(
+        can_send_proactively=True
+    )
+    delivery.send = AsyncMock(
+        return_value=ProactiveDeliverySummary(
+            (target,), (), (), ((target, receipt),)
+        )
+    )
+    history_check = AsyncMock(
+        side_effect=RuntimeError("history unavailable")
+        if history_outcome == "error"
+        else None,
+        return_value=DeliveryHistoryStatus.MISSING,
+    )
+    store = SqliteDailyDeliveryStore(tmp_path / "runtime.sqlite")
+    principals = IdentityPrincipalService()
+    sender = LuckySkinWindowOutboundSender(
+        delivery,
+        Mock(is_unsubscribed=Mock(return_value=False)),
+        store,
+        PrivateConversationRoutes(),
+        PortableQuerySessions(),
+        principals.actor_principal,
+        render=AsyncMock(return_value=OutboundMessage.from_text("window")),
+        verify_history=history_check,
+        verify_onebot_history=True,
+    )
+
+    assert await sender.send_daily_notice(
+        actor, cast("Any", object()), day="2026-09-23"
+    )
+    history_check.assert_awaited_once_with(target, receipt)
+    delivery.send.assert_awaited_once()
+    assert not store.claim("lucky:qq:123456", "2026-09-23")
