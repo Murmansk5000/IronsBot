@@ -308,6 +308,8 @@ lite = [
 
 [features.group_policy]
 # Default: empty table
+# 已在 identities.groups 声明的群默认可用“帮助”和“关于”，无需逐群填写 help/about。
+# 未声明的群仍按现有权限规则处理；黑名单始终优先。
 # EN: Group feature allowlist. Built-in bundles include all, query, seer, bili,
 # seer_activity, server_status, text, text_push, and message. Custom bundles are
 # defined above. Seer sub-features:

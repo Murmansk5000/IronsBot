@@ -2271,6 +2271,89 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
 
 
 @pytest.mark.asyncio
+async def test_configured_official_group_allows_member_help_and_about() -> None:
+    config = _qq_config()
+    identities = IdentityConfig.model_validate(
+        {
+            "groups": {
+                "known": {
+                    "qq": 123,
+                    "official": {"example_bot": "known-openid"},
+                }
+            }
+        }
+    )
+    references = _official_references(
+        config,
+        groups={"known": {"qq": 123, "official": {"example_bot": "known-openid"}}},
+    )
+    features = build_feature_service(
+        FeatureConfig(superuser_bypass=False),
+        (),
+        configured_groups=identities.groups,
+        qq_official=config,
+        references=references,
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        contribution_catalog=_portable_help_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "known-openid", account_id="example-app"
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL, "ordinary-member", "member", "known-openid", "example-app"
+    )
+
+    help_reply = await _dispatch(router, _portable_input("帮助", actor, conversation))
+    about_reply = await _dispatch(router, _portable_input("关于", actor, conversation))
+
+    assert help_reply is not None
+    assert about_reply is not None
+    assert isinstance(help_reply.message.parts[0], TextPart)
+    assert "关于" in help_reply.message.parts[0].text
+    assert "赛尔号查询" not in help_reply.message.parts[0].text
+    onebot_group = ConversationRef(Platform.ONEBOT, "group", "123")
+    onebot_actor = ActorRef(Platform.ONEBOT, "456")
+    onebot_help = await _dispatch(
+        router,
+        _portable_input("帮助", onebot_actor, onebot_group, mentions_bot=False),
+    )
+    onebot_about = await _dispatch(
+        router,
+        _portable_input("关于", onebot_actor, onebot_group, mentions_bot=False),
+    )
+    assert onebot_help is not None
+    assert onebot_about is not None
+    assert isinstance(onebot_help.message.parts[0], TextPart)
+    assert "关于" in onebot_help.message.parts[0].text
+    unknown_reply = await _dispatch(
+        router,
+        _portable_input(
+            "帮助",
+            actor,
+            ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                "unknown-openid",
+                account_id="example-app",
+            ),
+        ),
+    )
+    assert unknown_reply is not None
+    assert isinstance(unknown_reply.message.parts[0], TextPart)
+    assert unknown_reply.message.parts[0].text.startswith("请在 @ 后输入指令")
+
+
+@pytest.mark.asyncio
 async def test_portable_router_allows_superuser_command_without_group_feature() -> None:
     features = _official_feature_service([], superuser=True)
     router = build_portable_command_router(

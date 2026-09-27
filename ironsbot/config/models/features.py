@@ -425,6 +425,7 @@ def build_feature_service(  # noqa: PLR0913
     config: FeatureConfig,
     superuser_references: Iterable[object],
     *,
+    configured_groups: Iterable[str] = (),
     command_features: Iterable[str] = (),
     schedule_features: Iterable[str] = (),
     qq_official: QQOfficialConfig | None = None,
@@ -445,6 +446,13 @@ def build_feature_service(  # noqa: PLR0913
         {},
     )
     group_features: dict[ConversationRef, frozenset[str]] = {}
+    default_group_features = frozenset({Feature.HELP.value, Feature.ABOUT.value})
+    for group_ref in configured_groups:
+        for conversation in references.group_conversation_refs(
+            group_ref,
+            location=f"identities.groups.{group_ref}",
+        ):
+            group_features[conversation] = default_group_features
     for raw_ref, features in config.group_policy.items():
         expanded = _expand_policy_features(features, bundles)
         for conversation in references.group_conversation_refs(

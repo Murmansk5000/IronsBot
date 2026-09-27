@@ -77,6 +77,7 @@ def build_common_components(
     features = build_feature_service(
         settings.features,
         settings.bot.superusers,
+        configured_groups=settings.identities.groups,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
         qq_official=(
