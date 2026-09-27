@@ -1,7 +1,7 @@
 from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.integrations.seer_data.weekly_preview_repository import (
-    DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
+    DEFAULT_WEEKLY_PREVIEW_IMAGE_URLS,
     DEFAULT_WEEKLY_PREVIEW_SOURCE_URL,
     load_weekly_preview_links,
     load_weekly_preview_metadata,
@@ -34,6 +34,11 @@ def test_load_weekly_preview_metadata_reads_configured_rows() -> None:
         _Session(
             [
                 ("weekly_preview_image_url", "https://example.test/preview.png"),
+                (
+                    "weekly_preview_image_urls",
+                    '["https://example.test/preview.png",'
+                    '"https://example.test/preview-2.png"]',
+                ),
                 ("weekly_preview_source_url", "https://example.test/source"),
             ]
         )
@@ -41,6 +46,9 @@ def test_load_weekly_preview_metadata_reads_configured_rows() -> None:
 
     assert metadata == {
         "weekly_preview_image_url": "https://example.test/preview.png",
+        "weekly_preview_image_urls": (
+            '["https://example.test/preview.png","https://example.test/preview-2.png"]'
+        ),
         "weekly_preview_source_url": "https://example.test/source",
     }
 
@@ -51,7 +59,7 @@ def test_load_weekly_preview_metadata_falls_back_on_sql_errors() -> None:
 
 def test_load_weekly_preview_links_uses_defaults_when_metadata_is_missing() -> None:
     assert load_weekly_preview_links(_Session([])) == (
-        DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
+        DEFAULT_WEEKLY_PREVIEW_IMAGE_URLS,
         DEFAULT_WEEKLY_PREVIEW_SOURCE_URL,
     )
 
@@ -65,6 +73,27 @@ def test_load_weekly_preview_links_uses_configured_values() -> None:
             ]
         )
     ) == (
-        "https://example.test/preview.png",
+        ("https://example.test/preview.png",),
+        "https://example.test/source",
+    )
+
+
+def test_load_weekly_preview_links_uses_configured_image_list() -> None:
+    assert load_weekly_preview_links(
+        _Session(
+            [
+                (
+                    "weekly_preview_image_urls",
+                    '["https://example.test/preview.png",'
+                    '"https://example.test/preview-2.png"]',
+                ),
+                ("weekly_preview_source_url", "https://example.test/source"),
+            ]
+        )
+    ) == (
+        (
+            "https://example.test/preview.png",
+            "https://example.test/preview-2.png",
+        ),
         "https://example.test/source",
     )

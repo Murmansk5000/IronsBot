@@ -14,6 +14,8 @@ from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
 from ironsbot.integrations.seer_data.weekly_preview_repository import (
+    DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
+    DEFAULT_WEEKLY_PREVIEW_IMAGE_URLS,
     WEEKLY_PREVIEW_MIRROR_URL,
 )
 from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
@@ -21,8 +23,10 @@ from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
 if TYPE_CHECKING:
     from pathlib import Path
 
-PRIMARY_URL = "https://raw.example.test/preview.png"
+PRIMARY_URL = DEFAULT_WEEKLY_PREVIEW_IMAGE_URL
+SECONDARY_URL = DEFAULT_WEEKLY_PREVIEW_IMAGE_URLS[1]
 PNG = b"\x89PNG\r\n\x1a\npreview"
+EXPECTED_PREVIEW_CACHE_FILES = 2
 
 
 class _Clock:
@@ -118,7 +122,7 @@ async def test_primary_failure_uses_versioned_cdn_mirror(tmp_path: Path) -> None
 
     async def handler(request: httpx.Request) -> httpx.Response:
         urls.append(str(request.url))
-        if request.url.host == "raw.example.test":
+        if request.url.host == "raw.githubusercontent.com":
             raise httpx.ConnectError("", request=request)
         return httpx.Response(200, content=PNG, request=request)
 
@@ -175,7 +179,7 @@ async def test_invalid_remote_images_do_not_replace_valid_cache(
     async def handler(request: httpx.Request) -> httpx.Response:
         if phase == "valid":
             return httpx.Response(200, content=PNG, request=request)
-        if request.url.host == "raw.example.test":
+        if request.url.host == "raw.githubusercontent.com":
             return httpx.Response(200, content=b"not-png", request=request)
         oversized = b"\x89PNG\r\n\x1a\n" + b"x" * MAX_WEEKLY_PREVIEW_BYTES
         return httpx.Response(200, content=oversized, request=request)
@@ -237,3 +241,25 @@ async def test_deleted_cache_directory_is_recreated(tmp_path: Path) -> None:
 
     assert result.data == PNG + b"-new"
     assert (cache_root / "assets" / "weekly_preview.png").exists()
+
+
+@pytest.mark.asyncio
+async def test_each_preview_url_has_an_independent_cache(tmp_path: Path) -> None:
+    clock = _Clock()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        content = PNG + request.url.path.encode()
+        return httpx.Response(200, content=content, request=request)
+
+    source, client = _build_source(tmp_path, handler, clock)
+    try:
+        first, second = await asyncio.gather(
+            source.fetch(PRIMARY_URL),
+            source.fetch(SECONDARY_URL),
+        )
+    finally:
+        await client.aclose()
+
+    assert first.data != second.data
+    cache_files = tuple((tmp_path / "cache" / "assets").glob("*.png"))
+    assert len(cache_files) == EXPECTED_PREVIEW_CACHE_FILES

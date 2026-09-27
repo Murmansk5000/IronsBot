@@ -15,7 +15,8 @@ from typing import TYPE_CHECKING, Any
 from httpx import AsyncClient, HTTPStatusError, RequestError
 
 from ironsbot.integrations.seer_data.weekly_preview_repository import (
-    WEEKLY_PREVIEW_MIRROR_URL,
+    DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
+    weekly_preview_mirror_url,
 )
 from ironsbot.services.seer.weekly_preview_images import (
     WeeklyPreviewImage,
@@ -61,8 +62,7 @@ class CachedWeeklyPreviewImageSource:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
-        self._image_path = cache_dir / "weekly_preview.png"
-        self._metadata_path = cache_dir / "weekly_preview.json"
+        self._cache_dir = cache_dir
         self._spawn = spawn
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._inflight_lock = asyncio.Lock()
@@ -70,7 +70,8 @@ class CachedWeeklyPreviewImageSource:
 
     async def fetch(self, primary_url: str) -> WeeklyPreviewImage:
         now = self._now()
-        cached = self._read_cache()
+        image_path, metadata_path = self._cache_paths(primary_url)
+        cached = self._read_cache(image_path, metadata_path)
         if cached is not None and now - cached.cached_at <= WEEKLY_PREVIEW_FRESH_TTL:
             return _to_result(cached)
 
@@ -78,8 +79,8 @@ class CachedWeeklyPreviewImageSource:
             task = self._inflight.get(primary_url)
             if task is None:
                 task = self._spawn(
-                    self._refresh(primary_url),
-                    name="weekly-preview-refresh",
+                    self._refresh(primary_url, image_path, metadata_path),
+                    name=f"weekly-preview-refresh-{_url_cache_key(primary_url)}",
                 )
                 self._inflight[primary_url] = task
         try:
@@ -89,11 +90,17 @@ class CachedWeeklyPreviewImageSource:
                 if self._inflight.get(primary_url) is task and task.done():
                     self._inflight.pop(primary_url, None)
 
-    async def _refresh(self, primary_url: str) -> WeeklyPreviewImage:
-        cached = self._read_cache()
+    async def _refresh(
+        self,
+        primary_url: str,
+        image_path: Path,
+        metadata_path: Path,
+    ) -> WeeklyPreviewImage:
+        cached = self._read_cache(image_path, metadata_path)
         now = self._now()
         failures: list[str] = []
-        sources = tuple(dict.fromkeys((primary_url, WEEKLY_PREVIEW_MIRROR_URL)))
+        mirror_url = weekly_preview_mirror_url(primary_url)
+        sources = tuple(dict.fromkeys(url for url in (primary_url, mirror_url) if url))
         for index, source_url in enumerate(sources):
             request_url = source_url
             headers: dict[str, str] = {}
@@ -102,7 +109,7 @@ class CachedWeeklyPreviewImageSource:
                     headers["If-None-Match"] = cached.etag
                 if cached.last_modified:
                     headers["If-Modified-Since"] = cached.last_modified
-            elif source_url == WEEKLY_PREVIEW_MIRROR_URL:
+            elif source_url == mirror_url:
                 request_url = _with_cache_version(source_url, now)
 
             try:
@@ -113,7 +120,7 @@ class CachedWeeklyPreviewImageSource:
                         now,
                         source_url,
                     )
-                    self._write_cache(refreshed)
+                    self._write_cache(refreshed, image_path, metadata_path)
                     return _to_result(refreshed)
                 response.raise_for_status()
                 _validate_png(response.content)
@@ -124,7 +131,7 @@ class CachedWeeklyPreviewImageSource:
                     etag=response.headers.get("etag", ""),
                     last_modified=response.headers.get("last-modified", ""),
                 )
-                self._write_cache(refreshed)
+                self._write_cache(refreshed, image_path, metadata_path)
                 return _to_result(refreshed)
             except (HTTPStatusError, RequestError, WeeklyPreviewImageError) as error:
                 failures.append(_format_source_failure(source_url, error))
@@ -146,10 +153,14 @@ class CachedWeeklyPreviewImageSource:
             failure_message or "all preview sources failed"
         )
 
-    def _read_cache(self) -> _CacheEntry | None:
+    def _read_cache(
+        self,
+        image_path: Path,
+        metadata_path: Path,
+    ) -> _CacheEntry | None:
         try:
-            data = self._image_path.read_bytes()
-            metadata = json.loads(self._metadata_path.read_text(encoding="utf-8"))
+            data = image_path.read_bytes()
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             _validate_png(data)
             if hashlib.sha256(data).hexdigest() != str(metadata["sha256"]):
                 return None
@@ -166,9 +177,14 @@ class CachedWeeklyPreviewImageSource:
         except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
             return None
 
-    def _write_cache(self, entry: _CacheEntry) -> None:
-        image_tmp = self._image_path.with_suffix(".png.tmp")
-        metadata_tmp = self._metadata_path.with_suffix(".json.tmp")
+    def _write_cache(
+        self,
+        entry: _CacheEntry,
+        image_path: Path,
+        metadata_path: Path,
+    ) -> None:
+        image_tmp = image_path.with_suffix(".png.tmp")
+        metadata_tmp = metadata_path.with_suffix(".json.tmp")
         metadata: dict[str, Any] = {
             "cached_at": entry.cached_at.astimezone(timezone.utc).isoformat(),
             "source_url": entry.source_url,
@@ -177,14 +193,14 @@ class CachedWeeklyPreviewImageSource:
             "sha256": hashlib.sha256(entry.data).hexdigest(),
         }
         try:
-            self._image_path.parent.mkdir(parents=True, exist_ok=True)
+            image_path.parent.mkdir(parents=True, exist_ok=True)
             image_tmp.write_bytes(entry.data)
             metadata_tmp.write_text(
                 json.dumps(metadata, ensure_ascii=True, sort_keys=True),
                 encoding="utf-8",
             )
-            image_tmp.replace(self._image_path)
-            metadata_tmp.replace(self._metadata_path)
+            image_tmp.replace(image_path)
+            metadata_tmp.replace(metadata_path)
         except OSError:
             logger.warning("failed to update weekly preview image cache", exc_info=True)
         finally:
@@ -192,6 +208,17 @@ class CachedWeeklyPreviewImageSource:
                 image_tmp.unlink(missing_ok=True)
             with suppress(OSError):
                 metadata_tmp.unlink(missing_ok=True)
+
+    def _cache_paths(self, primary_url: str) -> tuple[Path, Path]:
+        suffix = (
+            ""
+            if primary_url == DEFAULT_WEEKLY_PREVIEW_IMAGE_URL
+            else (f"_{_url_cache_key(primary_url)}")
+        )
+        return (
+            self._cache_dir / f"weekly_preview{suffix}.png",
+            self._cache_dir / f"weekly_preview{suffix}.json",
+        )
 
     def _now(self) -> datetime:
         now = self._clock()
@@ -222,6 +249,10 @@ def _with_cache_version(url: str, now: datetime) -> str:
     minute_bucket = now.minute - now.minute % 5
     version = now.replace(minute=minute_bucket, second=0, microsecond=0)
     return f"{url}{separator}v={version:%Y%m%d%H%M}"
+
+
+def _url_cache_key(url: str) -> str:
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
 
 
 def _format_source_failure(source_url: str, error: Exception) -> str:

@@ -138,6 +138,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.cache_paths import CachePaths
     from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
@@ -193,6 +194,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     verify_onebot_history: Callable[
         [ConversationRef, SendResult], Awaitable[DeliveryHistoryStatus]
     ],
+    image_collage: ImageCollageService,
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -579,6 +581,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 settings.seer.season,
                 NewContentService(PublishedNewContentRepository(seer_database)),
                 image_failure_reporter,
+                image_collage,
             ),
             CountermarkStatRankService(seer_database),
             autocard,

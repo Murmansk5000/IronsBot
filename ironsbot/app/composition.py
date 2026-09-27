@@ -18,6 +18,7 @@ from ironsbot.app.bilibili_composition import (
 from ironsbot.app.clock_check import check_configured_clock
 from ironsbot.app.common_composition import build_common_components
 from ironsbot.app.file_logging import FileLogging
+from ironsbot.app.image_collage_composition import build_image_collage_service
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.messaging_composition import build_messaging_components
 from ironsbot.app.official_address_composition import build_official_addresses
@@ -219,6 +220,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     scheduler = SchedulerFacade(timezone="Asia/Shanghai")
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
+    image_collage = build_image_collage_service(http_clients.origin)
     databases = DatabaseManager()
     cache_paths = CachePaths(settings.paths.cache_root)
     task_owner = TaskOwner()
@@ -292,6 +294,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         query_sessions,
         common.private_routes,
         common.onebot_messenger.verify_history,
+        image_collage,
     )
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -315,6 +318,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions,
         task_owner,
         identity_principals,
+        image_collage,
         common.private_routes,
     )
     bilibili = bilibili_components.service
@@ -403,7 +407,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings=settings.operations.private_extensions.settings.get(
                 "player_lineup", {}
             ),
-        )
+        ),
     }
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
