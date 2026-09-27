@@ -13,7 +13,7 @@ from ironsbot.core.selection import (
 )
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
-AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
+AUTOCARD_QUERY_PREFIXES = ("群星牌芯片", "战斗芯片", "群星牌", "卡牌", "查询群星牌")
 AUTOCARD_QUERY_SUFFIXES = ("群星牌",)
 
 _AUTOCARD_NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
@@ -32,6 +32,8 @@ class AutocardDataset:
     cards: tuple[dict[str, Any], ...]
     roles: tuple[dict[str, Any], ...]
     natures: dict[int, str]
+    chips: tuple[dict[str, Any], ...] = ()
+    chips_available: bool = False
 
 
 class AutocardRepository(Protocol):
@@ -98,7 +100,10 @@ class AutocardService:
         self._repository = repository
 
     def search(self, arg: str) -> AutocardSearchResult:
-        index = _build_autocard_index(self._repository.load())
+        dataset = self._repository.load()
+        if arg.strip().startswith(("战斗芯片", "群星牌芯片")):
+            return _search_chips(dataset, _extract_autocard_query_arg(arg))
+        index = _build_autocard_index(dataset)
         matches = _search_autocard_items(
             index,
             _extract_autocard_query_arg(arg),
@@ -129,6 +134,66 @@ class AutocardService:
             else _find_autocard_card_by_id(index, value.item_id)
         )
         return None if item is None else _build_entry(index, value.kind, item)
+
+
+def _search_chips(dataset: AutocardDataset, query: str) -> AutocardSearchResult:
+    if not dataset.chips_available:
+        return AutocardSearchResult(message="数据库尚未包含战斗芯片，请更新赛尔数据。")
+    query = query.strip()
+    if not query:
+        return AutocardSearchResult(
+            message="请输入芯片名称或 ID，例如：战斗芯片复苏之风"
+        )
+    chips = dataset.chips
+    if query.isdigit():
+        chips = tuple(chip for chip in chips if _int_field(chip, "id") == int(query))
+    else:
+        normalized = _normalize_name(query)
+        exact = tuple(
+            chip
+            for chip in chips
+            if _normalize_name(str(chip.get("name", ""))) == normalized
+        )
+        if exact:
+            chips = exact
+        else:
+            groups = {
+                _int_field(chip, "config_group_id")
+                for chip in chips
+                if normalized in _normalize_name(str(chip.get("name", "")))
+            }
+            if len(groups) != 1:
+                return AutocardSearchResult(
+                    message="未找到唯一的战斗芯片，请输入完整名称或 ID。"
+                )
+            chips = tuple(
+                chip
+                for chip in chips
+                if _int_field(chip, "config_group_id") in groups
+            )
+    if not chips:
+        return AutocardSearchResult(message="未找到该战斗芯片。")
+    chips = tuple(
+        sorted(chips, key=lambda chip: (
+            _int_field(chip, "rarity"), _int_field(chip, "id")
+        ))
+    )
+    title = str(chips[0].get("name", "战斗芯片"))
+    if len(chips) > 1:
+        title = re.sub(r"\s*(?:I{1,3}|[ⅠⅡⅢ])$", "", title).strip()
+    rarity_names = {1: "普通", 2: "稀有", 3: "传说"}
+    lines = [f"【{title}】"]
+    for chip in chips:
+        rarity = _int_field(chip, "rarity")
+        lines.append(
+            f"{rarity_names.get(rarity, f'档位 {rarity}')}"
+            f"（{_int_field(chip, 'id')}）："
+            f"{str(chip.get('description', '')).strip()}"
+        )
+    return AutocardSearchResult(entry=AutocardEntry(
+        kind="chip", item_id=_int_field(chips[0], "id"), name=title,
+        text="\n".join(lines), image_key="",
+    ))
 
 
 def _build_autocard_index(dataset: AutocardDataset) -> _AutocardIndex:

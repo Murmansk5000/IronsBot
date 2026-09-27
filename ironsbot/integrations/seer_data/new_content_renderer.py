@@ -152,7 +152,8 @@ async def render_new_content_menu(  # noqa: PLR0913
             type_icon=type_icon,
             image_notice=(
                 "官方图片暂未上线"
-                if image is None and rows[index].image_layout == "square"
+                if prepared.asset is not None
+                and image is None and rows[index].image_layout == "square"
                 else ""
             ),
         )

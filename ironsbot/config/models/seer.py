@@ -128,6 +128,7 @@ NEW_CONTENT_CATEGORY_KEYS = (
     "mount",
     "autocard_card",
     "autocard_role",
+    "autocard_chip",
     "autocard_sanctuary_effect",
 )
 NEW_CONTENT_CATEGORY_ERROR = (
@@ -147,6 +148,7 @@ NewContentCategoryKey = Literal[
     "mount",
     "autocard_card",
     "autocard_role",
+    "autocard_chip",
     "autocard_sanctuary_effect",
 ]
 

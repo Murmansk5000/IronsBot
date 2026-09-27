@@ -27,6 +27,7 @@ NewContentCategory = Literal[
     "mount",
     "autocard_card",
     "autocard_role",
+    "autocard_chip",
     "autocard_sanctuary_effect",
 ]
 
@@ -44,6 +45,7 @@ NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "achievement",
     "autocard_card",
     "autocard_role",
+    "autocard_chip",
     "autocard_sanctuary_effect",
 )
 
@@ -53,6 +55,7 @@ NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
 AUTOCARD_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "autocard_card",
     "autocard_role",
+    "autocard_chip",
     "autocard_sanctuary_effect",
 )
 
@@ -76,6 +79,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "mount": "新增座驾",
     "autocard_card": "新增群星牌",
     "autocard_role": "新增群星牌角色",
+    "autocard_chip": "群星牌战斗芯片",
     "autocard_sanctuary_effect": "新增群星牌圣域",
 }
 _CONFIG_VERSION_DATE_LENGTH = 8
@@ -183,7 +187,9 @@ def is_new_content_category_auto_expanded(
     """Expand root previews with a bounded number of relevant additions."""
 
     additions = _new_content_category_preview_additions(snapshot, category)
-    return 0 < len(additions) <= max_items
+    return bool(additions) and (
+        category == "autocard_chip" or len(additions) <= max_items
+    )
 
 
 def new_content_category_preview_items(
@@ -202,6 +208,8 @@ def _new_content_category_preview_additions(
     snapshot: NewContentSnapshot,
     category: NewContentCategory,
 ) -> tuple[NewContentItem, ...]:
+    if category == "autocard_chip":
+        return snapshot.items_for(category)
     additions = tuple(
         item for item in snapshot.items_for(category) if item.change_kind == "added"
     )
@@ -339,6 +347,11 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
     if item.category in {"autocard_card", "autocard_role"}:
         kind = "角色" if item.category == "autocard_role" else "卡牌"
         return f"{change}｜{item.entity_id}｜{kind}"
+    if item.category == "autocard_chip":
+        rarity = {1: "普通", 2: "稀有", 3: "传说"}.get(
+            require_int(item.payload.get("rarity", 0), field="chip.rarity"), "其他"
+        )
+        return f"{change}｜{item.entity_id}｜{rarity}"
     if item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
         sanctuary_id = require_int(

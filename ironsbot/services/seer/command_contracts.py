@@ -320,8 +320,11 @@ def seer_command_contracts(
             (
                 (
                     "seer.autocard.query",
-                    ("群星牌布布种子", "布布种子群星牌", "群星牌卡98"),
-                    "查询群星牌资料",
+                    (
+                        "群星牌布布种子", "布布种子群星牌",
+                        "群星牌卡98", "战斗芯片复苏之风",
+                    ),
+                    "查询群星牌卡牌、角色和战斗芯片资料",
                     {
                         "show_in_poke": True,
                         "routing_matcher": parsed_command_input_matcher(AUTOCARD_QUERY),

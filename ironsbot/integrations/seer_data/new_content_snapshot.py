@@ -397,6 +397,17 @@ def _autocard_details(
 
 def _fallback_details(item: NewContentItem) -> NewContentItemDetails:
     change = "修改" if item.change_kind == "modified" else "新增"
+    if item.category == "autocard_chip":
+        current = str(item.payload.get("description", "")).strip()
+        previous = str(item.payload.get("previous_description", "")).strip()
+        return NewContentItemDetails(
+            metadata=f"{change}｜ID：{item.entity_id}",
+            description=str(item.payload.get("category", "战斗芯片")),
+            side_title="效果变化" if previous else "芯片效果",
+            side_description=(
+                f"原效果：{previous}\n新效果：{current}" if previous else current
+            ),
+        )
     if item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
         phase = require_int(

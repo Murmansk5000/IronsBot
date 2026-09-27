@@ -34,6 +34,7 @@ _CARD_INTEGER_FIELDS = (
 )
 _JSON_TABLE_QUERIES = {
     "autocard_card": text("SELECT raw_json FROM autocard_card ORDER BY id"),
+    "autocard_chip": text("SELECT raw_json FROM autocard_chip ORDER BY id"),
     "autocard_nature": text("SELECT raw_json FROM autocard_nature ORDER BY id"),
 }
 _ROLE_QUERY = text(
@@ -79,6 +80,12 @@ def load_autocard_dataset(session: Session) -> AutocardDataset:
         raise RuntimeError(_INVALID_DATA_MESSAGE) from error
     if not cards and not roles:
         raise RuntimeError(_EMPTY_DATA_MESSAGE)
+    try:
+        chips = _load_json_rows(session, "autocard_chip")
+        chips_available = True
+    except SQLAlchemyError:
+        chips = ()
+        chips_available = False
     return AutocardDataset(
         cards=cards,
         roles=roles,
@@ -88,6 +95,8 @@ def load_autocard_dataset(session: Session) -> AutocardDataset:
             )
             for row in nature_rows
         },
+        chips=chips,
+        chips_available=chips_available,
     )
 
 

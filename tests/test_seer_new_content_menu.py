@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from ironsbot.services.seer.new_content import (
+    AUTOCARD_NEW_CONTENT_CATEGORIES,
     NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentCategoryState,
@@ -57,6 +58,43 @@ def test_plan_filters_unavailable_and_empty_categories() -> None:
     assert menu.choices[1].action.item == snapshot.items[1]
     with pytest.raises(ValueError, match="not available"):
         focus_new_content_category(layout, "pet")
+
+
+def test_chip_modifications_preview_five_and_join_autocard_menu() -> None:
+    chip_count = 9
+    preview_count = 5
+    assert "autocard_chip" in AUTOCARD_NEW_CONTENT_CATEGORIES
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260924175611",
+        weekly_cycle="2026-09-25",
+        items=tuple(
+            NewContentItem(
+                "autocard_chip", index, f"芯片 {index}", index,
+                {
+                    "rarity": 1,
+                    "description": "新效果",
+                    "previous_description": "旧效果",
+                },
+                "modified",
+            )
+            for index in range(1, chip_count + 1)
+        ),
+        category_states=(
+            NewContentCategoryState(
+                "autocard_chip", comparison_ready=True, reason="ready"
+            ),
+        ),
+    )
+    layout = plan_new_content_menu(snapshot, ("autocard_chip",))
+    assert isinstance(layout, NewContentMenuLayout)
+    assert "autocard_chip" in layout.expanded_categories
+    menu = build_new_content_menu(snapshot, layout)
+    assert len(menu.choices) == preview_count + 1
+    focused = build_new_content_menu(
+        snapshot, focus_new_content_category(layout, "autocard_chip")
+    )
+    assert len(focused.choices) == chip_count
 
 
 def test_explicit_denied_category_returns_notice() -> None:
