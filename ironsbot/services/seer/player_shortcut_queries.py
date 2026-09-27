@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank import RankService
 
 logger = logging.getLogger(__name__)
-LOCAL_SAMPLE_TIMEOUT_SECONDS = 5.0
+LOCAL_SAMPLE_TIMEOUT_SECONDS = 10.0
 _COLLECTION_METRIC_KEYS = frozenset(
     (
         "book_score",

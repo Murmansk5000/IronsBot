@@ -19,6 +19,7 @@ from ironsbot.services.seer.player_service_models import (
     _BackgroundRefresh,
 )
 from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_queries import LOCAL_SAMPLE_TIMEOUT_SECONDS
 from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.rank_constants import (
     BOOK_RANK_KEY,
@@ -40,6 +41,14 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 PLAYER_ID = 712345678
+
+
+def test_sample_budget_and_background_grace() -> None:
+    expected_sample_timeout = 10.0
+    expected_background_timeout = 41.0
+    assert expected_sample_timeout == LOCAL_SAMPLE_TIMEOUT_SECONDS
+    service = _service(enabled=True)
+    assert service._background_refresh_timeout_seconds() == expected_background_timeout
 
 
 @pytest.mark.asyncio
