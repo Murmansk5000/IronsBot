@@ -30,9 +30,12 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutDependencies,
     player_shortcut_semantic_request,
 )
-from ironsbot.services.seer.player_shortcut_queries import fetch_player_shortcut_reply
+from ironsbot.services.seer.player_shortcut_queries import (
+    LOCAL_SAMPLE_TIMEOUT_SECONDS,
+    fetch_player_shortcut_reply,
+)
 
-_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
+_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = LOCAL_SAMPLE_TIMEOUT_SECONDS + 1.0
 _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
 PlayerError = SocketRecvError | NotLoggedInError | DisconnectedError
 

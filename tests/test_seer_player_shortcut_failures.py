@@ -12,6 +12,7 @@ from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
+    PlayerShortcutKind,
 )
 from ironsbot.services.seer.player_shortcut_queries import (
     fetch_player_shortcut_reply,
@@ -138,6 +139,63 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
     assert reply.rank_lookups
     assert all(result.failure == "查询超时" for result in reply.rank_lookups)
     assert not reply.complete
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["collection", "peak", "autocard"])
+async def test_sample_has_its_own_budget_after_rank_deadline(
+    monkeypatch: pytest.MonkeyPatch, kind: PlayerShortcutKind
+) -> None:
+    async def slow_rank(*_args: Any, **_kwargs: Any) -> Any:
+        await asyncio.sleep(0.05)
+        return RankLookupResult(title="榜单", score_name="分")
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_peak_partial",
+        AsyncMock(
+            return_value=UnityPeakFetchResult(
+                UnityPeakInfo(current_z_score=1160, current_z_all=10),
+                frozenset(("standard", "wild", "expert")),
+            )
+        ),
+    )
+    sample = AsyncMock(return_value=LocalRankSummary())
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries._update_selected_metrics",
+        sample,
+    )
+    rank = SimpleNamespace(
+        current_peak_sub_key=lambda: 7,
+        fetch_player_summary=slow_rank,
+        fetch_peak_summary=slow_rank,
+        fetch_master_peak_summary=AsyncMock(
+            return_value=PeakSeasonRankSummary.empty()
+        ),
+        fetch_autocard_summary=slow_rank,
+    )
+    local = SimpleNamespace(config=SimpleNamespace(enabled=True))
+    game = SimpleNamespace(
+        get_user_info=AsyncMock(return_value=SimpleNamespace(nick="tester")),
+        get_more_user_info=AsyncMock(
+            return_value=SimpleNamespace(total_achieve=100, pet_all_num=100)
+        ),
+        send_and_wait=AsyncMock(),
+    )
+    reply = await fetch_player_shortcut_reply(
+        _dependencies(
+            rank,
+            local,
+            detail_timeout_seconds=0.03,
+            rank_timeout_seconds=0.2,
+        ),
+        game,
+        command=PlayerShortcutCommand(kind=kind, player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+
+    sample.assert_awaited_once()
+    assert "样本数据失败" not in reply.text
+    assert any(result.failure == "查询超时" for result in reply.rank_lookups)
 
 
 @pytest.mark.asyncio

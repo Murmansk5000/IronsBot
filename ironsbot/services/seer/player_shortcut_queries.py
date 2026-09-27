@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank import RankService
 
 logger = logging.getLogger(__name__)
+LOCAL_SAMPLE_TIMEOUT_SECONDS = 5.0
 _COLLECTION_METRIC_KEYS = frozenset(
     (
         "book_score",
@@ -235,7 +236,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_extra_error,
-        timeout_seconds=deadline.remaining(timeout_seconds),
+        timeout_seconds=LOCAL_SAMPLE_TIMEOUT_SECONDS,
     )
     render = partial(
         format_collection_info,
@@ -383,7 +384,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_extra_error,
-        timeout_seconds=deadline.remaining(timeout_seconds),
+        timeout_seconds=LOCAL_SAMPLE_TIMEOUT_SECONDS,
     )
     render = partial(
         format_compact_peak_section,
@@ -499,7 +500,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_extra_error,
-        timeout_seconds=deadline.remaining(timeout_seconds),
+        timeout_seconds=LOCAL_SAMPLE_TIMEOUT_SECONDS,
     )
     render = partial(
         format_autocard_rank_info,

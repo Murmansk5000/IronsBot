@@ -56,6 +56,10 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
     config.player.detail_timeout_seconds = 0.3
     config.rank.player_lookup.total_timeout_seconds = 0.28
     config.rank.player_lookup.page_timeout_seconds = 0.04
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.LOCAL_SAMPLE_TIMEOUT_SECONDS",
+        0.05,
+    )
     sample_started = asyncio.Event()
     sample_drained = asyncio.Event()
     pages_drained: list[str] = []
