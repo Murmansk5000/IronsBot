@@ -209,6 +209,7 @@ def test_chip_query_groups_tiers_and_id_selects_one() -> None:
     assert single.entry is not None
     assert "恢复10" in single.entry.text
     assert "恢复5" not in single.entry.text
+    assert service.search("群星牌芯片999").message == "未找到该战斗芯片。"
 
 
 def test_chip_query_on_old_database_requests_update() -> None:

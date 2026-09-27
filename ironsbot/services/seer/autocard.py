@@ -173,17 +173,17 @@ def _search_chips(dataset: AutocardDataset, query: str) -> AutocardSearchResult:
             )
     if not chips:
         return AutocardSearchResult(message="未找到该战斗芯片。")
-    chips = tuple(
-        sorted(chips, key=lambda chip: (
+    ordered_chips = sorted(
+        chips, key=lambda chip: (
             _int_field(chip, "rarity"), _int_field(chip, "id")
         ))
-    )
-    title = str(chips[0].get("name", "战斗芯片"))
-    if len(chips) > 1:
+    first_chip = ordered_chips[0]
+    title = str(first_chip.get("name", "战斗芯片"))
+    if len(ordered_chips) > 1:
         title = re.sub(r"\s*(?:I{1,3}|[ⅠⅡⅢ])$", "", title).strip()
     rarity_names = {1: "普通", 2: "稀有", 3: "传说"}
     lines = [f"【{title}】"]
-    for chip in chips:
+    for chip in ordered_chips:
         rarity = _int_field(chip, "rarity")
         lines.append(
             f"{rarity_names.get(rarity, f'档位 {rarity}')}"
@@ -191,7 +191,7 @@ def _search_chips(dataset: AutocardDataset, query: str) -> AutocardSearchResult:
             f"{str(chip.get('description', '')).strip()}"
         )
     return AutocardSearchResult(entry=AutocardEntry(
-        kind="chip", item_id=_int_field(chips[0], "id"), name=title,
+        kind="chip", item_id=_int_field(first_chip, "id"), name=title,
         text="\n".join(lines), image_key="",
     ))
 
