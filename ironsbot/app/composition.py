@@ -237,7 +237,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     prompt_sessions = common.prompt_sessions
     features = common.features
     promotions = common.promotions
-    outbound = common.outbound
     subscriptions = common.subscriptions
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -292,6 +291,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         admin_notices,
         query_sessions,
         common.private_routes,
+        common.onebot_messenger.verify_history,
     )
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -333,10 +333,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         proactive_delivery,
         subscriptions,
         bot_router,
-        outbound,
+        common.onebot_messenger,
         bilibili.targets,
         lucky_skin_window,
         identity_principals,
+        common.private_routes,
     )
     messaging = messaging_components.messaging
     sendpic = messaging_components.sendpic

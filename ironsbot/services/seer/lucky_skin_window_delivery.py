@@ -8,10 +8,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage
+from ironsbot.core.outbound import (
+    DeliveryFailureKind,
+    DeliveryHistoryStatus,
+    OutboundMessage,
+)
 from ironsbot.core.platform import (
     ActorRef,
     IncomingMessageRef,
+    Platform,
     private_conversation_for_actor,
     reference_digest,
 )
@@ -20,7 +25,8 @@ from ironsbot.services.seer.lucky_skin_window import LUCKY_SKIN_WINDOW_SUBSCRIPT
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from ironsbot.core.platform import ActorPrincipal
+    from ironsbot.core.outbound import SendResult
+    from ironsbot.core.platform import ActorPrincipal, ConversationRef
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.daily_delivery import DailyDeliveryStore
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
@@ -48,6 +54,10 @@ class LuckySkinWindowOutboundSender:
         | None
     ) = None
     admin_notices: AdminNoticeService | None = None
+    verify_history: (
+        Callable[[ConversationRef, SendResult], Awaitable[DeliveryHistoryStatus]] | None
+    ) = None
+    verify_onebot_history: bool = False
 
     async def send_daily_notice(
         self, actor: ActorRef, message: str | LuckySkinWindowResult, *, day: str
@@ -104,6 +114,7 @@ class LuckySkinWindowOutboundSender:
             mentions_bot=False,
         )
         outbound = None
+        receipt: SendResult | None = None
         attempted = False
         delivered = False
         try:
@@ -136,6 +147,10 @@ class LuckySkinWindowOutboundSender:
         finally:
             if not delivered and outbound is not None and outbound.prompt is not None:
                 self.sessions.discard_prompt(context, outbound.prompt.id)
+        if delivered and receipt is not None:
+            await self._verify_daily_history(
+                conversation, receipt, day=day, actor=actor
+            )
         _LOGGER.info(
             "daily lucky delivery completed: day=%s recipient=%s delivered=%s",
             day,
@@ -143,6 +158,36 @@ class LuckySkinWindowOutboundSender:
             delivered,
         )
         return delivered
+
+    async def _verify_daily_history(
+        self,
+        conversation: ConversationRef,
+        receipt: SendResult,
+        *,
+        day: str,
+        actor: ActorRef,
+    ) -> None:
+        if (
+            not self.verify_onebot_history
+            or conversation.platform is not Platform.ONEBOT
+        ):
+            return
+        status = DeliveryHistoryStatus.UNSUPPORTED
+        if self.verify_history is not None:
+            try:
+                status = await self.verify_history(conversation, receipt)
+            except Exception as error:  # noqa: BLE001 - optional observation
+                _LOGGER.warning(
+                    "daily lucky history verification failed: error_type=%s",
+                    type(error).__name__,
+                )
+                status = DeliveryHistoryStatus.ERROR
+        _LOGGER.info(
+            "daily lucky history verification: day=%s recipient=%s status=%s",
+            day,
+            reference_digest(actor.id),
+            status.value,
+        )
 
     async def _render_message(
         self,

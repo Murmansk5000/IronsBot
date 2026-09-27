@@ -11,6 +11,7 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.services.messaging.subscriptions import (
+    CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
     PushSubscriptionRepository,
     ScheduledPushTask,
@@ -43,12 +44,28 @@ def schedule_key(index: int, task: ScheduledPushTask) -> str:
     return raw_id
 
 
-def schedule_label(index: int, task: ScheduledPushTask) -> str:
+def timed_subscription_label(
+    name: str,
+    time: str,
+    *,
+    day_of_week: str | None = None,
+    timezone: str | None = None,
+) -> str:
+    schedule = f"{day_of_week or '每日'} {time}"
+    if timezone and timezone != "Asia/Shanghai":
+        schedule = f"{schedule}，{timezone}"
+    return f"{name}（{schedule}）"
+
+
+def schedule_label(
+    index: int, task: ScheduledPushTask, *, effective_time: str | None = None
+) -> str:
     name = _schedule_display_name(index, task)
-    time_label = task.time
-    if task.day_of_week:
-        time_label = f"{task.day_of_week} {time_label}"
-    return f"{name}（{time_label}）"
+    return timed_subscription_label(
+        name,
+        effective_time or task.time,
+        day_of_week=task.day_of_week,
+    )
 
 
 def _schedule_display_name(index: int, task: ScheduledPushTask) -> str:
@@ -117,7 +134,12 @@ def build_schedule_subscription_options(
         key = schedule_key(index, task)
         is_unsubscribed = key in unsubscribed
 
-        label = schedule_label(index, task)
+        effective_time = store.get_time_preference(
+            conversation,
+            key,
+            CRON_TIME_PREFERENCE,
+        )
+        label = schedule_label(index, task, effective_time=effective_time)
         options.append(
             PushSubscriptionOption(
                 key=key,
