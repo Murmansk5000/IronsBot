@@ -340,6 +340,63 @@ def test_push_subscription_menu_prompt_marks_current_state(tmp_path: Path) -> No
     assert "输入序号切换" in prompt
 
 
+def test_td_displays_effective_schedule_and_activity_times(tmp_path: Path) -> None:
+    conversation = _private(1001)
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        schedules=[
+            MessageScheduledAction(
+                id="web_daily",
+                name="网页活动提醒",
+                feature="web_activity_push",
+                messages=["提醒"],
+                time="19:00",
+            )
+        ],
+        user_policy={
+            "1001": ["web_activity_push", "seer_activity_push", "admin_notice"]
+        },
+        store=store,
+    )
+    messaging = replace(messaging, _activity=ActivityConfig(lead_hours=[11, 1]))
+
+    def labels() -> dict[str, str]:
+        return {
+            option.key: option.label
+            for option in messaging.subscription_options(conversation)
+        }
+
+    assert labels()["web_daily"] == "网页活动提醒（每日 19:00:00）"
+    assert labels()["seer_activity_push"] == "活动结束提醒（截止前 11、1 小时）"
+    assert labels()["startup_notice"] == "机器人启动通知"
+
+    time_options = {
+        option.key: option for option in messaging.push_time_options(conversation)
+    }
+    messaging.update_push_time(
+        conversation=conversation, option=time_options["web_daily"], value="20:15:30"
+    )
+    messaging.update_push_time(
+        conversation=conversation,
+        option=time_options["seer_activity_push"],
+        value="24,3",
+    )
+    assert labels()["web_daily"] == "网页活动提醒（每日 20:15:30）"
+    assert labels()["seer_activity_push"] == "活动结束提醒（截止前 24、3 小时）"
+
+    messaging.update_push_time(
+        conversation=conversation, option=time_options["web_daily"], value=None
+    )
+    messaging.update_push_time(
+        conversation=conversation,
+        option=time_options["seer_activity_push"],
+        value=None,
+    )
+    assert labels()["web_daily"] == "网页活动提醒（每日 19:00:00）"
+    assert labels()["seer_activity_push"] == "活动结束提醒（截止前 11、1 小时）"
+
+
 def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
     options = [
         PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -1163,6 +1220,9 @@ def test_target_group_follows_verified_official_group_link(
     assert [option.key for option in messaging.subscription_options(official)] == [
         task.id
     ]
+    assert messaging.subscription_options(official)[0].label.endswith(
+        "（每日 12:00:00）"
+    )
 
 
 def test_missing_private_renderer_never_sends_template(
