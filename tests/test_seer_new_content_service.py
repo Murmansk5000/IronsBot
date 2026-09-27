@@ -13,17 +13,18 @@ from ironsbot.integrations.seer_data.new_content_repository import (
 from ironsbot.services.seer.new_content import (
     NEW_CONTENT_CATEGORIES,
     NewContentCategory,
+    NewContentIndex,
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentService,
     NewContentSnapshot,
     NewContentSnapshotChangedError,
     NewContentWeekExpiredError,
-    current_new_content_weekly_cycle,
     format_new_content_category_count,
     format_new_content_item_description,
     new_content_category_preview_items,
 )
+from ironsbot.services.seer.new_content_menu import plan_new_content_menu
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
@@ -37,6 +38,34 @@ class FakeData:
     def query(self, operation: object) -> Iterator[object]:
         with Session(self._engine) as session:
             yield operation(session)  # type: ignore[operator]
+
+
+def test_official_preview_window_controls_content_visibility() -> None:
+    class Repository:
+        def load(self) -> NewContentIndex:
+            return NewContentIndex(
+                config_version="20260925185121",
+                weekly_cycle="2026-09-24T10:00:00+08:00",
+                baseline_established=True,
+                items=(),
+                category_states=(),
+                cycle_start="2026-09-24T10:00:00+08:00",
+                cycle_end="2026-10-02T00:00:00+08:00",
+                cycle_status="syncing",
+            )
+
+    before_end = NewContentService(
+        Repository(), now=lambda: datetime(2026, 10, 1, 15, tzinfo=timezone.utc)
+    ).snapshot()
+    assert before_end.is_current_week
+    assert plan_new_content_menu(before_end, ("pet",)) == (
+        "新档期数据正在同步，稍后再查新增内容。"
+    )
+    after_end = NewContentService(
+        Repository(), now=lambda: datetime(2026, 10, 1, 16, tzinfo=timezone.utc)
+    ).snapshot()
+    assert not after_end.is_current_week
+    assert after_end.cycle_status == "expired"
 
 
 def _service(
@@ -78,6 +107,15 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
         )
         session.connection().exec_driver_sql(
             "INSERT INTO new_content_release VALUES (1, '20260731', '2026-07-31', 1)"
+        )
+        session.connection().exec_driver_sql(
+            "CREATE TABLE seerapi_metadata (key TEXT PRIMARY KEY, value TEXT)"
+        )
+        session.connection().exec_driver_sql(
+            "INSERT INTO seerapi_metadata VALUES "
+            "('preview_cycle_start', '2026-07-31T00:00:00+08:00'), "
+            "('preview_cycle_end', '2026-08-07T00:00:00+08:00'), "
+            "('new_content_cycle_status', 'ready')"
         )
         session.connection().exec_driver_sql(
             """
@@ -151,13 +189,23 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
         service.require_snapshot(expired)
 
 
-def test_content_week_starts_at_friday_midnight_in_shanghai() -> None:
-    assert current_new_content_weekly_cycle(
-        datetime(2026, 9, 3, 15, 59, tzinfo=timezone.utc)
-    ) == "2026-08-28"
-    assert current_new_content_weekly_cycle(
-        datetime(2026, 9, 3, 16, 0, tzinfo=timezone.utc)
-    ) == "2026-09-04"
+def test_missing_official_cycle_never_exposes_legacy_weekly_items() -> None:
+    class LegacyRepository:
+        def load(self) -> NewContentIndex:
+            return NewContentIndex(
+                config_version="20260925",
+                weekly_cycle="2026-09-25",
+                baseline_established=True,
+                items=(),
+                category_states=(),
+            )
+
+    snapshot = NewContentService(LegacyRepository()).snapshot()
+    assert not snapshot.is_current_week
+    assert snapshot.cycle_status == "cycle_unavailable"
+    assert plan_new_content_menu(snapshot, ("pet",)) == (
+        "当前数据版本尚未提供官方预告档期，请更新 SeerAPI 数据。"
+    )
 
 
 def test_new_content_order_places_peak_pools_before_skins() -> None:
@@ -286,12 +334,6 @@ def test_root_preview_keeps_additions_and_skips_new_pet_skills() -> None:
         existing_pet_skill,
     )
     assert new_content_category_preview_items(snapshot, "skill", 0) == ()
-
-
-def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
-    from ironsbot.services.seer.new_content import _current_content_date
-
-    assert _current_content_date("20260730210447", "2026-07-24") == "2026-07-31"
 
 
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:

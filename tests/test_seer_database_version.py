@@ -685,6 +685,12 @@ def test_retained_content_index_is_checked_against_bound_publication(
             "INSERT INTO new_content_release VALUES (1, '20260912', '2026-09-11', 1)"
         )
         connection.exec_driver_sql(
+            "INSERT INTO seerapi_metadata (key, value) VALUES "
+            "('preview_cycle_start', '2026-09-11T10:00:00+08:00'), "
+            "('preview_cycle_end', '2026-09-18T00:00:00+08:00'), "
+            "('new_content_cycle_status', 'ready')"
+        )
+        connection.exec_driver_sql(
             "INSERT INTO new_content_item VALUES ('skill', 1, 'old', 1, '{}', 'added')"
         )
     databases = DatabaseManager()

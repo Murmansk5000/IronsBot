@@ -49,6 +49,24 @@ def load_new_content_index(session: Session) -> NewContentIndex:
         )
         if release is None:
             raise NewContentIndexRepositoryError
+        has_metadata = connection.exec_driver_sql(
+            """SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'seerapi_metadata'"""
+        ).first()
+        metadata = (
+            {
+                str(key): str(value)
+                for key, value in connection.exec_driver_sql(
+                    """
+                    SELECT key, value FROM seerapi_metadata
+                    WHERE key IN ('preview_cycle_start', 'preview_cycle_end',
+                                  'new_content_cycle_status')
+                    """
+                ).all()
+            }
+            if has_metadata
+            else {}
+        )
         rows = (
             connection.exec_driver_sql(
                 """
@@ -103,6 +121,9 @@ def load_new_content_index(session: Session) -> NewContentIndex:
                 )
                 for row in state_rows
             ),
+            cycle_start=metadata.get("preview_cycle_start", ""),
+            cycle_end=metadata.get("preview_cycle_end", ""),
+            cycle_status=metadata.get("new_content_cycle_status", ""),
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise NewContentIndexRepositoryError from error

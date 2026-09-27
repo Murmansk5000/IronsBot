@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Protocol
-from zoneinfo import ZoneInfo
 
 from ironsbot.core.value_coercion import require_int
 
@@ -82,8 +81,6 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "autocard_chip": "群星牌战斗芯片",
     "autocard_sanctuary_effect": "新增群星牌圣域",
 }
-_CONFIG_VERSION_DATE_LENGTH = 8
-_CONFIG_VERSION_TIMESTAMP_LENGTH = 14
 DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 
 
@@ -115,6 +112,9 @@ class NewContentIndex:
     baseline_established: bool
     items: tuple[NewContentIndexItem, ...]
     category_states: tuple[NewContentIndexCategoryState, ...]
+    cycle_start: str = ""
+    cycle_end: str = ""
+    cycle_status: str = ""
 
 
 class NewContentRepository(Protocol):
@@ -161,6 +161,9 @@ class NewContentSnapshot:
     category_states: tuple[NewContentCategoryState, ...] = ()
     source_weekly_cycle: str = ""
     is_current_week: bool = True
+    cycle_start: str = ""
+    cycle_end: str = ""
+    cycle_status: str = ""
 
     def items_for(self, category: NewContentCategory) -> tuple[NewContentItem, ...]:
         return tuple(item for item in self.items if item.category == category)
@@ -290,16 +293,32 @@ class NewContentService:
         try:
             index = self._repository.load()
             snapshot = _snapshot_from_index(index)
-            if index.weekly_cycle == current_new_content_weekly_cycle(self._now()):
+            if index.cycle_start and index.cycle_end:
+                start, end = _official_cycle_bounds(index)
+                now = self._now()
+                if now.tzinfo is None:
+                    now = now.replace(tzinfo=timezone.utc)
+                if now < start or now >= end:
+                    return replace(
+                        snapshot,
+                        is_current_week=False,
+                        cycle_status="scheduled" if now < start else "expired",
+                        items=(),
+                        category_states=(),
+                    )
+                if index.cycle_status in {"scheduled", "expired"}:
+                    return replace(snapshot, cycle_status="syncing", items=())
                 return snapshot
             return replace(
                 snapshot,
                 is_current_week=False,
+                cycle_status="cycle_unavailable",
                 items=(),
                 category_states=(),
             )
         except (NewContentIndexRepositoryError, TypeError, ValueError) as error:
             raise NewContentIndexUnavailableError from error
+
 
     def require_snapshot(self, expected: NewContentSnapshot) -> None:
         """Validate retained menu facts against an already-bound data reader."""
@@ -309,6 +328,14 @@ class NewContentService:
             raise NewContentWeekExpiredError
         if current != expected:
             raise NewContentSnapshotChangedError
+
+
+def _official_cycle_bounds(index: NewContentIndex) -> tuple[datetime, datetime]:
+    start = datetime.fromisoformat(index.cycle_start)
+    end = datetime.fromisoformat(index.cycle_end)
+    if start.tzinfo is None or end.tzinfo is None or start >= end:
+        raise NewContentIndexUnavailableError
+    return start, end
 
 
 def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: PLR0911
@@ -413,60 +440,16 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
     return NewContentSnapshot(
         baseline_established=index.baseline_established,
         config_version=index.config_version,
-        weekly_cycle=_current_content_date(
-            index.config_version,
-            index.weekly_cycle,
+        weekly_cycle=(
+            index.cycle_start[:10] if index.cycle_start else index.weekly_cycle
         ),
         items=tuple(items),
         category_states=tuple(category_states),
         source_weekly_cycle=index.weekly_cycle,
+        cycle_start=index.cycle_start,
+        cycle_end=index.cycle_end,
+        cycle_status=index.cycle_status,
     )
-
-
-def current_new_content_weekly_cycle(now: datetime | None = None) -> str:
-    """Return the Friday-starting content week in Shanghai time."""
-
-    shanghai = ZoneInfo("Asia/Shanghai")
-    if now is None:
-        current = datetime.now(shanghai)
-    elif now.tzinfo is None:
-        current = now.replace(tzinfo=shanghai)
-    else:
-        current = now.astimezone(shanghai)
-    current_date = current.date()
-    return (
-        current_date - timedelta(days=(current_date.weekday() - 4) % 7)
-    ).isoformat()
-
-
-def _current_content_date(config_version: str, fallback: str) -> str:
-    """Show the current release date, not the older comparison baseline date."""
-
-    try:
-        if (
-            len(config_version) == _CONFIG_VERSION_TIMESTAMP_LENGTH
-            and config_version.isdigit()
-        ):
-            return (
-                datetime.strptime(config_version, "%Y%m%d%H%M%S")
-                .replace(tzinfo=timezone.utc)
-                .astimezone(ZoneInfo("Asia/Shanghai"))
-                .date()
-                .isoformat()
-            )
-        if (
-            len(config_version) == _CONFIG_VERSION_DATE_LENGTH
-            and config_version.isdigit()
-        ):
-            return (
-                datetime.strptime(config_version, "%Y%m%d")
-                .replace(tzinfo=timezone.utc)
-                .date()
-                .isoformat()
-            )
-    except ValueError:
-        pass
-    return fallback
 
 
 def new_content_unavailable_message() -> str:
@@ -474,6 +457,12 @@ def new_content_unavailable_message() -> str:
 
 
 def new_content_stale_week_message(snapshot: NewContentSnapshot) -> str:
+    if snapshot.cycle_status == "cycle_unavailable":
+        return "当前数据版本尚未提供官方预告档期，请更新 SeerAPI 数据。"
+    if snapshot.cycle_status == "expired":
+        return "本档新增内容展示已结束，等待下一档预告。"
+    if snapshot.cycle_status == "scheduled":
+        return "下一档预告尚未开始，新增内容将在档期开始后更新。"
     return (
         f"当前数据版本仍为 {snapshot.source_weekly_cycle} 周期，"
         "本周暂未获得可验证的新增或修改内容。"
