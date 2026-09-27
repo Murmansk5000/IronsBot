@@ -318,6 +318,13 @@ class DeliveryFailureKind(str, Enum):
     TRANSPORT_UNAVAILABLE = "transport_unavailable"
 
 
+class DeliveryHistoryStatus(str, Enum):
+    CONFIRMED = "confirmed"
+    MISSING = "missing"
+    UNSUPPORTED = "unsupported"
+    ERROR = "error"
+
+
 @dataclass(frozen=True, slots=True)
 class ExecutionIdentity:
     platform: Platform

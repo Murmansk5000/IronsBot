@@ -111,3 +111,40 @@ def test_private_route_never_falls_back_to_a_different_official_bot() -> None:
         "public-openid",
         account_id="public-app",
     )
+
+
+def test_selected_private_endpoint_is_shared_by_linked_bots() -> None:
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"local-app", "public-app"}),
+        default_account="local-app",
+    )
+    source = ConversationRef(Platform.ONEBOT, "private", "123456")
+    local = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "local-user", account_id="local-app"
+    )
+    public = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "public-user", account_id="public-app"
+    )
+    routes.register(
+        CrossPlatformIdentityLink(
+            source.id, OfficialIdentity("local-app", "user", local.id), 1
+        )
+    )
+    routes.register(
+        CrossPlatformIdentityLink(
+            source.id, OfficialIdentity("public-app", "user", public.id), 2
+        )
+    )
+
+    assert all(routes.selected_for(item) == local for item in (source, local, public))
+    routes.preferred_accounts[source.id] = "public-app"
+    assert all(routes.selected_for(item) == public for item in (source, local, public))
+    routes.unregister(
+        CrossPlatformIdentityLink(
+            source.id, OfficialIdentity("public-app", "user", public.id), 2
+        )
+    )
+    assert routes.selected_for(source) is None
+    assert routes.selected_for(local) is None
+    assert routes.selected_for(public) == public
