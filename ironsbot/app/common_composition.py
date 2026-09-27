@@ -198,6 +198,18 @@ def build_common_components(
             },
         )
     outbound_messenger = PlatformOutboundMessenger(platform_messengers)
+    accounts = settings.bot.qq_official.enabled_accounts
+    default = accounts.get(settings.bot.qq_official.resolved_default_account or "")
+    private_routes = PrivateConversationRoutes(
+        onebot_enabled=platform_selection.onebot_outbound_enabled,
+        official_accounts=frozenset(account.app_id for account in accounts.values()),
+        default_account=None if default is None else default.app_id,
+        preferred_accounts={
+            str(settings.identities.users[user].qq): accounts[alias].app_id
+            for user, alias in settings.bot.qq_official.private_routes.items()
+            if settings.identities.users[user].qq is not None
+        },
+    )
     proactive_delivery = ProactiveMessageDelivery(
         outbound_messenger,
         features,
@@ -216,20 +228,9 @@ def build_common_components(
                 settings.messaging.proactive_delivery.retry_delay_seconds
             ),
         ),
+        private_routes=private_routes,
     )
     install_outbound_rate_limit_hooks(outbound)
-    accounts = settings.bot.qq_official.enabled_accounts
-    default = accounts.get(settings.bot.qq_official.resolved_default_account or "")
-    private_routes = PrivateConversationRoutes(
-        onebot_enabled=platform_selection.onebot_outbound_enabled,
-        official_accounts=frozenset(account.app_id for account in accounts.values()),
-        default_account=None if default is None else default.app_id,
-        preferred_accounts={
-            str(settings.identities.users[user].qq): accounts[alias].app_id
-            for user, alias in settings.bot.qq_official.private_routes.items()
-            if settings.identities.users[user].qq is not None
-        },
-    )
     admin_notices = AdminNoticeService(
         features,
         OutboundAdminNoticeSender(proactive_delivery, private_routes),

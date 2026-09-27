@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
     from ironsbot.services.messaging.subscriptions import PushDeliverySubscriptions
+    from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class ProactiveMessageDelivery:
     private_failure_notice: (
         Callable[[str, ProactiveDeliverySummary], Awaitable[None]] | None
     ) = None
+    private_routes: PrivateConversationRoutes | None = None
 
     async def send(  # noqa: PLR0913 - explicit active delivery policy controls
         self,
@@ -121,14 +123,28 @@ class ProactiveMessageDelivery:
     ) -> ProactiveDeliverySummary:
         """Deliver per-conversation messages without exposing adapter targets."""
 
-        selected = _unique_requests(requests)
+        selected, unavailable = self._select_requests(requests)
         if subscription_key:
             selected = self._filter_subscribed(selected, subscription_key)
         if not selected:
             return ProactiveDeliverySummary((), ())
 
-        pending = list(selected)
-        state = _DeliveryState()
+        blocked = unavailable.intersection(request.conversation for request in selected)
+        pending = [
+            request for request in selected if request.conversation not in blocked
+        ]
+        state = _DeliveryState(
+            failed=set(blocked),
+            results={
+                conversation: SendResult(
+                    delivered=False,
+                    error_code="private_route_unavailable",
+                    attempted=False,
+                    failure_kind=DeliveryFailureKind.PERMANENT,
+                )
+                for conversation in blocked
+            },
+        )
         attempts = max(1, max_attempts or self.policy.max_attempts)
         for attempt in range(1, attempts + 1):
             if not pending:
@@ -187,6 +203,29 @@ class ProactiveMessageDelivery:
             )
         await self._notify_private_failures(action_name, summary)
         return summary
+
+    def _select_requests(
+        self, requests: Iterable[ProactiveDeliveryRequest]
+    ) -> tuple[tuple[ProactiveDeliveryRequest, ...], set[ConversationRef]]:
+        routes = self.private_routes
+        if routes is None:
+            return _unique_requests(requests), set()
+        selected: dict[ConversationRef, ProactiveDeliveryRequest] = {}
+        unavailable: set[ConversationRef] = set()
+        for request in requests:
+            target = routes.selected_for(request.conversation)
+            if target is None:
+                target = request.conversation
+                unavailable.add(target)
+                _LOGGER.warning(
+                    "private push route unavailable: platform=%s recipient=%s",
+                    target.platform.value,
+                    reference_digest(target.id),
+                )
+            selected.setdefault(
+                target, ProactiveDeliveryRequest(target, request.message)
+            )
+        return tuple(selected.values()), unavailable
 
     async def _notify_private_failures(
         self, action_name: str, summary: ProactiveDeliverySummary

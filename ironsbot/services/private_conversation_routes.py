@@ -69,3 +69,22 @@ class PrivateConversationRoutes:
                 ),
             )
         return source
+
+    def selected_for(self, conversation: ConversationRef) -> ConversationRef | None:
+        """Return the sole permitted private push endpoint for a known recipient."""
+        if conversation.kind != "private":
+            return conversation
+        if conversation.platform is Platform.ONEBOT:
+            selected = self.resolve(conversation)
+            if selected.platform is Platform.ONEBOT and not self.onebot_enabled:
+                return None
+            return selected
+        if conversation.platform is Platform.QQ_OFFICIAL:
+            qq_id = self._links.get(conversation)
+            if qq_id is not None:
+                return self.selected_for(
+                    ConversationRef(Platform.ONEBOT, "private", qq_id)
+                )
+            if conversation.account_id in self.official_accounts:
+                return conversation
+        return None

@@ -36,7 +36,10 @@ from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingSto
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
 from ironsbot.services.identity.player_accounts import build_player_account_registry
-from ironsbot.services.identity_link_store import OfficialIdentity
+from ironsbot.services.identity_link_store import (
+    CrossPlatformIdentityLink,
+    OfficialIdentity,
+)
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
@@ -44,6 +47,7 @@ from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
@@ -723,6 +727,44 @@ def test_official_private_subscription_uses_verified_qq_identity(
     assert options.subscription_options(official)[0].label == (
         "幸运橱窗提醒（每日 00:01:05）"
     )
+
+
+def test_lucky_subscription_only_appears_on_selected_bot(tmp_path: Path) -> None:
+    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
+    principals = IdentityPrincipalService()
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"local-app", "public-app"}),
+        default_account="local-app",
+    )
+    local = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "local-user", account_id="local-app"
+    )
+    public = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "public-user", account_id="public-app"
+    )
+    for endpoint in (local, public):
+        link = CrossPlatformIdentityLink(
+            "1001",
+            OfficialIdentity(endpoint.account_id or "", "user", endpoint.id),
+            1,
+        )
+        principals.register_official_link(
+            onebot_qq_id=link.onebot_qq_id, official=link.official
+        )
+        routes.register(link)
+    options = OneBotLuckySkinWindowSubscriptionOptions(
+        service,
+        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+        principals,
+        routes,
+    )
+
+    assert len(options.subscription_options(local)) == 1
+    assert options.subscription_options(public) == []
+    routes.preferred_accounts["1001"] = "public-app"
+    assert options.subscription_options(local) == []
+    assert len(options.subscription_options(public)) == 1
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])

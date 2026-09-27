@@ -341,6 +341,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         bilibili.targets,
         lucky_skin_window,
         identity_principals,
+        common.private_routes,
     )
     messaging = messaging_components.messaging
     sendpic = messaging_components.sendpic

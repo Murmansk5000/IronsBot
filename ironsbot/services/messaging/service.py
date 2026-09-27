@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.messaging.targets import MessageScheduleTargets
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
     from .push_time import PushTimeOption
 
@@ -99,6 +100,7 @@ class MessagingService:
     schedule_renderers: ScheduleRendererRegistry = field(
         default_factory=ScheduleRendererRegistry
     )
+    _private_routes: PrivateConversationRoutes | None = None
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -211,6 +213,8 @@ class MessagingService:
         self,
         conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
+        if not self._is_selected_private_conversation(conversation):
+            return []
         extra_options = [
             option
             for provider in self._extra_push_options
@@ -303,6 +307,8 @@ class MessagingService:
     ) -> list[PushTimeOption]:
         from .push_time import build_push_time_options
 
+        if not self._is_selected_private_conversation(conversation):
+            return []
         return build_push_time_options(
             conversation,
             activity=self._activity,
@@ -377,14 +383,28 @@ class MessagingService:
                 for feature in feature_keys
             }
         if conversation_kind == "private":
+            routes = self._private_routes
             return {
                 feature: {
-                    private_conversation_for_actor(actor)
+                    target
                     for actor in self._features.private_actors_for_feature(feature)
+                    if (
+                        target := (
+                            routes.selected_for(private_conversation_for_actor(actor))
+                            if routes is not None
+                            else private_conversation_for_actor(actor)
+                        )
+                    )
+                    is not None
                 }
                 for feature in feature_keys
             }
         return {feature: set() for feature in feature_keys}
+
+    def _is_selected_private_conversation(self, conversation: ConversationRef) -> bool:
+        if conversation.kind != "private" or self._private_routes is None:
+            return True
+        return self._private_routes.selected_for(conversation) == conversation
 
     def _builtin_subscription_options(
         self,
@@ -455,16 +475,24 @@ class MessagingService:
             set[PushTimePreferenceIdentity],
         ] = {}
         for conversation in self._store.preference_conversations():
+            selected = (
+                self._private_routes.selected_for(conversation)
+                if conversation.kind == "private" and self._private_routes is not None
+                else conversation
+            )
+            if selected is None:
+                continue
             valid_unsubscriptions[conversation] = {
-                option.key for option in self.subscription_options(conversation)
+                option.key for option in self.subscription_options(selected)
             }
             valid_times[conversation] = {
                 (option.key, option.preference_type)
-                for option in self.push_time_options(conversation)
+                for option in self.push_time_options(selected)
             }
         return self._store.prune_invalid_preferences(
             valid_unsubscription_keys=valid_unsubscriptions,
             valid_time_preferences=valid_times,
+            preserve_unlisted_private=self._private_routes is not None,
         )
 
 

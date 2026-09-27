@@ -18,9 +18,13 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.integrations.storage.daily_delivery import SqliteDailyDeliveryStore
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.activity.delivery import ActivityReminderDelivery
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
-from ironsbot.services.identity_link_store import OfficialIdentity
+from ironsbot.services.identity_link_store import (
+    CrossPlatformIdentityLink,
+    OfficialIdentity,
+)
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import (
@@ -146,6 +150,20 @@ class FakeMessenger:
 
 
 @dataclass
+class FakeOfficialMessenger(FakeMessenger):
+    def capabilities_for(self, conversation: ConversationRef) -> DeliveryCapabilities:
+        supported = conversation.kind == "private"
+        return DeliveryCapabilities(
+            can_reply_to_event=supported,
+            can_send_proactively=supported,
+            can_mention_members=False,
+            supports_group_context=False,
+            supports_private_context=supported,
+            supports_images=supported,
+        )
+
+
+@dataclass
 class _ConcurrentMessenger(FakeMessenger):
     active: int = 0
     max_active: int = 0
@@ -182,6 +200,7 @@ def _delivery(
     subscriptions: FakeSubscriptions | None = None,
     messenger: FakeMessenger | None = None,
     policy: ProactiveDeliveryPolicy | None = None,
+    private_routes: PrivateConversationRoutes | None = None,
 ) -> tuple[ProactiveMessageDelivery, FakeMessenger, FakeSubscriptions]:
     resolved_features = features or FakeFeatures()
     resolved_subscriptions = subscriptions or FakeSubscriptions()
@@ -203,6 +222,7 @@ def _delivery(
             resolved_subscriptions,  # type: ignore[arg-type]
             PushUnsubscribeConfig(hint="私聊提示", group_hint="群聊提示"),
             policy or ProactiveDeliveryPolicy(retry_delay_seconds=0),
+            private_routes=private_routes,
         ),
         resolved_messenger,
         resolved_subscriptions,
@@ -211,6 +231,170 @@ def _delivery(
 
 def _text(message: OutboundMessage) -> str:
     return "".join(part.text for part in message.parts if isinstance(part, TextPart))
+
+
+@pytest.mark.asyncio
+async def test_private_push_uses_one_selected_bot_and_no_cross_bot_fallback() -> None:
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"local-app", "public-app"}),
+        default_account="local-app",
+    )
+    local = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "local-user", account_id="local-app"
+    )
+    public = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "public-user", account_id="public-app"
+    )
+    for endpoint in (local, public):
+        routes.register(
+            CrossPlatformIdentityLink(
+                PRIVATE.id,
+                OfficialIdentity(endpoint.account_id or "", "user", endpoint.id),
+                1,
+            )
+        )
+    delivery, messenger, _ = _delivery(
+        messenger=FakeOfficialMessenger(), private_routes=routes
+    )
+    message = OutboundMessage.from_text("notice")
+
+    first = await delivery.send(
+        message,
+        (PRIVATE, public, local),
+        action_name="private push",
+        interval_seconds=0,
+        subscription_key="daily",
+    )
+    assert first.succeeded == (local,)
+    assert [target for target, _message in messenger.calls] == [local]
+
+    routes.preferred_accounts[PRIVATE.id] = "public-app"
+    second = await delivery.send(
+        message,
+        (PRIVATE, local),
+        action_name="private push",
+        interval_seconds=0,
+    )
+    assert second.succeeded == (public,)
+    assert [target for target, _message in messenger.calls] == [local, public]
+
+    routes.unregister(
+        CrossPlatformIdentityLink(
+            PRIVATE.id, OfficialIdentity("public-app", "user", public.id), 1
+        )
+    )
+    missing = await delivery.send(
+        message,
+        (PRIVATE,),
+        action_name="private push",
+        interval_seconds=0,
+    )
+    assert missing.failed == (PRIVATE,)
+    assert dict(missing.results)[PRIVATE].attempted is False
+    assert [target for target, _message in messenger.calls] == [local, public]
+
+
+@pytest.mark.asyncio
+async def test_activity_and_scheduled_private_push_share_selected_bot() -> None:
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"local-app"}),
+        default_account="local-app",
+    )
+    target = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "local-user", account_id="local-app"
+    )
+    routes.register(
+        CrossPlatformIdentityLink(
+            ACTOR.id, OfficialIdentity("local-app", "user", target.id), 1
+        )
+    )
+    delivery, messenger, _ = _delivery(
+        messenger=FakeOfficialMessenger(), private_routes=routes
+    )
+    assert await ActivityReminderOutboundSender(delivery).send(
+        ActivityReminderDelivery(
+            status="send",
+            message=OutboundMessage.from_text("activity"),
+            private_actors=(ACTOR,),
+            action_name="activity reminder",
+        )
+    )
+    await ScheduledMessageOutboundSender(delivery).send(
+        ScheduledMessageDelivery(
+            messages=("schedule",),
+            private_conversations=(PRIVATE,),
+            group_conversations=(),
+            group_mentions=(),
+            action_name="scheduled reminder",
+            subscription_key="daily",
+        )
+    )
+    assert [destination for destination, _message in messenger.calls] == [
+        target,
+        target,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_private_unsubscribe_survives_selected_bot_change(tmp_path: Path) -> None:
+    principals = IdentityPrincipalService()
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        official_accounts=frozenset({"local-app", "public-app"}),
+        default_account="local-app",
+    )
+    local = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "local-user", account_id="local-app"
+    )
+    public = ConversationRef(
+        Platform.QQ_OFFICIAL, "private", "public-user", account_id="public-app"
+    )
+    for endpoint in (local, public):
+        link = CrossPlatformIdentityLink(
+            ACTOR.id,
+            OfficialIdentity(endpoint.account_id or "", "user", endpoint.id),
+            1,
+        )
+        principals.register_private_link(link)
+        routes.register(link)
+    subscriptions = PushUnsubscribeStore(
+        tmp_path / "preferences.sqlite",
+        principal_for=principals.conversation_principal,
+    )
+    messenger = FakeOfficialMessenger()
+    delivery = ProactiveMessageDelivery(
+        messenger,  # type: ignore[arg-type]
+        FakeFeatures(),  # type: ignore[arg-type]
+        PromotionCatalog({}),
+        subscriptions,
+        PushUnsubscribeConfig(hint="私聊提示", group_hint="群聊提示"),
+        ProactiveDeliveryPolicy(retry_delay_seconds=0),
+        private_routes=routes,
+    )
+    subscriptions.unsubscribe(local, "daily", "text_push")
+    routes.preferred_accounts[ACTOR.id] = "public-app"
+
+    blocked = await delivery.send(
+        OutboundMessage.from_text("notice"),
+        (PRIVATE,),
+        action_name="daily",
+        subscription_key="daily",
+    )
+    assert not blocked.succeeded and not blocked.failed
+    assert messenger.calls == []
+
+    subscriptions.restore(public, "daily")
+    allowed = await delivery.send(
+        OutboundMessage.from_text("notice"),
+        (PRIVATE,),
+        action_name="daily",
+        subscription_key="daily",
+        interval_seconds=0,
+    )
+    assert allowed.succeeded == (public,)
+    assert [target for target, _message in messenger.calls] == [public]
 
 
 @pytest.mark.asyncio
