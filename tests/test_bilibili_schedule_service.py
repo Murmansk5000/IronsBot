@@ -78,6 +78,21 @@ def test_mark_auto_check_updates_state() -> None:
     assert state.last_checked_at == now
 
 
+def test_default_boost_checks_each_half_hour_through_2000() -> None:
+    polling = BiliPollingConfig()
+    entries = boost_schedule_entries(polling)
+
+    assert len(entries) == 21 * 4
+    assert not boost_slots_at(polling, _at(9, 30, 1))
+    assert boost_slots_at(polling, _at(10, 0, 1))
+    assert boost_slots_at(polling, _at(10, 30, 2))
+    assert boost_slots_at(polling, _at(20, 0, 10))
+    assert not boost_slots_at(polling, _at(20, 30, 1))
+    assert not boost_slots_at(polling, _at(10, 0, 0))
+    assert not boost_slots_at(polling, _at(10, 0, 15))
+    assert not boost_schedule_entries(BiliPollingConfig(boost_windows=[]))
+
+
 def test_boost_slots_follow_offset_and_skip_completed_slot() -> None:
     polling = BiliPollingConfig(
         boost_windows=[

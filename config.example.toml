@@ -610,12 +610,10 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # Example: 5
 check_second = 5
 
-# Default: []
-# EN: Optional short polling bursts around recurring release times. A burst ends
-#     early after a newly published dynamic is found.
-# ZH: 可选的定时发布加密轮询窗口；发现新动态后会提前结束当前窗口。
-# Example: [{ start = "10:00:00", end = "11:00:00", interval_minutes = 60, offset_seconds = [0, 5, 10, 15] }]
-boost_windows = []
+# EN: Check every half-hour from 10:00 through 20:00 at seconds 1, 2, 5 and 10.
+#     The end boundary is exclusive; set [] to disable release-time checks.
+# ZH: 10:00 至 20:00（含）每半小时在第 1、2、5、10 秒检查；20:30 不检查，设为 [] 可关闭。
+boost_windows = [{ start = "10:00:00", end = "20:30:00", interval_minutes = 30, offset_seconds = [1, 2, 5, 10] }]
 
 [bilibili.push]
 # EN: Combine eligible static images before the first send attempt.
