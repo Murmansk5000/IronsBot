@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass, replace
@@ -62,7 +63,7 @@ BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 CATEGORY_SUBSCRIPTION_HINT = "发送 TD 可按标签管理动态订阅。"
 CATEGORY_SUBSCRIPTION_HINT_KEY = "bilibili_category_subscription_hint"
-DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
+DYNAMIC_PUSH_INTERVAL_SECONDS = 0.0
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 
@@ -88,7 +89,7 @@ class BilibiliDynamicOutboundSender:
     combine_images: bool = True
     ledger: DynamicDeliveryLedger | None = None
 
-    async def send(  # noqa: PLR0913 - ordered independent delivery stages
+    async def send(  # noqa: C901, PLR0913 - ordered independent target stages
         self,
         item: dict[str, Any],
         pub_ts: int,
@@ -98,6 +99,7 @@ class BilibiliDynamicOutboundSender:
         *,
         resume: bool = False,
     ) -> None:
+        targets = self._canonical_targets(targets)
         if (
             self.ledger is not None
             and not resume
@@ -124,30 +126,13 @@ class BilibiliDynamicOutboundSender:
             )
 
         failures: dict[FailureKey, SendResult] = {}
-        await self._send_link_message(
-            link_message,
-            targets.link_group_conversations,
-            targets.link_private_conversations,
-            action_name=LINK_DYNAMIC_PUSH_ACTION,
-            subscription_key=subscription_key,
-            author_mid=author_mid,
-            dynamic_id=dynamic_id,
-            failures=failures,
-        )
-
         full_targets = self._subscribed_full_targets(targets, subscription_key)
-        if not full_targets.has_targets:
-            await self._finish_delivery(item, author_mid, failures)
-            return
-        await self._send_link_message(
-            link_message,
-            full_targets.full_group_conversations,
-            full_targets.full_private_conversations,
-            action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
-            subscription_key=subscription_key,
-            author_mid=author_mid,
-            dynamic_id=dynamic_id,
-            failures=failures,
+        link_targets = self.subscriptions.filter_subscribed_conversations(
+            [
+                *targets.link_group_conversations,
+                *targets.link_private_conversations,
+            ],
+            subscription_key,
         )
 
         text_targets = (
@@ -159,36 +144,6 @@ class BilibiliDynamicOutboundSender:
             else full_targets
         )
         text_targets = self._pending_targets(text_targets, dynamic_id, "text")
-        if text_targets.has_targets:
-            compacted = (
-                await self.content_compactor.compact(dynamic_content(item))
-                if self.content_compactor is not None
-                and dynamic_body_hydration_reason(item) is None
-                else None
-            )
-            content_override = compacted.display_text if compacted is not None else None
-            if (
-                compacted is not None
-                and self.history is not None
-                and (item_id := str(item.get("id_str", "")).strip())
-            ):
-                self.history.save_summary(
-                    item_id,
-                    compacted.text,
-                    generated_by_ai=compacted.generated_by_ai,
-                )
-            content_message = render_dynamic_text_message(item, content_override)
-        else:
-            content_message = None
-        if content_message is not None:
-            await self._send_content(
-                content_message,
-                text_targets,
-                failures,
-                dynamic_id=dynamic_id,
-                stage="text",
-            )
-
         image_targets = (
             self._subscribed_full_targets(
                 full_targets, bili_media_subscription_key(author_mid, "image")
@@ -198,22 +153,155 @@ class BilibiliDynamicOutboundSender:
             else full_targets
         )
         image_targets = self._pending_targets(image_targets, dynamic_id, "image")
-        image_message = (
-            await prepare_dynamic_image_message(
-                item, self.image_collage, combine_images=self.combine_images
+        text_task = (
+            asyncio.gather(self._prepare_text_message(item))
+            if text_targets.has_targets
+            else None
+        )
+        image_task = (
+            asyncio.gather(
+                prepare_dynamic_image_message(
+                    item, self.image_collage, combine_images=self.combine_images
+                )
             )
             if image_targets.has_targets
             else None
         )
-        if image_message is not None and image_targets.has_targets:
-            await self._send_content(
-                image_message,
-                image_targets,
-                failures,
-                dynamic_id=dynamic_id,
-                stage="image",
+        full_conversations = tuple(
+            dict.fromkeys(
+                (
+                    *full_targets.full_group_conversations,
+                    *full_targets.full_private_conversations,
+                )
             )
+        )
+        text_conversations = frozenset(
+            (
+                *text_targets.full_group_conversations,
+                *text_targets.full_private_conversations,
+            )
+        )
+        image_conversations = frozenset(
+            (
+                *image_targets.full_group_conversations,
+                *image_targets.full_private_conversations,
+            )
+        )
+        limit = self.delivery.policy.max_parallel_targets
+        semaphore = asyncio.Semaphore(limit) if limit > 0 else None
+
+        async def send_target(conversation: ConversationRef, *, full: bool) -> None:
+            async def deliver() -> None:
+                await self._send_link_message(
+                    link_message,
+                    (conversation,) if conversation.kind == "group" else (),
+                    (conversation,) if conversation.kind == "private" else (),
+                    action_name=(
+                        f"{FULL_DYNAMIC_PUSH_ACTION} link"
+                        if full
+                        else LINK_DYNAMIC_PUSH_ACTION
+                    ),
+                    subscription_key=subscription_key,
+                    author_mid=author_mid,
+                    dynamic_id=dynamic_id,
+                    failures=failures,
+                )
+                if not full:
+                    return
+                if text_task is not None and conversation in text_conversations:
+                    content_message = (await text_task)[0]
+                    if content_message is not None:
+                        await self._send_content(
+                            content_message,
+                            conversation,
+                            failures,
+                            dynamic_id=dynamic_id,
+                            stage="text",
+                        )
+                if image_task is not None and conversation in image_conversations:
+                    image_message = (await image_task)[0]
+                    if image_message is not None:
+                        await self._send_content(
+                            image_message,
+                            conversation,
+                            failures,
+                            dynamic_id=dynamic_id,
+                            stage="image",
+                        )
+
+            if semaphore is None:
+                await deliver()
+            else:
+                async with semaphore:
+                    await deliver()
+
+        results = await asyncio.gather(
+            *(send_target(conversation, full=False) for conversation in link_targets),
+            *(
+                send_target(conversation, full=True)
+                for conversation in full_conversations
+            ),
+            return_exceptions=True,
+        )
+        prepared = await asyncio.gather(
+            *(task for task in (text_task, image_task) if task is not None),
+            return_exceptions=True,
+        )
+        for result in (*results, *prepared):
+            if isinstance(result, BaseException):
+                raise result
         await self._finish_delivery(item, author_mid, failures)
+
+    def _canonical_targets(self, targets: BiliPushTargets) -> BiliPushTargets:
+        routes = self.delivery.private_routes
+
+        def selected(conversations: Iterable[ConversationRef]) -> list[ConversationRef]:
+            return list(
+                dict.fromkeys(
+                    (routes.selected_for(target) or target) if routes else target
+                    for target in conversations
+                )
+            )
+
+        full_groups = selected(targets.full_group_conversations)
+        full_privates = selected(targets.full_private_conversations)
+        full = {*full_groups, *full_privates}
+        return BiliPushTargets(
+            full_group_conversations=full_groups,
+            link_group_conversations=[
+                target
+                for target in selected(targets.link_group_conversations)
+                if target not in full
+            ],
+            full_private_conversations=full_privates,
+            link_private_conversations=[
+                target
+                for target in selected(targets.link_private_conversations)
+                if target not in full
+            ],
+        )
+
+    async def _prepare_text_message(
+        self, item: dict[str, Any]
+    ) -> OutboundMessage | None:
+        compacted = (
+            await self.content_compactor.compact(dynamic_content(item))
+            if self.content_compactor is not None
+            and dynamic_body_hydration_reason(item) is None
+            else None
+        )
+        content_override = compacted.display_text if compacted is not None else None
+        if (
+            compacted is not None
+            and self.history is not None
+            and (item_id := str(item.get("id_str", "")).strip())
+        ):
+            self.history.save_summary(
+                item_id,
+                compacted.text,
+                generated_by_ai=compacted.generated_by_ai,
+            )
+        return render_dynamic_text_message(item, content_override)
 
     async def _finish_delivery(
         self,
@@ -302,19 +390,15 @@ class BilibiliDynamicOutboundSender:
     async def _send_content(
         self,
         content_message: OutboundMessage,
-        targets: BiliPushTargets,
+        conversation: ConversationRef,
         failures: dict[FailureKey, SendResult],
         *,
         dynamic_id: str,
         stage: str,
     ) -> None:
-        conversations = (
-            *targets.full_group_conversations,
-            *targets.full_private_conversations,
-        )
         summary = await self._stage_delivery(dynamic_id, stage).send(
             content_message,
-            conversations,
+            (conversation,),
             action_name=FULL_DYNAMIC_PUSH_ACTION,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             max_attempts=1,

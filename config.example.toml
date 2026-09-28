@@ -788,12 +788,13 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
 [messaging.proactive_delivery]
-# Generic bounded fan-out policy shared by every proactive push producer.
-# 主动推送共用的有限并发与重试策略，不包含任何 QQ 号或平台错误码。
+# Generic proactive fan-out policy shared by every push producer.
+# 主动推送共用的并发与重试策略，不包含任何 QQ 号或平台错误码。
 # Default: 3; total delivery attempts for explicitly retryable failures.
 max_attempts = 3
-# Default: 5; maximum destinations submitted concurrently in one batch.
-max_parallel_targets = 5
+# Default: -1; unlimited targets. A positive number bounds concurrency.
+# 默认 -1 表示所有目标同时发送；正整数限制并发目标数。
+max_parallel_targets = -1
 # Default: 3; divide retry batch capacity by this value after each attempt.
 retry_batch_divisor = 3
 # Default: 2.0; pause before each retry round.

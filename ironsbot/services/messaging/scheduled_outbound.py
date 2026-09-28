@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -31,8 +32,10 @@ class ScheduledMessageOutboundSender:
         None
     )
 
-    async def send(self, delivery: ScheduledMessageDelivery) -> None:
+    async def send(self, delivery: ScheduledMessageDelivery) -> None:  # noqa: C901
+        sequences: dict[ConversationRef, list[OutboundMessage]] = {}
         for message in delivery.messages:
+            seen: set[ConversationRef] = set()
             requests = [
                 ProactiveDeliveryRequest(
                     conversation, OutboundMessage.from_text(message)
@@ -71,12 +74,44 @@ class ScheduledMessageOutboundSender:
                         ),
                     )
                 )
-            await self.delivery.send_many(
-                tuple(requests),
-                action_name=delivery.action_name,
-                subscription_key=delivery.subscription_key,
-                include_promotions=True,
-            )
+            for request in requests:
+                routes = self.delivery.private_routes
+                target = (
+                    routes.selected_for(request.conversation)
+                    if routes is not None
+                    else request.conversation
+                ) or request.conversation
+                if target not in seen:
+                    sequences.setdefault(target, []).append(request.message)
+                    seen.add(target)
+
+        async def send_sequence(
+            conversation: ConversationRef, messages: list[OutboundMessage]
+        ) -> None:
+            for message in messages:
+                await self.delivery.send(
+                    message,
+                    (conversation,),
+                    action_name=delivery.action_name,
+                    subscription_key=delivery.subscription_key,
+                    include_promotions=True,
+                )
+
+        limit = self.delivery.policy.max_parallel_targets
+        semaphore = asyncio.Semaphore(limit) if limit > 0 else None
+
+        async def run_sequence(
+            conversation: ConversationRef, messages: list[OutboundMessage]
+        ) -> None:
+            if semaphore is None:
+                await send_sequence(conversation, messages)
+            else:
+                async with semaphore:
+                    await send_sequence(conversation, messages)
+
+        await asyncio.gather(
+            *(run_sequence(target, messages) for target, messages in sequences.items())
+        )
 
     def _mentions_for(
         self,

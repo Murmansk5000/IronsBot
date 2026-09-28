@@ -69,7 +69,7 @@ class AdminNoticeService:
         *,
         subscription_key: str,
         action_name: str,
-        interval_seconds: float = 1.5,
+        interval_seconds: float = 0,
     ) -> AdminNoticeSendSummary:
         return await self.send_message(
             OutboundMessage.from_text(text),
@@ -84,7 +84,7 @@ class AdminNoticeService:
         *,
         subscription_key: str,
         action_name: str,
-        interval_seconds: float = 1.5,
+        interval_seconds: float = 0,
     ) -> AdminNoticeSendSummary:
         targets = self.targets()
         if targets.is_empty:
@@ -106,7 +106,7 @@ class AdminNoticeService:
         *,
         subscription_key: str,
         action_name: str,
-        interval_seconds: float = 1.5,
+        interval_seconds: float = 0,
     ) -> AdminNoticeSendSummary:
         """Compatibility entrypoint; only explicit private notice opt-ins receive it."""
 

@@ -58,7 +58,7 @@ class ProactiveDeliverySummary:
 @dataclass(frozen=True, slots=True)
 class ProactiveDeliveryPolicy:
     max_attempts: int = 3
-    max_parallel_targets: int = 5
+    max_parallel_targets: int = -1
     retry_batch_divisor: int = 3
     retry_delay_seconds: float = 2.0
 
@@ -92,7 +92,7 @@ class ProactiveMessageDelivery:
         conversations: Iterable[ConversationRef],
         *,
         action_name: str,
-        interval_seconds: float = 1.5,
+        interval_seconds: float = 0,
         subscription_key: str | None = None,
         include_promotions: bool = False,
         max_attempts: int | None = None,
@@ -116,7 +116,7 @@ class ProactiveMessageDelivery:
         requests: Iterable[ProactiveDeliveryRequest],
         *,
         action_name: str,
-        interval_seconds: float = 1.5,
+        interval_seconds: float = 0,
         subscription_key: str | None = None,
         include_promotions: bool = False,
         max_attempts: int | None = None,
@@ -151,12 +151,16 @@ class ProactiveMessageDelivery:
                 break
             if attempt > 1 and self.policy.retry_delay_seconds > 0:
                 await asyncio.sleep(self.policy.retry_delay_seconds)
-            batch_size = max(
-                1,
-                ceil(
-                    self.policy.max_parallel_targets
-                    / self.policy.retry_batch_divisor ** (attempt - 1)
-                ),
+            batch_size = (
+                len(pending)
+                if self.policy.max_parallel_targets == -1
+                else max(
+                    1,
+                    ceil(
+                        self.policy.max_parallel_targets
+                        / self.policy.retry_batch_divisor ** (attempt - 1)
+                    ),
+                )
             )
             next_pending = await self._run_attempt(
                 pending,
