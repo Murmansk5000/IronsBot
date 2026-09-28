@@ -57,8 +57,6 @@ DEFAULT_BILI_ACCOUNT_ALIAS = "example_account"
 DEFAULT_BILI_ACCOUNT_UID = 912345678
 DEFAULT_BILI_ACCOUNT_NAME = "赛尔号官号"
 FIRE_BILI_ACCOUNT_NAME = "小山东"
-
-
 EXPECTED_CONTENT_MAX_CHARS = 400
 EXPECTED_SUMMARY_MAX_CHARS = 250
 OVERRIDE_CONTENT_MAX_CHARS = 800
@@ -148,10 +146,22 @@ def test_bili_config_defaults_to_no_monitored_account() -> None:
     assert config.push.accounts == []
     assert config.push.modes == {}
     assert config.push.content_max_chars == DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS
-    assert config.push.content_max_chars == EXPECTED_CONTENT_MAX_CHARS
     assert config.push.summary_max_chars == DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS
+    assert config.push.content_max_chars == EXPECTED_CONTENT_MAX_CHARS
     assert config.push.summary_max_chars == EXPECTED_SUMMARY_MAX_CHARS
     assert config.push.summary_use_ai
+
+
+def test_bili_push_lengths_allow_explicit_override() -> None:
+    config = _bili_config(
+        push={
+            "content_max_chars": OVERRIDE_CONTENT_MAX_CHARS,
+            "summary_max_chars": OVERRIDE_SUMMARY_MAX_CHARS,
+        }
+    )
+
+    assert config.push.content_max_chars == OVERRIDE_CONTENT_MAX_CHARS
+    assert config.push.summary_max_chars == OVERRIDE_SUMMARY_MAX_CHARS
 
 
 def test_bili_config_rejects_removed_default_mode() -> None:
@@ -837,15 +847,3 @@ async def test_bili_account_summary_does_not_fall_back_to_numeric_uid(
 
     assert "暂时无法获取" in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
-
-
-def test_bili_push_lengths_allow_explicit_override() -> None:
-    config = _bili_config(
-        push={
-            "content_max_chars": OVERRIDE_CONTENT_MAX_CHARS,
-            "summary_max_chars": OVERRIDE_SUMMARY_MAX_CHARS,
-        }
-    )
-
-    assert config.push.content_max_chars == OVERRIDE_CONTENT_MAX_CHARS
-    assert config.push.summary_max_chars == OVERRIDE_SUMMARY_MAX_CHARS

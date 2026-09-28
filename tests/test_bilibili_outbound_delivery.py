@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -659,19 +659,16 @@ async def test_full_dynamic_filters_unsubscribed_targets_before_link_and_content
         _targets(full_groups=(1001, 1002), full_users=(2001, 2002)),
     )
 
-    assert [
-        request.conversation
-        for call in delivery.link_calls
-        for request in cast("tuple[ProactiveDeliveryRequest, ...]", call["requests"])
-    ] == [
+    requests = delivery.link_calls[1]["requests"]
+    assert isinstance(requests, tuple)
+    assert [request.conversation for request in requests] == [
         _group(1002),
         _private(2002),
     ]
-    assert [
-        conversation
-        for call in delivery.content_calls
-        for conversation in call["conversations"]
-    ] == [_group(1002), _private(2002)]
+    assert delivery.content_calls[0]["conversations"] == (
+        _group(1002),
+        _private(2002),
+    )
 
 
 @pytest.mark.asyncio
@@ -734,6 +731,7 @@ async def test_full_dynamic_media_preferences_filter_text_and_images_separately(
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
         subscriptions,
+        has_category_subscriptions=lambda account_uid: account_uid == uid,
     )
 
     await sender.send(
@@ -745,6 +743,32 @@ async def test_full_dynamic_media_preferences_filter_text_and_images_separately(
 
     assert delivery.content_calls[0]["conversations"] == (_group(1001),)
     assert delivery.content_calls[1]["conversations"] == (_group(1002),)
+
+
+@pytest.mark.asyncio
+async def test_normal_account_ignores_historical_media_unsubscribes(
+    tmp_path: Path,
+) -> None:
+    delivery = _RecordingDelivery()
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite")
+    uid = 912345678
+    for medium in ("text", "image"):
+        subscriptions.unsubscribe(
+            _group(1001), bili_media_subscription_key(uid, medium), "bili_push"
+        )
+    subscriptions.migrate_bilibili_subscriptions(set())
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        subscriptions,
+        has_category_subscriptions=lambda _uid: False,
+    )
+
+    await sender.send(_item(), PUB_TS, uid, _targets(full_groups=(1001,)))
+
+    assert len(delivery.content_calls) == len(("text", "image"))
+    assert all(
+        call["conversations"] == (_group(1001),) for call in delivery.content_calls
+    )
 
 
 def test_image_only_dynamic_does_not_invent_content_text() -> None:

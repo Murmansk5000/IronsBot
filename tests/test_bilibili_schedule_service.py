@@ -78,6 +78,23 @@ def test_mark_auto_check_updates_state() -> None:
     assert state.last_checked_at == now
 
 
+def test_default_boost_checks_each_half_hour_through_2000() -> None:
+    polling = BiliPollingConfig()
+    entries = boost_schedule_entries(polling)
+
+    assert len(entries) == 21 * 4
+    assert not boost_slots_at(polling, _at(9, 30, 1))
+    assert not boost_slots_at(polling, _at(10, 0, 1))
+    assert boost_slots_at(polling, _at(10, 0, 2))
+    assert boost_slots_at(polling, _at(10, 30, 2))
+    assert boost_slots_at(polling, _at(20, 0, 10))
+    assert boost_slots_at(polling, _at(20, 0, 30))
+    assert not boost_slots_at(polling, _at(20, 30, 1))
+    assert not boost_slots_at(polling, _at(10, 0, 0))
+    assert not boost_slots_at(polling, _at(10, 0, 15))
+    assert not boost_schedule_entries(BiliPollingConfig(boost_windows=[]))
+
+
 def test_boost_slots_follow_offset_and_skip_completed_slot() -> None:
     polling = BiliPollingConfig(
         boost_windows=[
@@ -123,7 +140,6 @@ def test_boost_slots_support_midnight_windows() -> None:
 
     assert len(slot) == 1
     assert slot[0].starts_at == _at(0, 30) + timedelta(days=1)
-
 
 BOOST_EXPECTED_WINDOW_COUNT = 2
 BOOST_EXPECTED_TICK_COUNT = 4
@@ -182,7 +198,9 @@ def test_boost_last_interval_omits_offsets_at_or_after_end() -> None:
     polling = _boost_config("10:00:00", "10:02:05", 1, [0, 5, 10])
     assert boost_schedule_entries(polling) == tuple(
         BoostScheduleEntry(10, minute, second)
-        for minute, second in ((0, 0), (0, 5), (0, 10), (1, 0), (1, 5), (1, 10), (2, 0))
+        for minute, second in (
+            (0, 0), (0, 5), (0, 10), (1, 0), (1, 5), (1, 10), (2, 0)
+        )
     )
 
 
@@ -241,7 +259,9 @@ def test_boost_entries_match_nonzero_predicate_ticks() -> None:
     expected = {
         BoostScheduleEntry(now.hour, now.minute, now.second)
         for elapsed in range(121)
-        if boost_slots_at(polling, now := _at(12, 0, 30) + timedelta(seconds=elapsed))
+        if boost_slots_at(
+            polling, now := _at(12, 0, 30) + timedelta(seconds=elapsed)
+        )
     }
     assert len(expected) == BOOST_EXPECTED_TICK_COUNT
     assert set(boost_schedule_entries(polling)) == expected
@@ -271,19 +291,3 @@ def test_boost_completion_does_not_suppress_next_interval_or_day() -> None:
     tomorrow = boost_slots_at(polling, _at(10) + timedelta(days=1))
     assert len(boost_slots_due(state, tomorrow)) == BOOST_EXPECTED_WINDOW_COUNT
 
-
-def test_default_boost_checks_each_half_hour_through_2000() -> None:
-    polling = BiliPollingConfig()
-    entries = boost_schedule_entries(polling)
-
-    assert len(entries) == 21 * 4
-    assert not boost_slots_at(polling, _at(9, 30, 1))
-    assert not boost_slots_at(polling, _at(10, 0, 1))
-    assert boost_slots_at(polling, _at(10, 0, 2))
-    assert boost_slots_at(polling, _at(10, 30, 2))
-    assert boost_slots_at(polling, _at(20, 0, 10))
-    assert boost_slots_at(polling, _at(20, 0, 30))
-    assert not boost_slots_at(polling, _at(20, 30, 1))
-    assert not boost_slots_at(polling, _at(10, 0, 0))
-    assert not boost_slots_at(polling, _at(10, 0, 15))
-    assert not boost_schedule_entries(BiliPollingConfig(boost_windows=[]))
