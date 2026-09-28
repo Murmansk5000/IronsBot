@@ -164,7 +164,16 @@ class BiliPollingConfig(BaseModel):
             BiliIntervalWindow(start="07:00", end="23:00", minutes=5)
         ]
     )
-    boost_windows: list[BiliBoostWindow] = Field(default_factory=list)
+    boost_windows: list[BiliBoostWindow] = Field(
+        default_factory=lambda: [
+            BiliBoostWindow(
+                start="10:00:00",
+                end="20:30:00",
+                interval_minutes=30,
+                offset_seconds=[1, 2, 5, 10],
+            )
+        ]
+    )
 
 
 class BiliAccountConfig(BaseModel):

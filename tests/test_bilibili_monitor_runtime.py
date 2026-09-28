@@ -95,6 +95,9 @@ def test_bili_monitor_service_registers_second_precision_scheduler_job(
 ) -> None:
     scheduler = FakeScheduler()
     service = build_test_bilibili_service(tmp_path)
+    service.config = service.config.model_copy(
+        update={"polling": BiliPollingConfig(boost_windows=[])}
+    )
     monitor = BilibiliMonitorService(
         service,
         _ignore_auth_invalid,
@@ -148,24 +151,32 @@ def test_bili_monitor_registers_extra_release_burst_jobs(tmp_path: Path) -> None
     assert all(job["timezone"] == TZ_CN for job in scheduler.jobs[1:])
 
 
+def test_bili_monitor_registers_default_half_hour_bursts_once(tmp_path: Path) -> None:
+    scheduler = FakeScheduler()
+    service = build_test_bilibili_service(tmp_path)
+    monitor = BilibiliMonitorService(service, _ignore_auth_invalid, _ignore_push)
+
+    asyncio.run(monitor.register_job(cast("Scheduler", scheduler)))
+
+    boost_job_times = [
+        (job["hour"], job["minute"], job["second"]) for job in scheduler.jobs[1:]
+    ]
+    assert len(boost_job_times) == 21 * 3
+    assert boost_job_times[:3] == [(10, 0, 1), (10, 0, 2), (10, 0, 10)]
+    assert boost_job_times[-3:] == [(20, 0, 1), (20, 0, 2), (20, 0, 10)]
+    assert all(
+        second != service.config.polling.check_second
+        for _, _, second in boost_job_times
+    )
+
+
 def test_new_dynamic_stops_the_rest_of_its_release_burst(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
     service = build_test_bilibili_service(tmp_path)
     service.config = service.config.model_copy(
-        update={
-            "polling": BiliPollingConfig(
-                boost_windows=[
-                    BiliBoostWindow(
-                        start="10:00:00",
-                        end="11:00:00",
-                        interval_minutes=60,
-                        offset_seconds=[0, 5, 10, 15],
-                    )
-                ]
-            )
-        }
+        update={"polling": BiliPollingConfig()}
     )
     calls = 0
 
@@ -185,13 +196,13 @@ def test_new_dynamic_stops_the_rest_of_its_release_burst(
             service,
             on_auth_invalid=_ignore_auth_invalid,
             send_push=_ignore_push,
-            now=datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc),
+            now=datetime(2026, 1, 1, 2, 0, 1, tzinfo=timezone.utc),
         )
         second = await run_monitor_check(
             service,
             on_auth_invalid=_ignore_auth_invalid,
             send_push=_ignore_push,
-            now=datetime(2026, 1, 1, 2, 0, 5, tzinfo=timezone.utc),
+            now=datetime(2026, 1, 1, 2, 0, 2, tzinfo=timezone.utc),
         )
         assert first.discovered_new
         assert not second.executed
@@ -206,18 +217,7 @@ def test_empty_release_burst_response_keeps_later_offsets(
 ) -> None:
     service = build_test_bilibili_service(tmp_path)
     service.config = service.config.model_copy(
-        update={
-            "polling": BiliPollingConfig(
-                boost_windows=[
-                    BiliBoostWindow(
-                        start="10:00:00",
-                        end="11:00:00",
-                        interval_minutes=60,
-                        offset_seconds=[0, 5, 10, 15],
-                    )
-                ]
-            )
-        }
+        update={"polling": BiliPollingConfig()}
     )
     calls = 0
 
@@ -229,7 +229,7 @@ def test_empty_release_burst_response_keeps_later_offsets(
     monkeypatch.setattr(monitor_module, "_do_check_logic", fake_check_logic)
 
     async def scenario() -> None:
-        for second in (0, 5, 10, 15):
+        for second in (1, 2, 5, 10):
             result = await run_monitor_check(
                 service,
                 on_auth_invalid=_ignore_auth_invalid,
