@@ -276,9 +276,7 @@ async def test_two_static_dynamic_images_are_sent_as_one_collage() -> None:
     )
 
     assert message is not None
-    assert message.parts == (
-        BinaryImagePart(b"combined", "image/png", "dynamic.png"),
-    )
+    assert message.parts == (BinaryImagePart(b"combined", "image/png", "dynamic.png"),)
 
 
 @pytest.mark.asyncio
@@ -732,6 +730,7 @@ async def test_full_dynamic_media_preferences_filter_text_and_images_separately(
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
         subscriptions,
+        has_category_subscriptions=lambda account_uid: account_uid == uid,
     )
 
     await sender.send(
@@ -743,6 +742,31 @@ async def test_full_dynamic_media_preferences_filter_text_and_images_separately(
 
     assert delivery.content_calls[0]["conversations"] == (_group(1001),)
     assert delivery.content_calls[1]["conversations"] == (_group(1002),)
+
+
+@pytest.mark.asyncio
+async def test_normal_account_ignores_historical_media_unsubscribes(
+    tmp_path: Path,
+) -> None:
+    delivery = _RecordingDelivery()
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite")
+    uid = 912345678
+    for medium in ("text", "image"):
+        subscriptions.unsubscribe(
+            _group(1001), bili_media_subscription_key(uid, medium), "bili_push"
+        )
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        subscriptions,
+        has_category_subscriptions=lambda _uid: False,
+    )
+
+    await sender.send(_item(), PUB_TS, uid, _targets(full_groups=(1001,)))
+
+    assert len(delivery.content_calls) == len(("text", "image"))
+    assert all(
+        call["conversations"] == (_group(1001),) for call in delivery.content_calls
+    )
 
 
 def test_image_only_dynamic_does_not_invent_content_text() -> None:
