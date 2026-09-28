@@ -241,7 +241,11 @@ class BiliTargetService:
                 label=self._subscription_label(uid),
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
-                submenu_key=bili_category_submenu_key(uid),
+                submenu_key=(
+                    bili_category_submenu_key(uid)
+                    if self.category_config_for_uid(uid) is not None
+                    else None
+                ),
             )
             for uid in sorted(rule.uids)
         ]
@@ -259,11 +263,9 @@ class BiliTargetService:
         if uid is None or self.mode_for_uid(conversation, uid) is None:
             return None
         config = self.category_config_for_uid(uid)
-        title = (
-            f"📺【{self.account_display_name(uid)} 推送设置】"
-            if config is not None
-            else f"📺【{self._subscription_label(uid)} 推送设置】"
-        )
+        if config is None:
+            return None
+        title = f"📺【{self.account_display_name(uid)} 推送设置】"
         options = [
             PushSubscriptionOption(
                 key=bili_push_subscription_key(uid),
@@ -299,9 +301,7 @@ class BiliTargetService:
                     feature="bili_push",
                     unsubscribed=self._category_muted(conversation, uid, category),
                 )
-                for category, definition in (
-                    config.categories.items() if config is not None else ()
-                )
+                for category, definition in config.categories.items()
             ],
         ]
         return options, build_push_subscription_menu(
@@ -321,7 +321,7 @@ class BiliTargetService:
         uid, category = parsed
         config = self.category_config_for_uid(uid)
         if config is None or category not in config.categories:
-            return None
+            return "订阅选项已调整，请重新打开 TD。"
         muted = not self._category_muted(conversation, uid, category)
         self.preferences.set_category_muted(
             conversation,
@@ -341,6 +341,8 @@ class BiliTargetService:
         if parsed is None:
             return None
         uid, media = parsed
+        if self.category_config_for_uid(uid) is None:
+            return "订阅选项已调整，请重新打开 TD。"
         if (
             media not in {"text", "image"}
             or self.mode_for_uid(conversation, uid) is None

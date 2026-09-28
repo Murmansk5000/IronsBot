@@ -1,7 +1,10 @@
 from pathlib import Path
+from typing import Any, cast
 
+from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.config.models.identities import IdentityConfig
+from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import BiliConfig
@@ -17,11 +20,16 @@ from ironsbot.services.bilibili.categories import classify_dynamic
 from ironsbot.services.bilibili.preferences import (
     bili_category_submenu_key,
     bili_media_subscription_key,
+    bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
+from ironsbot.services.messaging.service import MessagingService
+from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 
 
-def _service(path: Path) -> tuple[BiliTargetService, ConversationRef]:
+def _service(
+    path: Path, *, categories: bool = True
+) -> tuple[BiliTargetService, ConversationRef]:
     config = BiliConfig.model_validate(
         {
             "accounts": {"example_account": {"uid": 912345678}},
@@ -37,7 +45,9 @@ def _service(path: Path) -> tuple[BiliTargetService, ConversationRef]:
                         "default_muted_categories": ["lottery"],
                     }
                 }
-            },
+            }
+            if categories
+            else {},
         }
     )
     conversation = ConversationRef(Platform.ONEBOT, "group", "123456")
@@ -102,3 +112,36 @@ def test_category_subscriptions_filter_and_toggle_per_conversation(
         912345678,
         categories=("lottery",),
     ).has_targets
+
+
+def test_normal_account_toggles_at_root_and_stale_media_choice_is_rejected(
+    tmp_path: Path,
+) -> None:
+    service, conversation = _service(tmp_path, categories=False)
+    root = service.subscription_options(conversation)[0]
+    assert root.key == bili_push_subscription_key(912345678)
+    assert root.submenu_key is None
+    assert service.subscription_submenu(conversation, root, read_only=False) is None
+    stale = PushSubscriptionOption(
+        key=bili_media_subscription_key(912345678, "image"),
+        label="动态图片",
+        feature="bili_push",
+        unsubscribed=False,
+    )
+    result = service.toggle_subscription(conversation, stale)
+    assert result is not None and "重新打开 TD" in result
+    assert not service.unsubscribe_store.is_unsubscribed(conversation, stale.key)
+
+    messaging = MessagingService(
+        MessageConfig(),
+        ActivityConfig(),
+        service.unsubscribe_store,
+        service.features,
+        cast("Any", object()),
+        cast("Any", object()),
+        _subscription_submenu_providers=(service,),
+    )
+    assert (
+        messaging.toggle_subscription(conversation, root) == f"已退订：{root.label}。"
+    )
+    assert service.unsubscribe_store.is_unsubscribed(conversation, root.key)
