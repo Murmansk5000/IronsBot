@@ -189,7 +189,7 @@ def seer_command_contracts(
                 (
                     "seer.pet.avatar",
                     ("头像雷伊", "谱尼头像", "头像70"),
-                    "查询精灵头像",
+                    "查询精灵或皮肤头像",
                     {
                         "routing_matcher": parsed_command_input_matcher(
                             pet_avatar_input(image_commands)
