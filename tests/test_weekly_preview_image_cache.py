@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from datetime import datetime, timedelta, timezone
 from shutil import rmtree
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,7 @@ from ironsbot.integrations.seer_data.weekly_preview_repository import (
     DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
     DEFAULT_WEEKLY_PREVIEW_IMAGE_URLS,
     WEEKLY_PREVIEW_MIRROR_URL,
+    weekly_preview_api_url,
 )
 from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
 
@@ -27,6 +29,8 @@ PRIMARY_URL = DEFAULT_WEEKLY_PREVIEW_IMAGE_URL
 SECONDARY_URL = DEFAULT_WEEKLY_PREVIEW_IMAGE_URLS[1]
 PNG = b"\x89PNG\r\n\x1a\npreview"
 EXPECTED_PREVIEW_CACHE_FILES = 2
+EXPECTED_API_FALLBACK_REQUESTS = 4
+TIMEOUT_MESSAGE = "timed out"
 
 
 class _Clock:
@@ -167,6 +171,79 @@ async def test_remote_failure_uses_cache_for_at_most_24_hours(
     assert "ConnectError" in stale.refresh_error
     assert PRIMARY_URL in str(captured.value)
     assert WEEKLY_PREVIEW_MIRROR_URL in str(captured.value)
+    assert weekly_preview_api_url(PRIMARY_URL) in str(captured.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("image_url", [PRIMARY_URL, SECONDARY_URL])
+async def test_github_api_recovers_when_raw_and_cdn_time_out(
+    tmp_path: Path, image_url: str
+) -> None:
+    clock = _Clock()
+    urls: list[str] = []
+    sha = "a" * 40
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        urls.append(url)
+        if request.url.host in {"raw.githubusercontent.com", "cdn.jsdelivr.net"}:
+            raise httpx.ConnectTimeout(TIMEOUT_MESSAGE, request=request)
+        if url == weekly_preview_api_url(image_url):
+            return httpx.Response(200, json={"sha": sha}, request=request)
+        return httpx.Response(
+            200,
+            json={
+                "sha": sha,
+                "encoding": "base64",
+                "content": base64.b64encode(PNG).decode(),
+            },
+            request=request,
+        )
+
+    source, client = _build_source(tmp_path, handler, clock)
+    try:
+        result = await source.fetch(image_url)
+    finally:
+        await client.aclose()
+
+    assert result.data == PNG
+    assert result.source_url == weekly_preview_api_url(image_url)
+    assert len(urls) == EXPECTED_API_FALLBACK_REQUESTS
+
+
+@pytest.mark.asyncio
+async def test_invalid_github_api_image_does_not_replace_cache(tmp_path: Path) -> None:
+    failing = False
+    clock = _Clock()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if not failing:
+            return httpx.Response(200, content=PNG, request=request)
+        if request.url.host != "api.github.com":
+            raise httpx.ConnectTimeout(TIMEOUT_MESSAGE, request=request)
+        if "/contents/" in request.url.path:
+            return httpx.Response(200, json={"sha": "a" * 40}, request=request)
+        return httpx.Response(
+            200,
+            json={
+                "sha": "a" * 40,
+                "encoding": "base64",
+                "content": base64.b64encode(b"not-png").decode(),
+            },
+            request=request,
+        )
+
+    source, client = _build_source(tmp_path, handler, clock)
+    try:
+        await source.fetch(PRIMARY_URL)
+        failing = True
+        clock.advance(timedelta(minutes=6))
+        result = await source.fetch(PRIMARY_URL)
+    finally:
+        await client.aclose()
+
+    assert result.data == PNG
+    assert result.stale is True
 
 
 @pytest.mark.asyncio

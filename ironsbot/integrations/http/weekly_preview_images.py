@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -12,10 +14,11 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from httpx import AsyncClient, HTTPStatusError, RequestError
+from httpx import AsyncClient, HTTPStatusError, RequestError, Response
 
 from ironsbot.integrations.seer_data.weekly_preview_repository import (
     DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
+    weekly_preview_api_url,
     weekly_preview_mirror_url,
 )
 from ironsbot.services.seer.weekly_preview_images import (
@@ -36,6 +39,9 @@ MAX_WEEKLY_PREVIEW_BYTES = 10 * 1024 * 1024
 WEEKLY_PREVIEW_FRESH_TTL = timedelta(minutes=5)
 WEEKLY_PREVIEW_STALE_TTL = timedelta(hours=24)
 HTTP_NOT_MODIFIED = 304
+GIT_BLOB_SHA_LENGTH = 40
+INVALID_API_METADATA = "GitHub API returned invalid image metadata"
+INVALID_API_CONTENT = "GitHub API returned invalid image content"
 
 
 class _NaiveClockError(ValueError):
@@ -136,6 +142,10 @@ class CachedWeeklyPreviewImageSource:
             except (HTTPStatusError, RequestError, WeeklyPreviewImageError) as error:
                 failures.append(_format_source_failure(source_url, error))
 
+        api_result = await self._try_github_api(primary_url, now, failures)
+        if api_result is not None:
+            return api_result
+
         failure_message = "; ".join(failures)
         if cached is not None and now - cached.cached_at <= WEEKLY_PREVIEW_STALE_TTL:
             logger.warning(
@@ -152,6 +162,57 @@ class CachedWeeklyPreviewImageSource:
         raise WeeklyPreviewImageError.from_detail(
             failure_message or "all preview sources failed"
         )
+
+    async def _try_github_api(
+        self, primary_url: str, now: datetime, failures: list[str]
+    ) -> WeeklyPreviewImage | None:
+        api_url = weekly_preview_api_url(primary_url)
+        if not api_url:
+            return None
+        try:
+            data = await self._fetch_github_api_image(api_url)
+            _validate_png(data)
+            refreshed = _CacheEntry(data=data, cached_at=now, source_url=api_url)
+            self._write_cache(refreshed, *self._cache_paths(primary_url))
+            return _to_result(refreshed)
+        except (HTTPStatusError, RequestError, WeeklyPreviewImageError) as error:
+            failures.append(_format_source_failure(api_url, error))
+            return None
+
+    async def _fetch_github_api_image(self, api_url: str) -> bytes:
+        metadata_response = await self._client.get(api_url)
+        metadata_response.raise_for_status()
+        metadata = _github_api_json(metadata_response, INVALID_API_METADATA)
+        sha = metadata.get("sha") if isinstance(metadata, dict) else None
+        if (
+            not isinstance(sha, str)
+            or len(sha) != GIT_BLOB_SHA_LENGTH
+            or not all(character in "0123456789abcdef" for character in sha)
+        ):
+            raise WeeklyPreviewImageError.from_detail(INVALID_API_METADATA)
+
+        blob_url = (
+            "https://api.github.com/repos/Murmansk-Seer/"
+            f"seer-unity-preview-img-dumper/git/blobs/{sha}"
+        )
+        blob_response = await self._client.get(blob_url)
+        blob_response.raise_for_status()
+        blob = _github_api_json(blob_response, INVALID_API_CONTENT)
+        if (
+            not isinstance(blob, dict)
+            or blob.get("sha") != sha
+            or blob.get("encoding") != "base64"
+        ):
+            raise WeeklyPreviewImageError.from_detail(INVALID_API_CONTENT)
+        content = blob.get("content")
+        if not isinstance(content, str) or len(content) > (
+            (MAX_WEEKLY_PREVIEW_BYTES + 2) // 3 * 4 + 100_000
+        ):
+            raise WeeklyPreviewImageError.from_detail(INVALID_API_CONTENT)
+        try:
+            return base64.b64decode("".join(content.split()), validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise WeeklyPreviewImageError.from_detail(INVALID_API_CONTENT) from error
 
     def _read_cache(
         self,
@@ -232,6 +293,13 @@ def _validate_png(data: bytes) -> None:
         raise WeeklyPreviewImageError.invalid_png()
     if len(data) > MAX_WEEKLY_PREVIEW_BYTES:
         raise WeeklyPreviewImageError.image_too_large(MAX_WEEKLY_PREVIEW_BYTES)
+
+
+def _github_api_json(response: Response, error_detail: str) -> Any:
+    try:
+        return response.json()
+    except ValueError as error:
+        raise WeeklyPreviewImageError.from_detail(error_detail) from error
 
 
 def _refresh_not_modified_cache(

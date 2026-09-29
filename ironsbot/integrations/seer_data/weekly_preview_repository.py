@@ -28,6 +28,9 @@ _WEEKLY_PREVIEW_RAW_PREFIX = (
 _WEEKLY_PREVIEW_MIRROR_PREFIX = (
     "https://cdn.jsdelivr.net/gh/Murmansk-Seer/seer-unity-preview-img-dumper@main/"
 )
+_WEEKLY_PREVIEW_API_PREFIX = (
+    "https://api.github.com/repos/Murmansk-Seer/seer-unity-preview-img-dumper/contents/"
+)
 
 
 def load_weekly_preview_metadata(session: Any) -> dict[str, str]:
@@ -75,6 +78,13 @@ def weekly_preview_mirror_url(primary_url: str) -> str:
         return ""
     relative_path = primary_url.removeprefix(_WEEKLY_PREVIEW_RAW_PREFIX)
     return f"{_WEEKLY_PREVIEW_MIRROR_PREFIX}{relative_path}"
+
+
+def weekly_preview_api_url(primary_url: str) -> str:
+    if not primary_url.startswith(_WEEKLY_PREVIEW_RAW_PREFIX):
+        return ""
+    relative_path = primary_url.removeprefix(_WEEKLY_PREVIEW_RAW_PREFIX)
+    return f"{_WEEKLY_PREVIEW_API_PREFIX}{relative_path}"
 
 
 def _parse_image_urls(value: str) -> tuple[str, ...]:
