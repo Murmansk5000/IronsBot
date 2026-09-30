@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
@@ -17,8 +18,9 @@ from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_RESET_COMMANDS,
     lucky_skin_window_command_contracts,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
-from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 _ACTOR = ActorRef(Platform.ONEBOT, "100")
 _GROUP = ConversationRef(Platform.ONEBOT, "group", "200")
@@ -128,6 +130,40 @@ def test_subscription_commands_do_not_claim_disabled_or_unrelated_input(
         assert not catalog.claims_direct_input(context, disabled, text)
     for text in ("我想聊聊订阅", "/关注橱窗1400123", "清空橱窗关注然后呢"):
         assert not catalog.claims_direct_input(context, enabled, text)
+
+
+@pytest.mark.asyncio
+async def test_lucky_window_chat_with_member_mention_is_not_a_query() -> None:
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: 700001 if reference == "测试玩家" else None,
+        lambda _actor: None,
+    )
+    features = FeatureService({_GROUP: _FEATURES}, {}, frozenset())
+    event = group_message_event(
+        message=Message(
+            [MessageSegment.at(456), MessageSegment.text(" 橱窗发了吗")]
+        ),
+        group_id=int(_GROUP.id),
+    )
+    assert not await lucky_plugin._matches_query(
+        event, {}, features=features, resolver=resolver
+    )
+    contract = lucky_skin_window_command_contracts(
+        resolver.has_known_reference
+    )[0]
+    context = CommandContext(
+        _ACTOR,
+        _GROUP,
+        member_mentions=(ActorRef(Platform.ONEBOT, "456"),),
+    )
+    assert not contract.matches_direct_input(context, "橱窗发了吗")
+    assert contract.matches_direct_input(context, "橱窗")
+    assert contract.matches_direct_input(context, "橱窗测试玩家")
+    assert contract.matches_direct_input(context, "橱窗700001")
+    exact_alias = lucky_skin_window_command_contracts(
+        lambda reference, _actor, _conversation: reference == "发了吗"
+    )[0]
+    assert exact_alias.matches_direct_input(context, "橱窗发了吗")
 
 
 @pytest.mark.asyncio
