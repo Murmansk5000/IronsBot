@@ -100,7 +100,7 @@ def test_unbound_daily_quota_is_recorded_only_when_consumed(tmp_path: Path) -> N
     assert "额度已用完（1 次）" in denied.message
     assert "仍可查看已有缓存" in denied.message
     assert "可从 1 次提升至 10 次" in denied.message
-    assert "首次成功查询时可按提示设为默认米米号" in denied.message
+    assert "成功查询时可按提示设为默认米米号" in denied.message
 
 
 def test_unbound_quota_omits_upgrade_hint_when_binding_does_not_increase_limit(
@@ -131,7 +131,7 @@ def test_unbound_quota_omits_upgrade_hint_when_binding_does_not_increase_limit(
     )
 
     assert not denied.allowed
-    assert "首次成功查询时可按提示设为默认米米号" not in denied.message
+    assert "成功查询时可按提示设为默认米米号" not in denied.message
 
 
 def test_bound_default_budget_is_shared_by_player_actions(tmp_path: Path) -> None:
