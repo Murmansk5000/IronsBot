@@ -104,12 +104,12 @@ async def _load_assets(
     )
     mintmark_ids = tuple(mintmark.id for mintmark in snapshot.skill_mintmarks)
     item_ids = _item_ids(snapshot)
-    status_ids = tuple(
+    effect_icon_keys = tuple(
         sorted(
             {
-                effect.status_id
+                effect.icon_key or str(effect.status_id)
                 for effect in snapshot.display.special_effects
-                if effect.status_id is not None
+                if effect.icon_key is not None or effect.status_id is not None
             }
         )
     )
@@ -130,21 +130,15 @@ async def _load_assets(
             for mintmark_id in mintmark_ids
         ),
         *(_load_render_asset(images, "item", str(item_id)) for item_id in item_ids),
-        *(
-            _load_render_asset(images, "sign_buff", str(status_id))
-            for status_id in status_ids
-        ),
-        *(
-            _load_soulmark_icon_asset(images, icon_id)
-            for icon_id in soulmark_icon_ids
-        ),
+        *(_load_optional_sign_buff(images, key) for key in effect_icon_keys),
+        *(_load_soulmark_icon_asset(images, icon_id) for icon_id in soulmark_icon_ids),
     )
     type_offset = 2
     prop_offset = type_offset + len(type_ids)
     mintmark_offset = prop_offset + 1
     item_offset = mintmark_offset + len(mintmark_ids)
     effect_offset = item_offset + len(item_ids)
-    soulmark_offset = effect_offset + len(status_ids)
+    soulmark_offset = effect_offset + len(effect_icon_keys)
     unity_soulmark_icons = {
         icon_id: requested[soulmark_offset + index]
         for index, icon_id in enumerate(soulmark_icon_ids)
@@ -177,8 +171,9 @@ async def _load_assets(
             for index, item_id in enumerate(item_ids)
         ),
         special_effect_icons=tuple(
-            (status_id, requested[effect_offset + index].data)
-            for index, status_id in enumerate(status_ids)
+            (key, result.data)
+            for index, key in enumerate(effect_icon_keys)
+            if (result := requested[effect_offset + index]).error is None
         ),
         soulmark_icons=display_soulmark_icons,
     )
@@ -208,6 +203,17 @@ async def _load_assets(
             execution_identity,
         )
     return assets, not failures
+
+
+def _flip_pet_body(data: bytes) -> bytes:
+    """Mirror a private decoded image; shared source bytes remain untouched."""
+    with (
+        Image.open(BytesIO(data)) as source,
+        source.transpose(Image.Transpose.FLIP_LEFT_RIGHT) as flipped,
+    ):
+        output = BytesIO()
+        flipped.save(output, format="PNG")
+        return output.getvalue()
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,15 +251,20 @@ async def _load_render_asset(
     return _LoadedRenderAsset(kind, key, data)
 
 
-def _flip_pet_body(data: bytes) -> bytes:
-    """Mirror a private decoded image; shared source bytes remain untouched."""
-    with (
-        Image.open(BytesIO(data)) as source,
-        source.transpose(Image.Transpose.FLIP_LEFT_RIGHT) as flipped,
-    ):
-        output = BytesIO()
-        flipped.save(output, format="PNG")
-        return output.getvalue()
+async def _load_optional_sign_buff(
+    images: SeerImageSource,
+    key: str,
+) -> _LoadedRenderAsset:
+    try:
+        data = await images.fetch("sign_buff", key, fallback=False)
+    except ImageSourceError as error:
+        logger.warning(
+            "pet special-effect icon unavailable: key=%s error_type=%s",
+            key,
+            type(error).__name__,
+        )
+        return _LoadedRenderAsset("sign_buff", key, b"", error)
+    return _LoadedRenderAsset("sign_buff", key, data)
 
 
 async def _load_soulmark_icon_asset(

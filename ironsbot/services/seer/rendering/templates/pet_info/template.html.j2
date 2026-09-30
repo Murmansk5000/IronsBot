@@ -126,6 +126,22 @@
             line-height: 1.65;
         }
 
+        .intro-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            font-size: 15px;
+            color: #e0f0ff;
+        }
+
+        .intro-meta-sep {
+            color: #4a8ada;
+            padding: 0 8px;
+        }
+
         /* ========== 种族值面板 ========== */
         .stats-container {
             background-color: #2a5a9a;
@@ -416,7 +432,6 @@
                                     }.get(pet_gender_id, "无性别") %}
                                     {{ gender_label }}
                                 </div>
-                                <div class="pet-meta">身高：{{ pet_height }} | 体重：{{ pet_weight }}</div>
                             </td>
                         </tr>
                     </table>
@@ -424,10 +439,21 @@
                         <img class="pet-img" src="{{ pet_body_img }}" />
                     </div>
 
-                    {% if pet_introduction or pet_food %}
+                    {% if pet_introduction %}
                     <div class="section">
-                        <div class="sec-title">简介</div>
-                        <div class="intro-box">{% if pet_introduction %}{{ pet_introduction }}{% endif %}{% if pet_food %}{% if pet_introduction %}<br>{% endif %}喜爱的食物：{{ pet_food }}{% endif %}</div>
+                        <div class="sec-title">介绍</div>
+                        <div class="intro-box">
+                            {{ pet_introduction }}
+                            <div class="intro-meta">
+                                <span>身高：{{ pet_height }}</span>
+                                <span class="intro-meta-sep">|</span>
+                                <span>体重：{{ pet_weight }}</span>
+                                {% if pet_food %}
+                                <span class="intro-meta-sep">|</span>
+                                <span>喜爱食物：{{ pet_food }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                     {% endif %}
 
