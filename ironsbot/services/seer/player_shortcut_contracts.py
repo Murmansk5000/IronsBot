@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
@@ -25,31 +24,37 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank import RankService
 
 
-PlayerShortcutKind = Literal["collection", "peak", "autocard"]
+PlayerShortcutKind = Literal["collection", "peak", "autocard", "beast_rank"]
 PlayerShortcutStatusSender = Callable[[str], Awaitable[None]]
 
-_SHORTCUT_RE = re.compile(r"^(收集|巅峰|群星牌)(.*)$")
+
+@dataclass(frozen=True, slots=True)
+class PlayerShortcutSpec:
+    kind: PlayerShortcutKind
+    name: str
+    label: str
+    cache_key: str = ""
+
+
+PLAYER_SHORTCUT_SPECS = (
+    PlayerShortcutSpec(
+        "collection", "收集", "收集与排行", "_player_collection_message"
+    ),
+    PlayerShortcutSpec("peak", "巅峰", "巅峰之战", "_player_peak_message"),
+    PlayerShortcutSpec("autocard", "群星牌", "群星牌排名", "_player_autocard_message"),
+    PlayerShortcutSpec("beast_rank", "神兽榜", "神兽榜"),
+)
 _KIND_BY_COMMAND: dict[str, PlayerShortcutKind] = {
-    "收集": "collection",
-    "巅峰": "peak",
-    "群星牌": "autocard",
+    spec.name: spec.kind for spec in PLAYER_SHORTCUT_SPECS
 }
-PLAYER_SHORTCUT_ACTIONS: dict[PlayerShortcutKind, ActionDefinition] = {
-    "collection": ActionDefinition(
-        "seer.player.collection",
-        "收集与排行",
-        cooldown_key="seer_player_collection",
-    ),
-    "peak": ActionDefinition(
-        "seer.player.peak",
-        "巅峰之战",
-        cooldown_key="seer_player_peak",
-    ),
-    "autocard": ActionDefinition(
-        "seer.player.autocard",
-        "群星牌",
-        cooldown_key="seer_player_autocard",
-    ),
+PLAYER_SHORTCUT_NAMES = tuple(_KIND_BY_COMMAND)
+PLAYER_SHORTCUT_ACTIONS = {
+    spec.kind: ActionDefinition(
+        f"seer.player.{spec.kind}",
+        spec.label,
+        cooldown_key=f"seer_player_{spec.kind}",
+    )
+    for spec in PLAYER_SHORTCUT_SPECS
 }
 
 
@@ -85,15 +90,12 @@ def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | No
     """Parse a text shortcut without resolving its optional player target."""
 
     normalized = "".join(text.split())
-    match = _SHORTCUT_RE.fullmatch(normalized)
-    if match is None:
-        return None
-    command, player_reference = match.groups()
-    player_reference = player_reference.strip()
-    return PlayerShortcutTargetCommand(
-        kind=_KIND_BY_COMMAND[command],
-        player_reference=player_reference or None,
-    )
+    for command, kind in _KIND_BY_COMMAND.items():
+        if normalized.startswith(command):
+            return PlayerShortcutTargetCommand(
+                kind=kind, player_reference=normalized[len(command) :] or None
+            )
+    return None
 
 
 def player_request_admission_message(label: str, *, queued: bool) -> str:
