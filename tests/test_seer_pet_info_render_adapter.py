@@ -124,6 +124,52 @@ async def test_render_adapter_closes_sql_session_before_fetching_assets(
 
 
 @pytest.mark.asyncio
+async def test_render_adapter_fetches_published_variant_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = FakeData()
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            special_effects=(
+                PetSpecialEffectView("幽迹之秘", "说明", 545, None, (), "191_2"),
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        pet_info_renderer, "load_pet_info_snapshot", lambda *_: snapshot
+    )
+    monkeypatch.setattr(pet_info_renderer, "_load_gender_icon", lambda _: b"x")
+    requested: list[str] = []
+
+    class Images:
+        async def fetch(self, kind: str, key: str, *, fallback: bool) -> bytes:
+            assert fallback is False
+            if kind == "sign_buff":
+                requested.append(key)
+            return b"icon"
+
+    captured: dict[str, Any] = {}
+
+    async def render_html(**kwargs: Any) -> bytes:
+        captured.update(kwargs)
+        return b"rendered"
+
+    await pet_info_renderer.render_published_pet_info(
+        cast("RenderCache", FakeCache()),
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", Images()),
+        cast("HtmlTemplateRenderer", render_html),
+        1,
+    )
+
+    assert requested == ["191_2"]
+    assert captured["templates"]["special_effects"][0]["icon"] is not None
+
+
+@pytest.mark.asyncio
 async def test_optional_failure_is_retried_before_final_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -227,6 +273,8 @@ async def test_asset_failure_uses_placeholder_without_caching(
 
     assert result == b"rendered-with-placeholder"
     assert rendered
+    if missing_kind == "sign_buff":
+        assert rendered[0]["templates"]["special_effects"][0]["icon"] is None
     assert reported and reported[0][0] == missing_kind
     assert not cache.values
 
