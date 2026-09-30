@@ -37,7 +37,8 @@ def _create_published_fact_tables(session: Session) -> None:
             """
             CREATE TABLE pet_special_effect (
                 pet_id INTEGER NOT NULL, effect_key TEXT NOT NULL,
-                glossary_id INTEGER, status_id INTEGER, sort_id INTEGER,
+                glossary_id INTEGER, status_id INTEGER, icon_key TEXT,
+                sort_id INTEGER,
                 name TEXT NOT NULL, description TEXT,
                 PRIMARY KEY (pet_id, effect_key)
             )
@@ -103,9 +104,9 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
             text(
                 """
                 INSERT INTO pet_special_effect VALUES
-                (3549, 'glossary:535', 535, NULL, 535, '八方圻', '八方圻说明'),
-                (3549, 'glossary:533', 533, 188, 533, '四象门', '四象门说明'),
-                (3549, 'glossary:534', 534, NULL, 534, '六芒阵', '六芒阵说明')
+                (3549, 'glossary:535', 535, NULL, '188_3', 535, '八方圻', '八方圻说明'),
+                (3549, 'glossary:533', 533, 188, '188_1', 533, '四象门', '四象门说明'),
+                (3549, 'glossary:534', 534, NULL, '188_2', 534, '六芒阵', '六芒阵说明')
                 """
             )
         )
@@ -150,7 +151,18 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
         "八方圻",
     ]
     assert display.special_effects[0].status_id == SARMON_STATUS_ID
+    assert [effect.icon_key for effect in display.special_effects] == [
+        "188_1",
+        "188_2",
+        "188_3",
+    ]
     assert display.special_effects[0].sources == ("技能·繁苍解道",)
+    assert [effect.effect_key for effect in display.special_effects] == [
+        "glossary:533", "glossary:534", "glossary:535"
+    ]
+    assert [effect.parent_effect_keys for effect in display.special_effects] == [
+        (), ("glossary:533",), ("glossary:533",)
+    ]
     assert display.soulmark_order_by_id == {
         BASE_SOULMARK_ID: 1,
         UPGRADED_SOULMARK_ID: 2,
@@ -165,6 +177,76 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
         UPGRADED_ICON_ID
     )
     assert display.soulmark_icon_by_id[UPGRADED_SOULMARK_ID].png is None
+
+
+def test_shared_child_keeps_each_parent_once_without_name_inference() -> None:
+    engine = create_engine("sqlite://")
+    with Session(engine) as session:
+        _create_published_fact_tables(session)
+        session.execute(text("""
+            INSERT INTO pet_special_effect VALUES
+            (1, 'a', 10, NULL, NULL, 10, 'Same name', 'A'),
+            (1, 'b', 20, NULL, NULL, 20, 'Same name', 'B'),
+            (1, 'child', 30, NULL, NULL, 30, 'Child', 'C')
+        """))
+        session.execute(text("""
+            INSERT INTO pet_special_effect_source VALUES
+            (1, 'child', 'glossary_link', 10, 'glossary_link', NULL),
+            (1, 'child', 'glossary_link', 10, 'other_evidence', NULL),
+            (1, 'child', 'glossary_link', 20, 'glossary_link', NULL),
+            (1, 'child', 'pet_glossary', 30, 'direct_pet_glossary', NULL)
+        """))
+        display = load_pet_derived_display_data(session, pet_id=1, soulmark_ids=())
+    assert [effect.effect_key for effect in display.special_effects] == [
+        "a", "b", "child"
+    ]
+    assert display.special_effects[-1].effect_key == "child"
+    assert display.special_effects[-1].parent_effect_keys == ("a", "b")
+    assert "官方关联词条" in display.special_effects[-1].sources
+
+
+def test_cyclic_parent_facts_preserve_edges_and_ignore_self_links() -> None:
+    engine = create_engine("sqlite://")
+    with Session(engine) as session:
+        _create_published_fact_tables(session)
+        session.execute(text("""
+            INSERT INTO pet_special_effect VALUES
+            (1, 'a', 10, NULL, NULL, 10, 'A', 'A'),
+            (1, 'b', 20, NULL, NULL, 20, 'B', 'B')
+        """))
+        session.execute(text("""
+            INSERT INTO pet_special_effect_source VALUES
+            (1, 'a', 'glossary_link', 20, 'glossary_link', NULL),
+            (1, 'b', 'glossary_link', 10, 'glossary_link', NULL),
+            (1, 'a', 'glossary_link', 10, 'glossary_link', NULL)
+        """))
+        display = load_pet_derived_display_data(session, pet_id=1, soulmark_ids=())
+    assert [(effect.effect_key, effect.parent_effect_keys)
+            for effect in display.special_effects] == [
+        ("a", ("b",)), ("b", ("a",))
+    ]
+
+
+def test_legacy_effect_rows_without_icon_key_still_load() -> None:
+    engine = create_engine("sqlite://")
+    with Session(engine) as session:
+        _create_published_fact_tables(session)
+        session.execute(text("ALTER TABLE pet_special_effect DROP COLUMN icon_key"))
+        session.execute(
+            text(
+                "INSERT INTO pet_special_effect VALUES "
+                "(3549, 'legacy', 533, 188, 533, '四象门', '说明')"
+            )
+        )
+        session.commit()
+        display = load_pet_derived_display_data(
+            session,
+            pet_id=SARMON_PET_ID,
+            soulmark_ids=(),
+        )
+
+    assert display.special_effects[0].icon_key is None
+    assert display.special_effects[0].status_id == SARMON_STATUS_ID
 
 
 def test_effect_colors_reuse_official_highlights_with_default() -> None:
