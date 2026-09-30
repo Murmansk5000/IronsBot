@@ -10,6 +10,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     HelpEntry,
@@ -52,8 +53,8 @@ from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
     LUCKY_SKIN_WATCH_RESET_ACTION,
     LUCKY_SKIN_WATCH_RESET_COMMANDS,
-    is_lucky_skin_query,
     is_lucky_skin_watch_exact,
+    lucky_skin_query_input_matcher,
     lucky_skin_window_command_contracts,
     parse_lucky_skin_query,
     parse_lucky_skin_watch_target,
@@ -104,7 +105,9 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
                 "发送“橱窗”查看；可用“关注橱窗”或“订阅橱窗”管理星标；可在“TD”中退订每日提醒。",
             ),
         ),
-        commands=lucky_skin_window_command_contracts(),
+        commands=lucky_skin_window_command_contracts(
+            resolver.has_exact_reference_choices
+        ),
         install=partial(
             _install,
             service=service,
@@ -147,9 +150,15 @@ async def _matches_query(
     state: T_State,
     *,
     features: FeatureService,
+    resolver: PlayerIdResolver | None = None,
 ) -> bool:
     _ = state
-    if not is_lucky_skin_query(event.get_plaintext()):
+    context = message_input_context(event)
+    if not lucky_skin_query_input_matcher(
+        resolver.has_exact_reference_choices
+        if resolver is not None
+        else lambda *_: False
+    )(context.text, command_context_from_input(context)):
         return False
     return _watch_feature_allowed(event, features=features)
 
@@ -241,7 +250,7 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
             help_ids=(LUCKY_SKIN_QUERY_ACTION.id,),
             semantic_request=partial(_semantic_request, service, resolver=resolver),
         ),
-        rule=Rule(bind_async(_matches_query, features=features))
+        rule=Rule(bind_async(_matches_query, features=features, resolver=resolver))
         & member_target_command(),
         priority=priority,
         block=True,

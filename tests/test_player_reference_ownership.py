@@ -52,6 +52,43 @@ _GROUP = ConversationRef(Platform.ONEBOT, "group", "300")
 _PLAYER_ID = 123456
 
 
+@pytest.mark.asyncio
+async def test_player_prefix_chat_is_not_claimed_with_member_mention() -> None:
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            _PLAYER_ID if reference == "示例玩家" else None
+        ),
+        lambda _actor: None,
+    )
+    for text in ("米米号发了吗", "绑定米米号发了吗"):
+        event = group_message_event(
+            message=Message(
+                [MessageSegment.at(456), MessageSegment.text(f" {text}")]
+            ),
+            group_id=int(_GROUP.id),
+        )
+        matcher = (
+            player._is_binding_command
+            if text.startswith("绑定")
+            else player._is_player_query_command
+        )
+        assert not await matcher(event, resolver=resolver)
+
+    assert await player._is_player_query_command(
+        group_message_event("米米号示例玩家", group_id=int(_GROUP.id)),
+        resolver=resolver,
+    )
+    assert await player._is_player_query_command(
+        group_message_event("米米号发了吗", group_id=int(_GROUP.id)),
+        resolver=PlayerIdResolver(
+            lambda reference, _conversation: (
+                _PLAYER_ID if reference == "发了吗" else None
+            ),
+            lambda _actor: None,
+        ),
+    )
+
+
 def test_group_alias_is_visible_to_linked_official_group_only() -> None:
     principals = IdentityPrincipalService()
     registry = PlayerAccountRegistry(

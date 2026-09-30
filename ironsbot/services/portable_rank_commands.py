@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
@@ -13,6 +13,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
+from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_interactions import as_portable_reply
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import (
@@ -63,9 +64,7 @@ def build_portable_rank_operations(
     player_query: PortableOperation,
     features: FeatureService,
 ) -> dict[str, PortableOperation]:
-    owner = _PortableRankOperations(
-        service, resolver, sessions, player_query, features
-    )
+    owner = _PortableRankOperations(service, resolver, sessions, player_query, features)
     return {
         **dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query),
         "rank.display_limit": owner.set_display_limit,
@@ -253,8 +252,14 @@ class _PortableRankOperations:
             choice: RankListSelection,
             selection_context: MessageInputContext,
         ) -> OutboundMessage | PortableReply:
+            access_error = self.resolver.query_access_error(
+                selection_context.message.actor, choice.player_id, "shared_menu"
+            )
+            if access_error is not None:
+                return OutboundMessage.from_text(access_error)
             reply = await self.player_query(
-                f"米米号{choice.player_id}", selection_context
+                f"米米号{choice.player_id}",
+                replace(selection_context, offer_player_binding=False),
             )
             if reply is None:
                 msg = "player query operation returned no reply"
@@ -317,6 +322,30 @@ class _PortableRankOperations:
         reference: str | None,
         context: MessageInputContext,
     ) -> PortableReply:
+        async def prepare(
+            player_id: int, selected: MessageInputContext
+        ) -> PortableReply:
+            result = await self.service.prepare_player(
+                RankPlayerCommand(rank_key, player_id),
+                actor=selected.message.actor,
+                conversation=selected.message.conversation,
+            )
+            return PortableReply(
+                OutboundMessage.from_text(result.message),
+                on_delivered=result.delivered,
+            )
+
+        if reference and not context.has_member_mentions:
+            reply = await select_player_reference(
+                reference,
+                context,
+                self.resolver,
+                self.sessions,
+                prepare,
+                title="请选择要查询的玩家：",
+                enforce_query_access=True,
+            )
+            return reply if isinstance(reply, PortableReply) else PortableReply(reply)
         resolution = self.resolver.resolve(
             context,
             reference,
@@ -330,12 +359,4 @@ class _PortableRankOperations:
                     "请填写米米号、已开放的玩家别名，或直接 @ 一名已绑定成员。"
                 )
             )
-        result = await self.service.prepare_player(
-            RankPlayerCommand(rank_key, resolution.player_id),
-            actor=context.message.actor,
-            conversation=context.message.conversation,
-        )
-        return PortableReply(
-            OutboundMessage.from_text(result.message),
-            on_delivered=result.delivered,
-        )
+        return await prepare(resolution.player_id, context)

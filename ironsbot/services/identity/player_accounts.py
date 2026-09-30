@@ -213,10 +213,19 @@ class PlayerAccountRegistry:
                 (
                     value
                     for value in (account.name, *account.aliases)
-                    if normalized in normalize_command_text(value)
+                    if normalized == normalize_command_text(value)
                 ),
                 None,
             )
+            if label is None:
+                label = next(
+                    (
+                        value
+                        for value in (account.name, *account.aliases)
+                        if normalized in normalize_command_text(value)
+                    ),
+                    None,
+                )
             if label is not None:
                 choices.append(PlayerReferenceChoice(account.player_id, label))
         return tuple(choices)
