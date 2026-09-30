@@ -8,7 +8,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from ironsbot.integrations.seer_data import pet_info_renderer
 from ironsbot.services.seer.images import ImageSourceError
@@ -18,6 +18,7 @@ from ironsbot.services.seer.pet_info_views import (
     PetInfoSnapshot,
     PetItemSnapshot,
     PetMintmarkSnapshot,
+    PetSkillSnapshot,
     PetSoulmarkSnapshot,
     PetSpecialEffectView,
     PetStatsSnapshot,
@@ -32,6 +33,105 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
+
+
+def _body_png() -> bytes:
+    with Image.new("RGBA", (2, 1)) as image:
+        image.putpixel((0, 0), (255, 0, 0, 64))
+        image.putpixel((1, 0), (0, 0, 255, 192))
+        output = BytesIO()
+        image.save(output, format="PNG")
+        return output.getvalue()
+
+
+def test_body_flip_preserves_source_and_alpha() -> None:
+    original = _body_png()
+    before = bytes(original)
+    result = pet_info_renderer._flip_pet_body(original)
+    assert original == before
+    with Image.open(BytesIO(result)) as image:
+        assert image.mode == "RGBA"
+        assert image.getpixel((0, 0)) == (0, 0, 255, 192)
+        assert image.getpixel((1, 0)) == (255, 0, 0, 64)
+
+
+def test_invalid_body_is_not_silently_accepted() -> None:
+    with pytest.raises(UnidentifiedImageError):
+        pet_info_renderer._flip_pet_body(b"invalid")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("corrupt_body", [b"invalid", _body_png()[:45]])
+async def test_corrupt_body_is_local_failure_not_whole_render_failure(
+    monkeypatch: pytest.MonkeyPatch, corrupt_body: bytes
+) -> None:
+    data, cache = FakeData(), FakeCache()
+    snapshot = replace(
+        _snapshot(),
+        skills=(
+            PetSkillSnapshot(
+                id=10,
+                name="保留技能",
+                type_id=1,
+                type_name="普通",
+                category_id=1,
+                category_name="物理",
+                power=80,
+                max_pp=10,
+                accuracy=100,
+                crit_rate=None,
+                priority=0,
+                must_hit=False,
+                info=None,
+                learning_level=1,
+                is_special=False,
+                is_advanced=False,
+                is_fifth=False,
+                effects=(),
+                friend_effects=(),
+                activation_item_id=None,
+                hide_effect_description=None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        pet_info_renderer, "load_pet_info_snapshot", lambda *_: snapshot
+    )
+    head = _body_png()
+
+    class Images:
+        async def fetch(self, kind: str, _key: str, *, fallback: bool) -> bytes:
+            assert fallback is False
+            return corrupt_body if kind == "pet_body" else head
+
+    captured: dict[str, Any] = {}
+    failures: list[tuple[str, str, ImageSourceError]] = []
+
+    async def render_html(**kwargs: Any) -> bytes:
+        captured.update(kwargs["templates"])
+        return b"rendered-with-placeholder"
+
+    async def report(kind: str, key: str, error: ImageSourceError) -> None:
+        failures.append((kind, key, error))
+
+    result = await pet_info_renderer.render_published_pet_info(
+        cast("RenderCache", cache),
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", Images()),
+        cast("HtmlTemplateRenderer", render_html),
+        1,
+        image_failure_reporter=report,
+    )
+    assert result == b"rendered-with-placeholder"
+    assert base64.b64decode(
+        captured["pet_body_img"].split(",", 1)[1]
+    ) == pet_info_renderer.placeholder_image("pet_body")
+    assert base64.b64decode(captured["pet_head_img"].split(",", 1)[1]) == head
+    assert captured["level_skills"][0]["name"] == "保留技能"
+    assert len(failures) == 1
+    assert failures[0][:2] == ("pet_body", "1001")
+    assert isinstance(failures[0][2].__cause__, OSError)
+    assert not cache.values
 
 
 class FakeData:
@@ -54,12 +154,7 @@ class FakeImages:
     async def fetch(self, *_args: object, **_kwargs: object) -> bytes:
         assert _kwargs.get("fallback") is False
         assert self._data.session_active is False
-        output = BytesIO()
-        with Image.new("RGBA", (2, 1)) as image:
-            image.putpixel((0, 0), (255, 0, 0, 64))
-            image.putpixel((1, 0), (0, 0, 255, 192))
-            image.save(output, format="PNG")
-        return output.getvalue()
+        return _body_png()
 
 
 class FakeCache:
@@ -126,13 +221,59 @@ async def test_render_adapter_closes_sql_session_before_fetching_assets(
     )
 
     assert result == b"rendered"
+    assert captured["templates"]["pet_id"] == 1
     body = base64.b64decode(captured["templates"]["pet_body_img"].split(",", 1)[1])
     with Image.open(BytesIO(body)) as image:
         assert image.getpixel((0, 0)) == (0, 0, 255, 192)
         assert image.getpixel((1, 0)) == (255, 0, 0, 64)
-    assert captured["templates"]["pet_id"] == 1
     assert cache.values
     assert {category for category, _key in cache.values} == {"pet_info"}
+
+
+@pytest.mark.asyncio
+async def test_render_adapter_fetches_published_variant_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = FakeData()
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            special_effects=(
+                PetSpecialEffectView("幽迹之秘", "说明", 545, None, (), "191_2"),
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        pet_info_renderer, "load_pet_info_snapshot", lambda *_: snapshot
+    )
+    monkeypatch.setattr(pet_info_renderer, "_load_gender_icon", lambda _: b"x")
+    requested: list[str] = []
+
+    class Images:
+        async def fetch(self, kind: str, key: str, *, fallback: bool) -> bytes:
+            assert fallback is False
+            if kind == "sign_buff":
+                requested.append(key)
+            return _body_png()
+
+    captured: dict[str, Any] = {}
+
+    async def render_html(**kwargs: Any) -> bytes:
+        captured.update(kwargs)
+        return b"rendered"
+
+    await pet_info_renderer.render_published_pet_info(
+        cast("RenderCache", FakeCache()),
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", Images()),
+        cast("HtmlTemplateRenderer", render_html),
+        1,
+    )
+
+    assert requested == ["191_2"]
+    assert captured["templates"]["special_effects"][0]["icon"] is not None
 
 
 @pytest.mark.asyncio
@@ -155,7 +296,7 @@ async def test_optional_failure_is_retried_before_final_cache(
             self.calls += 1
             if kind == "item" and self.failing:
                 raise ImageSourceError
-            return await FakeImages(data).fetch(fallback=False)
+            return _body_png()
 
     images = RecoveringImages()
     rendered_count = 0
@@ -212,7 +353,7 @@ async def test_asset_failure_uses_placeholder_without_caching(
             assert fallback is False
             if kind == missing_kind:
                 raise ImageSourceError
-            return await FakeImages(data).fetch(fallback=False)
+            return _body_png()
 
     rendered: list[dict[str, Any]] = []
     reported: list[tuple[str, str, ImageSourceError]] = []
@@ -239,6 +380,13 @@ async def test_asset_failure_uses_placeholder_without_caching(
 
     assert result == b"rendered-with-placeholder"
     assert rendered
+    if missing_kind == "sign_buff":
+        assert rendered[0]["templates"]["special_effects"][0]["icon"] is None
+    if missing_kind == "pet_body":
+        body = base64.b64decode(
+            rendered[0]["templates"]["pet_body_img"].split(",", 1)[1]
+        )
+        assert body == pet_info_renderer.placeholder_image("pet_body")
     assert reported and reported[0][0] == missing_kind
     assert not cache.values
 
@@ -288,7 +436,7 @@ async def test_soulmark_icon_prefers_unity_and_retries_flash_fallback(
                 if not self.unity_available:
                     raise ImageSourceError
                 return b"unity"
-            return await FakeImages(data).fetch(fallback=False)
+            return _body_png()
 
     images = Images()
     documents: list[dict[str, Any]] = []
@@ -298,9 +446,7 @@ async def test_soulmark_icon_prefers_unity_and_retries_flash_fallback(
         documents.append(kwargs["templates"])
         return b"rendered"
 
-    async def report_failure(
-        kind: str, key: str, error: ImageSourceError
-    ) -> None:
+    async def report_failure(kind: str, key: str, error: ImageSourceError) -> None:
         reported.append((kind, key, error))
 
     async def render() -> bytes:
@@ -326,7 +472,5 @@ async def test_soulmark_icon_prefers_unity_and_retries_flash_fallback(
 
     images.unity_available = True
     assert await render() == b"rendered"
-    assert documents[-1]["soulmarks"][0]["icon"] == (
-        "data:image/png;base64,dW5pdHk="
-    )
+    assert documents[-1]["soulmarks"][0]["icon"] == ("data:image/png;base64,dW5pdHk=")
     assert cache.values
