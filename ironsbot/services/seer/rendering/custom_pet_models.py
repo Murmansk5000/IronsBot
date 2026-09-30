@@ -69,8 +69,6 @@ class SoulmarkDict(TypedDict):
 
 
 class SpecialEffectDict(TypedDict):
-    parents: NotRequired[list[str]]
-    related: NotRequired[bool]
     name: str
     desc: str | None
     sources: list[str]
@@ -78,6 +76,8 @@ class SpecialEffectDict(TypedDict):
     status_id: int | None
     icon: str | None
     color: NotRequired[str]
+    parents: NotRequired[list[str]]
+    related: NotRequired[bool]
 
 
 class PartnerItemDict(TypedDict):

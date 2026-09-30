@@ -53,6 +53,7 @@ class PetInfoRepository:
         pet = session.get(PetORM, pet_id)
         if pet is None:
             return None
+        encyclopedia = pet.encyclopedia
 
         # Every relationship access happens before this method returns. The
         # caller can close its session before network or HTML work starts.
@@ -66,7 +67,6 @@ class PetInfoRepository:
             pet_id=int(pet.id),
             soulmark_ids=(soulmark.id for soulmark in soulmarks),
         )
-        encyclopedia = pet.encyclopedia
         return PetInfoSnapshot(
             pet=PetCoreSnapshot(
                 id=int(pet.id),
@@ -76,8 +76,8 @@ class PetInfoRepository:
                 type_id=int(pet.type.id),
                 type_name=str(pet.type.name),
                 introduction=(
-                    str(pet.encyclopedia.introduction).strip()
-                    if pet.encyclopedia is not None
+                    str(encyclopedia.introduction).strip()
+                    if encyclopedia is not None
                     else ""
                 ),
                 height=encyclopedia.height if encyclopedia is not None else None,
