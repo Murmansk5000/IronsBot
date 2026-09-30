@@ -22,6 +22,7 @@ EquipmentKind = Literal["suit", "equip", "title"]
 PROMPT_MAX_ITEMS = 20
 MOUNT_PART_TYPE_ID = 6
 HTTP_NOT_FOUND = 404
+HTTP_GONE = 410
 EQUIP_PART_TYPE_MAP = {
     0: "头部",
     1: "眼部",
@@ -143,7 +144,7 @@ class EquipmentQueryService:
         if (
             reply_data.is_mount
             and image.data is None
-            and image.status_code == HTTP_NOT_FOUND
+            and image.status_code in {HTTP_NOT_FOUND, HTTP_GONE}
         ):
             return QueryReply(
                 text=(f"{reply_data.text}\n图片：官方图片暂未上线，暂无法展示。")
