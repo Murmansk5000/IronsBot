@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+import hashlib
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStoreLimits,
 )
 from ironsbot.services.seer.images import (
+    ImageKind,
     ImageSourceError,
     PublishedAssetRepository,
     PublishedRenderAssetSnapshot,
@@ -25,6 +28,10 @@ HTTP_NOT_FOUND = 404
 HTTP_OK = 200
 MAX_ASSET_FETCH_CONCURRENCY = 4
 PINNED_ASSET_SOURCE_COUNT = 2
+CNB_SOURCE_COUNT = 3
+CNB_LFS_SOURCE_COUNT = 5
+AUDITED_ASSET_REVISION = "623f937fe8c02975cc5b19aa44638b2e87fabf84"
+PNG_DATA = b"\x89PNG\r\n\x1a\nverified-image"
 
 
 def _asset_snapshot() -> PublishedRenderAssetSnapshot:
@@ -36,6 +43,17 @@ def _asset_snapshot() -> PublishedRenderAssetSnapshot:
         },
         manifest_revision="assets-v2",
         scopes=frozenset({"pet_info"}),
+    )
+
+
+def _audited_asset_snapshot() -> PublishedRenderAssetSnapshot:
+    return replace(
+        _asset_snapshot(),
+        repositories={
+            "default": PublishedAssetRepository(
+                "Murmansk-Seer/seer-unity-assets", AUDITED_ASSET_REVISION
+            )
+        },
     )
 
 
@@ -229,6 +247,205 @@ async def test_pinned_asset_retries_same_revision_through_cdn() -> None:
     assert "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[1]
     assert urls[0].endswith("/signbuff/33.png")
     assert urls[1].endswith("/signbuff/33.png")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "cnb_path"),
+    [
+        ("battle_effect", "battleeffect_abnormal/19.png"),
+        ("mintmark", "countermark_icon/12001.png"),
+        ("pet_head", "defaultpackage_assets_art_ui_assets_pet_head/12001.png"),
+        ("sign_buff", "battleeffect_signbuff/19.png"),
+        ("soulmark_icon", "effecticon/19.png"),
+        (
+            "suit",
+            "defaultpackage_assets_art_ui_assets_item_cloth_suiticon/12001.png",
+        ),
+    ],
+)
+async def test_audited_cnb_images_back_up_transient_primary_failures(
+    kind: ImageKind, cnb_path: str
+) -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(
+            200 if request.url.host == "cnb.cool" else 503,
+            content=PNG_DATA if request.url.host == "cnb.cool" else b"",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_audited_asset_snapshot,
+        )
+        key = "12001" if "12001" in cnb_path else "19"
+        assert await source.fetch(kind, key, fallback=False) == PNG_DATA
+
+    assert len(urls) == CNB_SOURCE_COUNT
+    assert urls[2].startswith("https://cnb.cool/HurryWang/seer-unity-suit-assets/")
+    assert urls[2].endswith(f"/imgs/{cnb_path}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("primary_status", [200, 404])
+async def test_cnb_is_not_used_for_success_or_missing_primary(
+    primary_status: int,
+) -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(primary_status, content=PNG_DATA)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_audited_asset_snapshot,
+        )
+        if primary_status == HTTP_OK:
+            assert await source.fetch("pet_head", "12001", fallback=False) == PNG_DATA
+        else:
+            with pytest.raises(ImageSourceError):
+                await source.fetch("pet_head", "12001", fallback=False)
+
+    assert len(urls) == (1 if primary_status == HTTP_OK else 2)
+    assert all("cnb.cool" not in url for url in urls)
+
+
+@pytest.mark.asyncio
+async def test_cnb_does_not_mix_unverified_asset_revisions() -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(503)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_asset_snapshot,
+        )
+        with pytest.raises(ImageSourceError):
+            await source.fetch("mintmark", "12001", fallback=False)
+
+    assert len(urls) == PINNED_ASSET_SOURCE_COUNT
+    assert all("cnb.cool" not in url for url in urls)
+
+
+@pytest.mark.asyncio
+async def test_cnb_pet_body_resolves_and_verifies_lfs_pointer() -> None:
+    oid = hashlib.sha256(PNG_DATA).hexdigest()
+    pointer = (
+        "version https://git-lfs.github.com/spec/v1\n"
+        f"oid sha256:{oid}\nsize {len(PNG_DATA)}\n"
+    ).encode()
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        if request.url.host in {"raw.githubusercontent.com", "cdn.jsdelivr.net"}:
+            return httpx.Response(503)
+        if request.method == "POST":
+            assert request.headers["content-type"] == "application/vnd.git-lfs+json"
+            payload = json.loads(request.content)
+            assert payload["objects"] == [{"oid": oid, "size": len(PNG_DATA)}]
+            return httpx.Response(
+                200,
+                json={
+                    "objects": [
+                        {
+                            "actions": {
+                                "download": {
+                                    "href": "https://lfs.cnb.cool/lfs/objects/test"
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
+        if request.url.host == "lfs.cnb.cool":
+            return httpx.Response(200, content=PNG_DATA)
+        return httpx.Response(200, content=pointer)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_audited_asset_snapshot,
+        )
+        assert await source.fetch("pet_body", "12001", fallback=False) == PNG_DATA
+
+    assert len(urls) == CNB_LFS_SOURCE_COUNT
+    assert "/imgs/pet_body/12001.png" in urls[2]
+    assert urls[3].endswith("/info/lfs/objects/batch")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["mintmark", "pet_body"])
+async def test_cnb_rejects_invalid_image_and_lfs_bytes(kind: ImageKind) -> None:
+    oid = hashlib.sha256(PNG_DATA).hexdigest()
+    pointer = (
+        "version https://git-lfs.github.com/spec/v1\n"
+        f"oid sha256:{oid}\nsize {len(PNG_DATA)}\n"
+    ).encode()
+    cnb_data = pointer if kind == "pet_body" else b"<html>error</html>"
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        if request.url.host in {"raw.githubusercontent.com", "cdn.jsdelivr.net"}:
+            return httpx.Response(503)
+        if request.method == "POST":
+            return httpx.Response(
+                200,
+                json={
+                    "objects": [
+                        {
+                            "actions": {
+                                "download": {
+                                    "href": "https://lfs.cnb.cool/lfs/objects/test"
+                                }
+                            }
+                        }
+                    ]
+                },
+            )
+        if request.url.host == "lfs.cnb.cool":
+            return httpx.Response(200, content=PNG_DATA + b"changed")
+        return httpx.Response(200, content=cnb_data)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_audited_asset_snapshot,
+        )
+        with pytest.raises(ImageSourceError):
+            await source.fetch(kind, "12001", fallback=False)
+    assert any("cnb.cool" in url for url in urls)
+
+
+@pytest.mark.asyncio
+async def test_cnb_lfs_malformed_response_preserves_primary_failure() -> None:
+    pointer = (
+        f"version https://git-lfs.github.com/spec/v1\noid sha256:{'a' * 64}\nsize 12\n"
+    ).encode()
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.host in {"raw.githubusercontent.com", "cdn.jsdelivr.net"}:
+            return httpx.Response(503)
+        if request.method == "POST":
+            return httpx.Response(200, content=b"invalid-json")
+        return httpx.Response(200, content=pointer)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_audited_asset_snapshot,
+        )
+        with pytest.raises(ImageSourceError, match="503"):
+            await source.fetch("pet_body", "12001", fallback=False)
 
 
 @pytest.mark.asyncio
