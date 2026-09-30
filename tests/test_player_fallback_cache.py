@@ -2,12 +2,13 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_query_cache import PlayerQueryCache
 from ironsbot.services.seer.player_service import PlayerService
 from ironsbot.services.seer.player_service_models import (
@@ -103,8 +104,9 @@ async def test_live_failure_checks_cache_at_return_time(
     *,
     expired: bool,
 ) -> None:
+    actor = ActorRef(Platform.ONEBOT, "100")
     bindings = Mock()
-    bindings.get.return_value.choice_completed = True
+    bindings.get.return_value = PlayerBindingState(actor, choice_completed=True)
     service = PlayerService(
         SeerConfig(),
         cast("Any", Mock()),
@@ -122,7 +124,7 @@ async def test_live_failure_checks_cache_at_return_time(
 
     monkeypatch.setattr(service, "_query", fail)
     task = asyncio.create_task(
-        service.query(PLAYER, actor=ActorRef(Platform.ONEBOT, "100"), explicit=True)
+        service.query(PLAYER, actor=actor, explicit=True)
     )
     try:
         await asyncio.wait_for(started.wait(), timeout=1)
@@ -136,6 +138,33 @@ async def test_live_failure_checks_cache_at_return_time(
             assert (
                 result.pending is not None and result.pending.player_message == "cached"
             )
+            assert result.offer_binding
     finally:
         release.set()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_previously_declined_unbound_player_gets_live_binding_offer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actor = ActorRef(Platform.ONEBOT, "100")
+    bindings = Mock()
+    bindings.get.return_value = PlayerBindingState(actor, choice_completed=True)
+    service = PlayerService(
+        SeerConfig(),
+        cast("Any", Mock()),
+        bindings,
+        cast("Any", Mock()),
+        cast("Any", Mock()),
+    )
+    monkeypatch.setattr(
+        service,
+        "_run_live_request",
+        AsyncMock(return_value=PlayerQueryResult(pending=pending())),
+    )
+
+    assert service.should_offer_binding(actor)
+    result = await service.query(PLAYER, actor=actor, explicit=True)
+    assert result.pending is not None
+    assert result.offer_binding
