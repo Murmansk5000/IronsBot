@@ -72,7 +72,17 @@ class PlayerAccountPolicyMixin:
         replacing_existing: bool = False,
     ) -> str:
         if accepted:
-            status = self._save_binding(actor, pending)
+            current = self._bindings.get(actor)
+            if (
+                not replacing_existing
+                and current.player_id is not None
+                and current.player_id != pending.player_id
+            ):
+                status = (
+                    "当前绑定已变化，已保留现有绑定；如需换绑，请重新发送绑定指令。"
+                )
+            else:
+                status = self._save_binding(actor, pending)
         elif replacing_existing:
             status = "已保留当前默认米米号。"
         else:
@@ -116,11 +126,40 @@ class PlayerAccountPolicyMixin:
             )
         return (
             f"已查到米米号：{pending.player_id}（{nick}）\n\n"
-            "是否将其设为默认米米号？\n"
+            "如果这是你自己的米米号，是否将其设为默认米米号？\n"
             "回复“是”或“y”确认，回复“否”或“n”跳过。\n"
             f"{quota_hint}"
             "设置后发送“米米号 / 收集 / 巅峰 / 群星牌”即可快捷查询。\n"
             "以后可发送“解绑米米号”解除绑定。"
+        )
+
+    def bind_shortcut_target(self, actor: ActorRef, player_id: int) -> str:
+        """Confirm a resolved numeric target without fetching profile for its name."""
+        current = self._bindings.get(actor)
+        if current.player_id is not None:
+            return "已保留当前默认米米号。"
+        error = self._binding_change_error(actor, target_player_id=player_id)
+        if error:
+            return error
+        self._bindings.bind(
+            actor=actor, player_id=player_id, player_nick="", changed_at=self._now()
+        )
+        return f"已设置默认米米号：{player_id}。"
+
+    def shortcut_binding_offer(self, player_id: int) -> str:
+        limits = self._config.player.query_limits
+        benefit = (
+            f"绑定后每日查询额度：{limits.bound_default_daily_limit} 项"
+            f"（未绑定为 {limits.unbound_daily_limit} 项）。\n"
+            if limits.enabled
+            and limits.bound_default_daily_limit > limits.unbound_daily_limit
+            else ""
+        )
+        return (
+            f"查询目标米米号：{player_id}\n"
+            "如果这是你自己的米米号，是否设为默认米米号？\n"
+            "回复“是/y”绑定后继续，回复“否/n”不绑定并继续；0 退出。\n"
+            f"{benefit}缓存、预热和超时不计入实时查询额度。"
         )
 
     def _check_quota(

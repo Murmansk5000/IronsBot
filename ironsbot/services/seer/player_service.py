@@ -107,6 +107,13 @@ class PlayerService(PlayerAccountPolicyMixin):
     def default_player_id(self, actor: ActorRef) -> int | None:
         return self._bindings.get(actor).player_id
 
+    def should_offer_binding(self, actor: ActorRef) -> bool:
+        binding = self._bindings.get(actor)
+        return binding.player_id is None
+
+    def decline_binding_offer(self, actor: ActorRef) -> None:
+        self._bindings.decline(actor=actor)
+
     async def query(
         self,
         player_id: int,
@@ -122,7 +129,7 @@ class PlayerService(PlayerAccountPolicyMixin):
             binding = self._bindings.get(actor)
             return self._query_cache.result(
                 player_id,
-                offer_binding=explicit and not binding.choice_completed,
+                offer_binding=explicit and binding.player_id is None,
             )
 
         quota_message = self._check_quota(
@@ -169,7 +176,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         binding = self._bindings.get(actor)
         return PlayerQueryResult(
             pending=result.pending,
-            offer_binding=explicit and not binding.choice_completed,
+            offer_binding=explicit and binding.player_id is None,
         )
 
     async def bind_player(
