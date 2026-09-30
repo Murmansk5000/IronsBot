@@ -52,7 +52,7 @@ def _load_effect_rows(session: Session, pet_id: int) -> list[dict[str, object]]:
         for row in session.execute(
             text(
                 """
-                SELECT effect_key, glossary_id, status_id, name, description
+                SELECT *
                 FROM pet_special_effect
                 WHERE pet_id = :pet_id
                 ORDER BY sort_id IS NULL, sort_id, effect_key
@@ -106,6 +106,7 @@ def _build_effect_views(
                 if row["status_id"] is not None
                 else None
             ),
+            icon_key=(str(row["icon_key"]) if row.get("icon_key") else None),
             sources=tuple(
                 dict.fromkeys(
                     _format_effect_source(source)

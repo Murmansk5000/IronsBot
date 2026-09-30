@@ -51,7 +51,7 @@ def present_pet_info(
 ) -> PetInfoRenderDocument:
     """Create a template-ready document without ORM, I/O, or current time."""
     item_icons = assets.item_icon_by_id
-    effect_icons = assets.special_effect_icon_by_status_id
+    effect_icons = assets.special_effect_icon_by_key
     activation_items = {
         item.id: _item_view(item, item_icons) for item in snapshot.activation_items
     }
@@ -170,7 +170,7 @@ def _asset_data_uri(asset: bytes | None) -> str | None:
 
 def _special_effect_views(
     snapshot: PetInfoSnapshot,
-    icons: Mapping[int, bytes],
+    icons: Mapping[str, bytes],
 ) -> list[SpecialEffectDict]:
     effects = [
         SpecialEffectDict(
@@ -179,10 +179,11 @@ def _special_effect_views(
             sources=list(effect.sources),
             glossary_id=effect.glossary_id,
             status_id=effect.status_id,
-            icon=(
-                _asset_data_uri(icons.get(effect.status_id))
-                if effect.status_id is not None
-                else None
+            icon=_asset_data_uri(
+                icons.get(
+                    effect.icon_key
+                    or (str(effect.status_id) if effect.status_id is not None else "")
+                )
             ),
         )
         for effect in snapshot.display.special_effects

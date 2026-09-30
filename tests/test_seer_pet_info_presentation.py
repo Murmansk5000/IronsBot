@@ -18,6 +18,7 @@ from ironsbot.services.seer.pet_info_views import (
     PetSkillSnapshot,
     PetSoulmarkDisplayAddition,
     PetSoulmarkSnapshot,
+    PetSpecialEffectView,
     PetStatsSnapshot,
 )
 from ironsbot.services.seer.rendering.pet_info_presentation import present_pet_info
@@ -108,6 +109,35 @@ def _assets() -> PetInfoAssets:
         item_icons=((100, b"item"), (200, b"currency")),
         special_effect_icons=(),
     )
+
+
+def test_published_variant_icon_overrides_parent_without_adding_effects() -> None:
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            special_effects=(
+                PetSpecialEffectView("冥妖之悼", "第一条", 544, None, (), "191_1"),
+                PetSpecialEffectView("幽迹之秘", "第二条", 545, None, (), "191_2"),
+            ),
+        ),
+    )
+    assets = replace(
+        _assets(),
+        special_effect_icons=(("191_1", b"first"), ("191_2", b"second")),
+    )
+
+    effects = cast(
+        "tuple[dict[str, Any], ...]",
+        present_pet_info(snapshot, assets).templates["special_effects"],
+    )
+
+    assert [effect["name"] for effect in effects] == ["冥妖之悼", "幽迹之秘"]
+    assert [effect["icon"] for effect in effects] == [
+        "data:image/png;base64,Zmlyc3Q=",
+        "data:image/png;base64,c2Vjb25k",
+    ]
 
 
 def test_presenter_builds_template_document_from_detached_values() -> None:

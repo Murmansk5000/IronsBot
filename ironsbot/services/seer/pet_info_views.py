@@ -150,6 +150,7 @@ class PetSpecialEffectView:
     glossary_id: int | None
     status_id: int | None
     sources: tuple[str, ...]
+    icon_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +211,7 @@ class PetInfoAssets:
     type_icons: tuple[tuple[int | str, bytes], ...]
     mintmark_icons: tuple[tuple[int, bytes], ...]
     item_icons: tuple[tuple[int, bytes], ...]
-    special_effect_icons: tuple[tuple[int, bytes], ...]
+    special_effect_icons: tuple[tuple[str, bytes], ...]
     soulmark_icons: tuple[tuple[int, bytes], ...] = ()
 
     @property
@@ -226,7 +227,7 @@ class PetInfoAssets:
         return dict(self.item_icons)
 
     @property
-    def special_effect_icon_by_status_id(self) -> Mapping[int, bytes]:
+    def special_effect_icon_by_key(self) -> Mapping[str, bytes]:
         return dict(self.special_effect_icons)
 
     @property
