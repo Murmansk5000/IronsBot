@@ -44,6 +44,7 @@ from .getters import (
     build_mintmark_data_getter,
 )
 from .mintmark_series_resolvers import resolve_custom_mintmark_series
+from .published_time import local_published_datetime
 from .release_contract import (
     SeerApiReleaseContractError,
     validate_published_seerapi_release,
@@ -264,7 +265,11 @@ class SeerDatabase:
                 if session is None:
                     raise DataUnavailableError("巅峰赛季数据未加载")
                 season = session.get(PeakSeasonORM, 1)
-                return None if season is None else season.start_time
+                return (
+                    None
+                    if season is None
+                    else local_published_datetime(season.start_time)
+                )
         except SQLAlchemyError as error:
             logger.warning("failed to read peak season", exc_info=True)
             raise DataUnavailableError("巅峰赛季数据读取失败") from error
@@ -282,10 +287,8 @@ class SeerDatabase:
                 ).scalar_one_or_none()
                 if value is None:
                     return None
-                return (
-                    value
-                    if isinstance(value, datetime)
-                    else datetime.fromisoformat(str(value))
+                return local_published_datetime(
+                    value if isinstance(value, datetime) else str(value)
                 )
         except SQLAlchemyError as error:
             logger.warning("failed to read master season", exc_info=True)

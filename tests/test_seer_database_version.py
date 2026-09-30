@@ -142,10 +142,10 @@ def test_master_season_start_uses_latest_published_pool(tmp_path: Path) -> None:
             text(
                 "INSERT INTO peak_cost_pool"
                 "(id, cost, name, start_time, end_time) VALUES "
-                "(1, 8, '第一赛季', '2026-06-05 10:00:00', "
-                "'2026-08-28 10:00:00'), "
-                "(2, 8, '第二赛季', '2026-09-04 10:00:00', "
-                "'2026-11-27 10:00:00')"
+                "(1, 8, '第一赛季', '2026-06-05 02:00:00', "
+                "'2026-08-28 02:00:00'), "
+                "(2, 8, '第二赛季', '2026-09-04 02:00:00', "
+                "'2026-11-27 02:00:00')"
             )
         )
     databases = DatabaseManager()
@@ -154,7 +154,7 @@ def test_master_season_start_uses_latest_published_pool(tmp_path: Path) -> None:
         databases.load_from_file("seerapi", str(source))
         start = data.master_season_start()
         assert start is not None
-        assert start.isoformat(sep=" ") == "2026-09-04 10:00:00"
+        assert start.isoformat(sep=" ") == "2026-09-04 10:00:00+08:00"
     finally:
         databases.close()
         engine.dispose()

@@ -13,13 +13,7 @@ EXPECTED_LOCAL_HOUR = 10
 
 
 def _naive_datetime(year: int, month: int, day: int, hour: int) -> datetime:
-    return datetime(
-        year,
-        month,
-        day,
-        hour,
-        tzinfo=time.TZ_CN,
-    ).replace(tzinfo=None)
+    return datetime(year, month, day, hour, tzinfo=timezone.utc).replace(tzinfo=None)
 
 
 def _vote(*, vote_id: int, start_time: datetime) -> peak.PeakVoteSnapshot:
@@ -33,8 +27,8 @@ def _vote(*, vote_id: int, start_time: datetime) -> peak.PeakVoteSnapshot:
     )
 
 
-def test_peak_vote_time_treats_naive_database_value_as_china_time() -> None:
-    value = _naive_datetime(2026, 7, 16, EXPECTED_LOCAL_HOUR)
+def test_peak_vote_time_treats_naive_database_value_as_utc() -> None:
+    value = _naive_datetime(2026, 7, 16, 2)
 
     normalized = peak.normalize_peak_vote_time(value)
 
@@ -59,8 +53,8 @@ def test_sort_peak_vote_accepts_naive_database_times(
         "now",
         lambda *, tz: datetime(2026, 7, 16, 12, 0, tzinfo=tz),
     )
-    earlier = _vote(vote_id=1, start_time=_naive_datetime(2026, 7, 15, 12))
-    nearer = _vote(vote_id=2, start_time=_naive_datetime(2026, 7, 16, 13))
+    earlier = _vote(vote_id=1, start_time=_naive_datetime(2026, 7, 15, 4))
+    nearer = _vote(vote_id=2, start_time=_naive_datetime(2026, 7, 16, 5))
 
     result = peak.sort_peak_pool_votes_by_time([earlier, nearer])
 
