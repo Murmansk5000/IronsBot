@@ -224,5 +224,5 @@ def _quota_exhausted_message(
         f"{message}\n"
         "绑定默认米米号后，查询该米米号实时数据的每日额度可从 "
         f"{limit} 次提升至 {bound_default_daily_limit} 次。\n"
-        "首次成功查询时可按提示设为默认米米号。"
+        "成功查询时可按提示设为默认米米号。"
     )

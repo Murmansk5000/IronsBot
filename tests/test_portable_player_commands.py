@@ -230,7 +230,7 @@ class _PlayerService:
         return None if self.unbound else 600001
 
     def should_offer_binding(self, actor: ActorRef) -> bool:
-        return self.default_player_id(actor) is None and not self.choice_completed
+        return self.default_player_id(actor) is None
 
     def decline_binding_offer(self, actor: ActorRef) -> None:
         del actor
@@ -678,7 +678,7 @@ async def test_player_query_menu_accepts_short_binding_confirmation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unbound_shortcut_decline_is_not_offered_again() -> None:
+async def test_unbound_shortcut_decline_only_skips_current_query() -> None:
     service = _PlayerService()
     service.unbound = True
     sessions = PortableQuerySessions()
@@ -695,8 +695,12 @@ async def test_unbound_shortcut_decline_is_not_offered_again() -> None:
     assert "collection:700002" in _text(result)
     again = await operations["seer.player.default"](context.text, context)
     assert isinstance(again, PortableReply)
-    assert "是否绑定" not in _text(again)
-    assert "collection:700002" in _text(again)
+    assert "是否绑定" in _text(again)
+    assert "collection:700002" not in _text(again)
+    again.delivered()
+    selected_again = await sessions.select("n", context, allow_deferred=True)
+    assert isinstance(selected_again, PortableReply)
+    assert "collection:700002" in _text(selected_again)
     assert service.queried == []
     assert service.bound == []
 
@@ -775,12 +779,16 @@ async def test_player_query_holds_fast_numeric_reply_until_prompt_delivery(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("selection", ["y", "n", "button", "0"])
+@pytest.mark.parametrize("previously_declined", [False, True])
 async def test_first_binding_confirmation_reuses_query_and_delivery(
     platform: Platform,
     selection: str,
+    *,
+    previously_declined: bool,
 ) -> None:
     service = _PlayerService()
     service.unbound = True
+    service.choice_completed = previously_declined
     sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
         cast("PlayerService", service),
@@ -793,6 +801,8 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
         await operations["seer.player.query"](context.text, context),
     )
     assert not service.bound
+    assert "是否将其设为默认米米号" in _text(reply)
+    assert "player:700002" not in _text(reply)
     reply.delivered()
     prompt = reply.message.prompt
     assert prompt is not None
@@ -814,6 +824,7 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
     if selection == "0":
         assert sessions.active_prompt(context) is None
     else:
+        assert "player:700002" in _text(cast("PortableReply", selected))
         assert sessions.recognizes_response("收集", context)
         assert await sessions.select("收集", context, allow_deferred=True) is not None
 
