@@ -169,6 +169,7 @@ class _PendingSelection:
     keep_open: bool = False
     exit_message: str = "已退出查询。"
     anchor_ids: frozenset[str] = frozenset()
+    prompt_content: str | None = None
     access: MenuAccess | None = None
     can_select: Callable[[object, MessageInputContext], bool] | None = None
     owner_context: MessageInputContext | None = None
