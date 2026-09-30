@@ -39,7 +39,10 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_reply import PortableOperation, PortableReply
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
-    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.player_id_resolver import (
+        PlayerIdResolver,
+        PlayerTargetSource,
+    )
 
 logger = logging.getLogger(__name__)
 _LINK_REQUIRED = (
@@ -93,12 +96,13 @@ class PortableLuckySkinCommands:
             msg = "invalid lucky window command"
             raise ValueError(msg)
         if reference and not context.has_member_mentions:
+            source = self.resolver.reference_source(reference)
 
             async def execute(
                 player_id: int,
                 context: MessageInputContext,
             ) -> OutboundMessage:
-                return await self._query_target(context, player_id)
+                return await self._query_target(context, player_id, source=source)
 
             return await select_player_reference(
                 reference,
@@ -107,19 +111,24 @@ class PortableLuckySkinCommands:
                 self.sessions,
                 execute,
                 title="请选择要查询橱窗的玩家：",
+                enforce_query_access=True,
             )
         player_id = None
+        source: PlayerTargetSource = "default"
         if reference or context.has_member_mentions:
             resolution = self.resolver.resolve(context, reference)
             if resolution.error is not None:
                 return OutboundMessage.from_text(resolution.error)
             player_id = resolution.player_id
-        return await self._query_target(context, player_id)
+            source = resolution.source or "default"
+        return await self._query_target(context, player_id, source=source)
 
-    async def _query_target(
+    async def _query_target(  # noqa: PLR0911 - each access failure has a direct reply
         self,
         context: MessageInputContext,
         player_id: int | None,
+        *,
+        source: PlayerTargetSource,
     ) -> OutboundMessage:
         actor = self._account_actor(context)
         if actor is None and player_id is None:
@@ -129,6 +138,12 @@ class PortableLuckySkinCommands:
             player_id = resolution.player_id
             if player_id is None:
                 return OutboundMessage.from_text(_LINK_REQUIRED)
+        if player_id is not None:
+            error = self.resolver.query_access_error(
+                context.message.actor, player_id, source
+            )
+            if error is not None:
+                return OutboundMessage.from_text(error)
         request = LuckySkinQuery(context.message.actor, actor, player_id)
         try:
             cached = self.service.cached_query(request)
@@ -141,7 +156,7 @@ class PortableLuckySkinCommands:
             return OutboundMessage.from_text(_access_error(error, query=True))
         if cached is not None:
             return await self._result_menu(context, actor, cached)
-        return self._confirmation_menu(context, request)
+        return self._confirmation_menu(context, request, source=source)
 
     async def watch_list(
         self, text: str, context: MessageInputContext
@@ -188,6 +203,8 @@ class PortableLuckySkinCommands:
         self,
         context: MessageInputContext,
         request: LuckySkinQuery,
+        *,
+        source: PlayerTargetSource,
     ) -> OutboundMessage:
         target_label = f"（米米号 {request.player_id}）" if request.player_id else ""
 
@@ -197,6 +214,12 @@ class PortableLuckySkinCommands:
         ) -> OutboundMessage:
             if choice == "cancel":
                 return OutboundMessage.from_text("已取消幸运橱窗查询。")
+            if request.player_id is not None:
+                error = self.resolver.query_access_error(
+                    context.message.actor, request.player_id, source
+                )
+                if error is not None:
+                    return OutboundMessage.from_text(error)
             return await self._query_now(context, request)
 
         return self.sessions.offer_menu(

@@ -153,7 +153,7 @@ def rank_help_command_contracts(
                 _matches_rank_query,
                 kind=kind,
                 peak=peak,
-                reference_is_known=player_id_resolver.has_known_reference,
+                reference_is_known=player_id_resolver.has_exact_reference_choices,
             ),
         )
         for (

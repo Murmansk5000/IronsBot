@@ -4,10 +4,19 @@
 from __future__ import annotations
 
 from functools import partial
+from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import CommandContract, parsed_command_input_matcher
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.core.semantic_requests import ActionDefinition
+
+if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandContext
+    from ironsbot.core.player_reference_commands import (
+        PlayerReferenceInputMatcher,
+        PlayerReferenceRecognizer,
+    )
 
 LUCKY_SKIN_QUERY_COMMANDS = ("幸运橱窗", "橱窗")
 LUCKY_SKIN_WATCH_LIST_COMMANDS = (
@@ -60,8 +69,17 @@ LUCKY_SKIN_WATCH_RESET_ACTION = ActionDefinition(
 )
 
 
-def is_lucky_skin_query(text: str) -> bool:
-    return parse_lucky_skin_query(text) is not None
+def lucky_skin_query_input_matcher(
+    reference_is_known: PlayerReferenceRecognizer,
+) -> PlayerReferenceInputMatcher:
+    def matches(text: str, context: CommandContext) -> bool:
+        reference = parse_lucky_skin_query(text)
+        return reference is not None and (
+            not reference
+            or is_player_reference_input(reference, context, reference_is_known)
+        )
+
+    return matches
 
 
 def parse_lucky_skin_query(text: str) -> str | None:
@@ -97,7 +115,9 @@ def parse_lucky_skin_watch_target(
     return None
 
 
-def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
+def lucky_skin_window_command_contracts(
+    reference_is_known: PlayerReferenceRecognizer | None = None,
+) -> tuple[CommandContract, ...]:
     """Describe all direct lucky-skin-window commands."""
 
     return (
@@ -106,7 +126,9 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             plugin_id="lucky_skin_window",
             section="幸运橱窗",
             examples=("橱窗",),
-            routing_matcher=lambda text, _context: is_lucky_skin_query(text),
+            routing_matcher=lucky_skin_query_input_matcher(
+                reference_is_known or (lambda *_: False)
+            ),
             description="查看每日橱窗；超级管理员可附加米米号、账号别名或 @成员查询",
             features_any=("lucky_skin_window",),
             show_in_poke=True,

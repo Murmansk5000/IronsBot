@@ -720,6 +720,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         player_id_resolver,
         features,
         sessions,
+        seer.player,
     )
     for action in seer.player_detail_extensions.actions():
         # A detail action may link to an existing, broader direct command (team).
