@@ -233,6 +233,10 @@ class PlayerBindingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     change_cooldown_days: int = Field(default=3, ge=0)
+    allow_unbound_numeric_queries: StrictBool = True
+    allow_unbound_alias_queries: StrictBool = True
+    allow_unbound_member_queries: StrictBool = False
+    allow_others_superuser_bound_shortcuts: StrictBool = False
 
 
 class PlayerQueryLimitsConfig(BaseModel):
