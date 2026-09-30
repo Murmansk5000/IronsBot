@@ -27,6 +27,7 @@ from ironsbot.services.seer.data import (
     DataUnavailableError,
 )
 from ironsbot.services.seer.images import (
+    ImageKind,
     PublishedRenderAssetSnapshot,
     parse_published_render_asset_snapshot,
 )
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
 
 UNKNOWN_VERSION = "unknown"
 _RENDER_MANIFEST_CONTRACT_VERSION = "3"
+_GIT_BLOB_SHA_LENGTH = 40
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
 
@@ -308,6 +310,46 @@ class SeerDatabase:
         """Return the immutable image source for the currently loaded release."""
 
         return self._publication().assets
+
+    def render_asset_blob(
+        self, kind: ImageKind, key: str, snapshot: PublishedRenderAssetSnapshot
+    ) -> str | None:
+        """Resolve a published Git blob for validating a mirror image."""
+
+        try:
+            with self.read_snapshot() as current:
+                if current.publication.assets is not snapshot:
+                    return None
+                with current.query(
+                    lambda session: session.execute(
+                        text(
+                            "SELECT source FROM render_asset_manifest "
+                            "WHERE asset_kind = :kind AND asset_key = :key "
+                            "AND available = 1"
+                        ),
+                        {"kind": kind, "key": key},
+                    ).scalar_one_or_none()
+                ) as source:
+                    if not isinstance(source, str):
+                        return None
+                    repository = snapshot.repository_for(kind)
+                    if repository is None:
+                        return None
+                    prefix = f"{repository.repository}@{repository.revision}:"
+                    path, marker, blob = source.removeprefix(prefix).rpartition(
+                        "#blob:"
+                    )
+                    if (
+                        not source.startswith(prefix)
+                        or not path
+                        or marker != "#blob:"
+                        or len(blob) != _GIT_BLOB_SHA_LENGTH
+                        or any(char not in "0123456789abcdef" for char in blob)
+                    ):
+                        return None
+                    return blob
+        except (DataUnavailableError, SQLAlchemyError):
+            return None
 
     def _validate_publication(self, engine: Engine) -> None:
         validate_published_seerapi_release(engine)

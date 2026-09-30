@@ -64,7 +64,9 @@ class SeerRenderSessions:
                 snapshot,
                 self.assets.bind(
                     HttpSeerImageSource(
-                        self.clients, asset_snapshot_getter=lambda: publication.assets
+                        self.clients,
+                        asset_snapshot_getter=lambda: publication.assets,
+                        asset_blob_getter=self.database.render_asset_blob,
                     )
                 ),
                 self.cache.bind(
@@ -87,6 +89,7 @@ def build_seer_rendering_components(
         HttpSeerImageSource(
             http_clients,
             asset_snapshot_getter=seer_database.render_asset_snapshot,
+            asset_blob_getter=seer_database.render_asset_blob,
         ),
         cache_paths.assets_dir(),
         render_config,

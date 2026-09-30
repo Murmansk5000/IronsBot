@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import TYPE_CHECKING
@@ -155,6 +156,32 @@ def test_master_season_start_uses_latest_published_pool(tmp_path: Path) -> None:
         start = data.master_season_start()
         assert start is not None
         assert start.isoformat(sep=" ") == "2026-09-04 10:00:00+08:00"
+    finally:
+        databases.close()
+        engine.dispose()
+
+
+def test_render_asset_blob_uses_the_active_publication(tmp_path: Path) -> None:
+    source = tmp_path / "render-assets.sqlite"
+    engine, _ = _create_release(source, ("pet_info",))
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO render_asset_manifest "
+            "(asset_kind, asset_key, sha256, release_revision, available, source, "
+            "updated_at) VALUES ('pet_head', '3488', '', 'assets-v1', 1, "
+            f"'Murmansk-Seer/seer-unity-assets@{'a' * 40}:"
+            "newseer/assets/art/ui/assets/pet/head/3488.png"
+            f"#blob:{'b' * 40}', 0)"
+        )
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    try:
+        databases.load_from_file("seerapi", str(source))
+        snapshot = data.render_asset_snapshot()
+        assert snapshot is not None
+        assert data.render_asset_blob("pet_head", "3488", snapshot) == "b" * 40
+        assert data.render_asset_blob("pet_head", "missing", snapshot) is None
+        assert data.render_asset_blob("pet_head", "3488", replace(snapshot)) is None
     finally:
         databases.close()
         engine.dispose()

@@ -30,7 +30,6 @@ MAX_ASSET_FETCH_CONCURRENCY = 4
 PINNED_ASSET_SOURCE_COUNT = 2
 CNB_SOURCE_COUNT = 3
 CNB_LFS_SOURCE_COUNT = 5
-AUDITED_ASSET_REVISION = "623f937fe8c02975cc5b19aa44638b2e87fabf84"
 PNG_DATA = b"\x89PNG\r\n\x1a\nverified-image"
 
 
@@ -46,15 +45,10 @@ def _asset_snapshot() -> PublishedRenderAssetSnapshot:
     )
 
 
-def _audited_asset_snapshot() -> PublishedRenderAssetSnapshot:
-    return replace(
-        _asset_snapshot(),
-        repositories={
-            "default": PublishedAssetRepository(
-                "Murmansk-Seer/seer-unity-assets", AUDITED_ASSET_REVISION
-            )
-        },
-    )
+def _git_blob(data: bytes) -> str:
+    return hashlib.sha1(
+        f"blob {len(data)}\0".encode() + data, usedforsecurity=False
+    ).hexdigest()
 
 
 class _ConcurrentDetectingClient(httpx.AsyncClient):
@@ -264,7 +258,7 @@ async def test_pinned_asset_retries_same_revision_through_cdn() -> None:
         ),
     ],
 )
-async def test_audited_cnb_images_back_up_transient_primary_failures(
+async def test_matching_cnb_images_back_up_transient_primary_failures(
     kind: ImageKind, cnb_path: str
 ) -> None:
     urls: list[str] = []
@@ -279,13 +273,15 @@ async def test_audited_cnb_images_back_up_transient_primary_failures(
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
-            asset_snapshot_getter=_audited_asset_snapshot,
+            asset_snapshot_getter=_asset_snapshot,
+            asset_blob_getter=lambda _kind, _key, _snapshot: _git_blob(PNG_DATA),
         )
         key = "12001" if "12001" in cnb_path else "19"
         assert await source.fetch(kind, key, fallback=False) == PNG_DATA
 
     assert len(urls) == CNB_SOURCE_COUNT
     assert urls[2].startswith("https://cnb.cool/HurryWang/seer-unity-suit-assets/")
+    assert "/-/git/raw/main/" in urls[2]
     assert urls[2].endswith(f"/imgs/{cnb_path}")
 
 
@@ -295,6 +291,13 @@ async def test_cnb_is_not_used_for_success_or_missing_primary(
     primary_status: int,
 ) -> None:
     urls: list[str] = []
+    blob_requests: list[str] = []
+
+    def published_blob(
+        _kind: ImageKind, key: str, _snapshot: PublishedRenderAssetSnapshot
+    ) -> str:
+        blob_requests.append(key)
+        return _git_blob(PNG_DATA)
 
     def respond(request: httpx.Request) -> httpx.Response:
         urls.append(str(request.url))
@@ -303,7 +306,8 @@ async def test_cnb_is_not_used_for_success_or_missing_primary(
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
-            asset_snapshot_getter=_audited_asset_snapshot,
+            asset_snapshot_getter=_asset_snapshot,
+            asset_blob_getter=published_blob,
         )
         if primary_status == HTTP_OK:
             assert await source.fetch("pet_head", "12001", fallback=False) == PNG_DATA
@@ -313,10 +317,11 @@ async def test_cnb_is_not_used_for_success_or_missing_primary(
 
     assert len(urls) == (1 if primary_status == HTTP_OK else 2)
     assert all("cnb.cool" not in url for url in urls)
+    assert blob_requests == []
 
 
 @pytest.mark.asyncio
-async def test_cnb_does_not_mix_unverified_asset_revisions() -> None:
+async def test_cnb_requires_a_published_blob() -> None:
     urls: list[str] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -336,7 +341,35 @@ async def test_cnb_does_not_mix_unverified_asset_revisions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cnb_pet_body_resolves_and_verifies_lfs_pointer() -> None:
+async def test_cnb_rejects_stale_bytes_from_another_release() -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(
+            200 if request.url.host == "cnb.cool" else 503,
+            content=PNG_DATA if request.url.host == "cnb.cool" else b"",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_asset_snapshot,
+            asset_blob_getter=lambda _kind, _key, _snapshot: _git_blob(
+                PNG_DATA + b"new"
+            ),
+        )
+        with pytest.raises(ImageSourceError, match="503"):
+            await source.fetch("pet_head", "3488", fallback=False)
+
+    assert len(urls) == CNB_SOURCE_COUNT
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("published_blob", ["image", "pointer"])
+async def test_cnb_pet_body_resolves_and_verifies_lfs_pointer(
+    published_blob: str,
+) -> None:
     oid = hashlib.sha256(PNG_DATA).hexdigest()
     pointer = (
         "version https://git-lfs.github.com/spec/v1\n"
@@ -373,11 +406,15 @@ async def test_cnb_pet_body_resolves_and_verifies_lfs_pointer() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
-            asset_snapshot_getter=_audited_asset_snapshot,
+            asset_snapshot_getter=_asset_snapshot,
+            asset_blob_getter=lambda _kind, _key, _snapshot: _git_blob(
+                pointer if published_blob == "pointer" else PNG_DATA
+            ),
         )
         assert await source.fetch("pet_body", "12001", fallback=False) == PNG_DATA
 
     assert len(urls) == CNB_LFS_SOURCE_COUNT
+    assert "/-/git/raw/master/" in urls[2]
     assert "/imgs/pet_body/12001.png" in urls[2]
     assert urls[3].endswith("/info/lfs/objects/batch")
 
@@ -419,7 +456,8 @@ async def test_cnb_rejects_invalid_image_and_lfs_bytes(kind: ImageKind) -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
-            asset_snapshot_getter=_audited_asset_snapshot,
+            asset_snapshot_getter=_asset_snapshot,
+            asset_blob_getter=lambda _kind, _key, _snapshot: _git_blob(cnb_data),
         )
         with pytest.raises(ImageSourceError):
             await source.fetch(kind, "12001", fallback=False)
@@ -442,7 +480,8 @@ async def test_cnb_lfs_malformed_response_preserves_primary_failure() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         source = HttpSeerImageSource(
             HttpClients(cache=client, origin=client),
-            asset_snapshot_getter=_audited_asset_snapshot,
+            asset_snapshot_getter=_asset_snapshot,
+            asset_blob_getter=lambda _kind, _key, _snapshot: _git_blob(pointer),
         )
         with pytest.raises(ImageSourceError, match="503"):
             await source.fetch("pet_body", "12001", fallback=False)
