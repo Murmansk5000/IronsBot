@@ -53,7 +53,7 @@ def present_pet_info(
 ) -> PetInfoRenderDocument:
     """Create a template-ready document without ORM, I/O, or current time."""
     item_icons = assets.item_icon_by_id
-    effect_icons = assets.special_effect_icon_by_status_id
+    effect_icons = assets.special_effect_icon_by_key
     activation_items = {
         item.id: _item_view(item, item_icons) for item in snapshot.activation_items
     }
@@ -63,9 +63,7 @@ def present_pet_info(
         for effect in special_effects
         if (color := effect.get("color")) is not None
     }
-    soulmarks = _soulmark_views(
-        snapshot, effect_colors, assets.soulmark_icon_by_id
-    )
+    soulmarks = _soulmark_views(snapshot, effect_colors, assets.soulmark_icon_by_id)
     soulmarks.extend(
         _soulmark_display_addition_views(
             snapshot.display.soulmark_display_additions,
@@ -179,7 +177,7 @@ def _asset_data_uri(asset: bytes | None) -> str | None:
 
 def _special_effect_views(
     snapshot: PetInfoSnapshot,
-    icons: Mapping[int, bytes],
+    icons: Mapping[str, bytes],
 ) -> list[SpecialEffectDict]:
     names_by_key = {
         effect.effect_key: effect.name
@@ -199,10 +197,11 @@ def _special_effect_views(
             sources=list(effect.sources),
             glossary_id=effect.glossary_id,
             status_id=effect.status_id,
-            icon=(
-                _asset_data_uri(icons.get(effect.status_id))
-                if effect.status_id is not None
-                else None
+            icon=_asset_data_uri(
+                icons.get(
+                    effect.icon_key
+                    or (str(effect.status_id) if effect.status_id is not None else "")
+                )
             ),
         )
         for effect in snapshot.display.special_effects

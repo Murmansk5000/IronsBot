@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from jinja2 import Environment, FileSystemLoader
 
 from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
@@ -18,7 +19,12 @@ from ironsbot.services.seer.pet_info_views import (
     PetSkillSnapshot,
     PetSoulmarkDisplayAddition,
     PetSoulmarkSnapshot,
+    PetSpecialEffectView,
     PetStatsSnapshot,
+)
+from ironsbot.services.seer.render_paths import (
+    CUSTOM_PET_INFO_TEMPLATE_PATH,
+    SHARED_TEMPLATE_PATH,
 )
 from ironsbot.services.seer.rendering.pet_info_presentation import present_pet_info
 from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_document
@@ -29,6 +35,86 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rendering import TemplatePath
 
 EXPECTED_RENDER_WIDTH = 1200
+
+
+@pytest.mark.parametrize("height,weight", [(None, None), (0.0, 0.0), (12.5, 20.0)])
+def test_encyclopedia_header_and_food(
+    height: float | None, weight: float | None
+) -> None:
+    snapshot = _snapshot()
+    name = "很长的精灵名称" * 12
+    snapshot = replace(
+        snapshot,
+        pet=replace(
+            snapshot.pet, name=name, height=height, weight=weight, food="  能量果  "
+        ),
+    )
+    document = present_pet_info(snapshot, _assets())
+    assert document.templates["pet_height"] == (
+        "未知" if height is None else f"{height:g} cm"
+    )
+    assert document.templates["pet_weight"] == (
+        "未知" if weight is None else f"{weight:g} kg"
+    )
+    environment = Environment(
+        loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
+    )
+    rendered = environment.get_template(document.template_name).render(
+        document.templates
+    )
+    assert name in rendered
+    assert "喜爱的食物：能量果" in rendered
+    header = rendered.split('<table class="pet-info-header">', 1)[1].split(
+        "</table>", 1
+    )[0]
+    assert "身高：" in header and "体重：" in header
+    assert "喜爱的食物" not in header
+    intro = rendered.split('<div class="intro-box">', 1)[1].split("</div>", 1)[0]
+    assert "喜爱的食物：能量果" in intro
+    assert "letter-spacing: 0" in rendered
+    assert "overflow-wrap: anywhere" in rendered
+    assert "scaleX" not in rendered
+    assert document.templates["pet_body_img"] == "data:image/png;base64,Ym9keQ=="
+
+
+@pytest.mark.parametrize("food", [None, "", "  "])
+def test_empty_food_does_not_create_introduction(food: str | None) -> None:
+    snapshot = _snapshot()
+    document = present_pet_info(
+        replace(snapshot, pet=replace(snapshot.pet, introduction="", food=food)),
+        _assets(),
+    )
+    environment = Environment(
+        loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
+    )
+    rendered = environment.get_template(document.template_name).render(
+        document.templates
+    )
+    assert "喜爱的食物" not in rendered
+    assert '<div class="sec-title">简介</div>' not in rendered
+
+
+@pytest.mark.parametrize("source", ["analyze_desc", "desc", "formatting_adjustment"])
+def test_soulmark_boss_validity_is_per_line(source: str) -> None:
+    snapshot = _snapshot()
+    description = (
+        "[sprite name=dot1][color=#f35555]有效段[/color]|"
+        "[sprite name=dot4]无效段|[sprite name=dot1]已写（boss无效）|"
+        "普通段|[sprite name=dot2]其他标记|[sprite name=dot1]"
+    )
+    soulmark = replace(snapshot.soulmarks[0], desc="", pve_effective=True)
+    soulmark = replace(soulmark, **{source: description})
+    document = present_pet_info(replace(snapshot, soulmarks=(soulmark,)), _assets())
+    soulmarks = cast("tuple[dict[str, Any], ...]", document.templates["soulmarks"])
+    lines = soulmarks[0]["desc"].split("<br>")
+    assert lines == [
+        '<b style="color:#f35555">有效段</b>（BOSS有效）',
+        "无效段（BOSS无效）",
+        "已写（boss无效）",
+        "普通段",
+        "其他标记",
+        "",
+    ]
 
 
 def _snapshot(*, partner: PetPartnerSnapshot | None = None) -> PetInfoSnapshot:
@@ -108,6 +194,86 @@ def _assets() -> PetInfoAssets:
         item_icons=((100, b"item"), (200, b"currency")),
         special_effect_icons=(),
     )
+
+
+def test_published_variant_icon_overrides_parent_without_adding_effects() -> None:
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            special_effects=(
+                PetSpecialEffectView("冥妖之悼", "第一条", 544, None, (), "191_1"),
+                PetSpecialEffectView("幽迹之秘", "第二条", 545, None, (), "191_2"),
+            ),
+        ),
+    )
+    assets = replace(
+        _assets(),
+        special_effect_icons=(("191_1", b"first"), ("191_2", b"second")),
+    )
+
+    effects = cast(
+        "tuple[dict[str, Any], ...]",
+        present_pet_info(snapshot, assets).templates["special_effects"],
+    )
+
+    assert [effect["name"] for effect in effects] == ["冥妖之悼", "幽迹之秘"]
+    assert [effect["icon"] for effect in effects] == [
+        "data:image/png;base64,Zmlyc3Q=",
+        "data:image/png;base64,c2Vjb25k",
+    ]
+
+
+def test_effect_partition_keeps_shared_children_and_cycles_once() -> None:
+    snapshot = _snapshot()
+    facts = (
+        PetSpecialEffectView("Parent", "P", 1, None, (), effect_key="p"),
+        PetSpecialEffectView(
+            "Child",
+            "C",
+            2,
+            None,
+            ("官方关联词条",),
+            effect_key="c",
+            parent_effect_keys=("p", "loop"),
+        ),
+        PetSpecialEffectView(
+            "Loop",
+            "L",
+            3,
+            None,
+            (),
+            effect_key="loop",
+            parent_effect_keys=("c",),
+        ),
+    )
+    snapshot = replace(
+        snapshot, display=replace(snapshot.display, special_effects=facts)
+    )
+    effects = cast(
+        "tuple[dict[str, Any], ...]",
+        present_pet_info(snapshot, _assets()).templates["special_effects"],
+    )
+    assert [
+        (effect["name"], effect["related"], effect["parents"]) for effect in effects
+    ] == [
+        ("Parent", False, []),
+        ("Child", True, ["Parent", "Loop"]),
+        ("Loop", True, ["Child"]),
+    ]
+    environment = Environment(
+        loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
+    )
+    html = environment.get_template("template.html.j2").render(
+        **present_pet_info(snapshot, _assets()).templates
+    )
+    assert "直接效果" in html
+    assert "关联说明" in html
+    effect_section = html.split('<div class="sec-title">专属效果</div>', 1)[1]
+    for name in ("Parent", "Child", "Loop"):
+        assert html.count(f">{name}</span>") == 1
+        assert f">{name}</span>" in effect_section
 
 
 def test_presenter_builds_template_document_from_detached_values() -> None:
