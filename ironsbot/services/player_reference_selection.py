@@ -42,6 +42,7 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
             sessions,
             execute,
             title=title,
+            enforce_query_access=True,
         )
     else:
         resolution = resolver.resolve(context, reference)
@@ -55,7 +56,7 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
     return result if isinstance(result, PortableReply) else PortableReply(result)
 
 
-async def select_player_reference(  # noqa: PLR0913 - explicit session and domain ports
+async def select_player_reference(  # noqa: C901, PLR0913 - selection and access checks
     reference: str,
     context: MessageInputContext,
     resolver: PlayerIdResolver,
@@ -63,7 +64,13 @@ async def select_player_reference(  # noqa: PLR0913 - explicit session and domai
     execute: PlayerReferenceAction,
     *,
     title: str,
+    enforce_query_access: bool = False,
 ) -> OutboundMessage | PortableReply:
+    source = resolver.reference_source(reference)
+    if enforce_query_access:
+        error = resolver.query_access_error(context.message.actor, None, source)
+        if error is not None:
+            return OutboundMessage.from_text(error)
     choices = resolver.reference_choices(
         reference,
         context.message.actor,
@@ -72,6 +79,12 @@ async def select_player_reference(  # noqa: PLR0913 - explicit session and domai
     if not choices:
         return OutboundMessage.from_text("未找到该米米号或已开放的玩家别名。")
     if len(choices) == 1:
+        if enforce_query_access:
+            error = resolver.query_access_error(
+                context.message.actor, choices[0].player_id, source
+            )
+            if error is not None:
+                return OutboundMessage.from_text(error)
         return await execute(choices[0].player_id, context)
 
     async def select(
@@ -85,6 +98,12 @@ async def select_player_reference(  # noqa: PLR0913 - explicit session and domai
         )
         if choice not in current:
             return OutboundMessage.from_text("该玩家别名已不可用，请重新发送原命令。")
+        if enforce_query_access:
+            error = resolver.query_access_error(
+                context.message.actor, choice.player_id, source
+            )
+            if error is not None:
+                return OutboundMessage.from_text(error)
         return await execute(choice.player_id, context)
 
     return sessions.offer_menu(

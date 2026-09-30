@@ -78,6 +78,7 @@ def build_team_query_operation(
                 sessions,
                 query_player,
                 title="请选择要查询所属战队的玩家：",
+                enforce_query_access=True,
             )
         resolution = resolver.resolve(context, reference, allow_default_binding=False)
         if resolution.error is not None:
