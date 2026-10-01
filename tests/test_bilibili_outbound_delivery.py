@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -40,6 +40,7 @@ from ironsbot.services.bilibili.preferences import (
 from ironsbot.services.bilibili.target_models import BiliPushTargets
 from ironsbot.services.messaging.image_collage import ImageCollageService
 from ironsbot.services.messaging.proactive_delivery import (
+    ProactiveDeliveryPolicy,
     ProactiveDeliveryRequest,
     ProactiveDeliverySummary,
 )
@@ -112,6 +113,8 @@ class _RecordingDelivery:
     link_calls: list[dict[str, object]] = field(default_factory=list)
     content_calls: list[dict[str, object]] = field(default_factory=list)
     content_failures: int = 0
+    private_routes: None = None
+    policy: ProactiveDeliveryPolicy = field(default_factory=ProactiveDeliveryPolicy)
 
     async def send_many(
         self,
@@ -156,6 +159,9 @@ class _RecordingAdminNotices:
 
 @dataclass
 class _SkippedDelivery:
+    private_routes: None = None
+    policy: ProactiveDeliveryPolicy = field(default_factory=ProactiveDeliveryPolicy)
+
     async def send_many(
         self,
         requests: Iterable[ProactiveDeliveryRequest],
@@ -424,7 +430,7 @@ async def test_category_subscription_hint_is_sent_for_configured_accounts(
 async def test_content_failure_after_shared_policy_notifies_admins(
     tmp_path: Path,
 ) -> None:
-    delivery = _RecordingDelivery(content_failures=1)
+    delivery = _RecordingDelivery(content_failures=2)
     admin_notices = _RecordingAdminNotices()
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
@@ -439,7 +445,7 @@ async def test_content_failure_after_shared_policy_notifies_admins(
         _targets(full_groups=(1001,), full_users=(2001,)),
     )
 
-    assert len(delivery.content_calls) == 1
+    assert len(delivery.content_calls) == delivery.content_failures
     assert len(admin_notices.messages) == 1
     message, kwargs = admin_notices.messages[0]
     assert "群 1001" in message
@@ -658,16 +664,18 @@ async def test_full_dynamic_filters_unsubscribed_targets_before_link_and_content
         _targets(full_groups=(1001, 1002), full_users=(2001, 2002)),
     )
 
-    requests = delivery.link_calls[1]["requests"]
-    assert isinstance(requests, tuple)
-    assert [request.conversation for request in requests] == [
+    assert [
+        request.conversation
+        for call in delivery.link_calls
+        for request in cast("tuple[ProactiveDeliveryRequest, ...]", call["requests"])
+    ] == [
         _group(1002),
         _private(2002),
     ]
-    assert delivery.content_calls[0]["conversations"] == (
-        _group(1002),
-        _private(2002),
-    )
+    assert [call["conversations"] for call in delivery.content_calls] == [
+        (_group(1002),),
+        (_private(2002),),
+    ]
 
 
 @pytest.mark.asyncio
@@ -689,7 +697,10 @@ async def test_full_dynamic_delegates_retry_policy_once(
                 {"message": message, "conversations": selected, **kwargs}
             )
             calls.append(selected)
-            return ProactiveDeliverySummary((_group(1001),), (_private(2001),))
+            return ProactiveDeliverySummary(
+                selected if selected == (_group(1001),) else (),
+                selected if selected == (_private(2001),) else (),
+            )
 
     delivery = _PartiallyFailingDelivery()
     sender = BilibiliDynamicOutboundSender(
@@ -704,8 +715,9 @@ async def test_full_dynamic_delegates_retry_policy_once(
         _targets(full_groups=(1001,), full_users=(2001,)),
     )
 
-    assert calls == [(_group(1001), _private(2001))]
+    assert calls == [(_group(1001),), (_private(2001),)]
     assert [call["action_name"] for call in delivery.content_calls] == [
+        FULL_DYNAMIC_PUSH_ACTION,
         FULL_DYNAMIC_PUSH_ACTION,
     ]
 
