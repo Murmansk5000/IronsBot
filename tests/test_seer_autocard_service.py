@@ -180,6 +180,45 @@ def _service() -> AutocardService:
     )
 
 
+def test_chip_query_groups_tiers_and_id_selects_one() -> None:
+    class ChipRepository:
+        def load(self) -> AutocardDataset:
+            return AutocardDataset(
+                cards=CARDS,
+                roles=ROLES,
+                natures={1: "草"},
+                chips=tuple(
+                    {
+                        "id": 115 + rarity - 1,
+                        "name": f"复苏之风 {rarity}",
+                        "description": f"恢复{heal}点生命值",
+                        "rarity": rarity,
+                        "config_group_id": 60,
+                    }
+                    for rarity, heal in ((1, 5), (2, 10), (3, 20))
+                ),
+                chips_available=True,
+            )
+
+    service = AutocardService(ChipRepository())
+    grouped = service.search("战斗芯片复苏之风")
+    assert grouped.entry is not None
+    assert all(value in grouped.entry.text for value in ("恢复5", "恢复10", "恢复20"))
+    assert grouped.entry.image_keys == ()
+    single = service.search("群星牌芯片116")
+    assert single.entry is not None
+    assert "恢复10" in single.entry.text
+    assert "恢复5" not in single.entry.text
+
+
+def test_chip_query_on_old_database_requests_update() -> None:
+    class OldRepository:
+        def load(self) -> AutocardDataset:
+            return AutocardDataset(cards=CARDS, roles=ROLES, natures={})
+
+    assert "更新" in AutocardService(OldRepository()).search("战斗芯片复苏之风").message
+
+
 def test_autocard_search_merges_normal_and_awakened_card() -> None:
     result = _service().search("群星牌布布种子")
 

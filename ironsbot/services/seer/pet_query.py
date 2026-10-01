@@ -5,7 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
@@ -37,6 +37,7 @@ class PetImageSelection:
     resource_id: int
     name: str
     skin_id: int | None = None
+    head_resource_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,21 +64,29 @@ class PetQueryService:
         self,
         arg: str,
     ) -> QueryResult[PetImageSelection]:
+        return await self._search_image(arg, self._build_image_reply)
+
+    async def search_avatar(
+        self, arg: str
+    ) -> QueryResult[PetImageSelection]:
+        return await self._search_image(arg, self._build_avatar_reply)
+
+    async def _search_image(
+        self,
+        arg: str,
+        build_reply: Callable[[PetImageSelection], Awaitable[QueryReply]],
+    ) -> QueryResult[PetImageSelection]:
         with self._data.pet_and_skins(arg) as values:
             pets, skins = values
             choices = self._image_choices(pets, skins)
         if not arg.strip() or not choices:
             return QueryResult()
         if len(choices) == 1:
-            return QueryResult(
-                reply=await self._build_image_reply(
-                    choices[0].value,
-                )
-            )
+            return QueryResult(reply=await build_reply(choices[0].value))
         if len(choices) > PET_PROMPT_MAX_ITEMS:
             exact = self._single_character_match(arg, choices)
             if exact is not None:
-                return QueryResult(reply=await self._build_image_reply(exact.value))
+                return QueryResult(reply=await build_reply(exact.value))
             return QueryResult(
                 message=(f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
             )
@@ -95,9 +104,6 @@ class PetQueryService:
         return await self._search_pet(
             arg, partial(self._build_info_reply, execution_identity=execution_identity)
         )
-
-    async def search_avatar(self, arg: str) -> QueryResult[int]:
-        return await self._search_pet(arg, self._build_avatar_reply)
 
     async def _search_pet(
         self,
@@ -154,26 +160,27 @@ class PetQueryService:
             )
         )
 
-    async def select_avatar(self, pet_id: int) -> QueryResult[object]:
-        with self._data.get(self._data.pet, pet_id) as pet:
-            if pet is None:
-                return QueryResult(message=f"未找到精灵 {pet_id}。")
-            selected = PetSelection(
-                int(pet.id),
-                str(pet.name),
-                int(pet.resource_id),
-            )
-        return QueryResult(reply=await self._build_avatar_reply(selected))
+    async def select_avatar(
+        self, selection: PetImageSelection
+    ) -> QueryResult[object]:
+        return QueryResult(reply=await self._build_avatar_reply(selection))
 
-    async def _build_avatar_reply(self, pet: PetSelection) -> QueryReply:
+    async def _build_avatar_reply(self, selection: PetImageSelection) -> QueryReply:
+        head_resource_id = self._image_resource_id(selection, kind="head")
+        if head_resource_id <= 0:
+            return QueryReply(
+                leading_text=f"【{selection.name}】（{selection.resource_id}）",
+                image_error="❌该经典皮肤的头像资源未解析。",
+                complete=False,
+            )
         image = await fetch_optional_image(
             self._images,
             "pet_head",
-            str(pet.resource_id),
+            str(head_resource_id),
             self._image_failure_reporter,
         )
         return QueryReply(
-            leading_text=f"【{pet.name}】（{pet.pet_id}）",
+            leading_text=f"【{selection.name}】（{selection.resource_id}）",
             image=image.data,
             image_error=image.error,
             complete=image.data is not None,
@@ -183,17 +190,7 @@ class PetQueryService:
         self,
         selection: PetImageSelection,
     ) -> QueryReply:
-        body_resource_id = selection.resource_id
-        if selection.skin_id is not None:
-            with self._data.query(
-                partial(
-                    load_skin_image_resolutions,
-                    skin_ids=(selection.skin_id,),
-                )
-            ) as resolutions:
-                resolution = resolutions.get(selection.skin_id)
-            if resolution is not None:
-                body_resource_id = resolution.body_resource_id
+        body_resource_id = self._image_resource_id(selection, kind="body")
 
         image_data: bytes | None = None
         image_error = ""
@@ -239,6 +236,29 @@ class PetQueryService:
             image=image_data,
             image_error=image_error,
         )
+
+    def _image_resource_id(
+        self, selection: PetImageSelection, *, kind: Literal["head", "body"]
+    ) -> int:
+        base_resource_id = selection.resource_id
+        if kind == "head" and selection.head_resource_id:
+            base_resource_id = selection.head_resource_id
+        if selection.skin_id is None:
+            return base_resource_id
+        with self._data.query(
+            partial(load_skin_image_resolutions, skin_ids=(selection.skin_id,))
+        ) as resolutions:
+            resolution = resolutions.get(selection.skin_id)
+        if resolution is None:
+            return base_resource_id
+        resolved_resource_id = (
+            resolution.head_resource_id
+            if kind == "head"
+            else resolution.body_resource_id
+        )
+        if kind == "head":
+            return resolved_resource_id or base_resource_id
+        return resolved_resource_id
 
     async def _build_info_reply(
         self, pet: PetSelection, *, execution_identity: ExecutionIdentity | None = None
@@ -307,7 +327,11 @@ class PetQueryService:
                     QueryChoice(
                         pet.name,
                         str(pet.id),
-                        PetImageSelection(pet.id, pet.name),
+                        PetImageSelection(
+                            pet.id,
+                            pet.name,
+                            head_resource_id=int(pet.resource_id),
+                        ),
                     )
                 )
             for skin in pet.skins:

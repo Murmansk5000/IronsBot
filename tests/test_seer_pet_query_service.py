@@ -147,7 +147,9 @@ def _service(
 @pytest.mark.asyncio
 async def test_avatar_uses_pet_head_resource_without_holding_data_session() -> None:
     data = FakeData()
-    data.pets = (_pet(70, "雷伊"),)
+    pet = _pet(70, "雷伊")
+    pet.resource_id = 700
+    data.pets = (pet,)
     images = FakeImages()
     service = PetQueryService(
         cast("SeerDataAccess", data),
@@ -158,10 +160,143 @@ async def test_avatar_uses_pet_head_resource_without_holding_data_session() -> N
     result = await service.search_avatar("雷伊")
 
     assert result.reply is not None
-    assert result.reply.image == b"image:70"
+    assert result.reply.image == b"image:700"
     assert result.reply.leading_text == "【雷伊】（70）"
-    assert images.requests == [("pet_head", "70")]
+    assert images.requests == [("pet_head", "700")]
     assert not data.session_active
+
+
+@pytest.mark.asyncio
+async def test_avatar_uses_resolved_skin_head_resource() -> None:
+    data = FakeData()
+    pet = _pet(1, "精灵")
+    skin = SimpleNamespace(id=538, name="皮肤", resource_id=1400538, pet=pet)
+    data.skins = (skin,)
+    data.skin_image_resolutions[538] = SkinImageResolution(
+        skin_id=538,
+        head_resource_id=3382,
+        body_resource_id=1400538,
+        head_resolution="unique_name_source",
+        body_resolution="direct_skin",
+        source_pet_id=3382,
+    )
+    images = FakeImages()
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", images),
+        cast("Any", object()),
+    )
+
+    result = await service.search_avatar("皮肤")
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:3382"
+    assert result.reply.leading_text == "【皮肤】（1400538）"
+    assert images.requests == [("pet_head", "3382")]
+    assert not data.session_active
+
+
+@pytest.mark.asyncio
+async def test_avatar_reuses_pet_and_skin_choices_and_selection() -> None:
+    data = FakeData()
+    pet = _pet(1, "精灵")
+    skin = SimpleNamespace(id=538, name="精灵皮肤", resource_id=1400538, pet=pet)
+    pet.skins = [skin]
+    data.pets = (pet,)
+    data.skins = (skin,)
+    images = FakeImages()
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", images),
+        cast("Any", object()),
+    )
+
+    result = await service.search_avatar("精灵")
+
+    assert [(choice.name, choice.value.skin_id) for choice in result.choices] == [
+        ("精灵", None),
+        ("精灵皮肤", 538),
+    ]
+    selected = await service.select_avatar(result.choices[1].value)
+    assert selected.reply is not None
+    assert selected.reply.image == b"image:1400538"
+    assert images.requests == [("pet_head", "1400538")]
+
+
+@pytest.mark.asyncio
+async def test_avatar_falls_back_to_skin_resource_when_head_unresolved() -> None:
+    data = FakeData()
+    data.skin_image_resolutions[999] = SkinImageResolution(
+        skin_id=999,
+        head_resource_id=0,
+        body_resource_id=1400999,
+        head_resolution="unresolved",
+        body_resolution="direct_skin",
+        source_pet_id=None,
+    )
+    images = FakeImages()
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", images),
+        cast("Any", object()),
+    )
+
+    result = await service.select_avatar(PetImageSelection(1400999, "皮肤", 999))
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:1400999"
+    assert result.reply.complete
+    assert images.requests == [("pet_head", "1400999")]
+
+
+@pytest.mark.asyncio
+async def test_avatar_falls_back_when_skin_resolution_is_missing() -> None:
+    data = FakeData()
+    images = FakeImages()
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", images),
+        cast("Any", object()),
+    )
+
+    result = await service.select_avatar(PetImageSelection(1400999, "皮肤", 999))
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:1400999"
+    assert images.requests == [("pet_head", "1400999")]
+
+
+@pytest.mark.asyncio
+async def test_avatar_skin_fallback_reports_actual_fetch_failure() -> None:
+    data = FakeData()
+    failure = ImageSourceError("source unavailable")
+    reporter = AsyncMock()
+
+    class FailedImages:
+        async def fetch(
+            self,
+            _kind: object,
+            _key: str,
+            *,
+            fallback: bool = True,
+        ) -> bytes:
+            assert fallback is False
+            raise failure
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FailedImages()),
+        cast("Any", object()),
+        reporter,
+    )
+
+    result = await service.select_avatar(PetImageSelection(1400999, "皮肤", 999))
+
+    assert result.reply is not None
+    assert result.reply.image is None
+    assert not result.reply.complete
+    assert result.reply.image_error == "图片素材获取失败，暂时无法显示。"
+    reporter.assert_awaited_once_with("pet_head", "1400999", failure)
 
 
 @pytest.mark.asyncio
