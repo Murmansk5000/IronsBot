@@ -22,6 +22,7 @@ IMAGE_UNAVAILABLE_MESSAGE = "图片素材获取失败，暂时无法显示。"
 ImageKind = Literal[
     "autocard_card",
     "autocard_role",
+    "autocard_chip",
     "battle_effect",
     "common",
     "element_type",
@@ -41,6 +42,7 @@ AssetRepositoryKind = ImageKind | Literal["default"]
 _PLACEHOLDER_SIZES: dict[ImageKind, int] = {
     "autocard_card": 160,
     "autocard_role": 160,
+    "autocard_chip": 160,
     "battle_effect": 96,
     "common": 96,
     "element_type": 64,
