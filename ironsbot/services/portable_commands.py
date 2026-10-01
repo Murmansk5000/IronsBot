@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.core.command_catalog import CommandContext, command_context_from_input
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputKind
+from ironsbot.core.message_origin import message_origin
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -234,7 +235,11 @@ class PortableCommandRouter:
             return None
         return PortableReply(OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT))
 
-    async def dispatch(  # noqa: PLR0911 - explicit routing precedence
+    async def dispatch(self, context: MessageInputContext) -> PortableReply | None:
+        with message_origin(context):
+            return await self._dispatch(context)
+
+    async def _dispatch(  # noqa: PLR0911 - explicit routing precedence
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:

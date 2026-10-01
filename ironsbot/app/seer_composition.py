@@ -20,6 +20,7 @@ from ironsbot.integrations.onebot.execution_identity import resolve_execution_id
 from ironsbot.integrations.onebot.lucky_skin_window import (
     build_onebot_lucky_skin_window_accounts,
 )
+from ironsbot.integrations.onebot.notice_origin import resolve_notice_origin
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
@@ -263,6 +264,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             resolve_execution_identity,
             aliases=settings.messaging.bot_routing.bot_aliases,
         ),
+        partial(resolve_notice_origin, principals=identity_principals),
     )
 
     async def render_pet(
