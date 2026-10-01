@@ -102,7 +102,7 @@ async def test_send_admin_notice_uses_platform_neutral_targets() -> None:
             "group_conversations": (ConversationRef(Platform.ONEBOT, "group", "3003"),),
             "action_name": "AI chat error notice",
             "subscription_key": "ai_chat_error_notice",
-            "interval_seconds": 1.5,
+            "interval_seconds": 0,
         }
     ]
 
@@ -140,6 +140,6 @@ async def test_private_superuser_notice_never_uses_admin_notice_groups() -> None
             "group_conversations": (),
             "action_name": "daily private notice",
             "subscription_key": "daily_private_notice",
-            "interval_seconds": 1.5,
+            "interval_seconds": 0,
         }
     ]
