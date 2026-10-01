@@ -529,6 +529,7 @@ async def test_mount_uses_its_generated_repository_revision() -> None:
     ("kind", "key", "suffix"),
     [
         ("autocard_card", "card_7", "/autocard/texture/cards/card_7.png"),
+        ("autocard_chip", "autocardChip_115", "/autocard/s2chip/autocardChip_115.png"),
         (
             "autocard_role",
             "role_9",

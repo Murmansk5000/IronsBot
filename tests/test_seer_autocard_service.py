@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from PIL import Image
 
 from ironsbot.core.outbound import BinaryImagePart, TextPart
 from ironsbot.integrations.seer_data.autocard_repository import (
@@ -204,9 +206,21 @@ def test_chip_query_groups_tiers_and_id_selects_one() -> None:
     grouped = service.search("战斗芯片复苏之风")
     assert grouped.entry is not None
     assert all(value in grouped.entry.text for value in ("恢复5", "恢复10", "恢复20"))
-    assert grouped.entry.image_keys == ()
+    assert grouped.entry.image_keys == (
+        "autocardChip_115",
+        "autocardChip_116",
+        "autocardChip_117",
+    )
     single = service.search("群星牌芯片116")
     assert single.entry is not None
+    assert single.entry.image_keys == ("autocardChip_116",)
+    assert service.search("强化芯片116").entry == single.entry
+    assert service.search("芯片116").entry == single.entry
+    assert service.search("芯片复苏之风").entry == grouped.entry
+    from ironsbot.services.seer.query_commands import AUTOCARD_QUERY
+
+    assert AUTOCARD_QUERY("芯片复苏之风") is not None
+    assert AUTOCARD_QUERY("芯片116") is not None
     assert "恢复10" in single.entry.text
     assert "恢复5" not in single.entry.text
     assert service.search("群星牌芯片999").message == "未找到该战斗芯片。"
@@ -337,6 +351,39 @@ async def test_autocard_media_uses_versioned_asset_keys_and_skips_missing() -> N
         BinaryImagePart(b"card_2", "image/png"),
         TextPart(entry.text),
     )
+
+
+@pytest.mark.asyncio
+async def test_chip_media_uses_dark_background_and_keeps_text_on_failure() -> None:
+    from ironsbot.services.seer.autocard import AutocardEntry
+
+    buffer = BytesIO()
+    icon = Image.new("RGBA", (8, 8))
+    icon.putpixel((4, 4), (255, 255, 255, 255))
+    icon.save(buffer, format="PNG")
+
+    class Images:
+        async def fetch(self, kind: str, key: str, *, fallback: bool) -> bytes:
+            assert kind == "autocard_chip"
+            assert fallback is False
+            return buffer.getvalue() if key.endswith("115") else b"invalid"
+
+    entry = AutocardEntry(
+        kind="chip",
+        item_id=115,
+        name="复苏之风",
+        text="恢复5点生命值",
+        image_key="autocardChip_115",
+        additional_image_keys=("autocardChip_116",),
+    )
+    message = await AutocardMediaService(Images()).outbound(entry)  # type: ignore[arg-type]
+    assert message.parts[-1] == TextPart(entry.text)
+    assert len(message.parts) == VARIANT_IMAGE_COUNT
+    part = message.parts[0]
+    assert isinstance(part, BinaryImagePart)
+    with Image.open(BytesIO(part.content)) as preview:
+        assert preview.size == (256, 256)
+        assert preview.getpixel((0, 0)) == (32, 36, 44)
 
 
 def test_autocard_raw_selection_keeps_single_card_for_new_content() -> None:

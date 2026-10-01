@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     )
 
 _PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]] = {
+    "autocard_chip": (("default", "newseer/assets/game/ui/autocard/s2chip/{}.png"),),
     "autocard_card": (("default", "newseer/assets/art/autocard/texture/cards/{}.png"),),
     "autocard_role": (
         ("default", "newseer/assets/art/autocard/texture/roles/card/{}.png"),
