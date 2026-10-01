@@ -36,6 +36,7 @@ TEAM_AUDIT_FINAL_FOLLOWUP_AFTER_HOURS_ERROR = (
 OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR = (
     "outbound_rate_limit.cooldown_message must not be empty"
 )
+PUSH_PARALLEL_TARGETS_ERROR = "max_parallel_targets must be -1 or positive"
 OUTBOUND_RATE_LIMIT_WINDOWS_REQUIRED_ERROR = (
     "outbound_rate_limit.windows must not be empty"
 )
@@ -453,10 +454,17 @@ class ProactiveDeliveryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_attempts: int = Field(default=3, ge=1)
-    max_parallel_targets: int = Field(default=5, ge=1)
+    max_parallel_targets: int = -1
     retry_batch_divisor: int = Field(default=3, ge=1)
     retry_delay_seconds: float = Field(default=2.0, ge=0)
     transport_failure_cooldown_seconds: float = Field(default=60.0, ge=0)
+
+    @field_validator("max_parallel_targets")
+    @classmethod
+    def validate_max_parallel_targets(cls, value: int) -> int:
+        if value != -1 and value < 1:
+            raise ValueError(PUSH_PARALLEL_TARGETS_ERROR)
+        return value
 
 
 class RedPacketNoticeConfig(BaseModel):

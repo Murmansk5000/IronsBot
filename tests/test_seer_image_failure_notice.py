@@ -5,8 +5,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.message_origin import current_message_origin, message_origin
 from ironsbot.core.outbound import ExecutionIdentity
-from ironsbot.core.platform import Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.services.seer.image_failure_notice import AdminImageFailureReporter
 from ironsbot.services.seer.images import ImageSourceError
 
@@ -62,3 +69,31 @@ async def test_notice_failure_does_not_abort_partial_render() -> None:
     notices.send.side_effect = RuntimeError("notice offline")
     reporter = AdminImageFailureReporter(cast("AdminNoticeService", notices))
     await reporter.report_batch((("pet_head", "1", ImageSourceError("timeout")),))
+
+
+@pytest.mark.asyncio
+async def test_image_notice_includes_triggering_group_and_sender() -> None:
+    notices = AsyncMock()
+    resolver = AsyncMock(
+        return_value="群：测试群（QQ群：456）\n用户：群昵称（QQ：789）"
+    )
+    reporter = AdminImageFailureReporter(
+        cast("AdminNoticeService", notices), origin_resolver=resolver
+    )
+    group = ConversationRef(Platform.ONEBOT, "group", "456")
+    context = MessageInputContext(
+        IncomingMessageRef(
+            Platform.ONEBOT, ActorRef(Platform.ONEBOT, "789"), group, "1", "query"
+        ),
+        mentions_bot=True,
+    )
+
+    with message_origin(context):
+        await reporter.report_batch((("pet_head", "1", ImageSourceError("timeout")),))
+
+    resolver.assert_awaited_once_with(context)
+    assert (
+        "群：测试群（QQ群：456）\n用户：群昵称（QQ：789）"
+        in notices.send.await_args.args[0]
+    )
+    assert current_message_origin() is None
