@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -10,7 +11,9 @@ from ironsbot.core.outbound import (
     DeliveryFailureKind,
     ExecutionIdentity,
     OutboundMessage,
+    RemoteImagePart,
     SendResult,
+    TextPart,
 )
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_delivery_ledger import (
@@ -64,8 +67,6 @@ async def test_recovery_excludes_new_targets_and_does_not_touch_new_inflight(
 
 @pytest.mark.asyncio
 async def test_concurrent_stage_claim_sends_only_once(tmp_path: Path) -> None:
-    import asyncio
-
     ledger = prepare(tmp_path / "delivery.sqlite")
     messenger = AsyncMock()
     messenger.send.return_value = SendResult(delivered=True, message_id="1")
@@ -75,6 +76,78 @@ async def test_concurrent_stage_claim_sends_only_once(tmp_path: Path) -> None:
         stage.send(TARGET, OutboundMessage.from_text("link")),
     )
     messenger.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dynamic_fast_group_reaches_image_while_other_link_waits(
+    tmp_path: Path,
+) -> None:
+    slow = TARGET
+    fast = ConversationRef(Platform.ONEBOT, "group", "101")
+    slow_started = asyncio.Event()
+    release_slow = asyncio.Event()
+    fast_image_sent = asyncio.Event()
+
+    class BlockingMessenger(FakeMessenger):
+        async def send(
+            self, conversation: ConversationRef, message: OutboundMessage
+        ) -> SendResult:
+            self.calls.append((conversation, message))
+            if conversation == slow and any(
+                isinstance(part, TextPart) and "传送门：" in part.text
+                for part in message.parts
+            ):
+                slow_started.set()
+                await release_slow.wait()
+            if conversation == fast and any(
+                isinstance(part, RemoteImagePart) for part in message.parts
+            ):
+                fast_image_sent.set()
+            return SendResult(delivered=True, message_id="sent")
+
+    messenger = BlockingMessenger()
+    delivery, _, subscriptions = _delivery(messenger=messenger)
+    ledger = SqliteDynamicDeliveryLedger(tmp_path / "delivery.sqlite")
+    sender = BilibiliDynamicOutboundSender(
+        delivery,
+        cast("Any", subscriptions),
+        ledger=ledger,
+    )
+    item = _item()
+    targets = BiliPushTargets([slow, fast], [], [], [])
+    task = asyncio.create_task(
+        sender.send(item, int(time.time()), 1310714247, targets)
+    )
+    try:
+        await asyncio.wait_for(slow_started.wait(), 1)
+        await asyncio.wait_for(fast_image_sent.wait(), 1)
+        assert len([call for call in messenger.calls if call[0] == slow]) == 1
+    finally:
+        release_slow.set()
+        await task
+
+    def stages(conversation: ConversationRef) -> list[str]:
+        return [
+            (
+                "image"
+                if any(isinstance(part, RemoteImagePart) for part in message.parts)
+                else "link"
+                if any(
+                    isinstance(part, TextPart) and "传送门：" in part.text
+                    for part in message.parts
+                )
+                else "text"
+            )
+            for target, message in messenger.calls
+            if target == conversation
+        ]
+
+    assert stages(slow) == ["link", "text", "image"]
+    assert stages(fast) == ["link", "text", "image"]
+    count = len(messenger.calls)
+    ledger.recover()
+    await sender.send(item, int(time.time()), 1310714247, targets, resume=True)
+    assert len(messenger.calls) == count
 
 
 def prepare(path: Path) -> SqliteDynamicDeliveryLedger:

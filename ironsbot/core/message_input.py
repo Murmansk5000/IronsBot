@@ -32,6 +32,7 @@ class MessageInputContext:
     mentions_everyone: bool = False
     offer_player_binding: bool = True
     verified_member_mentions: tuple[ActorRef, ...] = ()
+    actor_display_name: str = ""
 
     @property
     def text(self) -> str:
