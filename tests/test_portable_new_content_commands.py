@@ -255,5 +255,6 @@ def test_new_content_specs_are_the_single_operation_inventory() -> None:
         "seer.data.new_autocard",
         "seer.data.new_autocard_role",
         "seer.data.new_autocard_card",
+        "seer.data.new_autocard_chip",
         "seer.data.new_autocard_sanctuary_effect",
     }
