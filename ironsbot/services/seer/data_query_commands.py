@@ -159,7 +159,7 @@ NEW_CONTENT_COMMAND_SPECS = (
         "seer.data.new_autocard",
         NEW_AUTOCARD_CARDS_COMMANDS,
         AUTOCARD_NEW_CONTENT_CATEGORIES,
-        "查看本周新增群星牌卡牌、角色、元素圣域与祝印",
+        "查看本周群星牌卡牌、角色、战斗芯片、元素圣域与祝印变化",
         ("seer_autocard",),
     ),
     NewContentCommandSpec(
@@ -192,6 +192,7 @@ NEW_CONTENT_CATEGORY_FEATURES: dict[NewContentCategory, tuple[str, ...]] = {
     "mount": ("seer_equipment",),
     "autocard_card": ("seer_autocard",),
     "autocard_role": ("seer_autocard",),
+    "autocard_chip": ("seer_autocard",),
     "autocard_sanctuary_effect": ("seer_autocard",),
 }
 
