@@ -411,6 +411,7 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
     assert [item.name for item in prompt.items] == [
         "▶ 新增群星牌",
         "▶ 新增群星牌角色",
+        "▶ 群星牌战斗芯片",
         "▶ 新增群星牌圣域",
     ]
 
