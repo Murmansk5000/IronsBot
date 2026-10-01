@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.config.models.messaging import PushUnsubscribeConfig
+from ironsbot.config.models.messaging import (
+    ProactiveDeliveryConfig,
+    PushUnsubscribeConfig,
+)
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
@@ -577,6 +580,96 @@ async def test_proactive_delivery_bounds_parallel_transport_calls() -> None:
     assert messenger.max_active == MAX_PARALLEL_TARGETS
 
 
+@pytest.mark.parametrize("value", [-1, 1, 3])
+def test_proactive_parallel_target_config_accepts_unlimited_or_positive(
+    value: int,
+) -> None:
+    config = ProactiveDeliveryConfig(max_parallel_targets=value)
+    assert config.max_parallel_targets == value
+
+
+@pytest.mark.parametrize("value", [0, -2])
+def test_proactive_parallel_target_config_rejects_other_nonpositive_values(
+    value: int,
+) -> None:
+    with pytest.raises(ValueError, match="max_parallel_targets"):
+        ProactiveDeliveryConfig(max_parallel_targets=value)
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_default_starts_all_targets_without_stagger() -> None:
+    conversations = tuple(
+        ConversationRef(Platform.ONEBOT, "group", str(group_id))
+        for group_id in range(3003, 3009)
+    )
+    messenger = _ConcurrentMessenger()
+    delivery, _, _ = _delivery(messenger=messenger)
+
+    summary = await delivery.send(
+        OutboundMessage.from_text("notice"), conversations, action_name="unlimited"
+    )
+
+    assert summary.succeeded == conversations
+    assert messenger.max_active == len(conversations)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_messages_advance_per_target_without_global_barrier() -> None:
+    slow = GROUP
+    fast = ConversationRef(Platform.ONEBOT, "group", "3004")
+    slow_started = asyncio.Event()
+    release_slow = asyncio.Event()
+    fast_second = asyncio.Event()
+
+    @dataclass
+    class BlockingMessenger(FakeMessenger):
+        async def send(
+            self, conversation: ConversationRef, message: OutboundMessage
+        ) -> SendResult:
+            self.calls.append((conversation, message))
+            if conversation == slow and _text(message).startswith("first"):
+                slow_started.set()
+                await release_slow.wait()
+            if conversation == fast and _text(message).startswith("second"):
+                fast_second.set()
+            return SendResult(delivered=True, message_id="sent")
+
+    messenger = BlockingMessenger()
+    delivery, _, _ = _delivery(messenger=messenger)
+    sender = ScheduledMessageOutboundSender(delivery)
+    task = asyncio.create_task(
+        sender.send(
+            ScheduledMessageDelivery(
+                messages=("first", "second"),
+                private_conversations=(),
+                group_conversations=(slow, fast),
+                group_mentions=(),
+                action_name="schedule",
+                subscription_key="schedule",
+            )
+        )
+    )
+
+    try:
+        await asyncio.wait_for(slow_started.wait(), 1)
+        await asyncio.wait_for(fast_second.wait(), 1)
+        assert not release_slow.is_set()
+    finally:
+        release_slow.set()
+        await task
+
+    assert [
+        _text(message).splitlines()[0]
+        for conversation, message in messenger.calls
+        if conversation == slow
+    ] == ["first", "second"]
+    assert [
+        _text(message).splitlines()[0]
+        for conversation, message in messenger.calls
+        if conversation == fast
+    ] == ["first", "second"]
+
+
 @pytest.mark.asyncio
 async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() -> None:
     delivery, messenger, _subscriptions = _delivery()
@@ -627,14 +720,21 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
 @pytest.mark.asyncio
 async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
     class RecordingDelivery:
-        requests: tuple[ProactiveDeliveryRequest, ...] = ()
+        def __init__(self) -> None:
+            self.requests: list[ProactiveDeliveryRequest] = []
+            self.private_routes = None
+            self.policy = ProactiveDeliveryPolicy()
 
-        async def send_many(
+        async def send(
             self,
-            requests: tuple[ProactiveDeliveryRequest, ...],
+            message: OutboundMessage,
+            conversations: tuple[ConversationRef, ...],
             **_kwargs: object,
         ) -> None:
-            self.requests = requests
+            self.requests.extend(
+                ProactiveDeliveryRequest(conversation, message)
+                for conversation in conversations
+            )
 
     recording = RecordingDelivery()
     principals = IdentityPrincipalService()
@@ -661,8 +761,11 @@ async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
         official=OfficialIdentity("example-app", "member", "target-openid"),
     )
     await sender.send(target)
-    assert [request.conversation for request in recording.requests] == [official, GROUP]
-    assert recording.requests[0].message.parts[0] == MentionPart(
+    assert [request.conversation for request in recording.requests[1:]] == [
+        official,
+        GROUP,
+    ]
+    assert recording.requests[1].message.parts[0] == MentionPart(
         ActorRef(
             Platform.QQ_OFFICIAL,
             "target-openid",
@@ -676,14 +779,21 @@ async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
 @pytest.mark.asyncio
 async def test_scheduled_mentions_can_fall_back_to_text_for_one_task() -> None:
     class RecordingDelivery:
-        requests: tuple[ProactiveDeliveryRequest, ...] = ()
+        def __init__(self) -> None:
+            self.requests: list[ProactiveDeliveryRequest] = []
+            self.private_routes = None
+            self.policy = ProactiveDeliveryPolicy()
 
-        async def send_many(
+        async def send(
             self,
-            requests: tuple[ProactiveDeliveryRequest, ...],
+            message: OutboundMessage,
+            conversations: tuple[ConversationRef, ...],
             **_kwargs: object,
         ) -> None:
-            self.requests = requests
+            self.requests.extend(
+                ProactiveDeliveryRequest(conversation, message)
+                for conversation in conversations
+            )
 
     recording = RecordingDelivery()
     official = ConversationRef(
