@@ -56,6 +56,8 @@ class NewContentDetailService:
     ) -> NewContentDetail:
         if item.category == "autocard_sanctuary_effect":
             return format_new_content_autocard_sanctuary_effect_detail(item)
+        if item.category == "autocard_chip":
+            return format_new_content_autocard_chip_detail(item)
         if item.category == "achievement":
             return format_new_content_achievement_detail(item)
         if item.category == "skill":
@@ -159,6 +161,19 @@ def format_new_content_autocard_sanctuary_effect_detail(
     description = str(payload.get("description", "")).strip()
     if description:
         lines.append(f"效果：{description}")
+    return "\n".join(lines)
+
+
+def format_new_content_autocard_chip_detail(item: NewContentItem) -> str:
+    payload = item.payload
+    lines = [
+        f"【{item.name}】",
+        f"状态：{'修改' if item.change_kind == 'modified' else '新增'}",
+        f"ID：{item.entity_id}",
+    ]
+    if previous := str(payload.get("previous_description", "")).strip():
+        lines.append(f"原效果：{previous}")
+    lines.append(f"当前效果：{str(payload.get('description', '')).strip()}")
     return "\n".join(lines)
 
 

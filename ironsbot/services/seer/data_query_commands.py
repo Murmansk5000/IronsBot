@@ -45,8 +45,25 @@ NEW_MINTMARKS_COMMANDS = ("新增刻印", "每周刻印", "本周刻印", "更�
 NEW_SUITS_COMMANDS = ("新增套装", "每周套装", "本周套装", "更新套装")
 NEW_EQUIPS_COMMANDS = ("新增部件", "每周部件", "本周部件", "更新部件")
 NEW_MOUNTS_COMMANDS = ("新增座驾", "每周座驾", "本周座驾", "更新座驾")
-NEW_AUTOCARD_CARDS_COMMANDS = ("新增群星", "每周群星", "本周群星", "更新群星",)
-NEW_AUTOCARD_CARD_ONLY_COMMANDS = ("新增群星卡牌", "每周群星卡牌", "本周群星卡牌", "更新群星卡牌", "新增卡牌",)
+NEW_AUTOCARD_CARDS_COMMANDS = (
+    "新增群星",
+    "每周群星",
+    "本周群星",
+    "更新群星",
+)
+NEW_AUTOCARD_CARD_ONLY_COMMANDS = (
+    "新增群星卡牌",
+    "每周群星卡牌",
+    "本周群星卡牌",
+    "更新群星卡牌",
+    "新增卡牌",
+)
+NEW_AUTOCARD_CHIPS_COMMANDS = (
+    "新增群星芯片",
+    "每周群星芯片",
+    "本周群星芯片",
+    "更新群星芯片",
+)
 NEW_AUTOCARD_ROLES_COMMANDS = (
     "新增群星角色",
     "每周群星角色",
@@ -153,14 +170,28 @@ NEW_CONTENT_COMMAND_SPECS = (
         "seer.data.new_autocard",
         NEW_AUTOCARD_CARDS_COMMANDS,
         AUTOCARD_NEW_CONTENT_CATEGORIES,
-        "查看本周新增群星卡牌、角色、元素圣域与祝印",
+        "查看本周群星卡牌、角色、场地祝印与芯片变化",
         ("seer_autocard",),
     ),
     NewContentCommandSpec(
         "seer.data.new_autocard_role",
         NEW_AUTOCARD_ROLES_COMMANDS,
         ("autocard_role",),
-        "查看本周新增群星赛尔角色",
+        "查看本周新增群星角色",
+        ("seer_autocard",),
+    ),
+    NewContentCommandSpec(
+        "seer.data.new_autocard_card",
+        NEW_AUTOCARD_CARD_ONLY_COMMANDS,
+        ("autocard_card",),
+        "查看本周群星卡牌变化",
+        ("seer_autocard",),
+    ),
+    NewContentCommandSpec(
+        "seer.data.new_autocard_chip",
+        NEW_AUTOCARD_CHIPS_COMMANDS,
+        ("autocard_chip",),
+        "查看本周群星芯片变化",
         ("seer_autocard",),
     ),
     NewContentCommandSpec(
@@ -186,6 +217,7 @@ NEW_CONTENT_CATEGORY_FEATURES: dict[NewContentCategory, tuple[str, ...]] = {
     "mount": ("seer_equipment",),
     "autocard_card": ("seer_autocard",),
     "autocard_role": ("seer_autocard",),
+    "autocard_chip": ("seer_autocard",),
     "autocard_sanctuary_effect": ("seer_autocard",),
 }
 
@@ -205,5 +237,3 @@ def available_new_content_categories(
             for feature in NEW_CONTENT_CATEGORY_FEATURES[category]
         )
     )
-
-NEW_CONTENT_COMMAND_SPECS += (NewContentCommandSpec("seer.data.new_autocard_card", NEW_AUTOCARD_CARD_ONLY_COMMANDS, ("autocard_card",), "查看本周群星卡牌变化", ("seer_autocard",)),)
