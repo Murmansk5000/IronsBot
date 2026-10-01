@@ -33,7 +33,7 @@ class ActivityReminderOutboundSender:
             reminder.message,
             conversations,
             action_name=reminder.action_name,
-            interval_seconds=1.2,
+            interval_seconds=0,
             subscription_key="seer_activity_push",
             include_promotions=True,
         )

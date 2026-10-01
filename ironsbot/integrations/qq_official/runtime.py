@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from threading import Lock
@@ -41,7 +42,7 @@ from ironsbot.services.portable_reply import PortableReply, deliver_portable_rep
 from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
     from pathlib import Path
 
     from httpx import AsyncClient
@@ -483,6 +484,11 @@ class QQOfficialRuntime:
             mentions_bot=mentions_bot,
             execution_identity=ExecutionIdentity(
                 incoming.platform, app_id, self._connections[app_id].lifecycle.account
+            ),
+            actor_display_name=(
+                str(author.get("username") or author.get("nickname") or "").strip()
+                if isinstance(author := (event.raw or {}).get("author"), Mapping)
+                else ""
             ),
             automatic_fallback_allowed=(
                 event_type != GROUP_MESSAGE_CREATE or mentions_bot

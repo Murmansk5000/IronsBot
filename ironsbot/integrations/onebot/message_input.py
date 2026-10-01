@@ -93,6 +93,11 @@ def message_input_context(event: Event) -> MessageInputContext:
         execution_identity=(
             ExecutionIdentity(Platform.ONEBOT, self_id) if self_id else None
         ),
+        actor_display_name=str(
+            getattr(getattr(event, "sender", None), "nickname", "")
+            or getattr(getattr(event, "sender", None), "card", "")
+            or ""
+        ).strip(),
     )
 
 
