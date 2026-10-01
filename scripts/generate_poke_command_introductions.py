@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
 BASELINE_COMMIT = "c83f48e8dd65ba71dd4227c8251083b9443ded4b"
 ARCHIVE_COMMIT = "55a39fd12c8b562f8ac3eb8b95d5a71325e8981f"
-SEED_COMMIT = "8e435a1be5f87bae6d7d605180fa763d013abe57"
+SEED_COMMIT = "13ce5d3c9faac7cfc4c856b6b1db50a04a2de95e"
 _RETAINED_DISPLAY_DATES = {
     "about.official_identity_info": (
         "2026-09-15T19:24:00+08:00",

@@ -13,7 +13,15 @@ from ironsbot.core.selection import (
 )
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
-AUTOCARD_QUERY_PREFIXES = ("群星牌芯片", "战斗芯片", "群星牌", "卡牌", "查询群星牌")
+AUTOCARD_QUERY_PREFIXES = (
+    "群星牌芯片",
+    "战斗芯片",
+    "强化芯片",
+    "芯片",
+    "群星牌",
+    "卡牌",
+    "查询群星牌",
+)
 AUTOCARD_QUERY_SUFFIXES = ("群星牌",)
 
 _AUTOCARD_NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
@@ -101,7 +109,7 @@ class AutocardService:
 
     def search(self, arg: str) -> AutocardSearchResult:
         dataset = self._repository.load()
-        if arg.strip().startswith(("战斗芯片", "群星牌芯片")):
+        if arg.strip().startswith(("战斗芯片", "群星牌芯片", "强化芯片", "芯片")):
             return _search_chips(dataset, _extract_autocard_query_arg(arg))
         index = _build_autocard_index(dataset)
         matches = _search_autocard_items(
@@ -167,33 +175,38 @@ def _search_chips(dataset: AutocardDataset, query: str) -> AutocardSearchResult:
                     message="未找到唯一的战斗芯片，请输入完整名称或 ID。"
                 )
             chips = tuple(
-                chip
-                for chip in chips
-                if _int_field(chip, "config_group_id") in groups
+                chip for chip in chips if _int_field(chip, "config_group_id") in groups
             )
     if not chips:
         return AutocardSearchResult(message="未找到该战斗芯片。")
-    chips = tuple(
-        sorted(chips, key=lambda chip: (
-            _int_field(chip, "rarity"), _int_field(chip, "id")
-        ))
+    ordered_chips = sorted(
+        chips, key=lambda chip: (_int_field(chip, "rarity"), _int_field(chip, "id"))
     )
-    title = str(chips[0].get("name", "战斗芯片"))
-    if len(chips) > 1:
+    first_chip = ordered_chips[0]
+    title = str(first_chip.get("name", "战斗芯片"))
+    if len(ordered_chips) > 1:
         title = re.sub(r"\s*(?:I{1,3}|[ⅠⅡⅢ])$", "", title).strip()
     rarity_names = {1: "普通", 2: "稀有", 3: "传说"}
     lines = [f"【{title}】"]
-    for chip in chips:
+    for chip in ordered_chips:
         rarity = _int_field(chip, "rarity")
         lines.append(
             f"{rarity_names.get(rarity, f'档位 {rarity}')}"
             f"（{_int_field(chip, 'id')}）："
             f"{str(chip.get('description', '')).strip()}"
         )
-    return AutocardSearchResult(entry=AutocardEntry(
-        kind="chip", item_id=_int_field(chips[0], "id"), name=title,
-        text="\n".join(lines), image_key="",
-    ))
+    return AutocardSearchResult(
+        entry=AutocardEntry(
+            kind="chip",
+            item_id=_int_field(first_chip, "id"),
+            name=title,
+            text="\n".join(lines),
+            image_key=f"autocardChip_{_int_field(first_chip, 'id')}",
+            additional_image_keys=tuple(
+                f"autocardChip_{_int_field(chip, 'id')}" for chip in ordered_chips[1:]
+            ),
+        )
+    )
 
 
 def _build_autocard_index(dataset: AutocardDataset) -> _AutocardIndex:
