@@ -30,7 +30,7 @@ def install(group: SeerMatcherGroup) -> None:
         make_query_handler(
             service.search_avatar,
             service.select_avatar,
-            "请选择要查询头像的精灵：",
+            "请选择要查询头像的精灵或皮肤：",
             ActionDefinition("seer_pet_avatar", "精灵头像查询"),
             sessions=group.query_sessions,
         )

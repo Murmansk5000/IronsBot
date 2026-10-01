@@ -207,7 +207,7 @@ def build_portable_seer_operations(
                 parser=pet_avatar_input().parse_argument,
                 search=seer.pet_query.search_avatar,
                 select=seer.pet_query.select_avatar,
-                prompt_title="请选择要查询头像的精灵：",
+                prompt_title="请选择要查询头像的精灵或皮肤：",
             ),
         )
     return operations
