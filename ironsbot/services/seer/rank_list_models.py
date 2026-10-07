@@ -232,6 +232,13 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
     "专家场次": LocalRankSpec(
         "样本专家场次榜", "peak_expert_matches", season_limited=True
     ),
+    "大师段位": LocalRankSpec("样本大师段位榜", "peak_master", season_limited=True),
+    "大师胜率": LocalRankSpec(
+        "样本大师胜率榜", "peak_master_win_rate", season_limited=True
+    ),
+    "大师场次": LocalRankSpec(
+        "样本大师场次榜", "peak_master_matches", season_limited=True
+    ),
     "巅峰总场次": LocalRankSpec(
         "样本巅峰总场次榜", "peak_total_matches", season_limited=True
     ),
