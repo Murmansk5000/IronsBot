@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("role", ["member", "admin", "owner"])
-@pytest.mark.parametrize("reference", ["", "700001", "别名", "部分"])
+@pytest.mark.parametrize("reference", ["", "700001", "别名", "部分", "部分甲"])
 @pytest.mark.parametrize("queued", [None, False, True])
 async def test_extensions_use_one_typed_request_and_delivery_template(
     platform: Platform,
@@ -88,9 +88,13 @@ async def test_extensions_use_one_typed_request_and_delivery_template(
     resolver = PlayerIdResolver(
         lambda ref, _: None if ref == "部分" else 700001,
         lambda _: 700001,
-        reference_search=lambda *_: (
-            PlayerReferenceChoice(700001, "部分甲"),
-            PlayerReferenceChoice(700002, "部分乙"),
+        reference_search=lambda ref, *_: (
+            (
+                PlayerReferenceChoice(700001, "部分甲"),
+                PlayerReferenceChoice(700002, "部分甲号"),
+            )
+            if ref in {"部分", "部分甲"}
+            else ()
         ),
     )
     sessions = PortableQuerySessions()
@@ -98,7 +102,7 @@ async def test_extensions_use_one_typed_request_and_delivery_template(
         extensions, resolver, features, sessions
     )
     reply = await operation(context.text, context)
-    if reference == "部分":
+    if reference in {"部分", "部分甲"}:
         assert isinstance(reply, PortableReply)
         assert reply.message.prompt is not None
         query_mock.assert_not_awaited()

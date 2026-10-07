@@ -86,7 +86,7 @@ class _PortablePlayerOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> PortableReply:
+    ) -> PortableReply | None:
         reference = extract_player_query_arg(text)
         if reference is None:
             msg = f"catalog accepted input that its player parser rejected: {text!r}"
@@ -145,7 +145,7 @@ class _PortablePlayerOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> PortableReply:
+    ) -> PortableReply | None:
         reference = extract_player_binding_arg(text)
         if reference is None:
             msg = f"catalog accepted input that its binding parser rejected: {text!r}"
@@ -173,6 +173,8 @@ class _PortablePlayerOperations:
             execute,
             title="请选择要绑定的玩家：",
         )
+        if reply is None:
+            return None
         return reply if isinstance(reply, PortableReply) else PortableReply(reply)
 
     async def _bind_player(
@@ -225,7 +227,7 @@ class _PortablePlayerOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> PortableReply:
+    ) -> PortableReply | None:
         parsed = parse_player_shortcut_command(text)
         if parsed is None:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
@@ -445,7 +447,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             rank_service = rank_queries
             assert rank_service is not None
             if not context.is_reply and context.text.strip() == "神兽榜":
-                return await select_player_target(
+                reply = await select_player_target(
                     "",
                     context,
                     resolver,
@@ -455,6 +457,8 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                     ),
                     title="请选择要查询的玩家：",
                 )
+                assert reply is not None
+                return reply
             return await _beast_rank_reply(rank_service, pending.player_id, context)
         if isinstance(command, str):
             msg = "unknown player detail action"

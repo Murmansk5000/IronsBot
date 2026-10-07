@@ -78,7 +78,7 @@ from ironsbot.services.portable_team_resource_commands import (
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
-from ironsbot.services.seer.query_commands import pet_query_input
+from ironsbot.services.seer.query_commands import is_query_input_syntax, pet_query_input
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -198,6 +198,7 @@ class PortableCommandRouter:
         command_context = command_context_from_input(context)
         return (
             self._query_sessions.recognizes_response(command, context)
+            or is_query_input_syntax(raw_command)
             or (
                 self._matching_input_contract(
                     raw_command,
@@ -276,6 +277,9 @@ class PortableCommandRouter:
             context=command_context,
         )
         if contract is None:
+            if is_query_input_syntax(raw_command):
+                self._query_sessions.discard(context)
+                return None
             if self._messaging is not None:
                 mention_reply = self._messaging.match_mention_reply(context)
                 if mention_reply is not None:
