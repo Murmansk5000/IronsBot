@@ -32,7 +32,7 @@ def build_team_query_operation(
     async def execute(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         parsed = team_query_argument(text)
         if parsed is None:
             msg = f"invalid team query input: {text!r}"

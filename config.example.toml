@@ -729,9 +729,9 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # feature = "seerinfo_link"
 
 # Default: []
-# EN: Keyword replies use literal contains matching. They only reply when the
-# message contains a configured keyword; exact command actions above still win.
-# ZH: 关键词回复使用普通“包含”匹配；消息中出现关键词即可回复，且完整口令优先。
+# EN: Keyword replies match the complete normalized message; command actions
+# above still win. Ordinary sentences containing a keyword do not trigger replies.
+# ZH: 关键词回复匹配规范化后的完整消息；普通句子包含关键词不触发，完整口令优先。
 # Like command actions, the feature key must be enabled for the current group
 # or private user. Keywords are not regular commands and are shown as automatic
 # replies in help.

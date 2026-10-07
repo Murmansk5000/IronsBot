@@ -264,22 +264,41 @@ def _text(message: OutboundMessage | None) -> str:
 @pytest.mark.asyncio
 async def test_empty_entity_result_is_silent_by_default() -> None:
     sessions = PortableQuerySessions()
+    context = _context("member-openid")
+    menu = sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=(1,),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("old menu"),
+            keep_open=True,
+        ),
+    )
+    sessions.record_delivery(
+        context, menu, SendResult(delivered=True, message_id="old-menu")
+    )
+    sessions.reserve_responses(context, lambda value: value.isdecimal())
 
     async def search(_argument: str) -> QueryResult[int]:
         return QueryResult()
 
     result = await sessions.begin(
-        _context("member-openid"),
+        context,
         argument="missing",
         spec=QueryOperationSpec(
             parser=lambda text: text,
             search=search,
             select=AsyncMock(),
             prompt_title="choose",
+            not_found_message="old not-found hint",
+            keep_open=True,
         ),
     )
 
     assert result is None
+    assert not sessions.has_active_session(context)
+    assert sessions.menu_anchor(context) is None
+    assert not sessions.recognizes_response("1", context)
 
 
 @pytest.mark.asyncio

@@ -222,7 +222,12 @@ class SeerDatabase:
         with self._databases.all_sessions() as sessions:
             if SEERAPI_DB not in sessions:
                 raise DataUnavailableError
-            yield self.pet(sessions, arg), self.pet_skin(sessions, arg)
+            pets = self.pet.resolve_matches(sessions, arg, "exact")
+            skins = self.pet_skin.resolve_matches(sessions, arg, "exact")
+            if not pets and not skins:
+                pets = self.pet.resolve_matches(sessions, arg, "partial")
+                skins = self.pet_skin.resolve_matches(sessions, arg, "partial")
+            yield pets, skins
 
     @contextmanager
     def mintmark_query(
@@ -237,8 +242,13 @@ class SeerDatabase:
             if custom_series:
                 mintmark_ids = tuple(mintmark.id for mintmark in custom_series)
             else:
-                direct = self.mintmark(sessions, arg)
-                classes = self.mintmark_class(sessions, arg)
+                direct = self.mintmark.resolve_matches(sessions, arg, "exact")
+                classes = self.mintmark_class.resolve_matches(sessions, arg, "exact")
+                if not direct and not classes:
+                    direct = self.mintmark.resolve_matches(sessions, arg, "partial")
+                    classes = self.mintmark_class.resolve_matches(
+                        sessions, arg, "partial"
+                    )
                 class_ids = {mintmark_class.id for mintmark_class in classes}
                 class_member_ids = _mintmark_class_member_ids(
                     session,

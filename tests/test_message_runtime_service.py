@@ -50,7 +50,7 @@ def test_find_command_action_skips_disabled_and_disallowed() -> None:
     )
 
 
-def test_find_keyword_reply_action_uses_literal_contains_matching() -> None:
+def test_find_keyword_reply_action_uses_complete_normalized_text() -> None:
     disabled = FakeKeywordReplyAction(enabled=False, keywords=["出出"])
     disallowed = FakeKeywordReplyAction(
         enabled=True,
@@ -61,7 +61,7 @@ def test_find_keyword_reply_action_uses_literal_contains_matching() -> None:
 
     assert (
         find_keyword_reply_action(
-            "今天出出了",
+            "出 出",
             [disabled, disallowed, allowed],
             is_allowed=lambda action: action.feature == "text",
         )
@@ -69,7 +69,7 @@ def test_find_keyword_reply_action_uses_literal_contains_matching() -> None:
     )
     assert (
         find_keyword_reply_action(
-            "今天出去玩",
+            "今天出出了",
             [allowed],
             is_allowed=lambda _action: True,
         )

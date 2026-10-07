@@ -69,7 +69,7 @@ def build_player_extension_operation(
     sessions: PortableQuerySessions,
     player_service: PlayerService | None = None,
 ) -> PortableOperation:
-    async def execute(text: str, context: MessageInputContext) -> PortableReply:
+    async def execute(text: str, context: MessageInputContext) -> PortableReply | None:
         parsed = extensions.resolve_direct_command(text)
         if parsed is None:
             msg = "player extension operation received an unrecognized command"

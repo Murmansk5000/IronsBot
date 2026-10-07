@@ -172,7 +172,7 @@ class PlayerIdResolver:
         actor: ActorRef,
         conversation: ConversationRef,
     ) -> tuple[PlayerReferenceChoice, ...]:
-        """Exact references take precedence over visible substring candidates."""
+        """Return exact visible aliases before partial candidates."""
         player_id = self._lookup_reference(reference, actor, conversation)
         if player_id is not None:
             return (PlayerReferenceChoice(player_id, reference.strip()),)

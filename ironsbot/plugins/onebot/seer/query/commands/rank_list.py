@@ -109,7 +109,7 @@ def _is_rank_player_command(
     if requested.player_reference is not None and not is_player_reference_input(
         requested.player_reference,
         command_context_from_input(context),
-        group.player_id_resolver.has_exact_reference_choices,
+        group.player_id_resolver.has_reference_choices,
     ):
         return False
     if requested.player_reference is None and not context.has_member_mentions:

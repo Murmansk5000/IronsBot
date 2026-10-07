@@ -547,7 +547,7 @@ async def test_player_selection_rechecks_reference_visibility(
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("prefix", ["米米号", "查询玩家信息", "收集", "巅峰", "群星牌"])
 @pytest.mark.parametrize("selection", ["2", "button", "0"])
-async def test_unclaimed_partial_player_queries_keep_internal_selection_safe(
+async def test_partial_player_queries_claim_input_and_keep_selection_safe(
     monkeypatch: pytest.MonkeyPatch,
     platform: Platform,
     prefix: str,
@@ -577,7 +577,7 @@ async def test_unclaimed_partial_player_queries_keep_internal_selection_safe(
         item for item in seer_command_contracts(resolver) if item.id == operation_id
     )
     assert contract.routing_matcher is not None
-    assert not contract.routing_matcher(
+    assert contract.routing_matcher(
         context.text, command_context_from_input(context)
     )
     operation = build_portable_player_operations(
@@ -1152,7 +1152,7 @@ async def test_binding_replacement_rejects_numeric_and_other_member_choice() -> 
 @pytest.mark.parametrize(
     ("reference", "count", "expected"),
     [
-        ("", 1, "未找到该米米号"),
+        ("", 1, ""),
         ("700001", 2, "请一次只 @ 一名成员"),
     ],
 )
@@ -1177,7 +1177,10 @@ async def test_admin_binding_rejects_missing_account_or_multiple_recipients(
         "PortableReply",
         await operations["seer.player.bind"](context.text, context),
     )
-    assert expected in _text(reply)
+    if expected:
+        assert expected in _text(reply)
+    else:
+        assert reply is None
     assert service.bound == []
 
 

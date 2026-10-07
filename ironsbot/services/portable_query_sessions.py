@@ -77,6 +77,9 @@ class PortableQuerySessions(PortableSessionState):
             if spec.contextual_search
             else await spec.search(argument)
         )
+        if not result.message and result.reply is None and not result.choices:
+            self.discard(context)
+            return None
         return self._present(
             context,
             result,

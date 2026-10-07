@@ -204,7 +204,7 @@ class _PortableRankOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         player_target = parse_rank_player_target_command(text)
         if context.has_member_mentions and player_target is not None:
             return await self._player(player_target.rank_key, None, context)
@@ -321,7 +321,7 @@ class _PortableRankOperations:
         rank_key: str,
         reference: str | None,
         context: MessageInputContext,
-    ) -> PortableReply:
+    ) -> PortableReply | None:
         async def prepare(
             player_id: int, selected: MessageInputContext
         ) -> PortableReply:
@@ -345,6 +345,8 @@ class _PortableRankOperations:
                 title="请选择要查询的玩家：",
                 enforce_query_access=True,
             )
+            if reply is None:
+                return None
             return reply if isinstance(reply, PortableReply) else PortableReply(reply)
         resolution = self.resolver.resolve(
             context,

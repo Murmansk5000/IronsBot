@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Literal, Protocol, TypeVar
 
 from seerapi_models.build_model import BaseResModel
 from sqlalchemy.exc import OperationalError
@@ -11,6 +11,7 @@ from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, func, select
 
 from ironsbot.core.aliases import AliasMatch, AliasResolution
+from ironsbot.core.text_matching import TextMatchRule
 from ironsbot.services.seer.data import ALIAS_DB, SEERAPI_DB
 
 from .normalization import IGNORED_CHARS as _IGNORED_CHARS
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 _T_Model = TypeVar("_T_Model", bound=BaseResModel)
 _T_Model_co = TypeVar("_T_Model_co", bound=BaseResModel, covariant=True)
 logger = logging.getLogger(__name__)
+_NAME_RULE = TextMatchRule(lambda value: _strip_special(value).lower())
 
 
 def _col_strip_special(column: Any) -> Any:
@@ -69,7 +71,7 @@ class IdResolver(Generic[_T_Model]):
 
 
 class NameResolver(Generic[_T_Model]):
-    """按名称列模糊搜索，直接返回完整模型对象。"""
+    """按名称精确优先、部分匹配后备搜索，返回完整模型对象。"""
 
     __slots__ = ("db_name", "model", "name_column")
 
@@ -98,16 +100,28 @@ class NameResolver(Generic[_T_Model]):
         )
 
     def __call__(self, sessions: SessionMap, arg: str) -> Iterable[_T_Model]:
+        return self.resolve_matches(sessions, arg, "exact") or self.resolve_matches(
+            sessions, arg, "partial"
+        )
+
+    def resolve_matches(
+        self, sessions: SessionMap, arg: str, kind: Literal["exact", "partial"]
+    ) -> tuple[_T_Model, ...]:
         session = sessions.get(self.db_name)
         if session is None:
             logger.warning(f"{self!r}: 未找到数据库会话")
             return ()
 
-        stripped_arg = _strip_special(arg)
-        statement = select(self.model).where(
-            _col_strip_special(col(self.name_column)).like(f"%{stripped_arg}%")
+        stripped_arg = _NAME_RULE.key(arg)
+        if not stripped_arg:
+            return ()
+        column = func.lower(_col_strip_special(col(self.name_column)))
+        predicate = (
+            column == stripped_arg
+            if kind == "exact"
+            else column.like(_NAME_RULE.contains_pattern(arg), escape="\\")
         )
-        return session.exec(statement).all()
+        return tuple(session.exec(select(self.model).where(predicate)).all())
 
 
 class AliasResolver(Generic[_T_Model]):
@@ -158,6 +172,14 @@ class AliasResolver(Generic[_T_Model]):
             for match in self.alias_lookup(sessions).resolve_alias(arg).matches
         )
 
+    def resolve_matches(
+        self, sessions: SessionMap, arg: str, kind: Literal["exact", "partial"]
+    ) -> tuple[_T_Model, ...]:
+        lookup = self.alias_lookup(sessions)
+        return tuple(
+            match.value for match in lookup.resolve_alias(arg, kind=kind).matches
+        )
+
 
 class DatabaseAliasLookup(Generic[_T_Model]):
     """Session-bound AliasLookup implementation for a published alias table."""
@@ -179,13 +201,20 @@ class DatabaseAliasLookup(Generic[_T_Model]):
         self.alias_db = alias_db
         self.data_db = data_db
 
-    def resolve_alias(self, reference: object) -> AliasResolution[_T_Model]:
+    def resolve_alias(
+        self, reference: object, *, kind: Literal["exact", "partial"] | None = None
+    ) -> AliasResolution[_T_Model]:
         """Resolve one query while preserving entity-level ambiguity information."""
 
         text = str(reference).strip()
         if not text:
             return AliasResolution(reference=text)
-        aliases = self._matching_aliases(text)
+        aliases = (
+            self._matching_aliases(text, kind)
+            if kind is not None
+            else self._matching_aliases(text, "exact")
+            or self._matching_aliases(text, "partial")
+        )
         if not aliases:
             return AliasResolution(reference=text)
         return AliasResolution(
@@ -193,21 +222,25 @@ class DatabaseAliasLookup(Generic[_T_Model]):
             matches=self._matching_models(aliases),
         )
 
-    def _matching_aliases(self, text: str) -> tuple[BaseAliasORM, ...]:
+    def _matching_aliases(
+        self, text: str, kind: Literal["exact", "partial"]
+    ) -> tuple[BaseAliasORM, ...]:
         alias_session = self.sessions.get(self.alias_db)
         if alias_session is None:
             logger.warning("%r: 未找到别名数据库会话", self)
             return ()
 
-        stripped_arg = _strip_special(text).casefold()
+        stripped_arg = _NAME_RULE.key(text)
         if not stripped_arg:
             return ()
         try:
-            statement = select(self.alias_model).where(
-                func.lower(_col_strip_special(col(self.alias_model.name))).like(
-                    f"%{stripped_arg}%"
-                )
+            column = func.lower(_col_strip_special(col(self.alias_model.name)))
+            predicate = (
+                column == stripped_arg
+                if kind == "exact"
+                else column.like(_NAME_RULE.contains_pattern(text), escape="\\")
             )
+            statement = select(self.alias_model).where(predicate)
             return tuple(alias_session.exec(statement).all())
         except OperationalError:
             logger.exception("DatabaseAliasLookup failed")
@@ -257,12 +290,39 @@ class Getter(Generic[_T_Model]):
         sessions: SessionMap,
         arg: str,
     ) -> tuple[_T_Model, ...]:
-        if not arg:
+        if not _NAME_RULE.key(arg):
             return ()
+        if arg.isdecimal():
+            for resolver in self.resolvers:
+                if isinstance(resolver, IdResolver):
+                    return tuple(resolver(sessions, arg))
+        kinds: tuple[Literal["exact", "partial"], ...] = ("exact", "partial")
+        for kind in kinds:
+            if matches := self.resolve_matches(sessions, arg, kind):
+                return matches
+        return ()
 
+    def resolve_matches(
+        self, sessions: SessionMap, arg: str, kind: Literal["exact", "partial"]
+    ) -> tuple[_T_Model, ...]:
+        """Resolve one phase when combining multiple entity types."""
+        if not _NAME_RULE.key(arg):
+            return ()
+        if arg.isdecimal():
+            return tuple(
+                obj
+                for resolver in self.resolvers
+                if kind == "exact" and isinstance(resolver, IdResolver)
+                for obj in resolver(sessions, arg)
+            )
         seen: dict[int, _T_Model] = {}
         for resolver in self.resolvers:
-            for obj in resolver(sessions, arg):
+            if isinstance(resolver, (NameResolver, AliasResolver)):
+                values = resolver.resolve_matches(sessions, arg, kind)
+            elif kind == "exact":
+                values = resolver(sessions, arg)
+            else:
+                continue
+            for obj in values:
                 seen.setdefault(obj.id, obj)
-
         return tuple(seen.values())

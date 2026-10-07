@@ -555,10 +555,7 @@ def find_keyword_reply_action(
     for action in actions:
         if not action.enabled or not is_allowed(action):
             continue
-        if any(
-            normalize_command_text(keyword) in normalized_text
-            for keyword in action.keywords
-        ):
+        if command_text_matches(text, action.keywords):
             return action
     return None
 

@@ -65,15 +65,15 @@ def seer_command_contracts(
 ) -> tuple[CommandContract, ...]:
     player_query_input = player_reference_input_matcher(
         ("米米号", "查询玩家信息"),
-        player_id_resolver.has_exact_reference_choices,
+        player_id_resolver.has_reference_choices,
     )
     player_shortcut_input = player_reference_input_matcher(
         PLAYER_SHORTCUT_NAMES,
-        player_id_resolver.has_exact_reference_choices,
+        player_id_resolver.has_reference_choices,
     )
     player_binding_input = player_reference_input_matcher(
         ("绑定米米号",),
-        player_id_resolver.has_exact_reference_choices,
+        player_id_resolver.has_reference_choices,
     )
     return (
         *commands_from_rows(
@@ -164,7 +164,7 @@ def seer_command_contracts(
                     {
                         "show_in_poke": True,
                         "routing_matcher": team_query_input_matcher(
-                            player_id_resolver.has_exact_reference_choices
+                            player_id_resolver.has_reference_choices
                         ),
                     },
                 ),
@@ -321,8 +321,10 @@ def seer_command_contracts(
                 (
                     "seer.autocard.query",
                     (
-                        "群星牌布布种子", "布布种子群星牌",
-                        "群星牌卡98", "战斗芯片复苏之风",
+                        "群星牌布布种子",
+                        "布布种子群星牌",
+                        "群星牌卡98",
+                        "战斗芯片复苏之风",
                     ),
                     "查询群星牌卡牌、角色和战斗芯片资料",
                     {
