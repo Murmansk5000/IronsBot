@@ -9,7 +9,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from ironsbot.integrations import animated_collage
+from ironsbot.integrations import animated_collage, image_collage
 from ironsbot.integrations.animated_collage import (
     MAX_OUTPUT_BYTES,
     inspect_animation,
@@ -99,11 +99,101 @@ def test_four_square_images_use_two_by_two_layout() -> None:
     assert result.size == (200, 200)
 
 
+def test_four_portrait_images_use_filled_two_by_two_layout() -> None:
+    # Same aspect ratio as dynamic 1255164680735817733 (900 x 1300).
+    colors = (
+        (255, 0, 0, 255),
+        (0, 255, 0, 255),
+        (0, 0, 255, 255),
+        (255, 255, 0, 255),
+    )
+    with _render([_png(90, 130, color) for color in colors]) as result:
+        assert result.size == (180, 260)
+        assert [
+            result.getpixel(position)
+            for position in ((45, 65), (135, 65), (45, 195), (135, 195))
+        ] == list(colors)
+        assert result.getchannel("A").getextrema() == (255, 255)
+
+
 def test_collage_is_scaled_as_a_whole_to_output_limit() -> None:
     images = [_png(100, 400, (255, 0, 0, 255)) for _index in range(4)]
     result = _render(images, max_side=200)
 
     assert result.size == (200, 200)
+
+
+def test_small_image_does_not_shrink_large_images_and_is_centered() -> None:
+    colors = ((255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255))
+    images = [_png(100, 100, color) for color in colors]
+    images.append(_png(20, 10, (255, 255, 0, 255)))
+    with _render(images) as result:
+        assert result.size == (200, 200)
+        assert result.getpixel((50, 50)) == colors[0]
+        assert result.getpixel((150, 50)) == colors[1]
+        assert result.getpixel((80, 150)) == colors[2]
+        with result.crop((30, 100, 130, 200)) as large:
+            assert large.getbbox() == (0, 0, 100, 100)
+        with result.crop((130, 100, 200, 200)) as small:
+            assert small.getbbox() == (0, 40, 40, 60)
+            assert small.getpixel((20, 50)) == (255, 255, 0, 255)
+        assert result.getpixel((0, 150)) == (0, 0, 0, 0)
+
+
+def test_even_height_median_and_two_times_upscale_limit() -> None:
+    images = [_png(20, 10, (255, 0, 0, 255)), _png(82, 41, (0, 0, 255, 255))]
+    with _render(images) as result:
+        assert result.size == (50, 45)
+        with result.crop((0, 0, 50, 20)) as small:
+            assert small.getbbox() == (5, 0, 45, 20)
+        assert result.getpixel((25, 30)) == (0, 0, 255, 255)
+
+
+def test_same_height_narrow_image_keeps_width_and_row_padding() -> None:
+    images = [_png(100, 100, (255, 0, 0, 255)) for _index in range(3)]
+    images.append(_png(40, 100, (0, 0, 255, 255)))
+    with _render(images) as result:
+        assert result.size == (200, 200)
+        with result.crop((130, 100, 200, 200)) as narrow:
+            assert narrow.getbbox() == (0, 0, 40, 100)
+        assert result.getpixel((29, 150)) == (0, 0, 0, 0)
+        assert result.getpixel((170, 150)) == (0, 0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("sizes", "columns"),
+    [
+        ([(90, 130)] * 4, 2),
+        ([(100, 400)] * 4, 4),
+        ([(20, 20)] * 3, 1),
+        ([(20, 20), (20, 20), (20, 40)], 1),
+        ([(200, 20)] * 2, 1),
+    ],
+)
+def test_layout_scores_real_dimensions_by_perimeter_then_area(
+    sizes: Sequence[tuple[int, int]], columns: int
+) -> None:
+    assert image_collage._choose_columns(sizes) == columns
+
+
+def test_transparency_is_preserved_inside_images() -> None:
+    images = [_png(20, 20, (255, 0, 0, 128)) for _index in range(4)]
+    with _render(images) as result:
+        assert result.size == (40, 40)
+        assert result.getpixel((10, 10)) == (255, 0, 0, 128)
+        assert result.getchannel("A").getextrema() == (128, 128)
+
+
+def test_pixel_limit_scales_selected_layout_without_reflowing() -> None:
+    pixel_limit = 35_000
+    images = [_png(100, 100, (255, 0, 0, 255)) for _index in range(3)]
+    images.append(_png(20, 10, (0, 0, 255, 255)))
+    content = render_adaptive_collage(images, max_side=MAX_SIDE, max_pixels=pixel_limit)
+    with Image.open(BytesIO(content)) as result:
+        assert result.size == (186, 186)
+        assert result.width * result.height <= pixel_limit
+        assert result.getpixel((46, 46)) == (255, 0, 0, 255)
+        assert result.getpixel((140, 140)) == (0, 0, 255, 255)
 
 
 def test_animated_image_rejects_the_complete_collage() -> None:
