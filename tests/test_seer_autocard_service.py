@@ -223,7 +223,10 @@ def test_chip_query_groups_tiers_and_id_selects_one() -> None:
     assert AUTOCARD_QUERY("芯片116") is not None
     assert "恢复10" in single.entry.text
     assert "恢复5" not in single.entry.text
-    assert service.search("群星牌芯片999").message == "未找到该战斗芯片。"
+    missing = service.search("群星牌芯片999")
+    assert not missing.message and missing.entry is None and not missing.prompt_values
+    chat = service.search("芯片没拿好也是卒")
+    assert not chat.message and chat.entry is None and not chat.prompt_values
 
 
 def test_chip_query_on_old_database_requests_update() -> None:

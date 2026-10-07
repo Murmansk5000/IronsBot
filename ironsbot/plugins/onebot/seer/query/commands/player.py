@@ -44,7 +44,7 @@ async def _is_player_query_command(
     context = message_input_context(event)
     return player_reference_input_matcher(
         PLAYER_QUERY_PREFIXES,
-        resolver.has_exact_reference_choices
+        resolver.has_reference_choices
         if resolver is not None
         else lambda *_: False,
     )(context.text, command_context_from_input(context))
@@ -58,7 +58,7 @@ async def _is_binding_command(
     context = message_input_context(event)
     return player_reference_input_matcher(
         (PLAYER_BINDING_PREFIX,),
-        resolver.has_exact_reference_choices
+        resolver.has_reference_choices
         if resolver is not None
         else lambda *_: False,
     )(context.text, command_context_from_input(context))

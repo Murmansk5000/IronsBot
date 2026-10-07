@@ -622,7 +622,7 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
             [(["exact"], True)]
             if enabled and configured and text == "示例"
             else [(["keyword"], False)]
-            if enabled and keyword and "示例" in text
+            if enabled and keyword and text == "示例"
             else []
         )
         assert matches == expected
@@ -927,7 +927,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
         keyword_replies=[
             MessageKeywordReplyAction(
                 id="keyword_reply",
-                keywords=["出出"],
+                keywords=["出出", "自动词"],
                 feature="text",
                 messages=["关键词回复"],
             )
@@ -944,7 +944,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
         interaction="direct",
     )
     assert matcher_rules.match_message_command(
-        group_member_message_event("今天出出了", user_id=2002, group_id=1001),
+        group_member_message_event("自 动词", user_id=2002, group_id=1001),
         keyword_state,
         messaging=messaging,
         interaction="automatic",
@@ -959,6 +959,12 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     )
     assert exact_action.id == "exact_reply"
     assert keyword_action.id == "keyword_reply"
+    assert not matcher_rules.match_message_command(
+        group_member_message_event("今天出出了", user_id=2002, group_id=1001),
+        {},
+        messaging=messaging,
+        interaction="automatic",
+    )
 
 
 def _mention_context(
@@ -1200,9 +1206,7 @@ def test_target_group_follows_verified_official_group_link(
     messaging = replace(
         messaging,
         _features=build_feature_service(
-            FeatureConfig(
-                group_policy={"1001": ["text_push"], "1002": ["text_push"]}
-            ),
+            FeatureConfig(group_policy={"1001": ["text_push"], "1002": ["text_push"]}),
             (),
             principals=principals,
         ),

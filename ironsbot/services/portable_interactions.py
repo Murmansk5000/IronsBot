@@ -11,6 +11,7 @@ from weakref import WeakValueDictionary
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.semantic_requests import semantic_request_scope
+from ironsbot.services.operations.request_feedback import acknowledged_request_scope
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 
@@ -208,7 +209,47 @@ class PortableInteractions:
         if text.strip() == "0":
             result = await self.sessions.select(text, context, allow_deferred=True)
             return as_portable_reply(result) if result is not None else None
+        lock = self._locks.get(self.sessions._key(context))
+        if lock is not None and lock.locked():
+            return self._queued_selection(text, context)
         return await self._select_nonzero(text, context)
+
+    def _queued_selection(
+        self, text: str, context: MessageInputContext
+    ) -> PortableReply:
+        async def run_acknowledged() -> PortableReply | None:
+            with acknowledged_request_scope():
+                return await self._select_nonzero(text, context)
+
+        task = asyncio.ensure_future(run_acknowledged())
+        handed_off = False
+
+        async def continue_selection() -> PortableReply | None:
+            nonlocal handed_off
+            result = await task
+            handed_off = True
+            return result
+
+        def discard_queued() -> None:
+            if handed_off:
+                return
+            if not task.done():
+                task.cancel()
+                return
+            if not task.cancelled() and task.exception() is None:
+                result = task.result()
+                if result is not None:
+                    result.delivery_failed()
+                    if result.on_finished is not None:
+                        result.on_finished()
+
+        return PortableReply(
+            OutboundMessage.from_text(
+                f"⏳ 已收到选项 {text.strip()}，已加入队列，完成后会直接发送结果。"
+            ),
+            continuation=continue_selection,
+            on_delivery_failed=discard_queued,
+        )
 
     async def _select_nonzero(
         self, text: str, context: MessageInputContext

@@ -10,6 +10,7 @@ from ironsbot.core.aliases import AliasIndex
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.seer_ids import is_valid_player_id
+from ironsbot.core.text_matching import TextMatchRule
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -198,36 +199,27 @@ class PlayerAccountRegistry:
         normalized = normalize_command_text(reference)
         if not normalized or normalized.isdecimal():
             return ()
-        choices = []
-        for account in self.accounts:
-            if (
-                self.resolve_player_id(
-                    account.name,
-                    conversation=conversation,
-                    include_private=include_private,
-                )
-                is None
-            ):
-                continue
-            label = next(
-                (
-                    value
-                    for value in (account.name, *account.aliases)
-                    if normalized == normalize_command_text(value)
-                ),
-                None,
+        visible = tuple(
+            account
+            for account in self.accounts
+            if self.resolve_player_id(
+                account.name,
+                conversation=conversation,
+                include_private=include_private,
             )
-            if label is None:
-                label = next(
-                    (
-                        value
-                        for value in (account.name, *account.aliases)
-                        if normalized in normalize_command_text(value)
-                    ),
-                    None,
-                )
-            if label is not None:
-                choices.append(PlayerReferenceChoice(account.player_id, label))
+            is not None
+        )
+        rule = TextMatchRule(normalize_command_text)
+        matched = rule.select(
+            reference, visible, names=lambda account: (account.name, *account.aliases)
+        )
+        choices = []
+        for account in matched.matches:
+            labels = (account.name, *account.aliases)
+            label = next(
+                (label for label in labels if rule.matches(reference, label)), None
+            ) or next(label for label in labels if normalized in rule.key(label))
+            choices.append(PlayerReferenceChoice(account.player_id, label))
         return tuple(choices)
 
     def _build_private_alias_groups(

@@ -10,6 +10,7 @@ from ironsbot.core.selection import (
     SelectionMenuSection,
     format_selection_menu,
 )
+from ironsbot.core.text_matching import TextMatchRule
 
 SANCTUARY_QUERY_PREFIXES = (
     "群星牌场地",
@@ -100,7 +101,7 @@ class AutocardSanctuaryService:
             return _sanctuary_menu_result(dataset)
         values = _matching_values(dataset, query)
         if not values:
-            return SanctuarySearchResult(message=f"❌ 未找到群星牌场地或祝印：{query}")
+            return SanctuarySearchResult()
         if len(values) == 1:
             return _selection_result(dataset, values[0])
         if len(values) > SANCTUARY_PROMPT_MAX_ITEMS:
@@ -218,38 +219,26 @@ def _matching_values(
     dataset: _SanctuaryDataset,
     query: str,
 ) -> list[SanctuaryPromptValue]:
-    normalized = _normalize_name(query)
-    exact_sanctuaries = [
-        sanctuary
+    labels: dict[SanctuaryPromptValue, tuple[str, ...]] = {
+        SanctuaryPromptValue("sanctuary", sanctuary.id): (
+            sanctuary.name,
+            sanctuary.pet_name,
+        )
         for sanctuary in dataset.sanctuaries
-        if normalized
-        in {
-            _normalize_name(sanctuary.name),
-            _normalize_name(sanctuary.pet_name),
+    }
+    labels.update(
+        {
+            SanctuaryPromptValue("effect", sanctuary.id, effect.id): (effect.name,)
+            for sanctuary in dataset.sanctuaries
+            for effect in sanctuary.effects
+            if effect.unlock_round != 0
         }
-    ]
-    exact_effects = [
-        (sanctuary, effect)
-        for sanctuary in dataset.sanctuaries
-        for effect in sanctuary.effects
-        if effect.unlock_round != 0 and _normalize_name(effect.name) == normalized
-    ]
-    if exact_sanctuaries or exact_effects:
-        return _prompt_values(exact_sanctuaries, exact_effects)
-
-    partial_sanctuaries = [
-        sanctuary
-        for sanctuary in dataset.sanctuaries
-        if normalized in _normalize_name(sanctuary.name)
-        or normalized in _normalize_name(sanctuary.pet_name)
-    ]
-    partial_effects = [
-        (sanctuary, effect)
-        for sanctuary in dataset.sanctuaries
-        for effect in sanctuary.effects
-        if effect.unlock_round != 0 and normalized in _normalize_name(effect.name)
-    ]
-    return _prompt_values(partial_sanctuaries, partial_effects)
+    )
+    return list(
+        TextMatchRule(_normalize_name)
+        .select(query, labels, names=labels.__getitem__)
+        .matches
+    )
 
 
 def _prompt_values(
