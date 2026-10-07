@@ -65,7 +65,21 @@ async def test_season_database_failure_preserves_peak_base_data(
         current_peak_sub_key=Mock(
             side_effect=DataUnavailableError("巅峰赛季数据读取失败")
         ),
-        fetch_peak_summary=AsyncMock(),
+        current_master_sub_key=lambda: 8,
+        fetch_peak_summary=AsyncMock(
+            return_value=PeakSeasonRankSummary.from_results(
+                {
+                    "master_peak": RankLookupResult(
+                        title="大师赛季榜",
+                        score_name="段位分",
+                        rank=MASTER_FOUND_RANK,
+                        score=300_020,
+                        queried=True,
+                    )
+                },
+                failure="巅峰赛季数据读取失败",
+            )
+        ),
         fetch_master_peak_summary=AsyncMock(
             return_value=PeakSeasonRankSummary.from_results(
                 {
@@ -97,7 +111,7 @@ async def test_season_database_failure_preserves_peak_base_data(
     assert not reply.complete
     assert all(result.failure for result in reply.rank_lookups[:3])
     assert reply.rank_lookups[3].rank == MASTER_FOUND_RANK
-    rank.fetch_peak_summary.assert_not_awaited()
+    rank.fetch_peak_summary.assert_awaited_once()
     local.upsert_metrics.assert_not_awaited()
 
 
@@ -115,6 +129,7 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
         fetch_master_peak_summary=AsyncMock(),
         fetch_autocard_summary=AsyncMock(),
         current_peak_sub_key=lambda: 7,
+        current_master_sub_key=lambda: 8,
     )
     local = SimpleNamespace(
         config=SimpleNamespace(enabled=True), upsert_metrics=AsyncMock()
@@ -166,11 +181,10 @@ async def test_sample_has_its_own_budget_after_rank_deadline(
     )
     rank = SimpleNamespace(
         current_peak_sub_key=lambda: 7,
+        current_master_sub_key=lambda: 8,
         fetch_player_summary=slow_rank,
         fetch_peak_summary=slow_rank,
-        fetch_master_peak_summary=AsyncMock(
-            return_value=PeakSeasonRankSummary.empty()
-        ),
+        fetch_master_peak_summary=AsyncMock(return_value=PeakSeasonRankSummary.empty()),
         fetch_autocard_summary=slow_rank,
     )
     local = SimpleNamespace(config=SimpleNamespace(enabled=True))
@@ -199,7 +213,7 @@ async def test_sample_has_its_own_budget_after_rank_deadline(
 
 
 @pytest.mark.asyncio
-async def test_master_rank_starts_while_personal_peak_packet_is_pending(
+async def test_master_rank_waits_for_verified_personal_peak_packet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     packet_started = asyncio.Event()
@@ -237,7 +251,8 @@ async def test_master_rank_starts_while_personal_peak_packet_is_pending(
     )
     rank = SimpleNamespace(
         current_peak_sub_key=lambda: 7,
-        fetch_peak_summary=AsyncMock(return_value=PeakSeasonRankSummary.empty()),
+        current_master_sub_key=lambda: 8,
+        fetch_peak_summary=master_summary,
         fetch_master_peak_summary=master_summary,
     )
     local = SimpleNamespace(
@@ -256,9 +271,11 @@ async def test_master_rank_starts_while_personal_peak_packet_is_pending(
     )
 
     await asyncio.wait_for(packet_started.wait(), timeout=1)
-    await asyncio.wait_for(master_started.wait(), timeout=1)
+    assert not master_started.is_set()
     release_packet.set()
     reply = await task
+
+    assert master_started.is_set()
 
     assert reply.rank_lookups[3] is master_result
     assert reply.rank_lookups[3].rank == MASTER_FOUND_RANK
@@ -323,6 +340,10 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
         def current_peak_sub_key() -> int:
             return 7
 
+        @staticmethod
+        def current_master_sub_key() -> int:
+            return 8
+
         async def fetch_player_summary(
             self,
             game: object,
@@ -350,6 +371,7 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
                 player_id,
                 find_rank=find_rank,
                 current_peak_sub_key=7,
+                current_master_sub_key=8,
                 run_lookup_jobs=runner,
                 **kwargs,
             )
@@ -377,7 +399,12 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
 
     async def peak_base(*_args: Any, **_kwargs: Any) -> UnityPeakFetchResult:
         return UnityPeakFetchResult(
-            UnityPeakInfo(current_j_rank=3, current_k_rank=3, current_z_score=1421),
+            UnityPeakInfo(
+                current_j_rank=3,
+                current_k_rank=3,
+                current_z_score=1421,
+                current_z_all=10,
+            ),
             frozenset({"standard", "wild", "expert"}),
         )
 
@@ -686,6 +713,7 @@ async def test_detail_completeness_uses_all_requested_stages(
         ),
         fetch_autocard_summary=AsyncMock(return_value=result),
         current_peak_sub_key=lambda: 7,
+        current_master_sub_key=lambda: 8,
     )
     game = SimpleNamespace(
         get_user_info=AsyncMock(return_value=SimpleNamespace(nick="player")),

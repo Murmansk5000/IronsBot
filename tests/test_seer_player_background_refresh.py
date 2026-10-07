@@ -103,6 +103,9 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
         def current_peak_sub_key(self) -> int:
             return 7
 
+        def current_master_sub_key(self) -> int:
+            return 8
+
         async def fetch_player_summary(
             self, game: Any, player_id: int, **kwargs: Any
         ) -> Any:

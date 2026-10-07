@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.tasks import OperationDeadline
 from ironsbot.core.time import ObservationTime
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
+from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES, PEAK_MODES
 from ironsbot.services.seer.player_collection_formatting import (
     format_autocard_rank_info,
     format_collection_info,
@@ -79,15 +81,17 @@ _PEAK_METRIC_KEYS = frozenset(
         "peak_expert",
         "peak_expert_win_rate",
         "peak_expert_matches",
+        "peak_master",
+        "peak_master_win_rate",
+        "peak_master_matches",
         "peak_total_matches",
     )
 )
 _PEAK_METRIC_KEYS_BY_MODE: dict[str, frozenset[str]] = {
-    "standard": frozenset(
-        ("peak_standard", "peak_standard_win_rate", "peak_standard_matches")
-    ),
-    "wild": frozenset(("peak_wild", "peak_wild_win_rate", "peak_wild_matches")),
-    "expert": frozenset(("peak_expert", "peak_expert_win_rate", "peak_expert_matches")),
+    mode.slug: frozenset(
+        (f"peak_{mode.slug}", f"peak_{mode.slug}_win_rate", f"peak_{mode.slug}_matches")
+    )
+    for mode in PEAK_MODES.values()
 }
 
 
@@ -283,8 +287,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
 ) -> QueryReply:
     extra_errors: list[str] = []
     observation = ObservationTime()
-    master_progress = RankSummaryProgress()
-    (nick, nick_error), peak_result, master_rank_summary = await asyncio.gather(
+    (nick, nick_error), peak_result = await asyncio.gather(
         _resolve_shortcut_nick(
             game,
             player_id=player_id,
@@ -296,20 +299,6 @@ async def _fetch_peak_message(  # noqa: PLR0913
             game,
             player_id,
             timeout_seconds=deadline.remaining(timeout_seconds),
-        ),
-        fetch_partial_rank_summary(
-            rank.fetch_master_peak_summary(
-                game,
-                player_id,
-                progress=master_progress,
-                anchor_only=anchor_only,
-            ),
-            progress=master_progress,
-            build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
-                results,
-                failure=failure,
-            ),
-            timeout_seconds=deadline.remaining(rank_timeout_seconds),
         ),
     )
     unity_peak = peak_result.info
@@ -326,13 +315,17 @@ async def _fetch_peak_message(  # noqa: PLR0913
 
     async def fetch_season_ranks() -> PeakSeasonRankSummary:
         nonlocal peak_sub_key
-        peak_sub_key = rank.current_peak_sub_key()
+        try:
+            peak_sub_key = rank.current_peak_sub_key()
+        except DataUnavailableError as error:
+            extra_errors.append(str(error))
         return await rank.fetch_peak_summary(
             game,
             player_id,
             standard_score=scores.standard,
             wild_score=scores.wild,
             expert_score=scores.expert,
+            master_score=scores.master,
             progress=peak_progress,
             anchor_only=anchor_only,
         )
@@ -346,16 +339,18 @@ async def _fetch_peak_message(  # noqa: PLR0913
         ),
         timeout_seconds=deadline.remaining(rank_timeout_seconds),
     )
-    rank_summary = replace(
-        peak_rank_summary,
-        master=master_rank_summary.master,
-    )
+    rank_summary = peak_rank_summary
     validated_peak = validate_player_peak_season(
         unity_peak,
         scores,
         rank_summary,
         available_modes=peak_result.available_modes,
     )
+    try:
+        master_sub_key = rank.current_master_sub_key()
+    except DataUnavailableError as error:
+        master_sub_key = None
+        extra_errors.append(str(error))
     metrics = collect_metrics(
         more_info=SimpleNamespace(total_achieve=0, pet_all_num=0),
         unity_part_one=UnityPartOneInfo(),
@@ -366,6 +361,9 @@ async def _fetch_peak_message(  # noqa: PLR0913
         peak_standard_score=validated_peak.scores.standard,
         peak_wild_score=validated_peak.scores.wild,
         peak_expert_score=validated_peak.scores.expert,
+        peak_master_score=validated_peak.scores.master,
+        master_sub_key=master_sub_key,
+        available_modes=peak_result.available_modes,
     )
     for metric_key in validated_peak.clear_metric_keys:
         metrics.pop(metric_key, None)
@@ -612,7 +610,7 @@ def _peak_metric_keys_for_modes(available_modes: frozenset[str]) -> frozenset[st
             if mode in _PEAK_METRIC_KEYS_BY_MODE
         )
     )
-    if available_modes == frozenset(("standard", "wild", "expert")):
+    if available_modes == PEAK_MODE_NAMES:
         keys.add("peak_total_matches")
     return frozenset(keys)
 

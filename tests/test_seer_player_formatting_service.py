@@ -62,6 +62,12 @@ class MoreInfo:
 
 @dataclass(frozen=True)
 class UnityPeak:
+    current_m_rank: int = 4
+    current_m_star: int = 4
+    history_m_rank: int = 4
+    history_m_star: int = 5
+    current_m_win: int = 31
+    current_m_all: int | None = None
     current_j_rank: int = 3
     current_j_star: int = 2
     history_j_rank: int = 4
@@ -207,7 +213,7 @@ def test_format_peak_shows_profile_values_independently_of_season_rank() -> None
     assert "场次124" in message
     assert "狂野：天骄5星" in message
     assert "赛季榜前2000名未确认" in message
-    assert "大师：圣皇4星｜赛季榜第12" in message
+    assert "大师：圣皇4星｜赛季最高圣皇5星｜赛季榜第12" in message
 
 
 @pytest.mark.parametrize("rank_state", ("conflict", "missing", "timeout", "unqueried"))

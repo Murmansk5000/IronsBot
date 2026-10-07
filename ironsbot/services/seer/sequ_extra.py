@@ -9,31 +9,17 @@ from ironsbot.core.binary import BufferReader
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.tasks import OperationDeadline
 from ironsbot.core.time import ObservationTime
+from ironsbot.services.seer.peak_modes import PEAK_MODES
 
 logger = logging.getLogger(__name__)
 
 UNITY_INFO_CMD = 41298
 USER_FOREVER_VALUE_CMD = 40002
 PEAK_QUERY_DELAY_SECONDS = 0.005
-PEAK_PARAMS: tuple[int, ...] = (
-    124801,
-    124802,
-    124804,
-    124805,
-    124791,
-    124792,
-    124793,
-    124794,
-    129441,
-    129443,
-    129446,
-    129447,
+PEAK_PARAMS_BY_MODE = tuple(
+    (mode.slug, mode.personal_params) for mode in PEAK_MODES.values()
 )
-PEAK_PARAMS_BY_MODE: tuple[tuple[str, tuple[int, ...]], ...] = (
-    ("standard", PEAK_PARAMS[0:4]),
-    ("wild", PEAK_PARAMS[4:8]),
-    ("expert", PEAK_PARAMS[8:12]),
-)
+PEAK_PARAMS = tuple(param for _, params in PEAK_PARAMS_BY_MODE for param in params)
 
 
 @dataclass(slots=True)
@@ -65,6 +51,14 @@ class UnityPeakInfo:
     history_z_score: int = 0
     current_z_win: int = 0
     current_z_all: int = 0
+    current_m_star: int = 0
+    current_m_rank: int = 0
+    history_m_star: int = 0
+    history_m_rank: int = 0
+    current_m_win: int = 0
+    # No public per-player match-count field has been verified yet. None must
+    # never be interpreted as zero matches or used to publish a win rate.
+    current_m_all: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +112,11 @@ def parse_unity_peak(data: bytes | bytearray | memoryview) -> UnityPeakInfo:
         history_z_score=reader.read_uint32() if reader.has_remaining(4) else 0,
         current_z_win=reader.read_uint32() if reader.has_remaining(4) else 0,
         current_z_all=reader.read_uint32() if reader.has_remaining(4) else 0,
+        current_m_star=reader.read_uint16() if reader.has_remaining(2) else 0,
+        current_m_rank=reader.read_uint16() if reader.has_remaining(2) else 0,
+        history_m_star=reader.read_uint16() if reader.has_remaining(2) else 0,
+        history_m_rank=reader.read_uint16() if reader.has_remaining(2) else 0,
+        current_m_win=reader.read_uint32() if reader.has_remaining(4) else 0,
     )
 
 
@@ -130,16 +129,24 @@ async def fetch_unity_part_one(game: Any, player_id: int) -> UnityPartOneInfo:
     return parse_unity_part_one(await _fetch_unity_part(game, 1, player_id))
 
 
-async def fetch_unity_peak(game: Any, player_id: int) -> UnityPeakInfo:
+async def fetch_unity_peak(
+    game: Any, player_id: int, *, mode: str | None = None
+) -> UnityPeakInfo:
     chunks: list[bytes] = []
-    for param in PEAK_PARAMS:
-        _head, body = await game.send_and_wait(
-            USER_FOREVER_VALUE_CMD,
-            player_id,
-            param,
-        )
-        chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
-        await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
+    if mode is not None and mode not in dict(PEAK_PARAMS_BY_MODE):
+        raise ValueError(mode)
+    for name, params in PEAK_PARAMS_BY_MODE:
+        for param in params:
+            if mode is not None and name != mode:
+                chunks.append(struct.pack("!I", 0))
+                continue
+            _head, body = await game.send_and_wait(
+                USER_FOREVER_VALUE_CMD,
+                player_id,
+                param,
+            )
+            chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
+            await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
     return parse_unity_peak(b"".join(chunks))
 
 
@@ -160,6 +167,7 @@ async def fetch_unity_peak_partial(
     mode_errors: list[tuple[str, str]] = []
     observation = ObservationTime()
 
+    start = 0
     for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
         # Share the remaining stage budget; an early failure cannot take every
         # later mode's turn, and fast modes leave their unused time available.
@@ -200,9 +208,10 @@ async def fetch_unity_peak_partial(
                 error_text,
             )
             mode_errors.append((mode, error_text))
+            start += len(params)
             continue
-        start = mode_index * len(params)
         chunks[start : start + len(params)] = mode_chunks
+        start += len(params)
         available_modes.append(mode)
         observation.include(mode_observation.fetched_at)
 

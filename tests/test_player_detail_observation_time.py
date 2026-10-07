@@ -88,6 +88,7 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
     rank = SimpleNamespace(
         config=config.rank,
         current_peak_sub_key=lambda: 7,
+        current_master_sub_key=lambda: 8,
         fetch_player_summary=AsyncMock(return_value=collection),
         fetch_peak_summary=AsyncMock(return_value=peak),
         fetch_master_peak_summary=AsyncMock(return_value=peak),
@@ -153,15 +154,18 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         return
     clock[0] += 30
     assert await service.shortcut(cast("Any", game), command, PLAYER_ID) is reply
-    assert sum(
-        query.await_count
-        for query in (
-            rank.fetch_player_summary,
-            rank.fetch_peak_summary,
-            rank.fetch_master_peak_summary,
-            rank.fetch_autocard_summary,
+    assert (
+        sum(
+            query.await_count
+            for query in (
+                rank.fetch_player_summary,
+                rank.fetch_peak_summary,
+                rank.fetch_master_peak_summary,
+                rank.fetch_autocard_summary,
+            )
         )
-    ) == (2 if kind == "peak" else 1)
+        == 1
+    )
     if base_snapshot is not None:
         game.get_user_info.assert_not_awaited()
 
@@ -186,6 +190,7 @@ async def test_failed_rank_target_does_not_hide_other_data_time(
     rank = SimpleNamespace(
         config=config.rank,
         current_peak_sub_key=lambda: 7,
+        current_master_sub_key=lambda: 8,
         fetch_player_summary=AsyncMock(return_value=collection),
         fetch_peak_summary=AsyncMock(return_value=peak),
         fetch_master_peak_summary=AsyncMock(return_value=peak),

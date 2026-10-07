@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ironsbot.core.selection import (
     EXIT_SELECTION_LINE,
 )
+from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES
 from ironsbot.services.seer.player_shortcut_contracts import PLAYER_SHORTCUT_SPECS
 from ironsbot.services.seer.rank_peak import build_peak_rating_score
 
@@ -76,6 +77,7 @@ class PlayerPeakScores:
     standard: int | None = None
     wild: int | None = None
     expert: int | None = None
+    master: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,11 +108,7 @@ def calculate_player_peak_scores(
     *,
     available_modes: frozenset[str] | None = None,
 ) -> PlayerPeakScores:
-    modes = (
-        available_modes
-        if available_modes is not None
-        else frozenset(("standard", "wild", "expert"))
-    )
+    modes = available_modes if available_modes is not None else PEAK_MODE_NAMES
     standard_score = (
         build_peak_rating_score(
             int(getattr(unity_peak, "current_j_rank", 0)),
@@ -136,6 +134,14 @@ def calculate_player_peak_scores(
         standard=standard_score,
         wild=wild_score,
         expert=expert_score,
+        master=(
+            build_peak_rating_score(
+                int(getattr(unity_peak, "current_m_rank", 0)),
+                int(getattr(unity_peak, "current_m_star", 0)),
+            )
+            if "master" in modes
+            else None
+        ),
     )
 
 
@@ -150,11 +156,7 @@ def validate_player_peak_season(
     peak_updates: dict[str, int] = {}
     clear_metric_keys: set[str] = set()
     invalidates_total_matches = False
-    modes = (
-        available_modes
-        if available_modes is not None
-        else frozenset(("standard", "wild", "expert"))
-    )
+    modes = available_modes if available_modes is not None else PEAK_MODE_NAMES
     mode_specs = (
         (
             "standard",
@@ -184,6 +186,14 @@ def validate_player_peak_season(
             "current_z_all",
             ("peak_expert", "peak_expert_win_rate", "peak_expert_matches"),
         ),
+        (
+            "master",
+            candidate_scores.master,
+            rank_summary.master,
+            "current_m_win",
+            "current_m_all",
+            ("peak_master", "peak_master_win_rate", "peak_master_matches"),
+        ),
     )
     for (
         mode,
@@ -198,7 +208,10 @@ def validate_player_peak_season(
             continue
         confirmed_score = (
             int(result.score)
-            if result.rank is not None and result.score is not None
+            if result.rank is not None
+            and result.score is not None
+            and result.failure is None
+            and result.fallback_cached_at is None
             else None
         )
         # A rank lookup that did not find the player (or timed out) does not
@@ -212,9 +225,10 @@ def validate_player_peak_season(
             continue
 
         peak_updates[win_field] = 0
-        peak_updates[total_field] = 0
+        if getattr(unity_peak, total_field) is not None:
+            peak_updates[total_field] = 0
         invalidates_total_matches = (
-            invalidates_total_matches or int(getattr(unity_peak, total_field)) > 0
+            invalidates_total_matches or int(getattr(unity_peak, total_field) or 0) > 0
         )
         clear_metric_keys.update(metric_keys[1:])
 
@@ -227,6 +241,7 @@ def validate_player_peak_season(
             standard=scores["standard"],
             wild=scores["wild"],
             expert=scores["expert"],
+            master=scores["master"],
         ),
         clear_metric_keys=frozenset(clear_metric_keys),
     )

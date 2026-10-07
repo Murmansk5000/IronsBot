@@ -277,8 +277,16 @@ async def test_peak_rank_player_query_retries_without_stale_forever_score(
 
 
 @pytest.mark.asyncio
-async def test_master_rank_player_query_uses_leaderboard_without_packet_score() -> None:
+async def test_master_rank_player_query_uses_verified_personal_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: dict[str, Any] = {}
+
+    async def personal_score(*_args: Any, **kwargs: Any) -> SimpleNamespace:
+        assert kwargs == {"mode": "master"}
+        return SimpleNamespace(current_m_rank=4, current_m_star=4)
+
+    monkeypatch.setattr(rank_player_query, "fetch_unity_peak", personal_score)
 
     async def fake_find_rank(_game: object, **kwargs: Any) -> RankLookupResult:
         captured.update(kwargs)
@@ -310,7 +318,7 @@ async def test_master_rank_player_query_uses_leaderboard_without_packet_score() 
         command=RankPlayerCommand(rank_key="大师段位", player_id=PLAYER_ID),
     )
 
-    assert captured["target_score"] is None
+    assert captured["target_score"] == 400004  # noqa: PLR2004
     assert captured["sub_key"] == MASTER_SUB_KEY
     assert "大师段位：圣皇4星｜全服第12" in message
-    upsert.assert_not_awaited()
+    upsert.assert_awaited_once()

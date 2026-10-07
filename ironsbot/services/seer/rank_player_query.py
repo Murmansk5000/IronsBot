@@ -21,7 +21,7 @@ from ironsbot.services.seer.rank_list_models import LOCAL_RANKS, RankPlayerComma
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.sequ_extra import fetch_unity_part_one, fetch_unity_peak
 
-_PACKET_PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
+_PACKET_PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位", "大师段位"))
 _SEASON_RANK_KEYS = _PACKET_PEAK_KEYS | {"大师段位"}
 
 if TYPE_CHECKING:
@@ -85,13 +85,7 @@ async def fetch_rank_player_result(
             anchor_only=anchor_only,
         )
 
-    score = (
-        result.score
-        if command.rank_key in _SEASON_RANK_KEYS
-        else result.score
-        if result.score is not None
-        else target.value
-    )
+    score = result.score if result.score is not None else target.value
     if (
         command.rank_key not in _SEASON_RANK_KEYS
         and result.score is None
@@ -176,12 +170,17 @@ async def _fetch_player_score(
         value = info.pet_kind_num if rank_key == "精灵图鉴" else info.skin_num
         return RankPlayerScore(known=True, value=int(value) or None)
     if rank_key in _PACKET_PEAK_KEYS:
-        info = await fetch_unity_peak(game, command.player_id)
+        info = (
+            await fetch_unity_peak(game, command.player_id, mode="master")
+            if command.rank_key == "大师段位"
+            else await fetch_unity_peak(game, command.player_id)
+        )
         scores = calculate_player_peak_scores(info)
         values = {
             "竞技段位": scores.standard,
             "狂野段位": scores.wild,
             "专家段位": scores.expert,
+            "大师段位": scores.master,
         }
         return RankPlayerScore(known=True, value=values[rank_key])
     return RankPlayerScore(known=False, value=None)

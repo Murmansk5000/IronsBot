@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
@@ -82,6 +84,7 @@ if TYPE_CHECKING:
     )
 
 _BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
+logger = logging.getLogger(__name__)
 _LAST_CONFIRMED_RANK_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
@@ -546,16 +549,26 @@ class RankService(RankCacheQueryMixin):
         standard_score: int | None = None,
         wild_score: int | None = None,
         expert_score: int | None = None,
+        master_score: int | None = None,
         progress: RankSummaryProgress | None = None,
         anchor_only: bool = False,
     ) -> PeakSeasonRankSummary:
+        seasons: list[int | None] = []
+        for resolve in (self.current_peak_sub_key, self.current_master_sub_key):
+            try:
+                seasons.append(resolve())
+            except DataUnavailableError:  # noqa: PERF203
+                logger.exception("peak season unavailable: source=%s", resolve.__name__)
+                seasons.append(None)
         return await rank_summary.fetch_peak_season_rank_summary(
             game,
             user_id,
             standard_score=standard_score,
             wild_score=wild_score,
             expert_score=expert_score,
-            current_peak_sub_key=self.current_peak_sub_key(),
+            master_score=master_score,
+            current_peak_sub_key=seasons[0],
+            current_master_sub_key=seasons[1],
             find_rank=self.find_rank,
             progress=progress,
             anchor_only=anchor_only,

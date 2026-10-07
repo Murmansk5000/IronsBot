@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES
 from ironsbot.services.seer.player_formatting_common import (
     METRIC_SEPARATOR,
     format_local_rank_suffix,
@@ -41,6 +42,7 @@ def format_peak_line(  # noqa: PLR0913
     score_key: str,
     win_rate_key: str,
     match_key: str,
+    history_label: str = "历史",
 ) -> str:
     match_text = ""
     if match_count > 0:
@@ -74,7 +76,7 @@ def format_peak_line(  # noqa: PLR0913
     else:
         rank_text = "赛季榜未查询"
     return (
-        f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
+        f"{title}：{current}{METRIC_SEPARATOR}{history_label}{history}"
         f"{METRIC_SEPARATOR}"
         f"{join_metric_parts(match_text, win_rate_text, rank_text)}"
     )
@@ -117,11 +119,7 @@ def format_compact_peak_section(  # noqa: PLR0913
     if player_id is not None:
         lines.append(format_player_identity(player_id, nick, nick_error))
 
-    resolved_modes = (
-        available_modes
-        if available_modes is not None
-        else frozenset(("standard", "wild", "expert"))
-    )
+    resolved_modes = available_modes if available_modes is not None else PEAK_MODE_NAMES
     errors = mode_errors or {}
 
     def unavailable_text(mode: str, *, current: bool = False) -> str:
@@ -209,7 +207,43 @@ def format_compact_peak_section(  # noqa: PLR0913
                 win_rate_key="peak_expert_win_rate",
                 match_key="peak_expert_matches",
             ),
-            format_master_peak_line(peak_rank_summary.master),
+            format_peak_line(
+                "大师",
+                history_label="赛季最高",
+                current=(
+                    format_rank_star_compact(peak.current_m_rank, peak.current_m_star)
+                    if "master" in resolved_modes
+                    else unavailable_text("master", current=True)
+                ),
+                history=(
+                    format_rank_star_compact(peak.history_m_rank, peak.history_m_star)
+                    if "master" in resolved_modes
+                    else unavailable_text("master")
+                ),
+                match_count=(peak.current_m_all or 0)
+                if "master" in resolved_modes
+                else 0,
+                win_rate=(
+                    format_win_rate(peak.current_m_win, peak.current_m_all)
+                    if "master" in resolved_modes and peak.current_m_all
+                    else ""
+                ),
+                rank_result=peak_rank_summary.master,
+                local_summary=local_summary,
+                score_key="peak_master",
+                win_rate_key="peak_master_win_rate",
+                match_key="peak_master_matches",
+            ),
         ]
     )
+    if "master" in resolved_modes and peak.current_m_all is None:
+        lines.append(f"大师胜场：{peak.current_m_win}｜场次及胜率暂无法确认")
+    if resolved_modes == PEAK_MODE_NAMES and peak.current_m_all is not None:
+        total = (
+            peak.current_j_all
+            + peak.current_k_all
+            + peak.current_z_all
+            + peak.current_m_all
+        )
+        lines.append(f"巅峰总场次：{total}场（各模式当前赛季合计）")
     return "\n".join(lines)
