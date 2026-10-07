@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from contextvars import ContextVar
 from dataclasses import replace
 from secrets import token_urlsafe
@@ -12,6 +13,8 @@ from time import monotonic
 from typing import TYPE_CHECKING
 
 from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
+from ironsbot.core.outbound import TextPart
+from ironsbot.core.platform import Platform
 from ironsbot.services.portable_query_types import (
     PortableQuerySessionError,
     PortableResponseReservation,
@@ -34,6 +37,11 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 _MENU_ACCESS: ContextVar[MenuAccess | None] = ContextVar("menu_access", default=None)
+_MIN_QUOTED_MENU_LENGTH = 40
+
+
+def _menu_text(value: str) -> str:
+    return " ".join(re.sub(r"\\(?=[.#])", "", value).split())
 
 
 class PortableSessionState:
@@ -67,14 +75,28 @@ class PortableSessionState:
         if not result.delivered:
             self.discard(context)
             return
-        self._pending[key] = replace(
-            pending,
-            anchor_ids=(
-                frozenset((str(result.message_id), *result.reply_anchor_ids))
-                if result.message_id
-                else frozenset()
-            ),
+        anchor_ids = (
+            frozenset((str(result.message_id), *result.reply_anchor_ids))
+            if result.message_id
+            else frozenset()
         )
+        if isinstance(pending, _PendingSelection):
+            prompt_content = (
+                _menu_text(
+                    "".join(
+                        part.text
+                        for part in message.parts
+                        if isinstance(part, TextPart)
+                    )
+                )
+                if context.message.platform is Platform.QQ_OFFICIAL
+                else None
+            )
+            self._pending[key] = replace(
+                pending, anchor_ids=anchor_ids, prompt_content=prompt_content
+            )
+        else:
+            self._pending[key] = replace(pending, anchor_ids=anchor_ids)
         _LOGGER.info(
             "portable menu activated: namespace=query platform=%s bot=%s "
             "conversation=%s session=%s message_id=%s",
@@ -100,7 +122,7 @@ class PortableSessionState:
         if (
             isinstance(own, _PendingSelection)
             and own.expires_at > self._now()
-            and bool(context.reply_reference_ids & own.anchor_ids)
+            and self._matches_anchor(own, context)
         ):
             return own.owner_context
         for key in tuple(self._pending):
@@ -109,11 +131,35 @@ class PortableSessionState:
             if (
                 isinstance(pending, _PendingSelection)
                 and key[1:] == self._key(context)[1:]
-                and bool(context.reply_reference_ids & pending.anchor_ids)
+                and self._matches_anchor(pending, context)
                 and pending.owner_context is not None
             ):
                 return pending.owner_context
         return None
+
+    def _matches_anchor(
+        self, pending: _PendingSelection, context: MessageInputContext
+    ) -> bool:
+        if context.reply_reference_ids & pending.anchor_ids:
+            return True
+        quoted = context.message.quoted_content
+        if (
+            context.message.platform is not Platform.QQ_OFFICIAL
+            or not quoted
+            or not pending.prompt_content
+            or len(pending.prompt_content) < _MIN_QUOTED_MENU_LENGTH
+            or not _menu_text(quoted).endswith(pending.prompt_content)
+        ):
+            return False
+        matches = [
+            item
+            for key, item in self._pending.items()
+            if isinstance(item, _PendingSelection)
+            and item.expires_at > self._now()
+            and key[1:] == self._key(context)[1:]
+            and item.prompt_content == pending.prompt_content
+        ]
+        return len(matches) == 1 and matches[0] is pending
 
     def discard_prompt(self, context: MessageInputContext, prompt_id: str) -> None:
         pending = self._pending.get(self._key(context))
@@ -142,14 +188,18 @@ class PortableSessionState:
             self.access_resolver(context) if self.access_resolver else None
         )
 
-    @staticmethod
     def _accepts_anchor(
+        self,
         pending: _PendingSelection | _PendingTextInput | None,
         context: MessageInputContext,
     ) -> bool:
         return not context.is_reply or (
             pending is not None
-            and bool(context.reply_reference_ids & pending.anchor_ids)
+            and (
+                self._matches_anchor(pending, context)
+                if isinstance(pending, _PendingSelection)
+                else bool(context.reply_reference_ids & pending.anchor_ids)
+            )
         )
 
     def reserve_responses(
@@ -252,8 +302,8 @@ class PortableSessionState:
         if not responder.is_reply or not text.lstrip().startswith(("@", "＠")):
             return text
         pending = self._pending.get(self._key(owner))
-        if not isinstance(pending, _PendingSelection) or not (
-            responder.reply_reference_ids & pending.anchor_ids
+        if not isinstance(pending, _PendingSelection) or not self._matches_anchor(
+            pending, responder
         ):
             return text
         parts = text.split()
@@ -354,7 +404,7 @@ class PortableSessionState:
         pending = self._pending.get(key)
         if not isinstance(pending, _PendingSelection):
             return None
-        if not (responder.reply_reference_ids & pending.anchor_ids):
+        if not self._matches_anchor(pending, responder):
             return None
         return (
             pending

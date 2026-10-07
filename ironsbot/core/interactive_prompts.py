@@ -19,6 +19,7 @@ class PromptChoice:
     id: str
     label: str
     text_inputs: frozenset[str]
+    is_visible: bool = True
 
     def __post_init__(self) -> None:
         normalized_inputs = frozenset(

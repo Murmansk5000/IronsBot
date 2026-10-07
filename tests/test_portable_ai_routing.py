@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -29,6 +30,10 @@ from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_query_sessions import (
+    PortableMenuSpec,
+    PortableQuerySessions,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.messaging import AiIntentAction
@@ -235,7 +240,7 @@ async def test_official_unaddressed_keyword_reply_precedes_ai() -> None:
         addressed_input_hints=AddressedInputHintService(),
         messaging=messaging,
     )
-    context = _context(GROUP, "这里有示例触发词")
+    context = _context(GROUP, "示例触发词")
 
     assert router.recognizes(context)
     reply = await router.dispatch(context)
@@ -273,6 +278,34 @@ async def test_claimed_entity_query_can_stay_silent_after_an_empty_lookup() -> N
     assert await router.dispatch(context) is None
     assert ai.intent_calls == []
     assert ai.chat_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["芯片没拿好也是卒", "米米号不存在", "战队不存在"])
+async def test_unmatched_explicit_queries_do_not_enter_ai_or_recommendations(
+    query: str,
+) -> None:
+    ai = _Ai(action=ACTION)
+    router = _router(ai)
+    sessions = PortableQuerySessions()
+    router._query_sessions = sessions
+    for conversation in (GROUP, PRIVATE):
+        context = _context(conversation, query, mentions_bot=True)
+        sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=(1,),
+                select=AsyncMock(),
+                prompt=OutboundMessage.from_text("old menu"),
+                keep_open=True,
+            ),
+        )
+        sessions.reserve_responses(context, lambda value: value.isdecimal())
+        assert router.recognizes(context)
+        assert await router.dispatch(context) is None
+        assert not sessions.has_active_session(context)
+        assert not sessions.recognizes_response("1", context)
+    assert not ai.intent_calls and not ai.chat_calls
 
 
 @pytest.mark.asyncio
