@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING
 
+from httpx import HTTPStatusError, TransportError
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from ironsbot.services.messaging.image_collage import ImageCollageError
@@ -17,8 +18,8 @@ if TYPE_CHECKING:
 
     from httpx import AsyncClient
 
-TARGET_ASPECT_RATIO = 4 / 3
-ROW_FILL_PENALTY = 0.75
+HTTP_SERVER_ERROR = 500
+HTTP_RATE_LIMIT = 429
 
 
 async def fetch_collage_image(
@@ -42,7 +43,17 @@ async def fetch_collage_image(
     except ImageCollageError:
         raise
     except Exception as error:
-        raise ImageCollageError.download_failed() from error
+        failure = ImageCollageError.download_failed()
+        failure.retryable = isinstance(
+            error, (TransportError, TimeoutError, ConnectionError)
+        ) or (
+            isinstance(error, HTTPStatusError)
+            and (
+                error.response.status_code >= HTTP_SERVER_ERROR
+                or error.response.status_code == HTTP_RATE_LIMIT
+            )
+        )
+        raise failure from error
     if not data:
         raise ImageCollageError.empty_response()
     return bytes(data)
@@ -53,10 +64,6 @@ class _DecodedImage:
     image: Image.Image
     width: int
     height: int
-
-    @property
-    def aspect(self) -> float:
-        return self.width / self.height
 
 
 def render_adaptive_collage(
@@ -72,52 +79,16 @@ def render_adaptive_collage(
             image = _decode_image(data, remaining_pixels)
             decoded.append(image)
             remaining_pixels -= image.width * image.height
-        columns = _choose_columns([image.aspect for image in decoded])
-        target_height = min(image.height for image in decoded)
-        sizes = [
-            (max(1, round(target_height * image.aspect)), target_height)
-            for image in decoded
-        ]
-        rows = [
-            sizes[index : index + columns] for index in range(0, len(sizes), columns)
-        ]
-        canvas_width = max(sum(width for width, _height in row) for row in rows)
-        canvas_height = target_height * len(rows)
-        scale = _output_scale(
-            canvas_width,
-            canvas_height,
-            max_side=max_side,
-            max_pixels=max_pixels,
+        rows = _choose_layout(
+            decoded, max_side=max_side, max_pixels=max_pixels, horizontal=False
         )
-        if scale < 1:
-            target_height = max(1, math.floor(target_height * scale))
-            sizes = [
-                (max(1, round(target_height * image.aspect)), target_height)
-                for image in decoded
-            ]
-            rows = [
-                sizes[index : index + columns]
-                for index in range(0, len(sizes), columns)
-            ]
-            canvas_width = max(sum(width for width, _height in row) for row in rows)
-            canvas_height = target_height * len(rows)
-
-        canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
-        image_index = 0
-        for row_index, row in enumerate(rows):
-            row_width = sum(width for width, _height in row)
-            x = (canvas_width - row_width) // 2
-            y = row_index * target_height
-            for width, height in row:
-                source = decoded[image_index].image
-                resized = source.resize((width, height), Image.Resampling.LANCZOS)
-                canvas.alpha_composite(resized, (x, y))
-                x += width
-                image_index += 1
-
-        output = BytesIO()
-        canvas.save(output, format="PNG", compress_level=6)
-        return output.getvalue()
+        canvas_width, canvas_height = _canvas_size(rows)
+        if (
+            max(canvas_width, canvas_height) > max_side
+            or canvas_width * canvas_height > max_pixels
+        ):
+            raise ImageCollageError.source_too_large()  # noqa: TRY301 - validate rounded output dimensions
+        return _render_rows(decoded, rows, (canvas_width, canvas_height))
     except ImageCollageError:
         raise
     except Exception as error:
@@ -153,29 +124,107 @@ def _ensure_static(image: Image.Image) -> None:
         raise ImageCollageError.animated()
 
 
-def _choose_columns(aspects: Sequence[float]) -> int:
-    best_columns = 1
-    best_score = math.inf
-    for columns in range(1, len(aspects) + 1):
-        row_widths = [
-            sum(aspects[index : index + columns])
-            for index in range(0, len(aspects), columns)
-        ]
-        widest = max(row_widths)
-        canvas_aspect = widest / len(row_widths)
-        fill_penalty = sum((widest - width) / widest for width in row_widths)
-        fill_penalty /= len(row_widths)
-        score = abs(math.log(canvas_aspect / TARGET_ASPECT_RATIO))
-        score += fill_penalty * ROW_FILL_PENALTY
-        if score < best_score:
-            best_score = score
-            best_columns = columns
-    return best_columns
+def _choose_layout(
+    decoded: Sequence[_DecodedImage],
+    *,
+    max_side: int,
+    max_pixels: int,
+    horizontal: bool,
+) -> tuple[tuple[tuple[int, int], ...], ...]:
+    def candidate(columns: int):
+        groups = tuple(
+            decoded[index : index + columns]
+            for index in range(0, len(decoded), columns)
+        )
+        ratios = [sum(image.width / image.height for image in row) for row in groups]
+        relative_height = sum(1 / ratio for ratio in ratios)
+        area = sum(image.width * image.height for image in decoded)
+        width = math.sqrt(area / relative_height)
+        height = width * relative_height
+        scale = _output_scale(width, height, max_side=max_side, max_pixels=max_pixels)
+        width *= scale
+        height *= scale
+        # Compare retained detail before rounded dimensions: rounding must not
+        # make a needlessly narrow layout win a tie between equivalent grids.
+        retention = min(
+            (width / ratio / image.height) ** 2
+            for row, ratio in zip(groups, ratios, strict=True)
+            for image in row
+        )
+        smallest = min(
+            (width / ratio) ** 2 * image.width / image.height
+            for row, ratio in zip(groups, ratios, strict=True)
+            for image in row
+        )
+        score = (
+            round(retention, 9),
+            round(smallest, 6),
+            -abs(math.log(width / height)),
+            -columns,
+        )
+        return score, _filled_rows(groups, ratios, max(columns, math.floor(width)))
+
+    choices = (len(decoded),) if horizontal else range(1, len(decoded) + 1)
+    return max((candidate(columns) for columns in choices), key=lambda item: item[0])[1]
+
+
+def _filled_rows(
+    groups: Sequence[Sequence[_DecodedImage]], ratios: Sequence[float], width: int
+) -> tuple[tuple[tuple[int, int], ...], ...]:
+    rows = []
+    for group, ratio in zip(groups, ratios, strict=True):
+        height = max(1, math.floor(width / ratio))
+        # Reserve one pixel per image and distribute the rest proportionally.
+        remaining = width - len(group)
+        positions = [0]
+        cumulative = 0.0
+        for image in group:
+            cumulative += image.width / image.height
+            positions.append(round(remaining * cumulative / ratio))
+        rows.append(
+            tuple(
+                (positions[index + 1] - positions[index] + 1, height)
+                for index in range(len(group))
+            )
+        )
+    return tuple(rows)
+
+
+def _canvas_size(rows: Sequence[Sequence[tuple[int, int]]]) -> tuple[int, int]:
+    return (
+        max(sum(width for width, _height in row) for row in rows),
+        sum(max(height for _width, height in row) for row in rows),
+    )
+
+
+def _render_rows(
+    decoded: Sequence[_DecodedImage],
+    rows: Sequence[Sequence[tuple[int, int]]],
+    canvas_size: tuple[int, int],
+) -> bytes:
+    with Image.new("RGBA", canvas_size, (0, 0, 0, 0)) as canvas:
+        image_index = 0
+        y = 0
+        for row in rows:
+            row_height = max(height for _width, height in row)
+            x = (canvas.width - sum(width for width, _height in row)) // 2
+            for width, height in row:
+                source = decoded[image_index].image
+                with source.resize(
+                    (width, height), Image.Resampling.LANCZOS
+                ) as resized:
+                    canvas.alpha_composite(resized, (x, y + (row_height - height) // 2))
+                x += width
+                image_index += 1
+            y += row_height
+        output = BytesIO()
+        canvas.save(output, format="PNG", compress_level=6)
+        return output.getvalue()
 
 
 def _output_scale(
-    width: int,
-    height: int,
+    width: float,
+    height: float,
     *,
     max_side: int,
     max_pixels: int,

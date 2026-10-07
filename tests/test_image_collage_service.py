@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ironsbot.integrations import animated_collage
 from ironsbot.integrations.animated_collage import (
@@ -99,11 +99,113 @@ def test_four_square_images_use_two_by_two_layout() -> None:
     assert result.size == (200, 200)
 
 
+def test_four_portrait_images_use_filled_two_by_two_layout() -> None:
+    # Same aspect ratio as dynamic 1255164680735817733 (900 x 1300).
+    colors = (
+        (255, 0, 0, 255),
+        (0, 255, 0, 255),
+        (0, 0, 255, 255),
+        (255, 255, 0, 255),
+    )
+    with _render([_png(90, 130, color) for color in colors]) as result:
+        assert result.size == (180, 260)
+        assert [
+            result.getpixel(position)
+            for position in ((45, 65), (135, 65), (45, 195), (135, 195))
+        ] == list(colors)
+        assert result.getchannel("A").getextrema() == (255, 255)
+
+
 def test_collage_is_scaled_as_a_whole_to_output_limit() -> None:
     images = [_png(100, 400, (255, 0, 0, 255)) for _index in range(4)]
     result = _render(images, max_side=200)
 
     assert result.size == (200, 200)
+
+
+def test_small_image_and_large_images_fill_the_entire_canvas() -> None:
+    colors = ((255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255))
+    images = [_png(100, 100, color) for color in colors]
+    images.append(_png(20, 10, (255, 255, 0, 255)))
+    with _render(images) as result:
+        assert result.getchannel("A").getextrema() == (255, 255)
+        palette = result.getcolors()
+        assert palette is not None
+        counts = {color: count for count, color in palette}
+        assert set(counts) == {*colors, (255, 255, 0, 255)}
+
+
+
+def test_small_image_can_upscale_beyond_two_times_without_padding() -> None:
+    images = [_png(20, 10, (255, 0, 0, 255)), _png(82, 41, (0, 0, 255, 255))]
+    with _render(images) as result:
+        assert result.getchannel("A").getextrema() == (255, 255)
+        red_pixels = result.getchannel("R").histogram()[255]
+        assert red_pixels > 20 * 10 * 4
+
+
+
+def test_same_height_narrow_image_does_not_add_row_padding() -> None:
+    images = [_png(100, 100, (255, 0, 0, 255)) for _index in range(3)]
+    images.append(_png(40, 100, (0, 0, 255, 255)))
+    with _render(images) as result:
+        assert result.size == (340, 100)
+        assert result.getchannel("A").getextrema() == (255, 255)
+
+
+
+@pytest.mark.parametrize(
+    "sizes",
+    [
+        [(90, 130)] * 4,
+        [(100, 400)] * 4,
+        [(20, 20)] * 3,
+        [(20, 20), (20, 20), (20, 40)],
+        [(200, 20)] * 2,
+        [(1280, 854), (720, 6000)],
+        [(701, 503), (37, 99), (301, 401), (127, 43), (61, 233)],
+    ],
+)
+def test_mixed_sizes_have_no_layout_whitespace_and_keep_reading_order(
+    sizes: Sequence[tuple[int, int]],
+) -> None:
+    colors = [(index * 30, 10, 20, 255) for index in range(len(sizes))]
+    with _render(
+        [_png(w, h, c) for (w, h), c in zip(sizes, colors, strict=True)]
+    ) as result:
+        assert result.getchannel("A").getextrema() == (255, 255)
+        pixels = result.load()
+        assert pixels is not None
+        first_positions = [
+            next(
+                (y, x)
+                for y in range(result.height)
+                for x in range(result.width)
+                if pixels[x, y] == color
+            )
+            for color in colors
+        ]
+        assert first_positions == sorted(first_positions)
+
+
+
+def test_transparency_is_preserved_inside_images() -> None:
+    images = [_png(20, 20, (255, 0, 0, 128)) for _index in range(4)]
+    with _render(images) as result:
+        assert result.size == (40, 40)
+        assert result.getpixel((10, 10)) == (255, 0, 0, 128)
+        assert result.getchannel("A").getextrema() == (128, 128)
+
+
+def test_pixel_limit_scales_selected_layout_without_reflowing() -> None:
+    pixel_limit = 35_000
+    images = [_png(100, 100, (255, 0, 0, 255)) for _index in range(3)]
+    images.append(_png(20, 10, (0, 0, 255, 255)))
+    content = render_adaptive_collage(images, max_side=MAX_SIDE, max_pixels=pixel_limit)
+    with Image.open(BytesIO(content)) as result:
+        assert result.width * result.height <= pixel_limit
+        assert result.getchannel("A").getextrema() == (255, 255)
+
 
 
 def test_animated_image_rejects_the_complete_collage() -> None:
@@ -455,3 +557,48 @@ async def test_service_preserves_failed_url_without_blocking_other_collage() -> 
     outputs = await service.prepare_urls(("one", "failed", "two"))
 
     assert [output.url for output in outputs] == ["one", "failed", "two"]
+
+
+@pytest.mark.asyncio
+async def test_small_portrait_detail_fills_collage_beside_large_cover() -> None:
+    sources = (
+        _png(1280, 854, (255, 0, 0, 255)),
+        _png(120, 213, (0, 0, 255, 255)),
+    )
+
+    async def fetch(url: str, _limit: int) -> bytes:
+        return sources[int(url)]
+
+    service = ImageCollageService(fetch, render_adaptive_collage)
+    prepared_bytes = await service.prepare_urls(("0", "1"))
+    assert len(prepared_bytes) == 1
+    assert prepared_bytes[0].content is not None
+    with Image.open(BytesIO(prepared_bytes[0].content)) as result:
+        assert result.getchannel("A").getextrema() == (255, 255)
+        assert result.width * result.height >= 1_000_000  # noqa: PLR2004
+    prepared_urls = await service.prepare_urls(("0", "1"))
+    assert len(prepared_urls) == 1
+    assert prepared_urls[0].content == prepared_bytes[0].content
+
+
+
+def test_all_four_source_corners_survive_without_cropping() -> None:
+    output = BytesIO()
+    with Image.new("RGBA", (100, 100), "white") as source:
+        draw = ImageDraw.Draw(source)
+        for box, color in (
+            ((0, 0, 19, 19), "red"),
+            ((80, 0, 99, 19), "green"),
+            ((0, 80, 19, 99), "blue"),
+            ((80, 80, 99, 99), "black"),
+        ):
+            draw.rectangle(box, fill=color)
+        source.save(output, format="PNG")
+    with _render([output.getvalue()] * 2) as result:
+        assert result.size == (100, 200)
+        for offset in (0, 100):
+            assert result.getpixel((5, offset + 5)) == (255, 0, 0, 255)
+            assert result.getpixel((95, offset + 5)) == (0, 128, 0, 255)
+            assert result.getpixel((5, offset + 95)) == (0, 0, 255, 255)
+            assert result.getpixel((95, offset + 95)) == (0, 0, 0, 255)
+
