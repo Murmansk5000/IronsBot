@@ -28,6 +28,7 @@ from ironsbot.config.platform_references import (
     build_platform_reference_resolver,
 )
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputContext
@@ -50,6 +51,7 @@ from ironsbot.core.plugin_install import (
     PluginContributionCatalog,
 )
 from ironsbot.core.semantic_requests import ActionDefinition
+from ironsbot.core.text_matching import TextMatchRule
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
@@ -2887,6 +2889,84 @@ async def test_portable_router_runs_scoped_query_selection(
     assert selected_text == (
         DATABASE_UNAVAILABLE_MESSAGE if fail_selection else "精灵:2394"
     )
+
+
+@pytest.mark.asyncio
+async def test_official_query_matching_silence_and_cleanup_through_real_events(
+    tmp_path: Path,
+) -> None:
+    class MatchingPetQuery(_FakePetQuery):
+        async def search_info(
+            self, argument: str, **_kwargs: object
+        ) -> QueryResult[int]:
+            rows = {701: "星光之主", 702: "星光之影"}
+            matched = TextMatchRule(normalize_command_text).select(
+                argument, rows, names=lambda id_: (rows[id_],)
+            )
+            return QueryResult(
+                choices=tuple(
+                    QueryChoice(rows[id_], str(id_), id_) for id_ in matched.matches
+                )
+            )
+
+    sessions = PortableQuerySessions()
+    ai = _FakeAi()
+    router = build_portable_command_router(
+        catalog=_portable_catalog(ai_chat=True),
+        about=AboutService("test"),
+        seer=_fake_seer(pet_query=MatchingPetQuery()),
+        player_id_resolver=_FakePlayerIdResolver(),
+        identity_links=_identity_links(),
+        features=_official_feature_service(["seer_pet", "ai_chat"]),
+        ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+        query_sessions=sessions,
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    async with AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (QQOfficialRuntimeAccount("example-app", "example-secret"),),
+            http_client=client,
+            session_root=tmp_path,
+        )
+        runtime.bind(router, messenger)
+
+        async def send(text: str, id_: str, *, quoted: str | None = None) -> None:
+            raw: dict[str, Any] = {
+                "id": id_,
+                "content": text,
+                "timestamp": "2099-01-01T00:00:00+08:00",
+                "group_openid": "group-a",
+                "author": {"member_openid": "opaque-member"},
+            }
+            if quoted:
+                raw["message_reference"] = {"message_id": quoted}
+            await runtime.handle_event("example-app", "GROUP_AT_MESSAGE_CREATE", raw)
+
+        await send("精灵星光", "query")
+        assert bot.sent == 1
+        await send("2", "selection", quoted="sent-1")
+        expected_messages = len(("menu", "selected"))
+        assert bot.sent == expected_messages
+        assert "精灵:702" in str(bot.calls[-1][2])
+        await send("精灵不存在", "missing")
+        await send("米米号不存在", "missing-player")
+        assert bot.sent == expected_messages
+        assert not ai.calls
+        actor = ActorRef(
+            Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a", "example-app"
+        )
+        conversation = ConversationRef(
+            Platform.QQ_OFFICIAL, "group", "group-a", "example-app"
+        )
+        context = _portable_input("1", actor, conversation)
+        assert sessions.menu_anchor(context) is None
+        assert not sessions.has_active_session(context)
 
 
 @pytest.mark.asyncio

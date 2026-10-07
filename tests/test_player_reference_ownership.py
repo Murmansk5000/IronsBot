@@ -62,9 +62,7 @@ async def test_player_prefix_chat_is_not_claimed_with_member_mention() -> None:
     )
     for text in ("米米号发了吗", "绑定米米号发了吗"):
         event = group_message_event(
-            message=Message(
-                [MessageSegment.at(456), MessageSegment.text(f" {text}")]
-            ),
+            message=Message([MessageSegment.at(456), MessageSegment.text(f" {text}")]),
             group_id=int(_GROUP.id),
         )
         matcher = (
@@ -295,13 +293,10 @@ def test_player_command_ownership_matches_resolution(
     )
     if not group:
         # Exercise the actual AI routing rule, without invoking a completion API.
-        assert (
-            _capture_ai_prompt(
-                event,
-                {},
-                AiInputRoutingService(features, catalog),
-            )
-            is not expected
+        assert not _capture_ai_prompt(
+            event,
+            {},
+            AiInputRoutingService(features, catalog),
         )
     binding.assert_not_called()
 

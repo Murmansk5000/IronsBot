@@ -11,6 +11,8 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
 
+from ironsbot.core.text_matching import TextMatchRule
+
 from .normalization import normalize_key
 from .orm import MintmarkClassAliasORM, MintmarkSeriesMemberORM
 
@@ -179,18 +181,6 @@ def _mintmark_metric_value(mintmark: MintmarkORM, metric: str) -> int:
     return int(getattr(attr, metric, 0))
 
 
-def _resolve_unique_partial_mintmark_class_id(
-    classes: Iterable[MintmarkClassCategoryORM],
-    normalized_prefix: str,
-) -> list[int]:
-    matches = [
-        mintmark_class.id
-        for mintmark_class in classes
-        if normalized_prefix in normalize_key(mintmark_class.name)
-    ]
-    return matches if len(matches) == 1 else []
-
-
 def _is_mintmark_type_query(query: str) -> bool:
     normalized = query.replace("双刀", "双攻").replace("双防", "盾")
     if normalized == "双攻":
@@ -257,36 +247,32 @@ def resolve_custom_mintmark_series(
 
     ids: list[int] = []
     type_query = ""
-    normalized_arg = normalize_key(arg)
-    exact_members = [
-        member for member in members if normalize_key(member.name) == normalized_arg
-    ]
+    rule = TextMatchRule(normalize_key)
+    exact_members = rule.select(
+        arg, members, names=lambda member: (member.name,), allow_partial=False
+    ).matches
     if exact_members:
         ids = sorted({member.target_id for member in exact_members})
     elif (parsed := _parse_series_ordinal_arg(arg)) is not None:
         raw_prefix, ordinal = parsed
-        series_ids = sorted(
-            {
-                member.target_id
-                for member in members
-                if normalize_key(member.name) == normalize_key(raw_prefix)
-            }
-        )
+        series_ids = _custom_series_ids(members, raw_prefix)
         if 0 < ordinal <= len(series_ids):
             ids = [series_ids[ordinal - 1]]
     else:
         for raw_prefix, candidate_type_query in _iter_series_type_splits(arg):
-            series_ids = sorted(
-                {
-                    member.target_id
-                    for member in members
-                    if normalize_key(member.name) == normalize_key(raw_prefix)
-                }
-            )
+            series_ids = _custom_series_ids(members, raw_prefix)
             if series_ids:
                 ids = series_ids
                 type_query = candidate_type_query
                 break
+        ids = ids or sorted(
+            {
+                member.target_id
+                for member in rule.select(
+                    arg, members, names=lambda member: (member.name,)
+                ).matches
+            }
+        )
 
     result = tuple(
         mintmark
@@ -303,6 +289,20 @@ def resolve_custom_mintmark_series(
             type_query,
         )
     )
+
+
+def _custom_series_ids(
+    members: Iterable[MintmarkSeriesMemberORM], prefix: str
+) -> list[int]:
+    groups: dict[str, set[int]] = {}
+    for member in members:
+        groups.setdefault(normalize_key(member.name), set()).add(member.target_id)
+    matched = TextMatchRule(normalize_key).select(
+        prefix, groups, names=lambda name: (name,)
+    )
+    if matched.kind == "partial" and len(matched.matches) != 1:
+        return []
+    return sorted({id_ for name in matched.matches for id_ in groups[name]})
 
 
 class MintmarkSeriesResolver:
@@ -402,38 +402,25 @@ class MintmarkSeriesResolver:
             logger.warning(f"{self!r}: 未找到数据数据库会话")
             return []
 
-        normalized_prefix = normalize_key(raw_prefix)
-        candidates = {normalized_prefix}
-        if not normalized_prefix.endswith("系列"):
-            candidates.add(normalize_key(f"{raw_prefix}系列"))
-
         classes = data_session.exec(select(MintmarkClassCategoryORM)).all()
-        class_ids: list[int] = [
-            mintmark_class.id
-            for mintmark_class in classes
-            if normalize_key(mintmark_class.name) in candidates
-        ]
-        if class_ids:
-            return class_ids
-
+        labels: dict[int, list[str]] = {
+            item.id: [item.name, item.name.removesuffix("系列")] for item in classes
+        }
         alias_session = sessions.get(self.alias_db)
-        if alias_session is None:
-            logger.warning(f"{self!r}: 未找到别名数据库会话")
-            return _resolve_unique_partial_mintmark_class_id(classes, normalized_prefix)
-
-        try:
-            aliases = alias_session.exec(select(MintmarkClassAliasORM)).all()
-        except OperationalError:
-            logger.exception("MintmarkSeriesResolver failed to load aliases")
-            return _resolve_unique_partial_mintmark_class_id(classes, normalized_prefix)
-
-        class_ids.extend(
-            alias.target_id
-            for alias in aliases
-            if normalize_key(alias.name) in candidates
+        if alias_session is not None:
+            try:
+                aliases = alias_session.exec(select(MintmarkClassAliasORM)).all()
+            except OperationalError:
+                logger.exception("MintmarkSeriesResolver failed to load aliases")
+            else:
+                for alias in aliases:
+                    if alias.target_id in labels:
+                        labels[alias.target_id].extend(
+                            (alias.name, alias.name.removesuffix("系列"))
+                        )
+        result = TextMatchRule(normalize_key).select(
+            raw_prefix, labels, names=labels.__getitem__
         )
-
-        return class_ids or _resolve_unique_partial_mintmark_class_id(
-            classes,
-            normalized_prefix,
-        )
+        if result.kind == "partial" and len(result.matches) != 1:
+            return []
+        return list(result.matches)
