@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -184,6 +185,86 @@ async def test_root_menu_replaces_category_session_with_numeric_item_menu() -> N
     assert renderer.calls == [(("pet", "achievement"), None), (("pet",), "pet")]
     assert _text(detail) == "精灵详情:4927"
     assert sessions.recognizes_response("1", context)
+
+
+@pytest.mark.asyncio
+async def test_focused_menu_accepts_hidden_root_letters() -> None:
+    sessions = PortableQuerySessions()
+    operations = build_portable_new_content_operations(
+        _resources(_snapshot()),
+        sessions,
+        _features("seer_data", "seer_pet", "seer_achievement"),
+        preview_max_items=0,
+    )
+    context = _context()
+
+    await operations["seer.data.new_content"]("新增内容", context)
+    pet_menu = await sessions.select("a", context)
+
+    assert isinstance(pet_menu, OutboundMessage)
+    assert pet_menu.prompt is not None
+    assert [(choice.id, choice.is_visible) for choice in pet_menu.prompt.choices] == [
+        ("1", True),
+        ("b", False),
+        ("0", True),
+    ]
+    assert "1～1" in _text(await sessions.select("2", context))
+
+    achievement_menu = await sessions.select("b", context)
+    assert isinstance(achievement_menu, OutboundMessage)
+    assert achievement_menu.prompt is not None
+    achievement_choices = [
+        (choice.id, choice.is_visible) for choice in achievement_menu.prompt.choices
+    ]
+    assert achievement_choices == [
+        ("1", True),
+        ("a", False),
+        ("0", True),
+    ]
+    assert _text(await sessions.select("1", context)) == "成就详情:6171016"
+    assert isinstance(await sessions.select("a", context), OutboundMessage)
+    assert _text(await sessions.select("0", context)) == "已退出新增内容查询。"
+
+
+@pytest.mark.asyncio
+async def test_hidden_category_rechecks_current_feature_permission() -> None:
+    context = _context()
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        items=(
+            *snapshot.items,
+            NewContentItem("mintmark", 41112, "V8-01", 41112, {}),
+        ),
+        category_states=(
+            *snapshot.category_states,
+            NewContentCategoryState(
+                "mintmark", comparison_ready=True, reason="comparable"
+            ),
+        ),
+    )
+    grants = {
+        context.message.actor: frozenset(
+            {"seer_data", "seer_pet", "seer_mintmark"}
+        )
+    }
+    features = FeatureService(
+        group_features={},
+        actor_features=grants,
+        superusers=frozenset(),
+        superuser_bypass=False,
+    )
+    sessions = PortableQuerySessions()
+    operations = build_portable_new_content_operations(
+        _resources(snapshot), sessions, features, preview_max_items=0
+    )
+
+    await operations["seer.data.new_content"]("新增内容", context)
+    await sessions.select("a", context)
+    grants[context.message.actor] = frozenset({"seer_data", "seer_pet"})
+
+    denied = await sessions.select("b", context)
+    assert _text(denied) == "当前会话没有使用该选项的权限。"
 
 
 @pytest.mark.asyncio

@@ -49,6 +49,9 @@ def _event(
         elif shape == "mixed":
             raw["message_scene"] = {"ext": ["ref_msg_idx=local-index"]}
             raw["message_reference"] = {"message_id": quote}
+        elif shape == "content":
+            raw["message_scene"] = {"ext": ["ref_msg_idx=unrelated-index"]}
+            raw["msg_elements"] = [{"content": quote}]
         else:
             raw["message_reference"] = {"message_id": quote}
     event = EventParser.parse("GROUP_AT_MESSAGE_CREATE", raw)
@@ -59,7 +62,9 @@ def _event(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("shape", ["scene", "elements", "reference", "mixed"])
+@pytest.mark.parametrize(
+    "shape", ["scene", "elements", "reference", "mixed", "content"]
+)
 async def test_parsed_official_quote_uses_actual_receipt_and_independent_sessions(
     shape: str,
 ) -> None:
@@ -88,6 +93,7 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
         known_features=("help",),
     )
     select = AsyncMock(return_value=OutboundMessage.from_text("result"))
+    prompt = "请选择：\n1. 第一个可查询项目\n2. 第二个可查询项目\n0. 退出并关闭当前菜单"
 
     async def opening(text: str, context: MessageInputContext) -> OutboundMessage:
         del text
@@ -96,7 +102,7 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
             PortableMenuSpec(
                 choices=(1, 2),
                 select=select,
-                prompt=OutboundMessage.from_text("1. one\n2. two\n0. 退出"),
+                prompt=OutboundMessage.from_text(prompt),
                 shareable=True,
                 keep_open=True,
             ),
@@ -131,7 +137,13 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
 
     await dispatch(context)
     await dispatch(_event("A", "1"))
-    anchor = "actual-message" if shape == "mixed" else "actual-index"
+    anchor = (
+        prompt
+        if shape == "content"
+        else "actual-message"
+        if shape == "mixed"
+        else "actual-index"
+    )
     assert not router.recognizes(
         _event("B", "@环源 2", quote="unrelated-message", shape=shape)
     )
@@ -144,6 +156,49 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
     assert select.await_args is not None
     assert select.await_args.args[1].message.actor.id == "B"
     assert not router.recognizes(_event("B", "2", quote="stale-result", shape=shape))
+
+
+def test_official_quote_content_recovers_missing_platform_anchor() -> None:
+    sessions = PortableQuerySessions()
+    prompt = (
+        "📖 可用功能：\n1. 帮助 — 按当前群权限显示功能\n"
+        "2. 关于 — 项目信息\n0. 【退出】"
+    )
+    owner = _event("A", "帮助")
+    menu = sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("help", "about"),
+            select=AsyncMock(return_value=OutboundMessage.from_text("detail")),
+            prompt=OutboundMessage.from_text(prompt),
+            shareable=True,
+        ),
+    )
+    sessions.record_delivery(
+        owner, menu, SendResult(delivered=True, message_id="REST-id")
+    )
+    quoted = _event("B", "@机器人 1", quote=prompt, shape="content")
+    assert sessions.quoted_owner(quoted) == owner
+    assert sessions.recognizes_response(quoted.text, quoted)
+    assert (
+        sessions.quoted_owner(_event("B", "1", quote="unrelated", shape="content"))
+        is None
+    )
+
+    second_owner = _event("C", "帮助")
+    second_menu = sessions.offer_menu(
+        second_owner,
+        PortableMenuSpec(
+            choices=("help", "about"),
+            select=AsyncMock(return_value=OutboundMessage.from_text("detail")),
+            prompt=OutboundMessage.from_text(prompt),
+            shareable=True,
+        ),
+    )
+    sessions.record_delivery(
+        second_owner, second_menu, SendResult(delivered=True, message_id="REST-id-2")
+    )
+    assert sessions.quoted_owner(quoted) is None
 
 
 @pytest.mark.asyncio

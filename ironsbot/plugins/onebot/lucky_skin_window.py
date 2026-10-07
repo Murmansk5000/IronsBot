@@ -106,7 +106,7 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
             ),
         ),
         commands=lucky_skin_window_command_contracts(
-            resolver.has_exact_reference_choices
+            resolver.has_reference_choices
         ),
         install=partial(
             _install,
@@ -155,7 +155,7 @@ async def _matches_query(
     _ = state
     context = message_input_context(event)
     if not lucky_skin_query_input_matcher(
-        resolver.has_exact_reference_choices
+        resolver.has_reference_choices
         if resolver is not None
         else lambda *_: False
     )(context.text, command_context_from_input(context)):

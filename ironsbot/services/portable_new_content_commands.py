@@ -178,9 +178,18 @@ class _PortableNewContentOperations:
             PortableMenuSpec(
                 choices=tuple(choice.action for choice in menu.choices),
                 labels=tuple(choice.name for choice in menu.choices),
+                choice_keys=tuple(
+                    str(index) if choice.is_visible else choice.key or ""
+                    for index, choice in enumerate(menu.choices, start=1)
+                ),
                 text_inputs=tuple(
                     frozenset({choice.key}) if choice.key else frozenset()
                     for choice in menu.choices
+                ),
+                hidden_choice_indexes=frozenset(
+                    index
+                    for index, choice in enumerate(menu.choices, start=1)
+                    if not choice.is_visible
                 ),
                 select=select,
                 prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),

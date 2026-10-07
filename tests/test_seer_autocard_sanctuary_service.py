@@ -143,10 +143,10 @@ def test_selection_returns_full_effect_description() -> None:
     assert "描述：锁定的属性加成翻倍" in result.effect.text
 
 
-def test_unknown_sanctuary_returns_a_clear_message() -> None:
-    assert (
-        _service().search("场地不存在").message == "❌ 未找到群星牌场地或祝印：不存在"
-    )
+def test_unknown_sanctuary_is_silent() -> None:
+    result = _service().search("场地不存在")
+    assert not result.message and result.sanctuary is None and result.effect is None
+    assert not result.prompt_values
 
 
 @pytest.mark.parametrize(
