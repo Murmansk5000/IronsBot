@@ -303,8 +303,12 @@ def seer_command_contracts(
                         PEAK_SUIT_RANK_COMMANDS[0],
                         PEAK_TITLE_RANK_COMMANDS[1],
                         PEAK_PET_RANK_COMMANDS[0],
+                        "大师精灵月榜",
+                        "大师精灵总榜",
+                        "大师套装榜",
+                        "大师称号榜",
                     ),
-                    "查询巅峰套装、称号和精灵榜",
+                    "查询竞技、狂野、专家、大师的套装、称号和精灵月榜/总榜",
                     {
                         "routing_matcher": lambda text, _context: (
                             text in PEAK_RANK_COMMANDS

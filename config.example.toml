@@ -728,6 +728,31 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # messages = ["https://seerinfo.yuyuqaq.cn/"]
 # feature = "seerinfo_link"
 
+# 四模式精灵胜率榜网页口令，沿用 seer_peak 权限；按需复制启用。
+# [[messaging.commands]]
+# id = "peak_standard_win_rate_page"
+# commands = ["竞技胜率榜", "竞技精灵胜率榜"]
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/sports/monster"]
+# feature = "seer_peak"
+#
+# [[messaging.commands]]
+# id = "peak_wild_win_rate_page"
+# commands = ["狂野胜率榜", "狂野精灵胜率榜"]
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/wild/monster"]
+# feature = "seer_peak"
+#
+# [[messaging.commands]]
+# id = "peak_expert_win_rate_page"
+# commands = ["专家胜率榜", "专家精灵胜率榜"]
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/expert/monster"]
+# feature = "seer_peak"
+#
+# [[messaging.commands]]
+# id = "peak_master_win_rate_page"
+# commands = ["大师胜率榜", "大师精灵胜率榜"]
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/master/monster"]
+# feature = "seer_peak"
+
 # Default: []
 # EN: Keyword replies match the complete normalized message; command actions
 # above still win. Ordinary sentences containing a keyword do not trigger replies.
