@@ -36,6 +36,7 @@ class PortableReply:
     follow_up: PortableFollowUp | None = None
     on_finished: Callable[[], None] | None = None
     is_current: Callable[[], bool] | None = None
+    continuation: Callable[[], Awaitable[PortableReply | None]] | None = None
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -65,6 +66,15 @@ async def deliver_portable_reply(
         reply.delivered()
         if not await _transmit_additional(reply, transmit):
             return False
+        if reply.continuation is not None:
+            next_reply = await reply.continuation()
+            completed = next_reply is None or await deliver_portable_reply(
+                next_reply,
+                send,
+                on_sent=on_sent,
+                on_follow_up_error=on_follow_up_error,
+            )
+            return completed  # noqa: RET504 - finally uses the completion state
         if reply.follow_up is not None:
             if reply.is_current is not None and not reply.is_current():
                 return False

@@ -149,7 +149,7 @@ def _known_target(
     return is_player_reference_input(
         reference,
         command_context_from_input(context),
-        resolver.has_exact_reference_choices
+        resolver.has_reference_choices
         if resolver is not None
         else lambda *_: False,
     )

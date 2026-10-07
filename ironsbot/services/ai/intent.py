@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.commands import (
     command_text_matches,
-    normalize_command_text,
 )
 
 if TYPE_CHECKING:
@@ -22,8 +21,7 @@ class TemplateContext(dict[str, str]):
 
 
 def contains_any_keyword(text: str, keywords: list[str]) -> bool:
-    normalized = normalize_command_text(text)
-    return any(normalize_command_text(keyword) in normalized for keyword in keywords)
+    return command_text_matches(text, keywords)
 
 
 def excluded_by_command(

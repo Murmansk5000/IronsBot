@@ -9,6 +9,8 @@ from typing import Annotated, Any, TypeVar, cast
 
 from pydantic import BeforeValidator
 
+from ironsbot.core.text_matching import TextMatchRule
+
 T = TypeVar("T")
 DEFAULT_COMMAND_PREFIXES = ("/",)
 _CONFIRMATION_REPLIES = frozenset(("是", "yes", "y", "确认", "确定"))
@@ -31,8 +33,7 @@ def strip_command_prefix(
 
 
 def command_text_matches(text: str, commands: Iterable[str]) -> bool:
-    normalized = normalize_command_text(text)
-    return normalized in {normalize_command_text(command) for command in commands}
+    return TextMatchRule(normalize_command_text).matches_any(text, commands)
 
 
 def parse_confirmation(text: str) -> bool | None:
