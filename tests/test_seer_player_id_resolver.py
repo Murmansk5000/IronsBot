@@ -25,14 +25,14 @@ _CURRENT_PLAYER_ID = 600
 _MENTIONED_PLAYER_ID = 800
 
 
-def test_partial_reference_visibility_and_exact_precedence() -> None:
+def test_exact_and_partial_references_share_visibility_checks() -> None:
     context = _context()
     registry = PlayerAccountRegistry(
         (
             PlayerAccount(
                 700001, "公开玩家", ("玩家甲", "玩家甲号"), None, public=True
             ),
-            PlayerAccount(700002, "群内玩家", (), None),
+            PlayerAccount(700002, "群内玩家", ("玩家甲乙",), None),
             PlayerAccount(700003, "隐藏玩家", (), None),
         ),
         private_alias_groups={context.message.conversation: ("群内玩家",)},
@@ -58,7 +58,7 @@ def test_partial_reference_visibility_and_exact_precedence() -> None:
         if command.id == "seer.player.bind"
     )
     command_context = CommandContext(actor=actor, conversation=conversation)
-    assert not binding.matches_direct_input(command_context, "绑定米米号玩家")
+    assert binding.matches_direct_input(command_context, "绑定米米号玩家")
     assert binding.matches_direct_input(command_context, "绑定米米号玩家甲")
     assert not binding.matches_direct_input(command_context, "绑定米米号隐藏")
     assert not binding.matches_direct_input(command_context, "绑定米米号不存在")
@@ -72,6 +72,7 @@ def test_partial_reference_visibility_and_exact_precedence() -> None:
         c.player_id for c in resolver.reference_choices("玩家甲", actor, conversation)
     ] == [
         700001,
+        700002,
     ]
     assert [
         c.player_id
@@ -91,7 +92,7 @@ def test_partial_reference_visibility_and_exact_precedence() -> None:
     assert not resolver.reference_choices("999999999999999999", actor, conversation)
 
 
-def test_command_alias_requires_exact_name_even_if_name_contains_alias() -> None:
+def test_command_alias_uses_whole_parameter_for_partial_matching() -> None:
     context = _context()
     registry = PlayerAccountRegistry(
         (
@@ -114,9 +115,7 @@ def test_command_alias_requires_exact_name_even_if_name_contains_alias() -> None
         *seer_command_contracts(resolver),
         *rank_help_command_contracts(resolver),
     )
-    contracts = {
-        item.id: item for item in all_commands
-    }
+    contracts = {item.id: item for item in all_commands}
     for command_id, prefix in (
         ("seer.player.query", "米米号"),
         ("seer.player.default", "收集"),
@@ -125,7 +124,8 @@ def test_command_alias_requires_exact_name_even_if_name_contains_alias() -> None
     ):
         item = contracts[command_id]
         assert item.matches_direct_input(command_context, f"{prefix}发了吗")
-        assert not item.matches_direct_input(command_context, f"{prefix}发了")
+        assert item.matches_direct_input(command_context, f"{prefix}发了")
+        assert not item.matches_direct_input(command_context, f"{prefix}发了吗今天")
     choices = registry.find_references("发了吗", conversation=conversation)
     assert choices[0].label == "发了吗"
     assert [

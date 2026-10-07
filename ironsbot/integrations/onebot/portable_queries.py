@@ -26,6 +26,7 @@ from ironsbot.integrations.onebot.replies import (
 from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.query_commands import is_query_input_syntax
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -112,6 +113,36 @@ def install_portable_menu_router(
         block=True,
     )
     matcher.append_handler(handle)
+    _install_unmatched_query_cleanup(factory, sessions, features)
+
+
+def _install_unmatched_query_cleanup(
+    factory: MatcherFactory,
+    sessions: PortableQuerySessions,
+    features: FeatureService,
+) -> None:
+    from ironsbot.integrations.onebot.matchers import CommandPolicy
+
+    async def unmatched_query(event: Event) -> bool:
+        if not isinstance(event, MessageEvent) or is_self_message_event(event):
+            return False
+        context = message_input_context(event)
+        return is_query_input_syntax(context.text) and not features.is_message_blocked(
+            context.message.actor, context.message.conversation
+        )
+
+    async def discard_unmatched_query(event: Event) -> None:
+        if isinstance(event, MessageEvent):
+            sessions.discard(message_input_context(event))
+
+    # Known queries claim the event first; unmatched syntax only clears stale input.
+    fallback = factory.on_message(
+        policy=CommandPolicy.exempt("unmatched query cleanup"),
+        rule=Rule(unmatched_query),
+        priority=999,
+        block=True,
+    )
+    fallback.append_handler(discard_unmatched_query)
 
 
 async def _deliver(
