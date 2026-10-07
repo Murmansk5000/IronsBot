@@ -11,10 +11,19 @@ from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
+from ironsbot.core.text_matching import TextMatchRule
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
-AUTOCARD_QUERY_PREFIXES = ('群星角色', '群星卡牌', '群星芯片', '战斗芯片', '强化芯片', '芯片', '卡牌')
-AUTOCARD_QUERY_SUFFIXES = ()
+AUTOCARD_QUERY_PREFIXES = (
+    "群星芯片",
+    "群星卡牌",
+    "群星角色",
+    "战斗芯片",
+    "强化芯片",
+    "芯片",
+    "卡牌",
+)
+AUTOCARD_QUERY_SUFFIXES: tuple[str, ...] = ()
 
 _AUTOCARD_NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
 _CARD_TYPE_NAMES = {
@@ -106,7 +115,9 @@ class AutocardService:
         index = _build_autocard_index(dataset)
         matches = _search_autocard_items(
             index,
-            _extract_autocard_query_arg(arg), kind="role" if arg.strip().startswith("群星角色") else "card")
+            _extract_autocard_query_arg(arg),
+            kind="role" if arg.strip().startswith("群星角色") else "card",
+        )
         if not matches:
             return AutocardSearchResult()
         if len(matches) == 1:
@@ -126,6 +137,25 @@ class AutocardService:
 
     def select(self, value: AutocardPromptValue) -> AutocardEntry | None:
         dataset = self._repository.load()
+        if value.kind == "chip":
+            chip = next(
+                (
+                    chip
+                    for chip in dataset.chips
+                    if _int_field(chip, "id") == value.item_id
+                ),
+                None,
+            )
+            if chip is None:
+                return None
+            return _chip_result(
+                tuple(
+                    item
+                    for item in dataset.chips
+                    if _int_field(item, "config_group_id")
+                    == _int_field(chip, "config_group_id")
+                )
+            ).entry
         index = _build_autocard_index(dataset)
         item = (
             _find_autocard_role_by_id(dataset, value.item_id)
@@ -140,36 +170,46 @@ def _search_chips(dataset: AutocardDataset, query: str) -> AutocardSearchResult:
         return AutocardSearchResult(message="数据库尚未包含战斗芯片，请更新赛尔数据。")
     query = query.strip()
     if not query:
-        return AutocardSearchResult(
-            message="请输入芯片名称或 ID，例如：战斗芯片复苏之风"
-        )
+        return AutocardSearchResult()
     chips = dataset.chips
     if query.isdigit():
         chips = tuple(chip for chip in chips if _int_field(chip, "id") == int(query))
     else:
-        normalized = _normalize_name(query)
-        exact = tuple(
-            chip
-            for chip in chips
-            if _normalize_name(str(chip.get("name", ""))) == normalized
-        )
-        if exact:
-            chips = exact
-        else:
-            groups = {
-                _int_field(chip, "config_group_id")
-                for chip in chips
-                if normalized in _normalize_name(str(chip.get("name", "")))
-            }
-            if len(groups) != 1:
-                return AutocardSearchResult(
-                    message="未找到唯一的战斗芯片，请输入完整名称或 ID。"
-                )
-            chips = tuple(
-                chip for chip in chips if _int_field(chip, "config_group_id") in groups
+        chips = (
+            TextMatchRule(_normalize_name)
+            .select(
+                query,
+                chips,
+                names=lambda chip: (str(chip.get("name", "")), _chip_name(chip)),
             )
+            .matches
+        )
     if not chips:
-        return AutocardSearchResult(message="未找到该战斗芯片。")
+        return AutocardSearchResult()
+    groups: dict[int, dict[str, Any]] = {}
+    for chip in chips:
+        groups.setdefault(_int_field(chip, "config_group_id"), chip)
+    if len(groups) > 1:
+        if len(groups) > AUTOCARD_PROMPT_MAX_ITEMS:
+            return AutocardSearchResult(message="战斗芯片匹配过多，请缩小查询范围。")
+        return AutocardSearchResult(
+            prompt_values=tuple(
+                AutocardPromptValue("chip", _int_field(chip, "id"))
+                for chip in groups.values()
+            ),
+            prompt_text=format_selection_menu(
+                title="请问你想查询的战斗芯片是……",
+                items=tuple(_chip_name(chip) for chip in groups.values()),
+            ),
+        )
+    return _chip_result(chips)
+
+
+def _chip_name(chip: dict[str, Any]) -> str:
+    return re.sub(r"\s*(?:I{1,3}|[ⅠⅡⅢ])$", "", str(chip.get("name", ""))).strip()
+
+
+def _chip_result(chips: tuple[dict[str, Any], ...]) -> AutocardSearchResult:
     ordered_chips = sorted(
         chips, key=lambda chip: (_int_field(chip, "rarity"), _int_field(chip, "id"))
     )
@@ -270,18 +310,23 @@ def _find_autocard_role_by_id(
 def _search_autocard_items(
     index: _AutocardIndex,
     query: str,
-    *, kind: str = "card",
+    *,
+    kind: str = "card",
 ) -> list[tuple[str, dict[str, Any]]]:
     query = query.strip()
-    if kind == "role":
-        roles = index.dataset.roles
-        if query.isdigit():
-            return [("role", role) for role in roles if _int_field(role, "id") == int(query)]
-        normalized = _normalize_name(query)
-        return [("role", role) for role in roles if normalized and normalized in _normalize_name(_entry_name(role))]
-
     if not query:
         return []
+    if kind == "role":
+        entries = [("role", role) for role in index.dataset.roles]
+        if query.isdigit():
+            return [
+                entry for entry in entries if _int_field(entry[1], "id") == int(query)
+            ]
+        return list(
+            TextMatchRule(_normalize_name)
+            .select(query, entries, names=lambda entry: (_entry_name(entry[1]),))
+            .matches
+        )
     if query.isdigit():
         query = f"卡{query}"
     if query.startswith("卡") and query[1:].isdigit():
@@ -291,26 +336,12 @@ def _search_autocard_items(
         base, awakened = _card_pair(index, card)
         return [("card_group" if awakened is not None else "card", base)]
 
-    normalized_query = _normalize_name(query)
-    entries = _grouped_card_search_entries(index) + [
-        ("role", role) for role in index.dataset.roles
-    ]
-    entries = [entry for entry in entries if entry[0] != "role"]
-    exact = [
-        (kind, item)
-        for kind, item in entries
-        if normalized_query in _entry_search_names(index, kind, item)
-    ]
-    if exact:
-        return exact
-
-    return [
-        (kind, item)
-        for kind, item in entries
-        if any(
-            normalized_query in name for name in _entry_search_names(index, kind, item)
-        )
-    ]
+    entries = _grouped_card_search_entries(index)
+    return list(
+        TextMatchRule(_normalize_name)
+        .select(query, entries, names=lambda entry: _entry_search_names(index, *entry))
+        .matches
+    )
 
 
 def _grouped_card_search_entries(

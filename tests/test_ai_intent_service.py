@@ -55,7 +55,8 @@ def test_intent_template_preserves_unknown_fields() -> None:
 
 
 def test_intent_keyword_match_normalizes_text() -> None:
-    assert intent.contains_any_keyword("我要 加 战队", ["加战队"])
+    assert intent.contains_any_keyword("加 战队", ["加战队"])
+    assert not intent.contains_any_keyword("我要 加 战队", ["加战队"])
 
 
 def _manual_action() -> AiIntentAction:
@@ -133,7 +134,7 @@ def test_fire_manual_action_allows_superuser_bypass() -> None:
 
 
 @pytest.mark.asyncio
-async def test_keyword_action_delegates_context_decision_to_ai() -> None:
+async def test_keyword_in_a_sentence_does_not_call_ai() -> None:
     called = False
 
     async def request_completion(
@@ -153,8 +154,8 @@ async def test_keyword_action_delegates_context_decision_to_ai() -> None:
         conversation=_group(4),
     )
 
-    assert matched == _manual_action()
-    assert called
+    assert matched is None
+    assert not called
 
 
 @pytest.mark.asyncio
@@ -207,7 +208,7 @@ async def test_fire_manual_keyword_action_calls_ai_and_matches() -> None:
         action,
         request_completion=request_completion,
     ).classify_intent(
-        "求火火手册链接",
+        "手 册",
         actor=_actor(2),
         conversation=_group(4),
     )
@@ -228,7 +229,7 @@ async def test_fire_manual_strong_intent_respects_ai_no() -> None:
         _manual_action(),
         request_completion=request_completion,
     ).classify_intent(
-        "求火火手册链接",
+        "手册",
         actor=_actor(2),
         conversation=_group(4),
     )

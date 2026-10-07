@@ -31,7 +31,7 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
     execute: PlayerReferenceAction,
     *,
     title: str,
-) -> PortableReply:
+) -> PortableReply | None:
     """Select an explicit reference or resolve a direct mention/default binding."""
     reference = (reference or "").strip()
     if reference and not context.has_member_mentions:
@@ -53,6 +53,9 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
                 OutboundMessage.from_text(unbound_player_shortcut_message())
             )
         result = await execute(resolution.player_id, context)
+    if result is None:
+        sessions.discard(context)
+        return None
     return result if isinstance(result, PortableReply) else PortableReply(result)
 
 
@@ -65,7 +68,7 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
     *,
     title: str,
     enforce_query_access: bool = False,
-) -> OutboundMessage | PortableReply:
+) -> OutboundMessage | PortableReply | None:
     source = resolver.reference_source(reference)
     if enforce_query_access:
         error = resolver.query_access_error(context.message.actor, None, source)
@@ -77,7 +80,8 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
         context.message.conversation,
     )
     if not choices:
-        return OutboundMessage.from_text("未找到该米米号或已开放的玩家别名。")
+        sessions.discard(context)
+        return None
     if len(choices) == 1:
         if enforce_query_access:
             error = resolver.query_access_error(
