@@ -40,6 +40,8 @@ class PreparedImage:
 class ImageCollageError(RuntimeError):
     """Raised when a complete collage cannot be produced safely."""
 
+    retryable: bool = False
+
     @classmethod
     def invalid_count(cls, count: int, maximum: int) -> ImageCollageError:
         return cls(f"image count {count} is outside 2..{maximum}")
