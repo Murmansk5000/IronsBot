@@ -37,6 +37,16 @@ _request_feedback: ContextVar[RequestFeedback | None] = ContextVar(
     "request_feedback",
     default=None,
 )
+_acknowledged: ContextVar[bool] = ContextVar("request_acknowledged", default=False)
+
+
+@contextmanager
+def acknowledged_request_scope() -> Iterator[None]:
+    token = _acknowledged.set(True)
+    try:
+        yield
+    finally:
+        _acknowledged.reset(token)
 
 
 @contextmanager
@@ -44,7 +54,9 @@ def request_feedback_scope(
     label: str,
     sender: RequestFeedbackSender | None,
 ) -> Iterator[RequestFeedback | None]:
-    feedback = None if sender is None else RequestFeedback(label, sender)
+    feedback = (
+        None if sender is None else RequestFeedback(label, sender, _acknowledged.get())
+    )
     token = _request_feedback.set(feedback)
     try:
         yield feedback

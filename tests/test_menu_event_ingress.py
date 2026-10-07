@@ -7,15 +7,19 @@ from unittest.mock import Mock
 
 import nonebot
 import pytest
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves rule signatures
 from nonebot.adapters.onebot.v11 import Adapter, Bot, Message, MessageSegment
 from nonebot.exception import IgnoredException
 from nonebot.matcher import matchers
 from nonebot.message import handle_event
+from nonebot.rule import Rule
 
 from ironsbot.config.models.transport import SelfCommandsConfig
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.response_admission import ResponseAdmissionDecision
+from ironsbot.core.text_matching import TextMatchRule
 from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
@@ -28,10 +32,14 @@ from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
     SelfCommandGate,
 )
+from ironsbot.services.portable_query_operations import build_query_operation
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessions,
+    QueryOperationSpec,
 )
+from ironsbot.services.seer.query_commands import AUTOCARD_QUERY
+from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from tests.helpers.onebot_events import group_message_event
 
 if TYPE_CHECKING:
@@ -103,6 +111,7 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
             sends=sends,
             selected=selected,
             gate=gate,
+            factory=factory,
         )
     finally:
         matchers.clear()
@@ -127,6 +136,64 @@ def _reply(text: str, *, user: int, anchor: int, shape: str = "metadata", bot: i
     else:
         event.original_message = quoted
     return event
+
+
+@pytest.mark.asyncio
+async def test_onebot_query_matching_and_no_hit_cleanup_at_event_ingress(
+    ingress: SimpleNamespace,
+) -> None:
+    sessions = ingress.sessions
+    rows = {701: "星光之风", 702: "星光之影"}
+    selected: list[int] = []
+
+    async def search(argument: str) -> QueryResult[int]:
+        matched = TextMatchRule(normalize_command_text).select(
+            argument, rows, names=lambda id_: (rows[id_],)
+        )
+        return QueryResult(
+            choices=tuple(
+                QueryChoice(rows[id_], str(id_), id_) for id_ in matched.matches
+            )
+        )
+
+    async def select(id_: int) -> QueryResult[object]:
+        selected.append(id_)
+        return QueryResult(reply=QueryReply(text=f"chip:{id_}"))
+
+    def matches(event: Event) -> bool:
+        return AUTOCARD_QUERY(message_input_context(event).text) is not None
+
+    matcher = ingress.factory.on_message(
+        policy=CommandPolicy.command("test.chip"), rule=Rule(matches), block=True
+    )
+    matcher.append_handler(
+        make_portable_query_handler(
+            build_query_operation(
+                sessions,
+                QueryOperationSpec(
+                    parser=AUTOCARD_QUERY.parse_argument,
+                    search=search,
+                    select=select,
+                    prompt_title="choose",
+                    keep_open=True,
+                ),
+            ),
+            sessions,
+        )
+    )
+    bot = ingress.bots[0]
+    await handle_event(bot, group_message_event("芯片星光", user_id=101))
+    assert len(ingress.sends) == 1
+    await handle_event(bot, _reply("2", user=101, anchor=101))
+    assert selected == [702]
+    expected_messages = len(("menu", "selected"))
+    assert len(ingress.sends) == expected_messages
+    await handle_event(bot, group_message_event("芯片没拿好也是卒", user_id=101))
+    await handle_event(bot, group_message_event("1", user_id=101))
+    assert len(ingress.sends) == expected_messages
+    context = message_input_context(group_message_event(user_id=101))
+    assert sessions.menu_anchor(context) is None
+    assert not sessions.recognizes_response("1", context)
 
 
 @pytest.mark.asyncio
@@ -163,6 +230,22 @@ async def test_prefixed_self_menu_selection_cancel_and_replay(
     )
     for sent in ingress.sends:
         assert not any(part.type == "at" for part in sent["message"])
+
+
+@pytest.mark.asyncio
+async def test_unknown_player_query_clears_menu_without_reply(
+    ingress: SimpleNamespace,
+) -> None:
+    bot = ingress.bots[0]
+    await handle_event(bot, group_message_event("菜单", user_id=101))
+    sent = len(ingress.sends)
+    await handle_event(bot, group_message_event("米米号不存在的玩家", user_id=101))
+    await handle_event(bot, group_message_event("1", user_id=101))
+    assert len(ingress.sends) == sent
+    assert not ingress.selected
+    assert not ingress.sessions.has_active_session(
+        message_input_context(group_message_event(user_id=101))
+    )
 
 
 @pytest.mark.asyncio

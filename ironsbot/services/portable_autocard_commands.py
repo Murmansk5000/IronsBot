@@ -64,6 +64,7 @@ class _PortableAutocardOperations:
         if result.message:
             return OutboundMessage.from_text(result.message)
         if not result.prompt_values:
+            self.sessions.discard(context)
             return None
 
         async def select(
@@ -109,6 +110,7 @@ class _PortableAutocardOperations:
                 result.prompt_values,
             )
         ):
+            self.sessions.discard(context)
             return None
         return self._present_sanctuary(context, result)
 

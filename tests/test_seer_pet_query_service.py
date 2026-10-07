@@ -11,6 +11,7 @@ from ironsbot.integrations.seer_data.skin_image_resolution import SkinImageResol
 from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
 from ironsbot.services.seer.pet_query import (
+    PET_PROMPT_MAX_ITEMS,
     PetImageSelection,
     PetQueryService,
 )
@@ -142,6 +143,56 @@ def _service(
         cast("SeerImageSource", FakeImages()),
         render,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["search_info", "search_image", "search_avatar"])
+async def test_exact_pet_name_keeps_related_candidates(method: str) -> None:
+    data = FakeData()
+    data.pets = (_pet(70, "雷伊"), _pet(2887, "雷神·雷伊"))
+    rendered: list[Any] = []
+    result = await getattr(_service(data, rendered), method)("雷伊")
+
+    assert [choice.name for choice in result.choices] == [
+        "雷伊", "雷神·雷伊"
+    ]
+    assert result.reply is None
+    assert rendered == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["search_info", "search_image", "search_avatar"])
+@pytest.mark.parametrize(
+    "candidate_count", [PET_PROMPT_MAX_ITEMS, PET_PROMPT_MAX_ITEMS + 1]
+)
+async def test_single_character_exact_fallback_only_applies_above_menu_limit(
+    method: str,
+    candidate_count: int,
+) -> None:
+    data = FakeData()
+    data.pets = (
+        _pet(1, "辛"),
+        *(_pet(index + 2, f"辛{index}") for index in range(candidate_count - 1)),
+    )
+    result = await getattr(_service(data), method)("辛")
+
+    if candidate_count > PET_PROMPT_MAX_ITEMS:
+        assert result.reply is not None
+        assert result.reply.image is not None
+        assert not result.choices
+    else:
+        assert result.reply is None
+        assert len(result.choices) == candidate_count
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["search_info", "search_image", "search_avatar"])
+async def test_unmatched_pet_query_stays_silent(method: str) -> None:
+    result = await getattr(_service(FakeData()), method)("不存在的精灵")
+
+    assert result.reply is None
+    assert not result.choices
+    assert not result.message
 
 
 @pytest.mark.asyncio

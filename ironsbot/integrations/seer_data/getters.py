@@ -60,7 +60,7 @@ def build_mintmark_data_getter(
 
 MintmarkClassDataGetter = Getter(
     MintmarkClassCategoryORM,
-    # IdResolver(MintmarkClassCategoryORM),
+    IdResolver(MintmarkClassCategoryORM),
     NameResolver(MintmarkClassCategoryORM),
     AliasResolver(MintmarkClassCategoryORM, MintmarkClassAliasORM),
 )
@@ -73,7 +73,7 @@ PetSkinDataGetter = Getter(
 
 GemCategoryDataGetter = Getter(
     GemCategoryORM,
-    # IdResolver(GemCategoryORM),
+    IdResolver(GemCategoryORM),
     NameResolver(GemCategoryORM),
 )
 

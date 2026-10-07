@@ -16,7 +16,16 @@ from ironsbot.services.seer.autocard import (
 )
 from ironsbot.services.seer.autocard_sanctuary import SANCTUARY_QUERY_PREFIXES
 from ironsbot.services.seer.data_query_commands import NEW_AUTOCARD_CARDS_COMMANDS
+from ironsbot.services.seer.lucky_skin_commands import parse_lucky_skin_query
+from ironsbot.services.seer.player_query import (
+    extract_player_binding_arg,
+    extract_player_query_arg,
+)
+from ironsbot.services.seer.player_shortcut_contracts import (
+    parse_player_shortcut_command,
+)
 from ironsbot.services.seer.query_guards import is_rank_query_text
+from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
@@ -81,6 +90,57 @@ AUTOCARD_QUERY = AffixCommand(
 )
 SANCTUARY_QUERY = AffixCommand(SANCTUARY_QUERY_PREFIXES, ())
 _TEAM_QUERY = AffixCommand(("战队", "查询战队信息"), ())
+
+
+def is_query_input_syntax(text: str) -> bool:
+    """Keep explicit unmatched queries out of conversational fallbacks."""
+    return is_retired_autocard_input(text) or any(
+        parser(text) is not None
+        for parser in (
+            pet_query_input(),
+            pet_image_input(),
+            pet_avatar_input(),
+            MINTMARK_QUERY,
+            GEM_QUERY,
+            SUIT_QUERY,
+            EQUIP_QUERY,
+            TITLE_QUERY,
+            TYPE_QUERY,
+            BATTLE_EFFECT_QUERY,
+            AUTOCARD_QUERY,
+            SANCTUARY_QUERY,
+            _TEAM_QUERY,
+            extract_player_query_arg,
+            extract_player_binding_arg,
+            parse_player_shortcut_command,
+            parse_lucky_skin_query,
+            parse_rank_player_target_command,
+        )
+    )
+
+
+def is_retired_autocard_input(text: str) -> bool:
+    """Retired explicit syntax stays silent without becoming a command alias."""
+    normalized = normalize_command_text(text).lstrip("/")
+    return normalized.startswith(
+        (
+            "群星牌榜",
+            "样本群星牌",
+            "机器人群星牌",
+            "查询群星牌",
+            "群星牌场地",
+            "群星牌圣域",
+            "群星牌芯片",
+            "新增群星牌",
+            "每周群星牌",
+            "本周群星牌",
+            "更新群星牌",
+        )
+    ) or (
+        normalized.endswith("群星牌")
+        and normalized != "群星牌"
+        and not normalized.startswith("群星牌")
+    )
 
 
 def team_query_argument(text: str) -> AffixArgument | None:

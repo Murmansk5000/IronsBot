@@ -90,7 +90,7 @@ class PortableLuckySkinCommands:
 
     async def query(
         self, text: str, context: MessageInputContext
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         reference = parse_lucky_skin_query(text)
         if reference is None:
             msg = "invalid lucky window command"
