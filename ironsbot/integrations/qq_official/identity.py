@@ -83,6 +83,7 @@ def qq_official_incoming_message(
         group_role=group_role,
         reply_to_id=_reply_reference(event, raw),
         reply_reference_ids=_reply_references(event, raw),
+        quoted_content=_quoted_content(event, raw),
         sequence=_message_sequence(raw),
         reply_deadline=_reply_deadline(event, conversation.kind),
         official_union_identity=_official_union_identity(raw),
@@ -270,6 +271,19 @@ def _reply_references(
     if sequence := _scene_value(raw, "ref_msg_idx"):
         values.append(sequence)
     return tuple(dict.fromkeys(values))
+
+
+def _quoted_content(event: InboundEvent, raw: Mapping[str, object]) -> str | None:
+    if event.message_type != MSG_TYPE_QUOTE:
+        return None
+    elements = raw.get("msg_elements")
+    if not isinstance(elements, list) or not elements:
+        return None
+    first = elements[0]
+    if not isinstance(first, Mapping):
+        return None
+    content = first.get("content")
+    return content.strip() if isinstance(content, str) and content.strip() else None
 
 
 def _message_sequence(raw: Mapping[str, object]) -> str | None:

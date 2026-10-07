@@ -15,7 +15,16 @@ from ironsbot.services.seer.autocard import (
     AUTOCARD_QUERY_SUFFIXES,
 )
 from ironsbot.services.seer.autocard_sanctuary import SANCTUARY_QUERY_PREFIXES
+from ironsbot.services.seer.lucky_skin_commands import parse_lucky_skin_query
+from ironsbot.services.seer.player_query import (
+    extract_player_binding_arg,
+    extract_player_query_arg,
+)
+from ironsbot.services.seer.player_shortcut_contracts import (
+    parse_player_shortcut_command,
+)
 from ironsbot.services.seer.query_guards import is_rank_query_text
+from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
@@ -72,6 +81,33 @@ AUTOCARD_QUERY = AffixCommand(
 )
 SANCTUARY_QUERY = AffixCommand(SANCTUARY_QUERY_PREFIXES, ())
 _TEAM_QUERY = AffixCommand(("战队", "查询战队信息"), ())
+
+
+def is_query_input_syntax(text: str) -> bool:
+    """Keep explicit unmatched queries out of conversational fallbacks."""
+    return any(
+        parser(text) is not None
+        for parser in (
+            pet_query_input(),
+            pet_image_input(),
+            pet_avatar_input(),
+            MINTMARK_QUERY,
+            GEM_QUERY,
+            SUIT_QUERY,
+            EQUIP_QUERY,
+            TITLE_QUERY,
+            TYPE_QUERY,
+            BATTLE_EFFECT_QUERY,
+            AUTOCARD_QUERY,
+            SANCTUARY_QUERY,
+            _TEAM_QUERY,
+            extract_player_query_arg,
+            extract_player_binding_arg,
+            parse_player_shortcut_command,
+            parse_lucky_skin_query,
+            parse_rank_player_target_command,
+        )
+    )
 
 
 def team_query_argument(text: str) -> AffixArgument | None:

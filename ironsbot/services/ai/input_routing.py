@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.message_input import MessageInputKind
 from ironsbot.core.platform import reference_digest
+from ironsbot.services.seer.query_commands import is_query_input_syntax
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog, CommandContext
@@ -132,10 +133,13 @@ class AiInputRoutingService:
         texts = (raw_text, normalized_text.strip()) if normalized_text else (raw_text,)
         return any(
             text
-            and self._commands.recognizes_direct_input(
-                context,
-                text,
-                ignored_plugins=_AI_PLUGIN_IDS,
+            and (
+                is_query_input_syntax(text)
+                or self._commands.recognizes_direct_input(
+                    context,
+                    text,
+                    ignored_plugins=_AI_PLUGIN_IDS,
+                )
             )
             for text in dict.fromkeys(texts)
         )
