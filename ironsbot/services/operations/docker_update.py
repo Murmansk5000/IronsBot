@@ -187,71 +187,19 @@ class DockerUpdateService:
         expected_image_id: str,
         updater_container_id: str,
     ) -> bool:
-        """Confirm a recreated container really runs the pulled image."""
+        """Allow the target to boot; the independent supervisor owns cleanup."""
+        del previous_image_id, updater_container_id
 
         socket_path = str(self._config.docker_socket_path)
         if not socket_path or not await self._docker.socket_exists(socket_path):
             return False
         async with self._lock:
-            matches = await self._docker.container_uses_image(
+            return await self._docker.container_uses_image(
                 container_name=str(self._config.container_name),
                 expected_image_id=expected_image_id,
                 socket_path=socket_path,
                 timeout_seconds=float(self._config.timeout_seconds),
             )
-            if not matches:
-                return False
-            try:
-                await self._docker.remove_container(
-                    container_id=updater_container_id,
-                    socket_path=socket_path,
-                    timeout_seconds=float(self._config.timeout_seconds),
-                )
-            except Exception:  # noqa: BLE001 - cleanup must not invalidate handoff
-                logger.warning(
-                    "could not remove completed Watchtower updater: %s",
-                    updater_container_id,
-                    exc_info=True,
-                )
-            if previous_image_id and previous_image_id != expected_image_id:
-                try:
-                    removed = await self._docker.remove_image_if_unused(
-                        image_id=previous_image_id,
-                        socket_path=socket_path,
-                        timeout_seconds=float(self._config.timeout_seconds),
-                    )
-                    if not removed:
-                        logger.info(
-                            "previous IronsBot image is still referenced; "
-                            "retaining it: image_id=%s",
-                            previous_image_id[:19],
-                        )
-                except Exception:  # noqa: BLE001 - cleanup must not invalidate handoff
-                    logger.warning(
-                        "could not remove previous IronsBot image: image_id=%s",
-                        previous_image_id[:19],
-                        exc_info=True,
-                    )
-            try:
-                removed, retained = await self._docker.remove_stale_images(
-                    repository_image=str(self._config.image),
-                    current_image_id=expected_image_id,
-                    socket_path=socket_path,
-                    timeout_seconds=float(self._config.timeout_seconds),
-                )
-                if removed or retained:
-                    logger.info(
-                        "stale IronsBot image cleanup completed after handoff: "
-                        "removed=%s retained=%s",
-                        removed,
-                        retained,
-                    )
-            except Exception:  # noqa: BLE001 - cleanup must not invalidate handoff
-                logger.warning(
-                    "could not clean stale IronsBot images after handoff",
-                    exc_info=True,
-                )
-            return True
 
     async def abandon_update_handoff(
         self,
