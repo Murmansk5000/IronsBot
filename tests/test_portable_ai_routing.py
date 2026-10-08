@@ -25,6 +25,11 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.qq_official.group_message_events import (
+    GROUP_MESSAGE_CREATE,
+    parse_message_event,
+)
+from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -209,7 +214,12 @@ async def _run_silent_query(
 
 
 @pytest.mark.asyncio
-async def test_official_unaddressed_keyword_reply_precedes_ai() -> None:
+@pytest.mark.parametrize(
+    "mode,text", [("exact", "示例触发词"), ("contains", "看看示例触发词吧")]
+)
+async def test_official_unaddressed_keyword_reply_precedes_ai(
+    mode: str, text: str
+) -> None:
     ai = _Ai(action=ACTION)
     catalog = _catalog()
     features = _features()
@@ -219,6 +229,7 @@ async def test_official_unaddressed_keyword_reply_precedes_ai() -> None:
                 MessageKeywordReplyAction(
                     id="example-keyword",
                     keywords=["示例触发词"],
+                    match_mode=cast("Any", mode),
                     messages=["固定回复"],
                     feature="example",
                 )
@@ -240,7 +251,7 @@ async def test_official_unaddressed_keyword_reply_precedes_ai() -> None:
         addressed_input_hints=AddressedInputHintService(),
         messaging=messaging,
     )
-    context = _context(GROUP, "示例触发词")
+    context = _context(GROUP, text)
 
     assert router.recognizes(context)
     reply = await router.dispatch(context)
@@ -248,6 +259,78 @@ async def test_official_unaddressed_keyword_reply_precedes_ai() -> None:
     assert reply is not None
     assert reply.message.parts == (TextPart("固定回复"),)
     assert ai.intent_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,slug",
+    [("竞技", "sports"), ("狂野", "wild"), ("专家", "expert"), ("大师", "master")],
+)
+@pytest.mark.parametrize("allowed", [True, False])
+@pytest.mark.parametrize(
+    "query_template", ["{mode}胜率榜", "看看{mode}胜率榜", "看看{mode}精灵胜率榜"]
+)
+async def test_official_win_rate_contains_reply_requires_seerinfo(
+    mode: str, slug: str, query_template: str, *, allowed: bool
+) -> None:
+    features = FeatureService(
+        {GROUP: frozenset({"seerinfo"}) if allowed else frozenset()},
+        {},
+        frozenset(),
+        superuser_bypass=False,
+    )
+    url = f"https://seerinfo.yuyuqaq.cn/peak/pvprank/{slug}/monster"
+    messaging = MessagingService(
+        MessageConfig(
+            keyword_replies=[
+                MessageKeywordReplyAction(
+                    id="win-rate",
+                    keywords=[f"{mode}胜率榜", f"{mode}精灵胜率榜"],
+                    match_mode="contains",
+                    feature="seerinfo",
+                    messages=[url],
+                )
+            ]
+        ),
+        ActivityConfig(),
+        cast("Any", object()),
+        features,
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    catalog = _catalog()
+    router = PortableCommandRouter(
+        catalog,
+        {"example.query": _run_query},
+        features,
+        messaging=messaging,
+        ai=cast("AiService", _Ai(action=None)),
+        ai_intent_actions=cast("AiIntentActionExecutor", _Executor()),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+    )
+    event = parse_message_event(
+        GROUP_MESSAGE_CREATE,
+        {
+            "id": "fictional-message",
+            "content": query_template.format(mode=mode),
+            "timestamp": "2026-10-08T12:00:00+08:00",
+            "group_openid": GROUP.id,
+            "author": {"member_openid": ACTOR.id},
+        },
+    )
+    assert event is not None
+    context = MessageInputContext(
+        qq_official_incoming_message(event, account_id="app"),
+        mentions_bot=False,
+    )
+    assert router.recognizes(context) is allowed
+    reply = await router.dispatch(context)
+    if allowed:
+        assert reply is not None
+        assert reply.message.parts == (TextPart(url),)
+    else:
+        assert reply is None
 
 
 @pytest.mark.parametrize("input_form", ["direct", "mentioned"])

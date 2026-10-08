@@ -504,6 +504,7 @@ class CommandAction(Protocol):
 class KeywordReplyAction(Protocol):
     enabled: bool
     keywords: list[str]
+    match_mode: Literal["exact", "contains"]
 
 
 class ScheduledAction(Protocol):
@@ -555,7 +556,13 @@ def find_keyword_reply_action(
     for action in actions:
         if not action.enabled or not is_allowed(action):
             continue
-        if command_text_matches(text, action.keywords):
+        if action.match_mode == "exact" and command_text_matches(text, action.keywords):
+            return action
+        if action.match_mode == "contains" and any(
+            key in normalized_text
+            for keyword in action.keywords
+            if (key := normalize_command_text(keyword))
+        ):
             return action
     return None
 

@@ -726,37 +726,42 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
 # messages = ["https://seerinfo.yuyuqaq.cn/"]
-# feature = "seerinfo_link"
+# feature = "seerinfo"
 
-# 四模式精灵胜率榜网页口令，沿用 seer_peak 权限；按需复制启用。
-# [[messaging.commands]]
+# 四模式胜率网页关键词回复：显式包含匹配，沿用 seerinfo 权限；按需复制启用。
+# [[messaging.keyword_replies]]
 # id = "peak_standard_win_rate_page"
-# commands = ["竞技胜率榜", "竞技精灵胜率榜"]
+# keywords = ["竞技胜率榜", "竞技精灵胜率榜"]
+# match_mode = "contains"
 # messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/sports/monster"]
-# feature = "seer_peak"
+# feature = "seerinfo"
 #
-# [[messaging.commands]]
+# [[messaging.keyword_replies]]
 # id = "peak_wild_win_rate_page"
-# commands = ["狂野胜率榜", "狂野精灵胜率榜"]
+# keywords = ["狂野胜率榜", "狂野精灵胜率榜"]
+# match_mode = "contains"
 # messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/wild/monster"]
-# feature = "seer_peak"
+# feature = "seerinfo"
 #
-# [[messaging.commands]]
+# [[messaging.keyword_replies]]
 # id = "peak_expert_win_rate_page"
-# commands = ["专家胜率榜", "专家精灵胜率榜"]
+# keywords = ["专家胜率榜", "专家精灵胜率榜"]
+# match_mode = "contains"
 # messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/expert/monster"]
-# feature = "seer_peak"
+# feature = "seerinfo"
 #
-# [[messaging.commands]]
+# [[messaging.keyword_replies]]
 # id = "peak_master_win_rate_page"
-# commands = ["大师胜率榜", "大师精灵胜率榜"]
+# keywords = ["大师胜率榜", "大师精灵胜率榜"]
+# match_mode = "contains"
 # messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/master/monster"]
-# feature = "seer_peak"
+# feature = "seerinfo"
 
 # Default: []
-# EN: Keyword replies match the complete normalized message; command actions
-# above still win. Ordinary sentences containing a keyword do not trigger replies.
-# ZH: 关键词回复匹配规范化后的完整消息；普通句子包含关键词不触发，完整口令优先。
+# EN: Keyword replies default to exact normalized matching. Set match_mode to
+# "contains" explicitly to match keywords inside a message; commands still win.
+# ZH: 默认 match_mode = "exact" 匹配完整消息；显式设为 "contains" 才使用包含匹配。
+# 完整口令优先，所有匹配沿用空格和大小写规范化。
 # Like command actions, the feature key must be enabled for the current group
 # or private user. Keywords are not regular commands and are shown as automatic
 # replies in help.
@@ -766,6 +771,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # [[messaging.keyword_replies]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
+# match_mode = "exact"
 # messages = ["第一条回复", "第二条回复"]
 # feature = "chuchu_reply"
 

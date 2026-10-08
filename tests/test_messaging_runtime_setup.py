@@ -967,6 +967,74 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     )
 
 
+@pytest.mark.parametrize("allowed", [True, False])
+def test_onebot_contains_reply_permissions_and_fixed_command_priority(
+    tmp_path: Path,
+    *,
+    allowed: bool,
+) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        commands=[
+            MessageCommandAction(
+                id="fixed",
+                commands=["竞技胜率榜"],
+                feature="seerinfo",
+                messages=["fixed"],
+            )
+        ],
+        keyword_replies=[
+            MessageKeywordReplyAction(
+                id="webpage",
+                keywords=["竞技胜率榜", "竞技精灵胜率榜"],
+                match_mode="contains",
+                feature="seerinfo",
+                messages=["https://example.com/sports"],
+            ),
+            MessageKeywordReplyAction(
+                id="second",
+                keywords=["胜率榜"],
+                match_mode="contains",
+                feature="seerinfo",
+                messages=["second"],
+            ),
+        ],
+        group_policy={"1001": ["seerinfo"] if allowed else []},
+    )
+    state: dict[str, object] = {}
+    assert (
+        matcher_rules.match_message_command(
+            group_member_message_event("看看竞技胜率榜", user_id=2002, group_id=1001),
+            state,
+            messaging=messaging,
+            interaction="automatic",
+        )
+        is allowed
+    )
+    if allowed:
+        assert (
+            cast(
+                "MessageKeywordReplyAction", state[matcher_rules.MESSAGE_ACTION_KEY]
+            ).id
+            == "webpage"
+        )
+    assert not matcher_rules.match_message_command(
+        group_member_message_event("竞技胜率榜", user_id=2002, group_id=1001),
+        {},
+        messaging=messaging,
+        interaction="automatic",
+    )
+    assert (
+        matcher_rules.match_message_command(
+            group_member_message_event("竞技胜率榜", user_id=2002, group_id=1001),
+            {},
+            messaging=messaging,
+            interaction="direct",
+        )
+        is allowed
+    )
+
+
 def _mention_context(
     actor: ActorRef,
     conversation: ConversationRef,
