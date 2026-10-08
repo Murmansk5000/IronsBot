@@ -297,6 +297,7 @@ class MessageCommandAction(MessageReplyAction):
 
 class MessageKeywordReplyAction(MessageReplyAction):
     keywords: NormalizedStringList = Field(default_factory=list)
+    match_mode: Literal["exact", "contains"] = "exact"
 
     @model_validator(mode="after")
     def validate_enabled_keyword_reply_action(self) -> Self:
