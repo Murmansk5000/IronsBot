@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -11,7 +12,29 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_models import DockerImageInfo
 
 GITHUB_REPO_PATH_PARTS = 2
+FULL_GIT_REVISION = re.compile(r"[0-9a-f]{40}", re.IGNORECASE)
 logger = logging.getLogger(__name__)
+
+
+async def resolve_github_main_revision(repository: tuple[str, str]) -> str:
+    """Read the source repository's main head for a read-only image check."""
+
+    owner, name = repository
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{name}/commits/main",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "IronsBot-DockerUpdate",
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+    revision = payload.get("sha") if isinstance(payload, dict) else None
+    if not isinstance(revision, str) or not FULL_GIT_REVISION.fullmatch(revision):
+        msg = "GitHub main response did not contain a full commit SHA"
+        raise ValueError(msg)
+    return revision.lower()
 
 
 def github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
