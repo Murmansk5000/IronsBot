@@ -747,6 +747,12 @@ feature/组合；未注册功能引用只告警并忽略，组合因此变空时
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
 
+### 关键词回复匹配方式
+
+`[[messaging.keyword_replies]]` 的 `match_mode` 默认是 `"exact"`，按整条消息匹配关键词。
+需要普通包含匹配时，请显式设置 `match_mode = "contains"`。
+这只选择关键词匹配方式，不改变完整口令优先级，也不绕过原有功能开关、群组或私聊权限。
+
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：
