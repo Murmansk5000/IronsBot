@@ -69,6 +69,104 @@ async def test_commit_summary_uses_the_images_own_source_repository(
 
 
 @pytest.mark.asyncio
+async def test_github_main_revision_requires_a_full_commit_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url = "https://api.github.com/repos/example/custom-bot/commits/main"
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.get.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", url),
+        json={"sha": "a" * 40},
+    )
+    monkeypatch.setattr(metadata.httpx, "AsyncClient", Mock(return_value=client))
+
+    assert await metadata.resolve_github_main_revision(("example", "custom-bot")) == (
+        "a" * 40
+    )
+    assert client.get.await_args.args[0] == url
+    client.get.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", url),
+        json={"sha": "short"},
+    )
+    with pytest.raises(ValueError, match="full commit SHA"):
+        await metadata.resolve_github_main_revision(("example", "custom-bot"))
+
+
+@pytest.mark.asyncio
+async def test_image_check_compares_its_source_repository_with_main(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = "https://github.com/example/custom-bot"
+    current = DockerImageInfo(
+        image_id="sha256:current",
+        repo_digests=("example/bot@sha256:digest",),
+        labels={
+            "org.opencontainers.image.source": source,
+            "org.opencontainers.image.revision": "a" * 40,
+        },
+    )
+    remote = DockerImageInfo(
+        image_id="sha256:remote",
+        labels={
+            "org.opencontainers.image.source": source,
+            "org.opencontainers.image.revision": "b" * 40,
+        },
+    )
+    monkeypatch.setattr(
+        docker_client.DockerClient, "socket_exists", AsyncMock(return_value=True)
+    )
+    for name, value in (
+        ("inspect_container_image_id", current.image_id),
+        ("inspect_image_info", current),
+        ("inspect_remote_image_digest", "sha256:digest"),
+        ("resolve_image_commit_summary", ""),
+    ):
+        monkeypatch.setattr(docker_client, name, AsyncMock(return_value=value))
+    remote_inspect = AsyncMock(return_value=remote)
+    monkeypatch.setattr(docker_client, "inspect_remote_image_info", remote_inspect)
+    head = AsyncMock(return_value="b" * 40)
+    monkeypatch.setattr(docker_client, "resolve_github_main_revision", head)
+    request = DockerUpdateRequest(
+        container_name="example",
+        image="example/bot:latest",
+        socket_path="/unused/docker.sock",
+        timeout_seconds=1,
+        watchtower=WatchtowerUpdateOptions(
+            image="example/watchtower:latest", docker_api_version="1.44"
+        ),
+    )
+
+    result = await docker_client.DockerClient().check_update(request)
+
+    assert result.ok and result.up_to_date
+    assert result.current_image_revision == "a" * 40
+    assert result.remote_image_revision == result.github_main_revision == "b" * 40
+    head.assert_awaited_once_with(("example", "custom-bot"))
+
+    other_source = DockerImageInfo(
+        image_id="sha256:other",
+        labels={
+            "org.opencontainers.image.source": "https://github.com/example/other-bot",
+            "org.opencontainers.image.revision": "c" * 40,
+        },
+    )
+    remote_inspect.return_value = other_source
+    cross_repo = await docker_client.DockerClient().check_update(request)
+    assert cross_repo.current_image_revision == ""
+    assert cross_repo.remote_image_revision == "c" * 40
+    head.assert_awaited_with(("example", "other-bot"))
+
+    head.side_effect = httpx.ReadTimeout("offline")
+    failed = await docker_client.DockerClient().check_update(request)
+    assert failed.ok and failed.up_to_date
+    assert failed.github_main_revision == ""
+    assert failed.github_main_error == "ReadTimeout"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["check_update", "start_update"])
 async def test_unlabelled_image_never_looks_up_a_deployment_repository(
     monkeypatch: pytest.MonkeyPatch, operation: str
