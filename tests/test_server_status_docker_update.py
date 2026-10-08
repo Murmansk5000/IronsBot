@@ -265,9 +265,7 @@ def test_image_check_does_not_confuse_registry_digest_with_main_revision() -> No
     aligned = format_docker_image_check_reply(
         container_name="ironsbot",
         image="example/ironsbot:latest",
-        result=replace(
-            base, current_image_revision=main, remote_image_revision=main
-        ),
+        result=replace(base, current_image_revision=main, remote_image_revision=main),
     )
     assert "本机代码对照：已对齐 GitHub main" in aligned
     assert "目标镜像代码对照：已对齐 GitHub main" in aligned
@@ -611,12 +609,9 @@ def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
 
     assert matched is True
     assert docker.checked == ("ironsbot", "sha256:target")
-    assert docker.removed == "watchtower-id"
-    assert docker.removed_image == "sha256:previous"
-    assert docker.stale_cleanup == (
-        "murmansk5000/ironsbot:latest",
-        "sha256:target",
-    )
+    assert docker.removed is None
+    assert docker.removed_image is None
+    assert docker.stale_cleanup is None
 
 
 def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> None:
@@ -822,6 +817,12 @@ def test_remove_stale_repository_images_is_scoped_and_non_forcing() -> None:
             *,
             params: dict[str, str],
         ) -> httpx.Response:
+            if url == "/containers/json":
+                return httpx.Response(
+                    200,
+                    json=[],
+                    request=httpx.Request("GET", "http://docker/containers/json"),
+                )
             assert url == "/images/json"
             assert params == {"all": "true"}
             return httpx.Response(
@@ -862,7 +863,7 @@ def test_remove_stale_repository_images_is_scoped_and_non_forcing() -> None:
             *,
             params: dict[str, str],
         ) -> httpx.Response:
-            assert params == {"force": "false", "noprune": "false"}
+            assert params == {"force": "false", "noprune": "true"}
             self.deleted.append(url.rsplit("/", maxsplit=1)[-1])
             status = 409 if url.endswith("sha256%3Aold-tag") else 200
             return httpx.Response(
@@ -883,7 +884,11 @@ def test_remove_stale_repository_images_is_scoped_and_non_forcing() -> None:
     )
 
     assert result == (1, 1)
-    assert client.deleted == ["sha256%3Aold-dangling", "sha256%3Aold-tag"]
+    assert client.deleted == [
+        "docker.io%2Fmurmansk5000%2Fironsbot%3Asha-old",
+        "sha256%3Aold-tag",
+        "sha256%3Aold-dangling",
+    ]
 
 
 def test_inspect_image_info_if_present_returns_none_for_missing_tag() -> None:

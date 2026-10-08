@@ -21,8 +21,6 @@ from ironsbot.services.operations.docker_models import (
 from .daemon import (
     HTTP_NOT_FOUND,
     create_archive_container,
-    create_watchtower_container,
-    ensure_watchtower_image,
     inspect_container_image_id,
     inspect_image_info,
     inspect_image_info_if_present,
@@ -34,6 +32,7 @@ from .daemon import (
     remove_stale_repository_images,
     remove_stopped_watchtower_containers,
 )
+from .deployment_launch import launch_supervisor
 from .http import raise_for_docker_status
 from .metadata import (
     github_repo_from_image_labels,
@@ -217,11 +216,6 @@ class DockerClient:
                             removed_updaters,
                         )
                 if current_image.image_id == target_image.image_id:
-                    await self._cleanup_stale_images(
-                        client,
-                        repository_image=request.image,
-                        current_image=current_image,
-                    )
                     return DockerUpdateResult(
                         ok=True,
                         up_to_date=True,
@@ -233,22 +227,15 @@ class DockerClient:
                         target_image_commit=target_commit,
                     )
 
-                await ensure_watchtower_image(client, request.watchtower.image)
-                updater_id = await create_watchtower_container(
+                updater_id = await launch_supervisor(
                     client,
                     container_name=request.container_name,
+                    image=target_image.image_id,
+                    repository_image=request.image,
                     socket_path=request.socket_path,
-                    watchtower=request.watchtower,
-                    registry_credentials=request.registry_credentials,
                 )
-                try:
-                    response = await client.post(f"/containers/{updater_id}/start")
-                    raise_for_docker_status(response)
-                except Exception:
-                    await remove_container_quietly(client, updater_id)
-                    raise
                 logger.warning(
-                    "Watchtower handoff started: container=%s updater=%s target=%s",
+                    "Supervised deployment started: container=%s updater=%s target=%s",
                     request.container_name,
                     updater_id,
                     target_image.image_id,

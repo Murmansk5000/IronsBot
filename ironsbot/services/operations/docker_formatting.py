@@ -77,8 +77,8 @@ def format_docker_update_reply(
             )
         else:
             lines.append(
-                "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
-                "机器人可能会短暂离线；重启后才算真正使用新镜像。"
+                "独立部署监督器将重建当前容器，机器人可能会短暂离线。"
+                "启动后验证稳定运行 60 秒，成功才清理旧容器；失败将恢复旧版本。"
             )
         return "\n".join(lines)
 
