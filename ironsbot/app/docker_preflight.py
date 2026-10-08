@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
@@ -14,6 +16,7 @@ from ironsbot.config.loader import (
     load_settings,
 )
 from ironsbot.integrations.docker.client import DockerClient
+from ironsbot.integrations.docker.deployment import STATE_FILE, boot_is_supervised
 from ironsbot.services.operations.docker_preflight import (
     DockerStartupPreflightAction,
     DockerStartupPreflightService,
@@ -53,6 +56,10 @@ async def run_docker_startup_preflight(
     *,
     store: DockerStartupPreflightStore | None = None,
 ) -> DockerStartupPreflightAction:
+    if boot_is_supervised(
+        Path("data") / STATE_FILE, instance_id=os.environ.get("HOSTNAME", "")
+    ):
+        return DockerStartupPreflightAction.CONTINUE
     update_service = DockerUpdateService(
         startup_preflight_config(config),
         DockerClient(),
