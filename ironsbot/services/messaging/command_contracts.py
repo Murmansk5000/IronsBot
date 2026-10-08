@@ -49,7 +49,12 @@ def messaging_command_contracts(
             plugin_id="messaging",
             section="关键词回复",
             examples=tuple(action.keywords),
-            description=action.name or "完整消息匹配关键词时自动回复",
+            description=action.name
+            or (
+                "消息包含关键词时自动回复"
+                if action.match_mode == "contains"
+                else "完整消息匹配关键词时自动回复"
+            ),
             features_any=(action.feature,),
             interaction="automatic",
         )
