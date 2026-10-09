@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Protocol
+from zoneinfo import ZoneInfo
 
 from ironsbot.core.value_coercion import require_int
 
@@ -115,6 +116,7 @@ class NewContentIndex:
     cycle_start: str = ""
     cycle_end: str = ""
     cycle_status: str = ""
+    cycle_kind: str = "preview"
 
 
 class NewContentRepository(Protocol):
@@ -164,6 +166,16 @@ class NewContentSnapshot:
     cycle_start: str = ""
     cycle_end: str = ""
     cycle_status: str = ""
+    cycle_kind: str = "preview"
+
+    @property
+    def update_label(self) -> str:
+        if self.cycle_kind != "maintenance" or not self.cycle_start:
+            return ""
+        stamp = datetime.fromisoformat(self.cycle_start).astimezone(
+            ZoneInfo("Asia/Shanghai")
+        )
+        return f"{stamp.month}月{stamp.day}日更新"
 
     def items_for(self, category: NewContentCategory) -> tuple[NewContentItem, ...]:
         return tuple(item for item in self.items if item.category == category)
@@ -293,6 +305,8 @@ class NewContentService:
         try:
             index = self._repository.load()
             snapshot = _snapshot_from_index(index)
+            if index.cycle_kind == "maintenance":
+                return self._maintenance_snapshot(index, snapshot)
             if index.cycle_start and index.cycle_end:
                 start, end = _official_cycle_bounds(index)
                 now = self._now()
@@ -319,6 +333,38 @@ class NewContentService:
         except (NewContentIndexRepositoryError, TypeError, ValueError) as error:
             raise NewContentIndexUnavailableError from error
 
+    def _maintenance_snapshot(
+        self, index: NewContentIndex, snapshot: NewContentSnapshot
+    ) -> NewContentSnapshot:
+        if not index.cycle_start:
+            return replace(
+                snapshot,
+                is_current_week=False,
+                cycle_status="cycle_unavailable",
+                items=(),
+                category_states=(),
+            )
+        start = datetime.fromisoformat(index.cycle_start)
+        if start.tzinfo is None:
+            message = "maintenance batch requires a timezone"
+            raise ValueError(message)
+        now = self._now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        if now < start:
+            return replace(
+                snapshot,
+                is_current_week=False,
+                cycle_status="scheduled",
+                items=(),
+                category_states=(),
+            )
+        if index.cycle_status != "ready":
+            status = (
+                "syncing" if index.cycle_status == "scheduled" else index.cycle_status
+            )
+            return replace(snapshot, cycle_status=status, items=(), category_states=())
+        return snapshot
 
     def require_snapshot(self, expected: NewContentSnapshot) -> None:
         """Validate retained menu facts against an already-bound data reader."""
@@ -441,7 +487,14 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
         baseline_established=index.baseline_established,
         config_version=index.config_version,
         weekly_cycle=(
-            index.cycle_start[:10] if index.cycle_start else index.weekly_cycle
+            datetime.fromisoformat(index.cycle_start)
+            .astimezone(ZoneInfo("Asia/Shanghai"))
+            .date()
+            .isoformat()
+            if index.cycle_kind == "maintenance" and index.cycle_start
+            else index.cycle_start[:10]
+            if index.cycle_start
+            else index.weekly_cycle
         ),
         items=tuple(items),
         category_states=tuple(category_states),
@@ -449,6 +502,7 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
         cycle_start=index.cycle_start,
         cycle_end=index.cycle_end,
         cycle_status=index.cycle_status,
+        cycle_kind=index.cycle_kind,
     )
 
 
@@ -458,6 +512,8 @@ def new_content_unavailable_message() -> str:
 
 def new_content_stale_week_message(snapshot: NewContentSnapshot) -> str:
     if snapshot.cycle_status == "cycle_unavailable":
+        if snapshot.cycle_kind == "maintenance":
+            return "尚未取得可信的官方维护更新批次，暂无法生成新增内容。"
         return "当前数据版本尚未提供官方预告档期，请更新 SeerAPI 数据。"
     if snapshot.cycle_status == "expired":
         return "本档新增内容展示已结束，等待下一档预告。"

@@ -153,7 +153,8 @@ async def render_new_content_menu(  # noqa: PLR0913
             image_notice=(
                 "官方图片暂未上线"
                 if prepared.asset is not None
-                and image is None and rows[index].image_layout == "square"
+                and image is None
+                and rows[index].image_layout == "square"
                 else ""
             ),
         )
@@ -176,7 +177,9 @@ async def render_new_content_menu(  # noqa: PLR0913
         snapshot.weekly_cycle,
         rows,
         skill_icons,
-        menu_title,
+        f"{snapshot.update_label} · {menu_title}"
+        if snapshot.update_label
+        else menu_title,
     )
     result = await render_new_content_document(render_html, document)
     if cacheable:

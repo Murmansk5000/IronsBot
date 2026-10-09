@@ -60,7 +60,9 @@ def load_new_content_index(session: Session) -> NewContentIndex:
                     """
                     SELECT key, value FROM seerapi_metadata
                     WHERE key IN ('preview_cycle_start', 'preview_cycle_end',
-                                  'new_content_cycle_status')
+                                  'new_content_cycle_status', 'update_cycle_start',
+                                  'update_cycle_end', 'update_cycle_status',
+                                  'update_cycle_source')
                     """
                 ).all()
             }
@@ -121,9 +123,18 @@ def load_new_content_index(session: Session) -> NewContentIndex:
                 )
                 for row in state_rows
             ),
-            cycle_start=metadata.get("preview_cycle_start", ""),
-            cycle_end=metadata.get("preview_cycle_end", ""),
-            cycle_status=metadata.get("new_content_cycle_status", ""),
+            cycle_start=metadata.get(
+                "update_cycle_start", metadata.get("preview_cycle_start", "")
+            ),
+            cycle_end=metadata.get(
+                "update_cycle_end", metadata.get("preview_cycle_end", "")
+            ),
+            cycle_status=metadata.get(
+                "update_cycle_status", metadata.get("new_content_cycle_status", "")
+            ),
+            cycle_kind="maintenance"
+            if "update_cycle_status" in metadata
+            else "preview",
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise NewContentIndexRepositoryError from error
