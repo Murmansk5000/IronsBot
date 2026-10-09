@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
@@ -38,7 +38,8 @@ def parse_datetime(value: Any) -> datetime | None:
         return None
 
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=LOCAL_TZ)
+        # Published SeerAPI SQLite datetimes are stored as naive UTC values.
+        return parsed.replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
     return parsed.astimezone(LOCAL_TZ)
 
 
