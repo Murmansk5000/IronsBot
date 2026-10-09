@@ -8,10 +8,6 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.animated_collage import (
-    inspect_animation,
-    render_vertical_animation,
-)
 from ironsbot.integrations.configured_targets.bilibili import (
     build_bili_configured_targets,
 )
@@ -21,10 +17,6 @@ from ironsbot.integrations.http.bilibili import (
     fetch_bili_feed,
     poll_bili_login_qr,
     request_bili_login_qr,
-)
-from ironsbot.integrations.image_collage import (
-    fetch_collage_image,
-    render_adaptive_collage,
 )
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_delivery_ledger import (
@@ -46,7 +38,6 @@ from ironsbot.services.bilibili.private_routes import BiliPrivateRoutes
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
-from ironsbot.services.messaging.image_collage import ImageCollageService
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
@@ -57,6 +48,7 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
 
@@ -77,6 +69,7 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
     subscriptions: PushSubscriptionRepository,
     task_owner: TaskOwner,
     identity_principals: IdentityPrincipalService,
+    image_collage: ImageCollageService,
     private_routes: BiliPrivateRoutes | None = None,
 ) -> BilibiliComponents:
     """Build Bilibili services and compile configured delivery targets."""
@@ -109,12 +102,7 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
-        image_collage=ImageCollageService(
-            partial(fetch_collage_image, http_clients.origin),
-            render_adaptive_collage,
-            render_animation=render_vertical_animation,
-            inspect_animation=inspect_animation,
-        ),
+        image_collage=image_collage,
     )
     return BilibiliComponents(
         service=service,

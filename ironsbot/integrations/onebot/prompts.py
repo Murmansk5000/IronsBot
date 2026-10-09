@@ -110,7 +110,8 @@ class Prompt(Generic[T]):
                 if item.desc:
                     text += f"（{item.desc}）"
                 lines.append(text)
-            lines.append("\n输入编号查看详情 · 输入 0 退出")
+            lines.append("0. 【退出】")
+            lines.append("\n输入编号查看详情")
             return "\n".join(lines)
         return format_selection_menu(
             title=self.title.rstrip(),

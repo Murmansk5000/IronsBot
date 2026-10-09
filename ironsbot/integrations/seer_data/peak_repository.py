@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -20,7 +19,11 @@ from sqlmodel import col, select
 
 from ironsbot.services.seer.peak import PeakPeriodTimes
 
+from .published_time import local_published_datetime
+
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlmodel import Session
 
     from ironsbot.services.seer.data import SeerDataAccess, SeerDataReader
@@ -84,8 +87,8 @@ def load_peak_pool_snapshots(
         PeakPoolSnapshot(
             id=int(pool.id),
             count=int(pool.count),
-            start_time=pool.start_time,
-            end_time=pool.end_time,
+            start_time=local_published_datetime(pool.start_time),
+            end_time=local_published_datetime(pool.end_time),
             pets=tuple(_peak_pet_snapshot(pet) for pet in pool.pet),
         )
         for pool in session.exec(
@@ -117,8 +120,8 @@ def load_peak_master_pool_snapshots(
         if pool_id not in grouped:
             grouped[pool_id] = (
                 int(row["cost"]),
-                _as_datetime(row["start_time"]),
-                _as_datetime(row["end_time"]),
+                local_published_datetime(str(row["start_time"])),
+                local_published_datetime(str(row["end_time"])),
                 [],
             )
         if row["pet_id"] is not None:
@@ -136,12 +139,6 @@ def load_peak_master_pool_snapshots(
     )
 
 
-def _as_datetime(value: object) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    return datetime.fromisoformat(str(value))
-
-
 def load_peak_vote_snapshots(session: Session) -> tuple[PeakVoteSnapshot, ...]:
     from ironsbot.services.seer.peak import PeakVoteSnapshot
 
@@ -150,8 +147,8 @@ def load_peak_vote_snapshots(session: Session) -> tuple[PeakVoteSnapshot, ...]:
             id=int(vote.id),
             count=int(vote.count),
             subkey=int(vote.subkey),
-            start_time=vote.start_time,
-            end_time=vote.end_time,
+            start_time=local_published_datetime(vote.start_time),
+            end_time=local_published_datetime(vote.end_time),
             pets=tuple(_peak_pet_snapshot(pet) for pet in vote.pet),
         )
         for vote in session.exec(
@@ -169,11 +166,21 @@ def load_peak_period_times(
 ) -> PeakPeriodTimes | None:
     if monthly:
         pool = session.exec(select(PeakExpertPoolORM)).first()
-        return None if pool is None else PeakPeriodTimes(pool.start_time, pool.end_time)
+        return (
+            None
+            if pool is None
+            else PeakPeriodTimes(
+                local_published_datetime(pool.start_time),
+                local_published_datetime(pool.end_time),
+            )
+        )
     season = session.get(PeakSeasonORM, 1)
     if season is None:
         return None
-    return PeakPeriodTimes(season.start_time, season.end_time)
+    return PeakPeriodTimes(
+        local_published_datetime(season.start_time),
+        local_published_datetime(season.end_time),
+    )
 
 
 def load_peak_pet_snapshots(
