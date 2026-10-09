@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class WeeklyPreviewLinks:
-    image_url: str
+    image_urls: tuple[str, ...]
     source_url: str
 
 
