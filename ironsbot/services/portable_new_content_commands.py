@@ -21,6 +21,8 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentSnapshotChangedError,
+    NewContentWeekExpiredError,
+    new_content_stale_week_message,
     new_content_unavailable_message,
 )
 from ironsbot.services.seer.new_content_menu import (
@@ -154,10 +156,13 @@ class _PortableNewContentOperations:
                 layout.expanded_categories,
                 layout.preview_max_items,
             )
-        except (NewContentSnapshotChangedError, DataPublicationChangedError):
-            return OutboundMessage.from_text(
-                "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
+        except (NewContentSnapshotChangedError, DataPublicationChangedError) as error:
+            notice = (
+                new_content_stale_week_message(snapshot)
+                if isinstance(error, NewContentWeekExpiredError)
+                else "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
             )
+            return OutboundMessage.from_text(notice)
 
         async def select(
             action: NewContentAction,
@@ -219,10 +224,13 @@ class _PortableNewContentOperations:
             detail = await self.resources.new_content_details.select(
                 snapshot, item, execution_identity=context.execution_identity
             )
-        except (NewContentSnapshotChangedError, DataPublicationChangedError):
-            return OutboundMessage.from_text(
-                "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
+        except (NewContentSnapshotChangedError, DataPublicationChangedError) as error:
+            notice = (
+                new_content_stale_week_message(snapshot)
+                if isinstance(error, NewContentWeekExpiredError)
+                else "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
             )
+            return OutboundMessage.from_text(notice)
         except DataUnavailableError:
             return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
 

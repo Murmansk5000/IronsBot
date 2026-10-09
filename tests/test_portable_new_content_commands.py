@@ -25,6 +25,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentSnapshot,
     NewContentSnapshotChangedError,
+    NewContentWeekExpiredError,
 )
 from ironsbot.services.seer.query_result import QueryReply
 
@@ -58,8 +59,9 @@ class _AutocardMedia:
 
 
 class _MenuRenderer:
-    def __init__(self, *, changed: bool = False) -> None:
+    def __init__(self, *, changed: bool = False, expired: bool = False) -> None:
         self.changed = changed
+        self.expired = expired
         self.calls: list[
             tuple[tuple[NewContentCategory, ...], NewContentCategory | None]
         ] = []
@@ -76,6 +78,8 @@ class _MenuRenderer:
         del snapshot, expanded_categories, auto_expand_max_items
         assert menu_title == "新增内容"
         self.calls.append((display_categories, focused_category))
+        if self.expired:
+            raise NewContentWeekExpiredError
         if self.changed:
             raise NewContentSnapshotChangedError
         return b"rendered-menu"
@@ -86,6 +90,7 @@ def _snapshot() -> NewContentSnapshot:
         baseline_established=True,
         config_version="20260911",
         weekly_cycle="2026-09-11",
+        source_weekly_cycle="2026-09-11",
         items=(
             NewContentItem("pet", 4927, "超级噗纽", 4927, {}),
             NewContentItem(
@@ -313,6 +318,44 @@ async def test_changed_publication_does_not_install_an_unrendered_menu() -> None
     )
     assert "数据已更新" in _text(result)
     assert not sessions.has_active_session(context)
+
+
+@pytest.mark.asyncio
+async def test_expired_week_does_not_install_menu_or_expose_old_items() -> None:
+    sessions = PortableQuerySessions()
+    operations = build_portable_new_content_operations(
+        _resources(_snapshot(), _MenuRenderer(expired=True)),
+        sessions,
+        _features("seer_data", "seer_pet"),
+    )
+    context = _context()
+
+    result = cast(
+        "OutboundMessage",
+        await operations["seer.data.new_content"]("新增内容", context),
+    )
+    assert "当前数据版本仍为" in _text(result)
+    assert not sessions.has_active_session(context)
+
+
+@pytest.mark.asyncio
+async def test_open_menu_cannot_switch_category_after_week_expires() -> None:
+    sessions = PortableQuerySessions()
+    renderer = _MenuRenderer()
+    operations = build_portable_new_content_operations(
+        _resources(_snapshot(), renderer),
+        sessions,
+        _features("seer_data", "seer_pet", "seer_achievement"),
+        preview_max_items=0,
+    )
+    context = _context()
+
+    await operations["seer.data.new_content"]("新增内容", context)
+    renderer.expired = True
+    result = await sessions.select("a", context)
+
+    assert "当前数据版本仍为 2026-09-11 周期" in _text(result)
+    assert renderer.calls == [(("pet", "achievement"), None), (("pet",), "pet")]
 
 
 def test_new_content_specs_are_the_single_operation_inventory() -> None:
