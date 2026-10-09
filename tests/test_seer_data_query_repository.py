@@ -34,6 +34,11 @@ class _Rows:
     def all(self) -> list[tuple[str, str]]:
         return [
             ("weekly_preview_image_url", "https://example.test/preview.png"),
+            (
+                "weekly_preview_image_urls",
+                '["https://example.test/preview.png",'
+                '"https://example.test/preview-2.png"]',
+            ),
             ("weekly_preview_source_url", "https://example.test/source"),
         ]
 
@@ -59,7 +64,10 @@ def test_published_data_query_repository_detaches_domain_facts() -> None:
     repository = PublishedDataQueryRepository(cast("SeerDataReader", _Reader()))
 
     assert repository.weekly_preview_links() == WeeklyPreviewLinks(
-        "https://example.test/preview.png",
+        (
+            "https://example.test/preview.png",
+            "https://example.test/preview-2.png",
+        ),
         "https://example.test/source",
     )
     assert repository.generated_at() == GENERATED_AT
