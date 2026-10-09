@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
@@ -12,7 +13,11 @@ from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
 from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
 )
-from ironsbot.services.seer.images import to_data_uri
+from ironsbot.services.seer.images import (
+    ImageSourceError,
+    placeholder_image,
+    to_data_uri,
+)
 from ironsbot.services.seer.peak import (
     PeakPetSnapshot,
     PeakPoolRenderSnapshot,
@@ -38,7 +43,8 @@ from ironsbot.services.seer.rendering.pet_image_assets import PetImageAssets
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.core.outbound import ExecutionIdentity
+    from ironsbot.services.seer.images import ImageFailureReporter, SeerImageSource
     from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
@@ -485,14 +491,18 @@ async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C90
                     ),
                 )
 
-            with pytest.raises(ImageSourceError):
+            if mode == "pool":
                 await request_image()
-            assert renders == 0
+                assert renders == 1
+            else:
+                with pytest.raises(ImageSourceError):
+                    await request_image()
+                assert renders == 0
             assert not list(cache_dir.rglob("*.bin"))
             failed_requests = len(requests)
             broken = False
             rendered = await request_image()
-            assert renders == 1
+            assert renders == (2 if mode == "pool" else 1)
             assert len(requests) > failed_requests
             cold_requests = list(requests)
             cold_renders = renders
@@ -511,3 +521,240 @@ async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C90
                 (tmp_path / f"{mode}.png").write_bytes(rendered)
     finally:
         await owner.cancel_all()
+
+
+class _FailingPoolImages(_Images):
+    def __init__(self, failures: set[tuple[str, str]]) -> None:
+        super().__init__()
+        self.failures = failures
+
+    async def fetch(self, kind: str, key: str, **kwargs: object) -> bytes:
+        data = await super().fetch(kind, key, **kwargs)
+        if (kind, key) in self.failures:
+            message = "test asset unavailable"
+            raise ImageSourceError(message)
+        return data
+
+
+class _PoolFailureReporter:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.calls: list[
+            tuple[tuple[tuple[str, str, ImageSourceError], ...], object, bool]
+        ] = []
+        self.fail = fail
+
+    async def __call__(self, *_args: object) -> None:
+        pytest.fail("expected one batch notice")
+
+    async def report_batch(
+        self,
+        failures: tuple[tuple[str, str, ImageSourceError], ...],
+        identity: ExecutionIdentity | None = None,
+        *,
+        degraded: bool = False,
+    ) -> None:
+        self.calls.append((failures, identity, degraded))
+        if self.fail:
+            message = "test notice delivery failed"
+            raise RuntimeError(message)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sports", "expert", "master"])
+@pytest.mark.parametrize(
+    "missing",
+    [
+        {("pet_head", "70")},
+        {("element_type", "1")},
+        {("pet_head", "70"), ("element_type", "1")},
+    ],
+)
+async def test_pool_replaces_only_failed_assets_without_caching(
+    mode: str, missing: set[tuple[str, str]]
+) -> None:
+    cache = _Cache()
+    images = _FailingPoolImages(missing)
+    reporter = _PoolFailureReporter()
+    captured: dict[str, Any] = {}
+
+    async def render_html(**kwargs: Any) -> bytes:
+        captured.update(kwargs)
+        return b"partial render"
+
+    snapshot = replace(
+        _pool_render_snapshot(), expert=mode == "expert", master=mode == "master"
+    )
+    result = await render_peak_pool(
+        cast("RenderCache", cache),
+        cast("SeerImageSource", images),
+        cast("HtmlTemplateRenderer", render_html),
+        snapshot,
+        mode,
+        image_failure_reporter=cast("ImageFailureReporter", reporter),
+    )
+    assert result == b"partial render"
+    assert cache.writes == []
+    pets = {
+        pet.id: pet
+        for pool in captured["templates"]["pools"]
+        for pet in pool.slots
+        if pet is not None
+    }
+    assert pets[100].head_img == (
+        to_data_uri(placeholder_image("pet_head"))
+        if ("pet_head", "70") in missing
+        else _asset_uri("pet_head", "70")
+    )
+    assert pets[100].type_icon == (
+        to_data_uri(placeholder_image("element_type"))
+        if ("element_type", "1") in missing
+        else _asset_uri("element_type", "1")
+    )
+    assert pets[101].head_img == _asset_uri("pet_head", "71")
+    assert pets[101].type_icon == _asset_uri("element_type", "2")
+    assert captured["templates"]["change_state"] == "unavailable"
+    assert len(reporter.calls) == 1
+    failures, identity, degraded = reporter.calls[0]
+    assert {(kind, key) for kind, key, _error in failures} == missing
+    assert identity is None
+    assert degraded
+
+
+@pytest.mark.asyncio
+async def test_pool_notice_failure_does_not_block_recovery_and_cache() -> None:
+    cache = _Cache()
+    images = _FailingPoolImages({("pet_head", "70")})
+    reporter = _PoolFailureReporter(fail=True)
+
+    async def render_html(**_kwargs: Any) -> bytes:
+        return b"rendered"
+
+    async def render() -> bytes:
+        return await render_peak_pool(
+            cast("RenderCache", cache),
+            cast("SeerImageSource", images),
+            cast("HtmlTemplateRenderer", render_html),
+            _pool_render_snapshot(),
+            "竞技池",
+            image_failure_reporter=cast("ImageFailureReporter", reporter),
+        )
+
+    assert await render() == b"rendered"
+    assert cache.writes == []
+    images.failures.clear()
+    assert await render() == b"rendered"
+    assert len(cache.writes) == 1
+    head_requests = [
+        request for request in images.requests if request == ("pet_head", "70")
+    ]
+    assert head_requests == [("pet_head", "70"), ("pet_head", "70")]
+    assert len(reporter.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["asset", "html"])
+async def test_pool_does_not_swallow_non_asset_errors(stage: str) -> None:
+    class BrokenImages(_Images):
+        async def fetch(self, kind: str, key: str, **kwargs: object) -> bytes:
+            if stage == "asset":
+                message = "test malformed data"
+                raise ValueError(message)
+            return await super().fetch(kind, key, **kwargs)
+
+    async def render_html(**_kwargs: Any) -> bytes:
+        message = "test malformed HTML"
+        raise ValueError(message)
+
+    cache = _Cache()
+    with pytest.raises(ValueError, match="test malformed"):
+        await render_peak_pool(
+            cast("RenderCache", cache),
+            cast("SeerImageSource", BrokenImages()),
+            cast("HtmlTemplateRenderer", render_html),
+            _pool_render_snapshot(),
+            "竞技池",
+        )
+    assert not cache.writes
+
+
+@pytest.mark.asyncio
+async def test_pool_historical_placeholder_can_be_dimmed() -> None:
+    from ironsbot.integrations.seer_data.peak_pool_renderer import (
+        _load_peak_pool_image_assets,
+    )
+
+    snapshot = _pool_render_snapshot(
+        transitions=(PeakPoolTransitionSnapshot(_pet(100, "雷伊", 70, 1), 2, 3),),
+        change_state="changed",
+    )
+    assets, failures = await _load_peak_pool_image_assets(
+        cast("SeerImageSource", _FailingPoolImages({("pet_head", "70")})), snapshot
+    )
+    import base64
+
+    from PIL import Image
+
+    current = dict(assets.heads)[70]
+    historical = dict(assets.historical_heads)[70]
+    assert len(failures) == 1
+    assert current != historical
+    with Image.open(BytesIO(base64.b64decode(historical.split(",", 1)[1]))) as image:
+        assert image.mode == "RGBA"
+        assert image.size == Image.open(BytesIO(placeholder_image("pet_head"))).size
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform_name", ["onebot", "qq_official"])
+async def test_pool_notice_inherits_request_identity_and_origin(
+    platform_name: str,
+) -> None:
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.message_origin import current_message_origin, message_origin
+    from ironsbot.core.outbound import ExecutionIdentity
+    from ironsbot.core.platform import (
+        ActorRef,
+        ConversationRef,
+        IncomingMessageRef,
+        Platform,
+    )
+
+    platform = Platform(platform_name)
+    identity = ExecutionIdentity(platform, "test-bot", "测试机器人")
+    context = MessageInputContext(
+        IncomingMessageRef(
+            platform,
+            ActorRef(platform, "test-user", account_id="test-bot"),
+            ConversationRef(platform, "private", "test-user", account_id="test-bot"),
+            "test-message",
+            "竞技池",
+        ),
+        mentions_bot=False,
+        execution_identity=identity,
+    )
+
+    class Reporter(_PoolFailureReporter):
+        async def report_batch(
+            self,
+            failures: tuple[tuple[str, str, ImageSourceError], ...],
+            identity: ExecutionIdentity | None = None,
+            *,
+            degraded: bool = False,
+        ) -> None:
+            assert current_message_origin() is context
+            await super().report_batch(failures, identity, degraded=degraded)
+
+    reporter = Reporter()
+
+    async def render_html(**_kwargs: Any) -> bytes:
+        return b"partial"
+
+    with message_origin(context):
+        await render_peak_pool(
+            cast("RenderCache", _Cache()),
+            cast("SeerImageSource", _FailingPoolImages({("element_type", "1")})),
+            cast("HtmlTemplateRenderer", render_html),
+            _pool_render_snapshot(),
+            "竞技池",
+            image_failure_reporter=cast("ImageFailureReporter", reporter),
+        )
+    assert reporter.calls[0][1] == identity
