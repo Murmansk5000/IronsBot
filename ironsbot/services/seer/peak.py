@@ -6,6 +6,7 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from datetime import timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
@@ -422,7 +423,7 @@ async def _render_peak_result(image: Awaitable[bytes], title: str) -> PeakQueryR
 
 def normalize_peak_vote_time(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
-        return value.replace(tzinfo=time.TZ_CN)
+        return value.replace(tzinfo=timezone.utc).astimezone(time.TZ_CN)
     return value.astimezone(time.TZ_CN)
 
 
