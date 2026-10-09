@@ -17,6 +17,7 @@ from .new_content import (
     is_new_content_category_auto_expanded,
     new_content_category_preview_items,
     new_content_category_unavailable_message,
+    new_content_stale_week_message,
 )
 
 
@@ -63,6 +64,10 @@ def plan_new_content_menu(
 
     if requested is not None and not set(requested).issubset(available):
         return "当前群未开放此新增内容分类。"
+    if not snapshot.is_current_week or snapshot.cycle_status in {
+        "cycle_unavailable", "baseline_unavailable", "syncing"
+    }:
+        return _cycle_menu_message(snapshot)
     categories = available if requested is None else requested
     comparable: tuple[NewContentCategory, ...] = tuple(
         category for category in categories if snapshot.is_category_comparable(category)
@@ -99,6 +104,14 @@ def plan_new_content_menu(
         ),
         preview_max_items=preview_max_items,
     )
+
+
+def _cycle_menu_message(snapshot: NewContentSnapshot) -> str:
+    if snapshot.cycle_status == "baseline_unavailable":
+        return "本档新增内容缺少档期开始前的数据基线，暂无法可靠比较。"
+    if snapshot.cycle_status == "syncing":
+        return "新档期数据正在同步，稍后再查新增内容。"
+    return new_content_stale_week_message(snapshot)
 
 
 def focus_new_content_category(
