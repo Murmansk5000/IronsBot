@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -19,6 +19,7 @@ from ironsbot.integrations.seer_data.peak_repository import (
     load_peak_pool_snapshots,
     load_peak_vote_snapshots,
 )
+from ironsbot.integrations.seer_data.published_time import local_published_datetime
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
 from ironsbot.services.seer.images import ImageSourceError
@@ -37,6 +38,7 @@ from ironsbot.services.seer.peak import (
     PeakRenderSession,
     active_peak_pool_limits,
 )
+from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.render_paths import PEAK_POOL_VOTE_TEMPLATE_PATH
 
@@ -141,6 +143,15 @@ def _vote_snapshot(
         end_time=end_time,
         pets=pets,
     )
+
+
+def test_published_utc_time_uses_beijing_date_for_rank_subkey() -> None:
+    raw = datetime(2026, 10, 1, 16, tzinfo=timezone.utc).replace(tzinfo=None)
+    expected_subkey = 20261002
+    local = local_published_datetime(raw)
+
+    assert local.isoformat() == "2026-10-02T00:00:00+08:00"
+    assert datetime_to_sub_key(local) == expected_subkey
 
 
 def test_active_peak_pool_limits_uses_only_current_pools_and_strictest_limit() -> None:
@@ -249,8 +260,8 @@ def test_master_pool_repository_uses_existing_cost_relation() -> None:
         session.execute(
             text(
                 "INSERT INTO peak_cost_pool VALUES "
-                "(35, 35, '2026-09-04 10:00:00', '2026-11-27 10:00:00'), "
-                "(20, 20, '2026-09-04 10:00:00', '2026-11-27 10:00:00')"
+                "(35, 35, '2026-09-04 02:00:00', '2026-11-27 02:00:00'), "
+                "(20, 20, '2026-09-04 02:00:00', '2026-11-27 02:00:00')"
             )
         )
         session.execute(text("INSERT INTO pet VALUES (5000, '圣灵谱尼', 45000, 2, 35)"))
@@ -261,7 +272,7 @@ def test_master_pool_repository_uses_existing_cost_relation() -> None:
     assert [pool.count for pool in pools] == [35, 20]
     assert pools[0].pets == (PeakPetSnapshot(5000, "圣灵谱尼", 45000, 2),)
     assert pools[1].pets == ()
-    assert pools[0].end_time.isoformat() == "2026-11-27T10:00:00"
+    assert pools[0].end_time.isoformat() == "2026-11-27T10:00:00+08:00"
 
 
 @pytest.mark.parametrize("table", ["peak_pool", "peak_expert_pool", "peak_pool_vote"])

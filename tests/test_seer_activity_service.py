@@ -33,8 +33,8 @@ def _row(
     return {
         "id": activity_id,
         "name": name,
-        "start_time": "2026-06-01 10:00:00",
-        "end_time": f"2026-06-{end_day:02d} 10:00:00",
+        "start_time": "2026-06-01 02:00:00",
+        "end_time": f"2026-06-{end_day:02d} 02:00:00",
         "sort_order": activity_id,
     }
 
