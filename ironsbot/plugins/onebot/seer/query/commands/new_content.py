@@ -206,12 +206,25 @@ def _content_prompt(
     layout: NewContentMenuLayout,
 ) -> Prompt[NewContentAction]:
     menu = build_new_content_menu(snapshot, layout)
+    visible_index = 0
+    items: list[PromptItem[NewContentAction]] = []
+    for choice in menu.choices:
+        key = choice.key
+        if choice.is_visible and layout.focused_category is not None:
+            visible_index += 1
+            key = str(visible_index)
+        items.append(
+            PromptItem(
+                choice.name,
+                choice.description,
+                choice.action,
+                key=key,
+                is_visible=choice.is_visible,
+            )
+        )
     return Prompt(
         title=menu.title,
-        items=[
-            PromptItem(choice.name, choice.description, choice.action, key=choice.key)
-            for choice in menu.choices
-        ],
+        items=items,
     )
 
 
