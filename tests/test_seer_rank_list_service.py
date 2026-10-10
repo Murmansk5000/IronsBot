@@ -259,7 +259,7 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
         rank_key="大师段位",
         score=400004,
     )
-    assert parse_rank_score_command("样本群星榜3149分") is None
+    assert parse_rank_score_command("样本群星之巅榜3149分") is None
     assert parse_rank_score_command("群星之巅榜第3149名") is None
 
 
@@ -387,6 +387,12 @@ def test_parse_rank_list_command_uses_configured_default_limit() -> None:
         start_rank=1,
         limit=100,
     )
+    assert parse_rank_list_command("皮肤榜200-1") == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+        start_rank=1,
+        limit=100,
+    )
 
 
 def test_parse_rank_list_command_reads_local_aliases() -> None:
@@ -404,7 +410,7 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         start_rank=21,
         limit=20,
     )
-    assert parse_rank_list_command("样本群星榜") == RankListCommand(
+    assert parse_rank_list_command("样本群星之巅榜") == RankListCommand(
         kind="local",
         rank_key="群星牌",
     )
@@ -418,7 +424,8 @@ def test_parse_rank_list_command_ignores_unknown_text() -> None:
     assert parse_rank_list_command("榜单帮助") is None
     assert parse_rank_list_command("米米号查询") is None
     assert parse_rank_list_command("图鉴榜第0页") is None
-    assert parse_rank_list_command("图鉴榜100-1") is None
+    assert parse_rank_list_command("图鉴榜0-1") is None
+    assert parse_rank_list_command("图鉴榜1-0") is None
 
 
 def test_parse_rank_cache_batch_command_requires_admin_prefix_and_global_rank() -> None:

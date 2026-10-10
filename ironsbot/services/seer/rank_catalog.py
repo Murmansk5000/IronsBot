@@ -55,6 +55,9 @@ def build_rank_command_map() -> dict[str, tuple[str, str]]:
         "专家段位": ("样本专家段位榜", "机器人专家段位榜", "样本专家榜"),
         "专家胜率": ("样本专家胜率榜", "机器人专家胜率榜"),
         "专家场次": ("样本专家场次榜", "机器人专家场次榜", "专家场次榜"),
+        "大师段位": ("样本大师段位榜", "机器人大师段位榜", "样本大师榜"),
+        "大师胜率": ("样本大师胜率榜", "机器人大师胜率榜"),
+        "大师场次": ("样本大师场次榜", "机器人大师场次榜", "大师场次榜"),
         "巅峰总场次": (
             "样本场次榜",
             "样本场次总榜",
@@ -82,7 +85,9 @@ def build_rank_command_map() -> dict[str, tuple[str, str]]:
         )
         local_aliases[key] = (*local_aliases.get(key, ()), *names)
         if key == "群星牌":
-            local_aliases[key] = tuple(name.replace("群星牌", "群星") for name in local_aliases[key])
+            local_aliases[key] = tuple(
+                name.replace("群星牌", "群星") for name in local_aliases[key]
+            )
 
     for key, names in local_aliases.items():
         for name in names:

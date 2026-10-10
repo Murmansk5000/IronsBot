@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES, valid_peak_counts
 from ironsbot.services.seer.player_formatting_common import (
     METRIC_SEPARATOR,
     format_local_rank_suffix,
@@ -16,35 +17,12 @@ from ironsbot.services.seer.player_formatting_common import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ironsbot.services.seer.local_rank_models import LocalRankSummary
     from ironsbot.services.seer.rank_models import (
         PeakSeasonRankSummary,
         RankLookupResult,
     )
     from ironsbot.services.seer.sequ_extra import UnityPeakInfo
-
-
-def _resolve_peak_current(
-    result: RankLookupResult,
-    *,
-    candidate_score: int | None,
-    fallback_text: str,
-    score_formatter: Callable[[int], str],
-) -> tuple[str, bool]:
-    rank = getattr(result, "rank", None)
-    score = getattr(result, "score", None)
-    if rank is not None and score is not None:
-        return score_formatter(int(score)), int(score) == candidate_score
-
-    if bool(getattr(result, "queried", False)):
-        searched_limit = int(getattr(result, "searched_limit", 0) or 0)
-        if searched_limit > 0:
-            return f"当前赛季前{searched_limit}名未确认", candidate_score is not None
-        return "当前赛季未确认", candidate_score is not None
-
-    return fallback_text, candidate_score is not None
 
 
 def _format_peak_rating_score(score: int) -> str:
@@ -64,15 +42,19 @@ def format_peak_line(  # noqa: PLR0913
     score_key: str,
     win_rate_key: str,
     match_key: str,
+    history_label: str = "历史",
+    invalid_counts: bool = False,
 ) -> str:
     match_text = ""
-    if match_count > 0:
+    if invalid_counts:
+        match_text = "场次数据异常"
+    elif match_count > 0:
         match_text = (
             f"场次{match_count}"
             f"{format_local_rank_suffix(local_summary, match_key, label='样本场次')}"
         )
     win_rate_text = ""
-    if win_rate:
+    if win_rate and not invalid_counts:
         win_rate_text = (
             f"胜率{win_rate}"
             f"{format_local_rank_suffix(local_summary, win_rate_key, label='样本胜率')}"
@@ -84,10 +66,12 @@ def format_peak_line(  # noqa: PLR0913
     elif failure:
         rank_text = f"赛季榜{failure}"
     elif rank_result.rank is not None:
-        rank_text = (
-            f"{format_peak_rank_text(rank_result.rank)}"
-            f"{format_local_rank_suffix(local_summary, score_key, label='样本段位')}"
+        sample_suffix = (
+            format_local_rank_suffix(local_summary, score_key, label="样本段位")
+            if not invalid_counts
+            else ""
         )
+        rank_text = f"{format_peak_rank_text(rank_result.rank)}{sample_suffix}"
     elif rank_result.queried:
         rank_text = (
             f"赛季榜前{rank_result.searched_limit}名未确认"
@@ -97,7 +81,7 @@ def format_peak_line(  # noqa: PLR0913
     else:
         rank_text = "赛季榜未查询"
     return (
-        f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
+        f"{title}：{current}{METRIC_SEPARATOR}{history_label}{history}"
         f"{METRIC_SEPARATOR}"
         f"{join_metric_parts(match_text, win_rate_text, rank_text)}"
     )
@@ -140,59 +124,37 @@ def format_compact_peak_section(  # noqa: PLR0913
     if player_id is not None:
         lines.append(format_player_identity(player_id, nick, nick_error))
 
-    resolved_modes = (
-        available_modes
-        if available_modes is not None
-        else frozenset(("standard", "wild", "expert"))
-    )
+    resolved_modes = available_modes if available_modes is not None else PEAK_MODE_NAMES
     errors = mode_errors or {}
 
     def unavailable_text(mode: str, *, current: bool = False) -> str:
         prefix = "当前" if current else ""
         return f"{prefix}暂未获取（{errors.get(mode, '查询未完成')}）"
 
-    standard_score = peak.current_j_rank * 100_000 + peak.current_j_star
-    wild_score = peak.current_k_rank * 100_000 + peak.current_k_star
     standard_available = "standard" in resolved_modes
     wild_available = "wild" in resolved_modes
     expert_available = "expert" in resolved_modes
-    standard_current, standard_stats_available = _resolve_peak_current(
-        peak_rank_summary.standard,
-        candidate_score=(
-            standard_score if standard_available and peak.current_j_all > 0 else None
-        ),
-        fallback_text=(
-            format_rank_star_compact(peak.current_j_rank, peak.current_j_star)
-            if standard_available
-            else unavailable_text("standard", current=True)
-        ),
-        score_formatter=_format_peak_rating_score,
+    master_available = "master" in resolved_modes
+    counts_valid = {
+        "standard": valid_peak_counts(peak.current_j_win, peak.current_j_all),
+        "wild": valid_peak_counts(peak.current_k_win, peak.current_k_all),
+        "expert": valid_peak_counts(peak.current_z_win, peak.current_z_all),
+        "master": valid_peak_counts(peak.current_m_win, peak.current_m_all),
+    }
+    standard_current = (
+        format_rank_star_compact(peak.current_j_rank, peak.current_j_star)
+        if standard_available
+        else unavailable_text("standard", current=True)
     )
-    wild_current, wild_stats_available = _resolve_peak_current(
-        peak_rank_summary.wild,
-        candidate_score=(
-            wild_score if wild_available and peak.current_k_all > 0 else None
-        ),
-        fallback_text=(
-            format_rank_star_compact(peak.current_k_rank, peak.current_k_star)
-            if wild_available
-            else unavailable_text("wild", current=True)
-        ),
-        score_formatter=_format_peak_rating_score,
+    wild_current = (
+        format_rank_star_compact(peak.current_k_rank, peak.current_k_star)
+        if wild_available
+        else unavailable_text("wild", current=True)
     )
-    expert_current, expert_stats_available = _resolve_peak_current(
-        peak_rank_summary.expert,
-        candidate_score=(
-            peak.current_z_score
-            if expert_available and peak.current_z_all > 0
-            else None
-        ),
-        fallback_text=(
-            f"{peak.current_z_score}分"
-            if expert_available
-            else unavailable_text("expert", current=True)
-        ),
-        score_formatter=lambda score: f"{score}分",
+    expert_current = (
+        f"{peak.current_z_score}分"
+        if expert_available
+        else unavailable_text("expert", current=True)
     )
 
     lines.extend(
@@ -205,10 +167,12 @@ def format_compact_peak_section(  # noqa: PLR0913
                     if standard_available
                     else unavailable_text("standard")
                 ),
-                match_count=peak.current_j_all if standard_stats_available else 0,
+                match_count=peak.current_j_all if standard_available else 0,
                 win_rate=(
                     format_win_rate(peak.current_j_win, peak.current_j_all)
-                    if standard_stats_available
+                    if standard_available
+                    and counts_valid["standard"]
+                    and peak.current_j_all > 0
                     else ""
                 ),
                 rank_result=peak_rank_summary.standard,
@@ -216,6 +180,7 @@ def format_compact_peak_section(  # noqa: PLR0913
                 score_key="peak_standard",
                 win_rate_key="peak_standard_win_rate",
                 match_key="peak_standard_matches",
+                invalid_counts=standard_available and not counts_valid["standard"],
             ),
             format_peak_line(
                 "狂野",
@@ -225,10 +190,12 @@ def format_compact_peak_section(  # noqa: PLR0913
                     if wild_available
                     else unavailable_text("wild")
                 ),
-                match_count=peak.current_k_all if wild_stats_available else 0,
+                match_count=peak.current_k_all if wild_available else 0,
                 win_rate=(
                     format_win_rate(peak.current_k_win, peak.current_k_all)
-                    if wild_stats_available
+                    if wild_available
+                    and counts_valid["wild"]
+                    and peak.current_k_all > 0
                     else ""
                 ),
                 rank_result=peak_rank_summary.wild,
@@ -236,6 +203,7 @@ def format_compact_peak_section(  # noqa: PLR0913
                 score_key="peak_wild",
                 win_rate_key="peak_wild_win_rate",
                 match_key="peak_wild_matches",
+                invalid_counts=wild_available and not counts_valid["wild"],
             ),
             format_peak_line(
                 "专家",
@@ -245,10 +213,12 @@ def format_compact_peak_section(  # noqa: PLR0913
                     if expert_available
                     else unavailable_text("expert")
                 ),
-                match_count=peak.current_z_all if expert_stats_available else 0,
+                match_count=peak.current_z_all if expert_available else 0,
                 win_rate=(
                     format_win_rate(peak.current_z_win, peak.current_z_all)
-                    if expert_stats_available
+                    if expert_available
+                    and counts_valid["expert"]
+                    and peak.current_z_all > 0
                     else ""
                 ),
                 rank_result=peak_rank_summary.expert,
@@ -256,8 +226,48 @@ def format_compact_peak_section(  # noqa: PLR0913
                 score_key="peak_expert",
                 win_rate_key="peak_expert_win_rate",
                 match_key="peak_expert_matches",
+                invalid_counts=expert_available and not counts_valid["expert"],
             ),
-            format_master_peak_line(peak_rank_summary.master),
+            format_peak_line(
+                "大师",
+                current=(
+                    format_rank_star_compact(peak.current_m_rank, peak.current_m_star)
+                    if master_available
+                    else unavailable_text("master", current=True)
+                ),
+                history=(
+                    format_rank_star_compact(peak.history_m_rank, peak.history_m_star)
+                    if master_available
+                    else unavailable_text("master")
+                ),
+                match_count=(peak.current_m_all or 0) if master_available else 0,
+                win_rate=(
+                    format_win_rate(peak.current_m_win, peak.current_m_all)
+                    if master_available
+                    and counts_valid["master"]
+                    and peak.current_m_all is not None
+                    and peak.current_m_all > 0
+                    else ""
+                ),
+                rank_result=peak_rank_summary.master,
+                local_summary=local_summary,
+                score_key="peak_master",
+                win_rate_key="peak_master_win_rate",
+                match_key="peak_master_matches",
+                invalid_counts=master_available and not counts_valid["master"],
+            ),
         ]
     )
+    if (
+        resolved_modes == PEAK_MODE_NAMES
+        and all(counts_valid.values())
+        and peak.current_m_all is not None
+    ):
+        total = (
+            peak.current_j_all
+            + peak.current_k_all
+            + peak.current_z_all
+            + peak.current_m_all
+        )
+        lines.append(f"巅峰总场次：{total}场（各模式当前赛季合计）")
     return "\n".join(lines)

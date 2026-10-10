@@ -329,6 +329,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     standard_score: int | None = None,
     wild_score: int | None = None,
     expert_score: int | None = None,
+    master_score: int | None = None,
     current_peak_sub_key: int | None,
     find_rank: FindRank,
     current_master_sub_key: int | None = None,
@@ -377,7 +378,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
                 score_name="段位分",
                 key=MASTER_PEAK_USER_RANK_KEY,
                 sub_key=current_master_sub_key,
-                candidate_score=None,
+                candidate_score=master_score,
                 search_without_score=True,
             )
         )
