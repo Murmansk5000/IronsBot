@@ -3,10 +3,11 @@ from contextlib import nullcontext
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.time import now
@@ -19,6 +20,7 @@ from ironsbot.services.seer.player_service_models import (
     _BackgroundRefresh,
 )
 from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_queries import LOCAL_SAMPLE_TIMEOUT_SECONDS
 from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.rank_constants import (
     BOOK_RANK_KEY,
@@ -42,6 +44,14 @@ from ironsbot.services.seer.sequ_extra import (
 PLAYER_ID = 712345678
 
 
+def test_sample_budget_and_background_grace() -> None:
+    expected_sample_timeout = 10.0
+    expected_background_timeout = 41.0
+    assert expected_sample_timeout == LOCAL_SAMPLE_TIMEOUT_SECONDS
+    service = _service(enabled=True)
+    assert service._background_refresh_timeout_seconds() == expected_background_timeout
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["collection", "peak", "autocard"])
 @pytest.mark.parametrize("route", ["foreground", "background"])
@@ -56,6 +66,10 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
     config.player.detail_timeout_seconds = 0.3
     config.rank.player_lookup.total_timeout_seconds = 0.28
     config.rank.player_lookup.page_timeout_seconds = 0.04
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.LOCAL_SAMPLE_TIMEOUT_SECONDS",
+        0.05,
+    )
     sample_started = asyncio.Event()
     sample_drained = asyncio.Event()
     pages_drained: list[str] = []
@@ -89,6 +103,9 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
 
         def current_peak_sub_key(self) -> int:
             return 7
+
+        def current_master_sub_key(self) -> int:
+            return 8
 
         async def fetch_player_summary(
             self, game: Any, player_id: int, **kwargs: Any
@@ -189,7 +206,7 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
                 config=SimpleNamespace(enabled=True), upsert_metrics=sample
             ),
         ),
-        cast("Any", Mock(side_effect=AssertionError("unexpected background task"))),
+        TaskOwner().create,
     )
     command = PlayerShortcutCommand(kind=kind, player_id=PLAYER_ID)
     if route == "foreground":
@@ -250,7 +267,14 @@ def _service(
 
     return PlayerDetailService(
         cast("Any", config),
-        cast("Any", SimpleNamespace(config=config.rank)),
+        cast(
+            "Any",
+            SimpleNamespace(
+                config=config.rank,
+                current_peak_sub_key=lambda: 7,
+                current_master_sub_key=lambda: 8,
+            ),
+        ),
         cast("Any", object()),
         cast("Any", spawn),
     )
@@ -588,7 +612,7 @@ def test_background_refresh_expiration_releases_inflight_section(
 
 
 @pytest.mark.asyncio
-async def test_partial_background_reply_is_delivered_but_not_reused(
+async def test_partial_background_reply_does_not_complete_foreground_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = _service(enabled=True)
@@ -623,7 +647,7 @@ async def test_partial_background_reply_is_delivered_but_not_reused(
     await asyncio.sleep(0)
     release.set()
     try:
-        assert await waiter is partial_reply
+        assert await waiter is None
         assert not service._cached_replies
         assert await service.cached_or_inflight_reply(PLAYER_ID, "collection") is None
         assert service.has_inflight_refresh(PLAYER_ID, "peak")
@@ -696,6 +720,26 @@ def test_partial_reply_does_not_replace_complete_cache() -> None:
         PLAYER_ID, "collection", QueryReply(text="partial", complete=False)
     )
     assert service._cached_reply(PLAYER_ID, "collection") is complete
+
+
+def test_peak_reply_cache_requires_current_protocol_and_season() -> None:
+    service = _service(enabled=True)
+    stamp = now().timestamp()
+    collection = QueryReply(text="collection", fetched_at=stamp)
+    peak = QueryReply(text="peak", fetched_at=stamp)
+    service._store_reply(PLAYER_ID, "collection", collection)
+    service._store_reply(PLAYER_ID, "peak", peak)
+    current_cycle = service._peak_cache_cycle
+    assert current_cycle is not None
+    # Simulate a reply assembled with the old three-field master protocol.
+    service._peak_cache_cycle = (current_cycle[0], current_cycle[1][:-1])
+    assert service._cached_reply(PLAYER_ID, "peak") is None
+    assert service._cached_reply(PLAYER_ID, "collection") is collection
+    service._store_reply(PLAYER_ID, "peak", peak)
+    assert service._cached_reply(PLAYER_ID, "peak") is peak
+    service._peak_cache_cycle = ((None, None), current_cycle[1])
+    assert service._cached_reply(PLAYER_ID, "peak") is None
+    assert service._cached_reply(PLAYER_ID, "collection") is collection
 
 
 @pytest.mark.asyncio

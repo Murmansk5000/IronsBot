@@ -18,6 +18,7 @@ from ironsbot.services.operations.request_feedback import request_feedback_scope
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.observation_cache import ObservationCache
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
     from ironsbot.services.seer.query_result import QueryReply
@@ -84,6 +85,8 @@ class PlayerShortcutDependencies:
     timeout_seconds: float
     detail_timeout_seconds: float
     rank_timeout_seconds: float
+    observations: ObservationCache | None = None
+    observation_ttl: float = 300
 
 
 def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | None:

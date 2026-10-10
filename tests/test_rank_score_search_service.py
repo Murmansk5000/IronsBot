@@ -1,3 +1,5 @@
+import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -7,6 +9,7 @@ from ironsbot.services.seer.rank_list_models import GlobalRankSpec
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
 )
+from ironsbot.services.seer.rank_live_lookup import execute_rank_lookup
 from ironsbot.services.seer.rank_models import (
     RankEntry,
     RankLookupResult,
@@ -45,6 +48,7 @@ SHORT_SEGMENT_START = 6
 SHORT_SEGMENT_END = 9
 OBSERVED_AT = 1781234567.0
 SAMPLE_MATCH_END = 2
+EXPECTED_PLAYER_RANK = 2
 
 
 @pytest.mark.parametrize("truncated", [False, True])
@@ -154,6 +158,163 @@ async def test_changed_sampling_cannot_confirm_player_or_population(
                 ),
             )
     assert calls == [0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("public_score", "scores"),
+    [
+        (400_183, (400_220, 400_182, 400_180)),
+        (400_086, (400_220, 400_087, 400_086)),
+    ],
+)
+async def test_peak_player_is_confirmed_near_stale_public_score(
+    public_score: int, scores: tuple[int, ...]
+) -> None:
+    entries = tuple(
+        RankEntry(500_000 + index, f"player-{index}", score)
+        for index, score in enumerate(scores)
+    )
+    requests: list[tuple[int, int]] = []
+
+    async def page(
+        _game: object, *, start: int, end: int, **_kwargs: object
+    ) -> RankPageResult:
+        requests.append((start, end))
+        return RankPageResult(list(entries[start : end + 1]), OBSERVED_AT)
+
+    service = SimpleNamespace(
+        cache=SimpleNamespace(item=lambda **_kwargs: None),
+        config=SimpleNamespace(
+            player_lookup=SimpleNamespace(
+                recent_cache_max_age_seconds=600,
+                recent_cache_anchor_timeout_seconds=5,
+            )
+        ),
+        fetch_page_result=page,
+        page_parallelism=lambda: 1,
+        _probe_limit=lambda _limit: PROBE_LIMIT,
+        _tie_page_limit=lambda: 2,
+        exclusion_policy=SimpleNamespace(excluded_user_ids=lambda _key: set()),
+    )
+    result = await execute_rank_lookup(
+        service,
+        None,
+        user_id=entries[1].id,
+        rank_key="wild_peak",
+        key=182,
+        sub_key=20260717,
+        score_target=public_score,
+        limit=len(entries),
+        page_size=2,
+        result=RankLookupResult(
+            title="狂野赛季榜", score_name="段位分", searched_limit=len(entries)
+        ),
+        anchor_only=False,
+        fallback_item=None,
+    )
+
+    assert result.rank == EXPECTED_PLAYER_RANK
+    assert result.score == public_score
+    assert result.observed_score == entries[1].score
+    assert result.failure is None
+    assert len(requests) <= PROBE_LIMIT + 4
+
+    service.cache.item = lambda **_kwargs: SimpleNamespace(
+        rank_index=1,
+        score=entries[1].score,
+        fetched_at=time.time(),
+    )
+    cached = await execute_rank_lookup(
+        service,
+        None,
+        user_id=entries[1].id,
+        rank_key="wild_peak",
+        key=182,
+        sub_key=20260717,
+        score_target=public_score,
+        limit=len(entries),
+        page_size=2,
+        result=RankLookupResult(
+            title="狂野赛季榜", score_name="段位分", searched_limit=len(entries)
+        ),
+        anchor_only=False,
+        fallback_item=None,
+    )
+    assert cached.rank == EXPECTED_PLAYER_RANK
+    assert cached.score == public_score
+    assert cached.observed_score == entries[1].score
+    assert not cached.cost.used_score_search
+
+
+@pytest.mark.asyncio
+async def test_non_peak_score_lookup_does_not_search_nearby_players() -> None:
+    entries = (
+        RankEntry(1, "first", 200),
+        RankEntry(2, "second", 180),
+        RankEntry(3, "third", 160),
+    )
+
+    async def page(
+        _game: object, *, start: int, end: int, **_kwargs: object
+    ) -> RankPageResult:
+        return RankPageResult(list(entries[start : end + 1]), OBSERVED_AT)
+
+    result = await find_rank_by_score(
+        None,
+        user_id=2,
+        key=17,
+        sub_key=0,
+        target_score=181,
+        limit=len(entries),
+        page_size=2,
+        result=RankLookupResult(title="成就榜", score_name="点", searched_limit=3),
+        score_search_probe_limit=lambda _: PROBE_LIMIT,
+        score_search_tie_page_limit=lambda: 2,
+        fetch_rank_page=page,
+    )
+    assert result.rank is None
+
+
+@pytest.mark.asyncio
+async def test_nearby_rank_lookup_rejects_conflicting_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.seer.rank_score_lookup.locate_descending_score_range",
+        AsyncMock(
+            return_value=DescendingScoreRange(
+                last_index=3, insertion_index=2, boundary_score=70
+            )
+        ),
+    )
+
+    async def page(
+        _game: object, *, start: int, end: int, **_kwargs: object
+    ) -> RankPageResult:
+        del end
+        entries = (
+            (RankEntry(1, "first", 100), RankEntry(2, "second", 80)),
+            (RankEntry(2, "duplicate", 80), RankEntry(4, "fourth", 70)),
+        )
+        return RankPageResult(list(entries[start // 2]), OBSERVED_AT)
+
+    result = await find_rank_by_score(
+        None,
+        user_id=999,
+        key=182,
+        sub_key=20260717,
+        target_score=81,
+        limit=4,
+        page_size=2,
+        result=RankLookupResult(title="狂野赛季榜", score_name="段位分"),
+        score_search_probe_limit=lambda _: PROBE_LIMIT,
+        score_search_tie_page_limit=lambda: 2,
+        fetch_rank_page=page,
+        allow_nearby_player_lookup=True,
+    )
+    assert result.rank is None
+    assert result.failure is not None and "发生变化" in result.failure
 
 
 @pytest.mark.asyncio
