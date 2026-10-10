@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ironsbot.core.semantic_requests import SemanticTarget
     from ironsbot.services.seer.query_work import QueryWorkResult
     from ironsbot.services.seer.rank_models import RankLookupResult
@@ -25,6 +27,11 @@ class QueryReply:
     # Partial replies are deliverable but cannot populate the complete-reply cache.
     complete: bool = True
     fetched_at: float | None = None
+    refresh_text: Callable[[], str] | None = None
+
+    def refreshed(self) -> QueryReply:
+        text = self.refresh_text() if self.refresh_text else self.text
+        return replace(self, text=text) if text != self.text else self
 
     def to_outbound(self) -> OutboundMessage:
         parts: list[TextPart | BinaryImagePart] = []

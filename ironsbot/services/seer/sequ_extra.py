@@ -1,39 +1,33 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
 import asyncio
 import logging
 import struct
 from dataclasses import dataclass
-from typing import Any
+from functools import partial
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.binary import BufferReader
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.tasks import OperationDeadline
 from ironsbot.core.time import ObservationTime
+from ironsbot.services.seer.observation_cache import CachedObservation
+from ironsbot.services.seer.peak_modes import PEAK_MODES, valid_peak_counts
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.observation_cache import ObservationCache
 
 logger = logging.getLogger(__name__)
 
 UNITY_INFO_CMD = 41298
 USER_FOREVER_VALUE_CMD = 40002
 PEAK_QUERY_DELAY_SECONDS = 0.005
-PEAK_PARAMS: tuple[int, ...] = (
-    124801,
-    124802,
-    124804,
-    124805,
-    124791,
-    124792,
-    124793,
-    124794,
-    129441,
-    129443,
-    129446,
-    129447,
+PEAK_PARAMS_BY_MODE = tuple(
+    (mode.slug, mode.personal_params) for mode in PEAK_MODES.values()
 )
-PEAK_PARAMS_BY_MODE: tuple[tuple[str, tuple[int, ...]], ...] = (
-    ("standard", PEAK_PARAMS[0:4]),
-    ("wild", PEAK_PARAMS[4:8]),
-    ("expert", PEAK_PARAMS[8:12]),
-)
+PEAK_PARAMS = tuple(param for _, params in PEAK_PARAMS_BY_MODE for param in params)
+PEAK_PERSONAL_SCHEMA = PEAK_PARAMS
 
 
 @dataclass(slots=True)
@@ -65,6 +59,13 @@ class UnityPeakInfo:
     history_z_score: int = 0
     current_z_win: int = 0
     current_z_all: int = 0
+    current_m_star: int = 0
+    current_m_rank: int = 0
+    history_m_star: int = 0
+    history_m_rank: int = 0
+    current_m_win: int = 0
+    # None denotes unavailable data, not a player with zero matches.
+    current_m_all: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +101,8 @@ def parse_unity_part_one(data: bytes | bytearray | memoryview) -> UnityPartOneIn
 
 
 def parse_unity_peak(data: bytes | bytearray | memoryview) -> UnityPeakInfo:
+    if len(data) != len(PEAK_PARAMS) * 4:
+        raise ValueError("巅峰个人数据字段不完整")
     reader = BufferReader(data)
     return UnityPeakInfo(
         current_j_star=reader.read_uint16() if reader.has_remaining(2) else 0,
@@ -118,6 +121,12 @@ def parse_unity_peak(data: bytes | bytearray | memoryview) -> UnityPeakInfo:
         history_z_score=reader.read_uint32() if reader.has_remaining(4) else 0,
         current_z_win=reader.read_uint32() if reader.has_remaining(4) else 0,
         current_z_all=reader.read_uint32() if reader.has_remaining(4) else 0,
+        current_m_star=reader.read_uint16() if reader.has_remaining(2) else 0,
+        current_m_rank=reader.read_uint16() if reader.has_remaining(2) else 0,
+        history_m_star=reader.read_uint16() if reader.has_remaining(2) else 0,
+        history_m_rank=reader.read_uint16() if reader.has_remaining(2) else 0,
+        current_m_win=reader.read_uint32() if reader.has_remaining(4) else 0,
+        current_m_all=reader.read_uint32(),
     )
 
 
@@ -130,24 +139,35 @@ async def fetch_unity_part_one(game: Any, player_id: int) -> UnityPartOneInfo:
     return parse_unity_part_one(await _fetch_unity_part(game, 1, player_id))
 
 
-async def fetch_unity_peak(game: Any, player_id: int) -> UnityPeakInfo:
+async def fetch_unity_peak(
+    game: Any, player_id: int, *, mode: str | None = None
+) -> UnityPeakInfo:
     chunks: list[bytes] = []
-    for param in PEAK_PARAMS:
-        _head, body = await game.send_and_wait(
-            USER_FOREVER_VALUE_CMD,
-            player_id,
-            param,
-        )
-        chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
-        await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
+    if mode is not None and mode not in dict(PEAK_PARAMS_BY_MODE):
+        raise ValueError(mode)
+    for name, params in PEAK_PARAMS_BY_MODE:
+        for param in params:
+            if mode is not None and name != mode:
+                chunks.append(struct.pack("!I", 0))
+                continue
+            _head, body = await game.send_and_wait(
+                USER_FOREVER_VALUE_CMD,
+                player_id,
+                param,
+            )
+            chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
+            await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
     return parse_unity_peak(b"".join(chunks))
 
 
-async def fetch_unity_peak_partial(
+async def fetch_unity_peak_partial(  # noqa: PLR0913
     game: Any,
     player_id: int,
     *,
     timeout_seconds: float,
+    observations: ObservationCache | None = None,
+    observation_ttl: float = 300,
+    cycles: tuple[int | None, int | None] = (None, None),
 ) -> UnityPeakFetchResult:
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
@@ -160,6 +180,7 @@ async def fetch_unity_peak_partial(
     mode_errors: list[tuple[str, str]] = []
     observation = ObservationTime()
 
+    start = 0
     for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
         # Share the remaining stage budget; an early failure cannot take every
         # later mode's turn, and fast modes leave their unused time available.
@@ -168,23 +189,37 @@ async def fetch_unity_peak_partial(
         mode_chunks: list[bytes] = []
         mode_observation = ObservationTime()
         failed_param = params[0]
+        progress = {"param": failed_param}
+        mode_season = cycles[1 if mode == "master" else 0]
+        cache_key = (
+            (player_id, "peak_mode", mode, mode_season, params)
+            if mode == "master"
+            else (player_id, "peak_mode", mode, mode_season)
+        )
+        cached = (
+            None
+            if observations is None or mode_season is None
+            else observations.get(
+                cache_key,
+                observation_ttl,
+            )
+        )
+        if cached is not None:
+            chunks[start : start + len(params)] = cached.value
+            start += len(params)
+            available_modes.append(mode)
+            observation.include(cached.fetched_at)
+            continue
         try:
-            for param in params:
-                failed_param = param
-                remaining = mode_deadline.remaining()
-                _head, body = await asyncio.wait_for(
-                    mode_observation.observe(
-                        lambda param=param: game.send_and_wait(
-                            USER_FOREVER_VALUE_CMD, player_id, param
-                        )
-                    ),
-                    timeout=remaining,
-                )
-                mode_chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
-                if param != params[-1]:
-                    await asyncio.sleep(
-                        mode_deadline.remaining(PEAK_QUERY_DELAY_SECONDS)
-                    )
+            read = partial(
+                _read_peak_mode, game, player_id, params, mode_deadline, progress
+            )
+            if observations is not None and mode_season is not None:
+                item = await observations.share(cache_key, read)
+            else:
+                item = await read()
+            mode_chunks = item.value
+            mode_observation.include(item.fetched_at)
         except Exception as error:  # noqa: BLE001
             if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
                 error_text = "查询超时"
@@ -195,20 +230,58 @@ async def fetch_unity_peak_partial(
                 "worker_ref=%s error=%s",
                 player_id,
                 mode,
-                failed_param,
+                progress["param"],
                 reference_digest(str(getattr(game, "user_id", "unknown"))),
                 error_text,
             )
             mode_errors.append((mode, error_text))
+            start += len(params)
             continue
-        start = mode_index * len(params)
         chunks[start : start + len(params)] = mode_chunks
+        start += len(params)
         available_modes.append(mode)
         observation.include(mode_observation.fetched_at)
+        counts_valid = valid_peak_counts(
+            *struct.unpack("!2I", b"".join(mode_chunks[-2:]))
+        )
+        if not counts_valid:
+            mode_errors.append((mode, "场次数据异常"))
+        if observations is not None and mode_season is not None and counts_valid:
+            observations.save(cache_key, mode_chunks, mode_observation.fetched_at)
 
+    info = parse_unity_peak(b"".join(chunks))
+    info.current_m_all = info.current_m_all if "master" in available_modes else None
     return UnityPeakFetchResult(
-        info=parse_unity_peak(b"".join(chunks)),
+        info=info,
         available_modes=frozenset(available_modes),
         mode_errors=tuple(mode_errors),
         fetched_at=observation.fetched_at,
     )
+
+
+async def _read_peak_mode(
+    game: Any,
+    player_id: int,
+    params: tuple[int, ...],
+    deadline: OperationDeadline,
+    progress: dict[str, int],
+) -> CachedObservation:
+    chunks: list[bytes] = []
+    observation = ObservationTime()
+    for param in params:
+        progress["param"] = param
+        _head, body = await asyncio.wait_for(
+            observation.observe(
+                lambda param=param: game.send_and_wait(
+                    USER_FOREVER_VALUE_CMD,
+                    player_id,
+                    param,
+                )
+            ),
+            timeout=deadline.remaining(),
+        )
+        chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
+        if param != params[-1]:
+            await asyncio.sleep(deadline.remaining(PEAK_QUERY_DELAY_SECONDS))
+    assert observation.fetched_at is not None
+    return CachedObservation(chunks, observation.fetched_at)
