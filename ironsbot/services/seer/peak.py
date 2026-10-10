@@ -7,7 +7,6 @@ from collections.abc import Awaitable, Callable, Iterable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import timezone
-from enum import Enum
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from ironsbot.core import time
@@ -20,6 +19,21 @@ from ironsbot.services.operations.headless_errors import (
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.new_content import NewContentIndexUnavailableError
+from ironsbot.services.seer.peak_modes import (
+    PEAK_PET_KEY_MAP as PEAK_PET_KEY_MAP,  # noqa: PLC0414
+)
+from ironsbot.services.seer.peak_modes import (
+    PEAK_SUIT_KEY_MAP as PEAK_SUIT_KEY_MAP,  # noqa: PLC0414
+)
+from ironsbot.services.seer.peak_modes import (
+    PEAK_TITLE_KEY_MAP as PEAK_TITLE_KEY_MAP,  # noqa: PLC0414
+)
+from ironsbot.services.seer.peak_modes import (
+    PEAK_TYPE_NAME_MAP as PEAK_TYPE_NAME_MAP,  # noqa: PLC0414
+)
+from ironsbot.services.seer.peak_modes import (
+    PeakType as PeakType,  # noqa: PLC0414
+)
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 
 if TYPE_CHECKING:
@@ -45,12 +59,6 @@ class PeakItemData:
         if self.count == 0:
             return 0
         return round(self.win / self.count * 100, 2)
-
-
-class PeakType(Enum):
-    STANDARD = 1
-    WILD = 2
-    EXPERT = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +132,8 @@ class PeakRepository(Protocol):
     def votes(self) -> tuple[PeakVoteSnapshot, ...]: ...
 
     def period(self, *, monthly: bool) -> PeakPeriodTimes | None: ...
+
+    def master_period(self, *, monthly: bool) -> PeakPeriodTimes | None: ...
 
     def pets(self, pet_ids: set[int]) -> dict[int, PeakPetSnapshot]: ...
 
@@ -246,12 +256,6 @@ class PeakGame(Protocol):
     ) -> tuple[list[PeakItemData], list[RankEntry]]: ...
 
 
-PEAK_TYPE_NAME_MAP = {
-    PeakType.STANDARD: "竞技",
-    PeakType.WILD: "狂野",
-    PeakType.EXPERT: "专家",
-}
-
 PEAK_POOL_COMMANDS = (
     "竞技池",
     "竞技池变化",
@@ -297,23 +301,6 @@ PEAK_RANK_COMMANDS = (
     *PEAK_PET_RANK_COMMANDS,
 )
 
-PEAK_PET_KEY_MAP = {
-    PeakType.STANDARD: (177, 93, 94),
-    PeakType.WILD: (185, 184, 183),
-    PeakType.EXPERT: (202, 201, 200),
-}
-
-PEAK_SUIT_KEY_MAP = {
-    PeakType.STANDARD: (173, 174),
-    PeakType.WILD: (186, 187),
-    PeakType.EXPERT: (203, 204),
-}
-
-PEAK_TITLE_KEY_MAP = {
-    PeakType.STANDARD: (175, 176),
-    PeakType.WILD: (188, 189),
-    PeakType.EXPERT: (205, 206),
-}
 
 LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
@@ -440,7 +427,9 @@ def sort_peak_pool_votes_by_time(
 
 
 def parse_peak_type(command: str) -> tuple[str, PeakType]:
-    if "专家" in command:
+    if "大师" in command:
+        peak_type = PeakType.MASTER
+    elif "专家" in command:
         peak_type = PeakType.EXPERT
     elif "狂野" in command:
         peak_type = PeakType.WILD
@@ -689,7 +678,12 @@ class PeakQueryService:
         if game is None:
             return PeakQueryResult(message=error)
         name, peak_type = parse_peak_type(command)
-        period = peak_pet_period(self._repository.period(monthly=False), monthly=False)
+        source = (
+            self._repository.master_period(monthly=False)
+            if peak_type is PeakType.MASTER
+            else self._repository.period(monthly=False)
+        )
+        period = peak_pet_period(source, monthly=False)
         if period is None:
             return PeakQueryResult(
                 message="❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
@@ -734,7 +728,10 @@ class PeakQueryService:
         monthly = "月" in command
         with self._render_session() as rendering:
             period = peak_pet_period(
-                rendering.repository.period(monthly=monthly), monthly=monthly
+                rendering.repository.master_period(monthly=monthly)
+                if peak_type is PeakType.MASTER
+                else rendering.repository.period(monthly=monthly),
+                monthly=monthly,
             )
             if period is None:
                 return PeakQueryResult(
