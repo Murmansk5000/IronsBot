@@ -68,5 +68,7 @@ remains a separate external acceptance item.
 
 ## Season Compatibility
 
-This historical stage retains separate master and regular season scopes.
-The later common-season transition and migration remain at their original nodes.
+Individual master samples use the master subkey. Four-mode total samples use
+the exact negative integer pair `-(regular * 100000000 + master)`. This fits
+SQLite int64 for eight-digit date subkeys, needs no schema migration and
+excludes legacy three-mode totals. Changing either season changes the scope.
