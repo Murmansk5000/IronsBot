@@ -128,6 +128,7 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 | 2026-09-13 | 热构建 FFDec 门 | 完整/缺失生成 PNG 计划测试、工作流条件结构与 YAML 解析；SeerAPI 全量 `335 passed`；Ruff、CLI、compileall、diff check | 座驾生成器先复用旧 PNG、裁剪 Unity 已覆盖和退役项，再输出精确候选数；候选为空时不安装 FFDec，候选存在时继续执行原下载、渲染、pending 与增量发布路径。真实 Actions 耗时仍待量化。 |
 | 2026-09-13 | SWF 可用性预检 | 当前 v3 数据库的 11 个 Flash 候选真实预检；SeerAPI `09d66dc` 全量 `338 passed`、Ruff、compileall、diff check | 11 个官方 URL 均明确返回 404，计划输出 `renderer_required=False`，不再仅因 PNG 缺失就安装 FFDec；可下载源或瞬时网络/服务错误仍保守启用 renderer。缺图继续记 pending，不生成占位图，也不宣称 scope 完整。 |
 | 2026-09-13 | 官方图标候选复用 | 当前发布锁定 revision 对 11 个缺少完整预览图的座驾逐项 HTTP 验证；真实 v3 数据库重算 manifest 与 Flash 计划；SeerAPI 全量 `339 passed`；IronsBot 全量 `3241 passed, 7 skipped` | 其中 9 个存在官方 `cloth/icon/{id}.png`，生产者与消费者统一加入第二候选后，官方素材覆盖由 25/36 提升至 34/36；Flash 计划降为 `mounts=2 candidates=2 renderer_required=false`。仅 `1301150`、`1301170` 仍无 Unity PNG 且 Flash 404。没有复制图片、增加数据库或扩大机器人镜像。 |
+| 2026-09-26 | 发布分支和普通查询复核 | 远端 `generated-render-assets` revision、对应本地 Git tree、普通座驾查询到统一图片源的测试 | 分支存在，但当前 revision `237be239a698833317671bf750b5e2e18be962ab` 仅含 `README.md`，没有 `mount/*.png`；正式生成素材发布仍未验收。普通查询已复用统一候选链，并修正网络故障后最后一个 CDN 404 被误认为全部缺图的问题。 |
 
 ## Progress
 
