@@ -16,6 +16,7 @@ from ironsbot.services.operations.headless_errors import (
     SocketRecvError,
 )
 from ironsbot.services.operations.request_feedback import send_request_feedback
+from ironsbot.services.seer.observation_cache import ObservationCache
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
     _BackgroundRefresh,
@@ -48,6 +49,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
+    from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
     from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
     from ironsbot.services.seer.rank import RankService
@@ -69,6 +71,8 @@ class PlayerDetailService:
         self._local_rank = local_rank
         self._spawn = spawn
         self._requests = requests
+        self._observations = ObservationCache(spawn)
+        self._peak_cache_cycle: tuple[int | None, int | None] | None = None
         self._background_refreshes: dict[int, _BackgroundRefresh] = {}
         self._cached_replies: dict[
             tuple[int, PlayerShortcutKind],
@@ -82,6 +86,8 @@ class PlayerDetailService:
         *,
         conversation: ConversationRef | None = None,
     ) -> None:
+        if pending.base_snapshot is not None:
+            self.remember_snapshot(pending.base_snapshot)
         refresh_config = self._config.player.background_refresh
         if not refresh_config.enabled:
             return
@@ -121,6 +127,8 @@ class PlayerDetailService:
         use_cache: bool = True,
         anchor_only: bool = False,
     ) -> QueryReply:
+        if command.base_snapshot is not None:
+            self.remember_snapshot(command.base_snapshot)
         if use_cache:
             cached = self._cached_reply(player_id, command.kind)
             if cached is not None:
@@ -135,7 +143,11 @@ class PlayerDetailService:
                 and not refresh.task.done()
             ):
                 refreshed = await asyncio.shield(pending)
-                if refreshed is not None:
+                if (
+                    refreshed is not None
+                    and refreshed.complete
+                    and self._cache_remaining(refreshed) > 0
+                ):
                     return refreshed
 
         refresh = self._background_refreshes.get(player_id)
@@ -152,7 +164,10 @@ class PlayerDetailService:
         self,
         player_id: int,
         kind: PlayerShortcutKind,
+        snapshot: PlayerBaseSnapshot | None = None,
     ) -> QueryReply | None:
+        if snapshot is not None:
+            self.remember_snapshot(snapshot)
         if (cached := self._cached_reply(player_id, kind)) is not None:
             return cached
         refresh = self._background_refreshes.get(player_id)
@@ -164,7 +179,9 @@ class PlayerDetailService:
             return None
         await send_request_feedback(queued=True)
         reply = await asyncio.shield(future)
-        return reply.refreshed() if reply else self._cached_reply(player_id, kind)
+        if reply is not None and reply.complete and self._cache_remaining(reply) > 0:
+            return reply.refreshed()
+        return self._cached_reply(player_id, kind)
 
     async def _fetch_shortcut(
         self,
@@ -176,6 +193,8 @@ class PlayerDetailService:
     ) -> QueryReply:
         player = self._config.player
         lookup = self._rank.config.player_lookup
+        if command.base_snapshot is not None:
+            self.remember_snapshot(command.base_snapshot)
         return await fetch_player_shortcut_reply(
             PlayerShortcutDependencies(
                 rank=self._rank,
@@ -188,12 +207,43 @@ class PlayerDetailService:
                 rank_timeout_seconds=(
                     lookup.total_timeout_seconds + lookup.page_timeout_seconds
                 ),
+                observations=self._observations,
+                observation_ttl=player.background_refresh.cache_ttl_seconds,
             ),
             game,
             command=command,
             player_id=player_id,
             anchor_only=anchor_only,
         )
+
+    def remember_snapshot(self, snapshot: PlayerBaseSnapshot) -> None:
+        ttl = self._config.player.background_refresh.cache_ttl_seconds
+        if (
+            remaining_observation_ttl(snapshot.fetched_at, ttl, at=now().timestamp())
+            <= 0
+        ):
+            return
+        for project, value, fields in (
+            ("user_info", snapshot.user_info, ("nick",)),
+            ("more_info", snapshot.more_info, ("total_achieve", "pet_all_num")),
+        ):
+            if not all(hasattr(value, name) for name in fields):
+                continue
+            key = (snapshot.player_id, project)
+            old = self._observations.get(key, ttl)
+            if old is not None and snapshot.fetched_at is not None:
+                if old.fetched_at > snapshot.fetched_at:
+                    continue
+                changed = any(
+                    getattr(old.value, name) != getattr(value, name) for name in fields
+                )
+                if changed:
+                    for cache_key in tuple(self._cached_replies):
+                        if cache_key[0] == snapshot.player_id and (
+                            project == "user_info" or cache_key[1] == "collection"
+                        ):
+                            self._cached_replies.pop(cache_key, None)
+            self._observations.save(key, value, snapshot.fetched_at)
 
     async def _run_background_refresh(
         self,
@@ -280,6 +330,17 @@ class PlayerDetailService:
         player_id: int,
         kind: PlayerShortcutKind,
     ) -> QueryReply | None:
+        if kind == "peak":
+            from ironsbot.services.seer.player_shortcut_queries import (
+                _peak_observation_cycles,
+            )
+
+            cycle = _peak_observation_cycles(self._rank)
+            if cycle != self._peak_cache_cycle or None in cycle:
+                for old_key in tuple(self._cached_replies):
+                    if old_key[1] == "peak":
+                        self._cached_replies.pop(old_key, None)
+            self._peak_cache_cycle = cycle
         cache_key = (player_id, kind)
         cached = self._cached_replies.get(cache_key)
         if cached is None:
@@ -311,6 +372,8 @@ class PlayerDetailService:
             return
         remaining = self._cache_remaining(reply)
         if reply.complete and remaining > 0:
+            if kind == "peak":
+                self._cached_reply(player_id, kind)
             self._cached_replies[(player_id, kind)] = _CachedDetailReply(
                 expires_at=monotonic() + remaining,
                 reply=reply,

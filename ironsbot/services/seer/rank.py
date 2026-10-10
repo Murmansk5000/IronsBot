@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.observation_cache import ObservationCache
 from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ironsbot.config.models.seer import RankQueryConfig
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.rank_models import (
         PeakSeasonRankSummary,
@@ -179,8 +181,13 @@ class RankService(RankCacheQueryMixin):
     fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
     exclusions: RankExclusionPolicy | None = field(default=None)
     page_parallelism: Callable[[], int] = field(default=lambda: 1)
+    spawn: TaskSpawner | None = field(default=None, repr=False, compare=False)
+    _confirmed: ObservationCache = field(
+        default_factory=ObservationCache, init=False, compare=False, repr=False
+    )
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "_confirmed", ObservationCache(self.spawn))
         if self.exclusions is None:
             object.__setattr__(
                 self,
@@ -377,6 +384,34 @@ class RankService(RankCacheQueryMixin):
         )
 
     async def find_rank(  # noqa: PLR0913
+        self,
+        game: HeadlessGame,
+        *,
+        user_id: int,
+        title: str,
+        score_name: str,
+        key: int,
+        sub_key: int,
+        target_score: int | None = None,
+        search_limit: int | None = None,
+        anchor_only: bool = False,
+    ) -> RankLookupResult:
+        from ironsbot.services.seer.rank_observation_cache import find_confirmed_rank
+
+        return await find_confirmed_rank(
+            self,
+            game,
+            user_id=user_id,
+            title=title,
+            score_name=score_name,
+            key=key,
+            sub_key=sub_key,
+            target_score=target_score,
+            search_limit=search_limit,
+            anchor_only=anchor_only,
+        )
+
+    async def _find_rank_uncached(  # noqa: PLR0913
         self,
         game: HeadlessGame,
         *,

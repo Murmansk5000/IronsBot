@@ -250,6 +250,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         seer_database.master_season_start,
         fetch_rank_page,
         page_parallelism=lambda: headless.rank_page_parallelism,
+        spawn=task_owner.create,
     )
     images, render_coordinator, render_sessions = build_seer_rendering_components(
         http_clients,

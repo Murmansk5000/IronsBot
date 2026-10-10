@@ -8,8 +8,9 @@ from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core import time as clock
 from ironsbot.core.tasks import OperationDeadline
-from ironsbot.core.time import ObservationTime
+from ironsbot.core.time import ObservationTime, remaining_observation_ttl
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
 
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
+    from ironsbot.services.seer.observation_cache import ObservationCache
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutCommand,
@@ -115,6 +117,8 @@ async def fetch_player_shortcut_reply(
             rank_timeout_seconds=dependencies.rank_timeout_seconds,
             deadline=deadline,
             anchor_only=anchor_only,
+            observations=dependencies.observations,
+            observation_ttl=dependencies.observation_ttl,
         )
     if command.kind == "peak":
         return await _fetch_peak_message(
@@ -127,6 +131,8 @@ async def fetch_player_shortcut_reply(
             rank_timeout_seconds=dependencies.rank_timeout_seconds,
             deadline=deadline,
             anchor_only=anchor_only,
+            observations=dependencies.observations,
+            observation_ttl=dependencies.observation_ttl,
         )
     return await _fetch_autocard_message(
         dependencies.rank,
@@ -138,6 +144,8 @@ async def fetch_player_shortcut_reply(
         rank_timeout_seconds=dependencies.rank_timeout_seconds,
         deadline=deadline,
         anchor_only=anchor_only,
+        observations=dependencies.observations,
+        observation_ttl=dependencies.observation_ttl,
     )
 
 
@@ -169,6 +177,8 @@ async def _fetch_collection_message(  # noqa: PLR0913
     rank_timeout_seconds: float,
     deadline: OperationDeadline,
     anchor_only: bool,
+    observations: ObservationCache | None = None,
+    observation_ttl: float = 300,
 ) -> QueryReply:
     extra_errors: list[str] = []
     observation = ObservationTime()
@@ -179,6 +189,8 @@ async def _fetch_collection_message(  # noqa: PLR0913
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
             observation=observation,
+            observations=observations,
+            observation_ttl=observation_ttl,
         ),
         _resolve_collection_more_info(
             game,
@@ -187,10 +199,18 @@ async def _fetch_collection_message(  # noqa: PLR0913
             timeout_seconds=deadline.remaining(timeout_seconds),
             extra_errors=extra_errors,
             observation=observation,
+            observations=observations,
+            observation_ttl=observation_ttl,
         ),
         safe_player_extra(
             "图鉴基础数据",
-            observation.observe(lambda: fetch_unity_part_one(game, player_id)),
+            _observe_detail(
+                observations,
+                (player_id, "unity_part_one"),
+                lambda: fetch_unity_part_one(game, player_id),
+                observation=observation,
+                ttl=observation_ttl,
+            ),
             UnityPartOneInfo(),
             extra_errors,
             on_error=_log_extra_error,
@@ -284,6 +304,8 @@ async def _fetch_peak_message(  # noqa: PLR0913
     rank_timeout_seconds: float,
     deadline: OperationDeadline,
     anchor_only: bool,
+    observations: ObservationCache | None = None,
+    observation_ttl: float = 300,
 ) -> QueryReply:
     extra_errors: list[str] = []
     observation = ObservationTime()
@@ -294,11 +316,16 @@ async def _fetch_peak_message(  # noqa: PLR0913
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
             observation=observation,
+            observations=observations,
+            observation_ttl=observation_ttl,
         ),
         fetch_unity_peak_partial(
             game,
             player_id,
             timeout_seconds=deadline.remaining(timeout_seconds),
+            observations=observations,
+            observation_ttl=observation_ttl,
+            cycles=_peak_observation_cycles(rank),
         ),
     )
     unity_peak = peak_result.info
@@ -445,6 +472,8 @@ async def _fetch_autocard_message(  # noqa: PLR0913
     rank_timeout_seconds: float,
     deadline: OperationDeadline,
     anchor_only: bool,
+    observations: ObservationCache | None = None,
+    observation_ttl: float = 300,
 ) -> QueryReply:
     extra_errors: list[str] = []
     observation = ObservationTime()
@@ -464,6 +493,8 @@ async def _fetch_autocard_message(  # noqa: PLR0913
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
             observation=observation,
+            observations=observations,
+            observation_ttl=observation_ttl,
         ),
         safe_player_extra(
             "群星牌排行",
@@ -539,20 +570,29 @@ def _current_sample_summary(
     return local_rank.current_summary(player_id, metrics, peak_sub_key=peak_sub_key)
 
 
-async def _resolve_shortcut_nick(
+async def _resolve_shortcut_nick(  # noqa: PLR0913
     game: Any,
     *,
     player_id: int,
     base_snapshot: PlayerBaseSnapshot | None,
     timeout_seconds: float,
     observation: ObservationTime,
+    observations: ObservationCache | None = None,
+    observation_ttl: float = 300,
 ) -> tuple[str, str | None]:
-    if base_snapshot is not None and base_snapshot.player_id == player_id:
+    if _fresh_base_snapshot(base_snapshot, player_id, observation_ttl):
+        assert base_snapshot is not None
         observation.include(base_snapshot.fetched_at)
         return base_snapshot.nick, None
     try:
         user_info = await asyncio.wait_for(
-            observation.observe(lambda: game.get_user_info(player_id)),
+            _observe_detail(
+                observations,
+                (player_id, "user_info"),
+                lambda: game.get_user_info(player_id),
+                observation=observation,
+                ttl=observation_ttl,
+            ),
             timeout=timeout_seconds,
         )
     except Exception as error:  # noqa: BLE001
@@ -569,17 +609,25 @@ async def _resolve_collection_more_info(  # noqa: PLR0913
     timeout_seconds: float,
     extra_errors: list[str],
     observation: ObservationTime,
+    observations: ObservationCache | None = None,
+    observation_ttl: float = 300,
 ) -> Any:
     if (
-        base_snapshot is not None
-        and base_snapshot.player_id == player_id
+        _fresh_base_snapshot(base_snapshot, player_id, observation_ttl)
+        and base_snapshot is not None
         and _has_collection_more_info(base_snapshot.more_info)
     ):
         observation.include(base_snapshot.fetched_at)
         return base_snapshot.more_info
     return await safe_player_extra(
         "收集基础数据",
-        observation.observe(lambda: game.get_more_user_info(player_id)),
+        _observe_detail(
+            observations,
+            (player_id, "more_info"),
+            lambda: game.get_more_user_info(player_id),
+            observation=observation,
+            ttl=observation_ttl,
+        ),
         SimpleNamespace(total_achieve=0, pet_all_num=0),
         extra_errors,
         on_error=_log_extra_error,
@@ -587,8 +635,46 @@ async def _resolve_collection_more_info(  # noqa: PLR0913
     )
 
 
+def _peak_observation_cycles(rank: RankService) -> tuple[int | None, int | None]:
+    cycles: list[int | None] = []
+    for read in (rank.current_peak_sub_key, rank.current_master_sub_key):
+        try:
+            cycles.append(read())
+        except DataUnavailableError:  # noqa: PERF203
+            cycles.append(None)
+    return cycles[0], cycles[1]
+
+
 def _has_collection_more_info(value: Any) -> bool:
     return hasattr(value, "total_achieve") and hasattr(value, "pet_all_num")
+
+
+def _fresh_base_snapshot(
+    snapshot: PlayerBaseSnapshot | None,
+    player_id: int,
+    ttl: float,
+) -> bool:
+    return (
+        snapshot is not None
+        and snapshot.player_id == player_id
+        and remaining_observation_ttl(
+            snapshot.fetched_at, ttl, at=clock.now().timestamp()
+        )
+        > 0
+    )
+
+
+async def _observe_detail(
+    cache: ObservationCache | None,
+    key: tuple[int, str],
+    fetch: Any,
+    *,
+    observation: ObservationTime,
+    ttl: float,
+) -> Any:
+    if cache is None:
+        return await observation.observe(fetch)
+    return await cache.observe(key, fetch, ttl=ttl, observation=observation)
 
 
 def _detail_observation_time(

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.config.models.seer import PlayerRankLookupConfig
+from ironsbot.core.time import now
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
@@ -602,7 +603,7 @@ async def test_collection_menu_snapshot_reuses_confirmed_nick_and_more_info(
         more_info=SimpleNamespace(total_achieve=5760, pet_all_num=1231),
         online_info=None,
         team_name="snapshot team",
-        fetched_at=1_700_000_000,
+        fetched_at=now().timestamp(),
     )
 
     reply = await fetch_player_shortcut_reply(

@@ -3,10 +3,11 @@ from contextlib import nullcontext
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.time import now
@@ -205,7 +206,7 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
                 config=SimpleNamespace(enabled=True), upsert_metrics=sample
             ),
         ),
-        cast("Any", Mock(side_effect=AssertionError("unexpected background task"))),
+        TaskOwner().create,
     )
     command = PlayerShortcutCommand(kind=kind, player_id=PLAYER_ID)
     if route == "foreground":
@@ -266,7 +267,14 @@ def _service(
 
     return PlayerDetailService(
         cast("Any", config),
-        cast("Any", SimpleNamespace(config=config.rank)),
+        cast(
+            "Any",
+            SimpleNamespace(
+                config=config.rank,
+                current_peak_sub_key=lambda: 7,
+                current_master_sub_key=lambda: 8,
+            ),
+        ),
         cast("Any", object()),
         cast("Any", spawn),
     )
@@ -582,7 +590,7 @@ def test_background_refresh_expiration_releases_inflight_section(
 
 
 @pytest.mark.asyncio
-async def test_partial_background_reply_is_delivered_but_not_reused(
+async def test_partial_background_reply_does_not_complete_foreground_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = _service(enabled=True)
@@ -617,7 +625,7 @@ async def test_partial_background_reply_is_delivered_but_not_reused(
     await asyncio.sleep(0)
     release.set()
     try:
-        assert await waiter is partial_reply
+        assert await waiter is None
         assert not service._cached_replies
         assert await service.cached_or_inflight_reply(PLAYER_ID, "collection") is None
         assert service.has_inflight_refresh(PLAYER_ID, "peak")

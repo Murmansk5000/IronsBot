@@ -139,7 +139,7 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         "old_rank": RANK_AT,
         "old_snapshot": BASE_AT,
         "unknown_rank": None,
-        "unknown_snapshot": None,
+        "unknown_snapshot": LIVE_AT,
         "timeout_fallback": RANK_AT,
     }
     assert reply.text.splitlines()[1] == format_player_data_time(expected[evidence])
@@ -166,7 +166,7 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         )
         == 1
     )
-    if base_snapshot is not None:
+    if base_snapshot is not None and evidence != "unknown_snapshot":
         game.get_user_info.assert_not_awaited()
 
 
