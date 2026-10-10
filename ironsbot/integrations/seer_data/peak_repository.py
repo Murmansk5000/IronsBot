@@ -58,6 +58,13 @@ class PublishedPeakRepository:
         ) as period:
             return period
 
+    def master_period(self, *, monthly: bool) -> PeakPeriodTimes | None:
+        # Both raw master subkeys share the cost-pool start date; the monthly
+        # key's 1e9 prefix is applied by peak_pet_period, just as in the client.
+        del monthly
+        with self._data.query(load_peak_master_period_times) as period:
+            return period
+
     def pets(self, pet_ids: set[int]) -> dict[int, PeakPetSnapshot]:
         with self._data.query(
             partial(load_peak_pet_snapshots, pet_ids=pet_ids)
@@ -180,6 +187,21 @@ def load_peak_period_times(
     return PeakPeriodTimes(
         local_published_datetime(season.start_time),
         local_published_datetime(season.end_time),
+    )
+
+
+def load_peak_master_period_times(session: Session) -> PeakPeriodTimes | None:
+    row = session.execute(
+        text(
+            "SELECT start_time, end_time FROM peak_cost_pool "
+            "ORDER BY start_time DESC LIMIT 1"
+        )
+    ).first()
+    if row is None:
+        return None
+    return PeakPeriodTimes(
+        local_published_datetime(str(row[0])),
+        local_published_datetime(str(row[1])),
     )
 
 

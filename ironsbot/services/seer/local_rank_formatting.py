@@ -34,7 +34,7 @@ def format_metric_display(
 ) -> str:
     if display not in (None, ""):
         return str(display)
-    if metric_key in {"peak_standard", "peak_wild"}:
+    if metric_key in {"peak_standard", "peak_wild", "peak_master"}:
         return format_peak_rating_score(value)
     if metric_key == "peak_expert":
         return f"{value}分"

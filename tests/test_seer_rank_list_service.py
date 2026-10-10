@@ -259,7 +259,7 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
         rank_key="大师段位",
         score=400004,
     )
-    assert parse_rank_score_command("样本群星榜3149分") is None
+    assert parse_rank_score_command("样本群星之巅榜3149分") is None
     assert parse_rank_score_command("群星之巅榜第3149名") is None
 
 
@@ -388,6 +388,12 @@ def test_parse_rank_list_command_uses_configured_default_limit() -> None:
         limit=100,
         requested_end_rank=200,
     )
+    assert parse_rank_list_command("皮肤榜200-1") == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+        start_rank=1,
+        limit=100,
+    )
 
 
 def test_parse_rank_list_command_reads_local_aliases() -> None:
@@ -405,7 +411,7 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         start_rank=21,
         limit=20,
     )
-    assert parse_rank_list_command("样本群星榜") == RankListCommand(
+    assert parse_rank_list_command("样本群星之巅榜") == RankListCommand(
         kind="local",
         rank_key="群星牌",
     )

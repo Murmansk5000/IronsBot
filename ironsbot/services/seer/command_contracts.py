@@ -48,6 +48,7 @@ from ironsbot.services.seer.query_commands import (
     SUIT_QUERY,
     TITLE_QUERY,
     TYPE_QUERY,
+    is_retired_autocard_input,
     pet_avatar_input,
     pet_image_input,
     pet_query_input,
@@ -105,7 +106,12 @@ def seer_command_contracts(
                     ("米米号", *PLAYER_SHORTCUT_NAMES),
                     "查询默认或指定玩家数据；可追加米米号/玩家别名，"
                     "群聊可直接 @已绑定成员",
-                    {"routing_matcher": player_shortcut_input},
+                    {
+                        "routing_matcher": lambda text, context: (
+                            not is_retired_autocard_input(text)
+                            and player_shortcut_input(text, context)
+                        )
+                    },
                 ),
                 (
                     "seer.player.bind",
@@ -313,8 +319,12 @@ def seer_command_contracts(
                         PEAK_SUIT_RANK_COMMANDS[0],
                         PEAK_TITLE_RANK_COMMANDS[1],
                         PEAK_PET_RANK_COMMANDS[0],
+                        "大师精灵月榜",
+                        "大师精灵总榜",
+                        "大师套装榜",
+                        "大师称号榜",
                     ),
-                    "查询巅峰套装、称号和精灵榜",
+                    "查询竞技、狂野、专家、大师的套装、称号和精灵月榜/总榜",
                     {
                         "routing_matcher": lambda text, _context: (
                             text in PEAK_RANK_COMMANDS
@@ -332,9 +342,9 @@ def seer_command_contracts(
                     "seer.autocard.query",
                     (
                         "群星卡牌布布种子",
-                        "群星卡牌布布种子",
                         "群星卡牌98",
-                        "战斗芯片复苏之风",
+                        "群星角色破界者",
+                        "群星芯片复苏之风",
                     ),
                     "查询群星牌卡牌、角色和战斗芯片资料",
                     {
