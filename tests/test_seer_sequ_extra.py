@@ -38,7 +38,7 @@ async def test_peak_modes_share_one_stage_budget(
     result = await fetch_unity_peak_partial(
         _PeakGame(), 712_345_678, timeout_seconds=0.3
     )
-    assert limits == pytest.approx([0.1, 0.1, 0.1])
+    assert limits == pytest.approx([0.075] * 4)
     assert sum(limits) == pytest.approx(0.3)
     assert result.available_modes == frozenset()
     assert result.fetched_at is None
