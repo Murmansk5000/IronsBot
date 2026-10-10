@@ -311,6 +311,8 @@ lite = [
 
 [features.group_policy]
 # Default: empty table
+# 已在 identities.groups 声明的群默认可用“帮助”和“关于”，无需逐群填写 help/about。
+# 未声明的群仍按现有权限规则处理；黑名单始终优先。
 # EN: Group feature allowlist. Built-in bundles include all, query, seer, bili,
 # seer_activity, server_status, text, text_push, and message. Custom bundles are
 # defined above. Seer sub-features:
@@ -611,12 +613,10 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # Example: 5
 check_second = 5
 
-# Default: []
-# EN: Optional short polling bursts around recurring release times. A burst ends
-#     early after a newly published dynamic is found.
-# ZH: 可选的定时发布加密轮询窗口；发现新动态后会提前结束当前窗口。
-# Example: [{ start = "10:00:00", end = "11:00:00", interval_minutes = 60, offset_seconds = [0, 5, 10, 15] }]
-boost_windows = []
+# EN: Check every half-hour from 10:00 through 20:00 at seconds 1, 2, 5 and 10.
+#     The end boundary is exclusive; set [] to disable release-time checks.
+# ZH: 10:00 至 20:00（含）每半小时在第 1、2、5、10 秒检查；20:30 不检查，设为 [] 可关闭。
+boost_windows = [{ start = "10:00:00", end = "20:30:00", interval_minutes = 30, offset_seconds = [1, 2, 5, 10] }]
 
 [bilibili.push]
 # EN: Combine eligible static images before the first send attempt.
@@ -729,13 +729,42 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
 # messages = ["https://seerinfo.yuyuqaq.cn/"]
-# feature = "seerinfo_link"
+# feature = "seerinfo"
+
+# 四模式胜率网页关键词回复：显式包含匹配，沿用 seerinfo 权限；按需复制启用。
+# [[messaging.keyword_replies]]
+# id = "peak_standard_win_rate_page"
+# keywords = ["竞技胜率榜", "竞技精灵胜率榜"]
+# match_mode = "contains"
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/sports/monster"]
+# feature = "seerinfo"
+#
+# [[messaging.keyword_replies]]
+# id = "peak_wild_win_rate_page"
+# keywords = ["狂野胜率榜", "狂野精灵胜率榜"]
+# match_mode = "contains"
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/wild/monster"]
+# feature = "seerinfo"
+#
+# [[messaging.keyword_replies]]
+# id = "peak_expert_win_rate_page"
+# keywords = ["专家胜率榜", "专家精灵胜率榜"]
+# match_mode = "contains"
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/expert/monster"]
+# feature = "seerinfo"
+#
+# [[messaging.keyword_replies]]
+# id = "peak_master_win_rate_page"
+# keywords = ["大师胜率榜", "大师精灵胜率榜"]
+# match_mode = "contains"
+# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/master/monster"]
+# feature = "seerinfo"
 
 # Default: []
-# EN: Keyword replies default to match_mode = "exact" (whole-message matching).
-# Set match_mode = "contains" explicitly for literal substring matching; command actions still win.
-# ZH: 关键词回复默认 match_mode = "exact"，按整条消息匹配关键词；
-# 显式设置 match_mode = "contains" 才使用普通包含匹配，完整口令仍优先。
+# EN: Keyword replies default to exact normalized matching. Set match_mode to
+# "contains" explicitly to match keywords inside a message; commands still win.
+# ZH: 默认 match_mode = "exact" 匹配完整消息；显式设为 "contains" 才使用包含匹配。
+# 完整口令优先，所有匹配沿用空格和大小写规范化。
 # Like command actions, the feature key must be enabled for the current group
 # or private user. Keywords are not regular commands and are shown as automatic
 # replies in help.
@@ -745,6 +774,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # [[messaging.keyword_replies]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
+# match_mode = "exact"
 # messages = ["第一条回复", "第二条回复"]
 # feature = "chuchu_reply"
 
@@ -790,16 +820,21 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
 [messaging.proactive_delivery]
-# Generic bounded fan-out policy shared by every proactive push producer.
-# 主动推送共用的有限并发与重试策略，不包含任何 QQ 号或平台错误码。
+# Generic proactive fan-out policy shared by every push producer.
+# 主动推送共用的并发与重试策略，不包含任何 QQ 号或平台错误码。
 # Default: 3; total delivery attempts for explicitly retryable failures.
 max_attempts = 3
-# Default: 5; maximum destinations submitted concurrently in one batch.
-max_parallel_targets = 5
+# Default: -1; unlimited targets. A positive number bounds concurrency.
+# 默认 -1 表示所有目标同时发送；正整数限制并发目标数。
+max_parallel_targets = -1
 # Default: 3; divide retry batch capacity by this value after each attempt.
 retry_batch_divisor = 3
 # Default: 2.0; pause before each retry round.
 retry_delay_seconds = 2.0
+# Default: 60.0; pause proactive sends from one OneBot account after a clear
+# transport failure. Other accounts and direct replies remain available.
+# OneBot 传输确认离线后，该账号的后台推送暂缓秒数；其他账号和用户回复不受影响。
+transport_failure_cooldown_seconds = 60.0
 
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
@@ -1061,6 +1096,14 @@ sections = ["all"]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
 # ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
 change_cooldown_days = 3
+# ZH: 未绑定用户能否按数字米米号查询。
+allow_unbound_numeric_queries = true
+# ZH: 未绑定用户能否按可见别名查询。
+allow_unbound_alias_queries = true
+# ZH: 未绑定用户能否 @成员 代查。
+allow_unbound_member_queries = false
+# ZH: 其他人能否快捷查询超级管理员绑定账号；关闭后只能输入完整数字米米号。
+allow_others_superuser_bound_shortcuts = false
 
 [seer.player.query_limits]
 # EN: Persistent daily budgets for live player-related queries, reset by Beijing date.
@@ -1132,6 +1175,11 @@ time = "00:02"
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
+# Default: false; optionally check OneBot get_msg after a daily private push.
+# History lookup uses the sending QQ account, waits at most 5 seconds, and never
+# resends on a missing or failed lookup. QQ Official has no equivalent lookup.
+# 可选：橱窗私聊推送后由实际发送的 OneBot 账号查询消息历史；核验失败不重发。
+verify_onebot_history = false
 # Add one table per QQ user allowed to query and receive a configured account's
 # window. `user` accepts an [identities.users] alias or QQ ID. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must
