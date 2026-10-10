@@ -30,6 +30,10 @@ class SeerInfoReference(str, Enum):
     PEAK_STANDARD_PET_RANK = "peak_standard_pet_rank"
     PEAK_WILD_PET_RANK = "peak_wild_pet_rank"
     PEAK_EXPERT_PET_RANK = "peak_expert_pet_rank"
+    PEAK_MASTER_PLAYER_RANK = "peak_master_player_rank"
+    PEAK_MASTER_SUIT_RANK = "peak_master_suit_rank"
+    PEAK_MASTER_TITLE_RANK = "peak_master_title_rank"
+    PEAK_MASTER_PET_RANK = "peak_master_pet_rank"
 
 
 _BASE_URL = "https://seerinfo.yuyuqaq.cn"
@@ -50,6 +54,7 @@ def _peak_urls() -> dict[SeerInfoReference, str]:
         ("sports", "STANDARD"),
         ("wild", "WILD"),
         ("expert", "EXPERT"),
+        ("master", "MASTER"),
     ):
         for category, suffix in (
             ("player", "PLAYER_RANK"),
@@ -77,6 +82,7 @@ _CONFIG_FIELDS: dict[SeerInfoReference, str] = {
             SeerInfoReference.PEAK_STANDARD_PLAYER_RANK,
             SeerInfoReference.PEAK_WILD_PLAYER_RANK,
             SeerInfoReference.PEAK_EXPERT_PLAYER_RANK,
+            SeerInfoReference.PEAK_MASTER_PLAYER_RANK,
         ),
         "peak_player_rank",
     ),
@@ -85,6 +91,7 @@ _CONFIG_FIELDS: dict[SeerInfoReference, str] = {
             SeerInfoReference.PEAK_STANDARD_SUIT_RANK,
             SeerInfoReference.PEAK_WILD_SUIT_RANK,
             SeerInfoReference.PEAK_EXPERT_SUIT_RANK,
+            SeerInfoReference.PEAK_MASTER_SUIT_RANK,
         ),
         "peak_suit_rank",
     ),
@@ -93,6 +100,7 @@ _CONFIG_FIELDS: dict[SeerInfoReference, str] = {
             SeerInfoReference.PEAK_STANDARD_TITLE_RANK,
             SeerInfoReference.PEAK_WILD_TITLE_RANK,
             SeerInfoReference.PEAK_EXPERT_TITLE_RANK,
+            SeerInfoReference.PEAK_MASTER_TITLE_RANK,
         ),
         "peak_title_rank",
     ),
@@ -101,6 +109,7 @@ _CONFIG_FIELDS: dict[SeerInfoReference, str] = {
             SeerInfoReference.PEAK_STANDARD_PET_RANK,
             SeerInfoReference.PEAK_WILD_PET_RANK,
             SeerInfoReference.PEAK_EXPERT_PET_RANK,
+            SeerInfoReference.PEAK_MASTER_PET_RANK,
         ),
         "peak_pet_rank",
     ),
@@ -128,7 +137,9 @@ def peak_rank_reference(
     peak_type: int,
     category: str,
 ) -> SeerInfoReference:
-    mode = {1: "STANDARD", 2: "WILD", 3: "EXPERT"}[peak_type]
+    from ironsbot.services.seer.peak_modes import PeakType
+
+    mode = PeakType(peak_type).name
     suffix = {
         "player": "PLAYER_RANK",
         "suit": "SUIT_RANK",
