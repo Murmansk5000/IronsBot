@@ -100,6 +100,17 @@ class SqlitePlayerBindingStore:
             _parse_datetime(row[3]),
         )
 
+    def bound_player_ids(self) -> frozenset[int]:
+        """Return current bindings, deduplicated across all principals."""
+        with self._database.connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT player_id FROM player_bindings WHERE player_id > 0"
+            ).fetchall()
+        return frozenset(int(row[0]) for row in rows)
+
+    def is_player_bound(self, player_id: int) -> bool:
+        return player_id in self.bound_player_ids()
+
     def merge_principals(
         self,
         source: ActorPrincipal,

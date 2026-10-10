@@ -24,6 +24,7 @@ from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
     is_valid_player_id,
 )
+from ironsbot.services.seer.peak_modes import combined_peak_season
 from ironsbot.services.seer.player_query_limits import (
     PlayerQueryQuotaExceededError,
 )
@@ -467,8 +468,21 @@ class RankQueryService:
     def _local_message(self, command: RankListCommand) -> RankListPreparedReply:
         spec = LOCAL_RANKS[command.rank_key]
         season_sub_key = (
-            self._rank.current_peak_sub_key() if spec.season_limited else None
+            self._rank.get_spec(command.rank_key).sub_key
+            if (global_spec := GLOBAL_RANKS.get(command.rank_key)) is not None
+            and global_spec.beast_metric
+            else self._rank.current_peak_sub_key()
+            if spec.season_limited
+            else None
         )
+        if spec.metric_key.startswith("peak_master"):
+            season_sub_key = self._rank.current_master_sub_key()
+        elif spec.metric_key == "peak_total_matches":
+            season_sub_key = combined_peak_season(
+                self._rank.current_peak_sub_key(), self._rank.current_master_sub_key()
+            )
+        if spec.season_limited and season_sub_key is None:
+            return RankListPreparedReply("当前赛季数据不可用。", ())
         entries, sample_count = self._local_rank.entries(
             spec.metric_key,
             limit=command.limit,
@@ -481,7 +495,12 @@ class RankQueryService:
                 entries,
                 sample_count=sample_count,
                 season_sub_key=(
-                    str(season_sub_key) if season_sub_key is not None else None
+                    f"普通 {-season_sub_key // 100_000_000} / "
+                    f"大师 {-season_sub_key % 100_000_000}（各模式当前赛季）"
+                    if season_sub_key is not None and season_sub_key < 0
+                    else str(season_sub_key)
+                    if season_sub_key is not None
+                    else None
                 ),
                 start_rank=command.start_rank,
                 requested_count=command.limit,

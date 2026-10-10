@@ -28,10 +28,11 @@ class RankLookupCost:
     cache_page_hits: int = 0
     online_page_fetches: int = 0
     restricted_miss: bool = False
+    reused_successful_observation: bool = False
 
     @property
     def lightweight_confirmed(self) -> bool:
-        return (
+        return self.reused_successful_observation or (
             self.anchor_page_start is not None
             and self.anchor_page_hit
             and self.page_starts == [self.anchor_page_start]
@@ -46,6 +47,7 @@ class RankLookupResult:
     score_name: str
     rank: int | None = None
     score: int | None = None
+    observed_score: int | None = None
     excluded: bool = False
     searched_limit: int = 0
     queried: bool = False
