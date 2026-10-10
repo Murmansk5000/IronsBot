@@ -11,10 +11,11 @@ from ironsbot.integrations.storage.sqlite import (
     SqliteMigration,
     ensure_sqlite_columns,
 )
+from ironsbot.services.seer.local_rank_metrics import LOCAL_METRICS
 from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from ironsbot.services.seer.local_rank import LocalRankRecord
@@ -86,13 +87,39 @@ _MIGRATIONS = (
 
 
 class SqliteLocalRankRepository:
-    def __init__(self, path: Path, max_players: int) -> None:
+    def __init__(
+        self,
+        path: Path,
+        max_players: int,
+        *,
+        eligible_player_ids: Callable[[], frozenset[int]] | None = None,
+    ) -> None:
         self.max_players = max(1, max_players)
+        self._eligible_player_ids = eligible_player_ids
+        self._last_eligible_ids: frozenset[int] | None = None
         self._database = SqliteDatabase(
             path,
             migrations=_MIGRATIONS,
             row_factory=sqlite3.Row,
         )
+        self.sync_sample_eligibility()
+
+    def sync_sample_eligibility(self) -> frozenset[int] | None:
+        if self._eligible_player_ids is None:
+            return None
+        eligible = self._eligible_player_ids()
+        if eligible == self._last_eligible_ids:
+            return eligible
+        with self._database.connect() as conn:
+            conn.execute("UPDATE players SET sample_enabled = 0")
+            conn.executemany(
+                "UPDATE players SET sample_enabled = 1 WHERE user_id = ? "
+                "AND EXISTS (SELECT 1 FROM metrics "
+                "WHERE metrics.user_id = players.user_id)",
+                ((player_id,) for player_id in eligible),
+            )
+        self._last_eligible_ids = eligible
+        return eligible
 
     def entries(
         self,
@@ -102,10 +129,12 @@ class SqliteLocalRankRepository:
         start_rank: int,
         season_sub_key: int | None,
     ) -> tuple[list[LocalRankRecord], int]:
+        self.sync_sample_eligibility()
         requested_limit = max(0, limit)
         safe_start_rank = max(1, start_rank)
         fetch_limit = safe_start_rank + requested_limit - 1
         params = (metric_key, season_sub_key, season_sub_key)
+        direction = "ASC" if _ascending_metric(metric_key) else "DESC"
         with self._database.connect() as conn:
             sample_count = self._count_metric_rows(
                 conn,
@@ -113,7 +142,7 @@ class SqliteLocalRankRepository:
                 season_sub_key,
             )
             rows = conn.execute(
-                """
+                f"""
                 SELECT m.value, p.user_id, p.nick, m.display
                 FROM metrics m
                 JOIN players p ON p.user_id = m.user_id
@@ -122,7 +151,7 @@ class SqliteLocalRankRepository:
                   AND ((? IS NULL AND m.season_sub_key IS NULL)
                        OR m.season_sub_key = ?)
                   AND p.sample_enabled = 1
-                ORDER BY m.value DESC, p.user_id ASC
+                ORDER BY m.value {direction}, p.user_id ASC
                 LIMIT ?
                 """,
                 (*params, fetch_limit),
@@ -155,6 +184,7 @@ class SqliteLocalRankRepository:
         limit: int,
         max_age_hours: int,
     ) -> list[int]:
+        self.sync_sample_eligibility()
         cutoff = (
             (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
             if max_age_hours > 0
@@ -175,6 +205,7 @@ class SqliteLocalRankRepository:
         return [int(row["user_id"]) for row in rows]
 
     def stats(self, metrics: Sequence[MetricSpec]) -> LocalRankCacheStats:
+        self.sync_sample_eligibility()
         with self._database.connect() as conn:
             counts = conn.execute(
                 """
@@ -194,6 +225,9 @@ class SqliteLocalRankRepository:
         )
 
     def can_cache(self, player_id: int) -> bool:
+        eligible = self.sync_sample_eligibility()
+        if eligible is not None and player_id not in eligible:
+            return False
         with self._database.connect() as conn:
             is_sampled, player_count = self._sample_state(conn, player_id)
         return is_sampled or player_count < self.max_players
@@ -266,10 +300,12 @@ class SqliteLocalRankRepository:
         clear_metric_keys: frozenset[str],
         standing_inputs: Mapping[str, tuple[int, int | None]],
     ) -> dict[str, tuple[int, int, int]]:
+        eligible = self.sync_sample_eligibility()
+        enabled = eligible is None or player_id in eligible
         with self._database.connect() as conn:
             is_sampled, player_count = self._sample_state(conn, player_id)
             include_current = not is_sampled and player_count >= self.max_players
-            if not include_current:
+            if not include_current or not enabled:
                 if clear_metric_keys:
                     conn.executemany(
                         "DELETE FROM metrics WHERE user_id = ? AND metric_key = ?",
@@ -280,7 +316,10 @@ class SqliteLocalRankRepository:
                     player_id=player_id,
                     nick=nick,
                     metrics=metrics,
+                    sample_enabled=enabled,
                 )
+            if not enabled:
+                return {}
             return {
                 key: self._metric_standing(
                     conn,
@@ -290,6 +329,27 @@ class SqliteLocalRankRepository:
                     include_current=include_current,
                 )
                 for key, (value, season_sub_key) in standing_inputs.items()
+            }
+
+    def metric_standings(
+        self, player_id: int, inputs: Mapping[str, tuple[int, int | None]]
+    ) -> dict[str, tuple[int, int, int]]:
+        eligible = self.sync_sample_eligibility()
+        if eligible is not None and player_id not in eligible:
+            return {}
+        with self._database.connect() as conn:
+            sampled, _ = self._sample_state(conn, player_id)
+            if not sampled:
+                return {}
+            return {
+                key: self._metric_standing(
+                    conn,
+                    metric_key=key,
+                    current_value=value,
+                    season_sub_key=period,
+                    include_current=False,
+                )
+                for key, (value, period) in inputs.items()
             }
 
     @staticmethod
@@ -344,10 +404,12 @@ class SqliteLocalRankRepository:
         return int(
             conn.execute(
                 """
-                SELECT COUNT(*) FROM metrics
-                WHERE metric_key = ?
-                  AND value IS NOT NULL
-                  AND season_sub_key IS NOT NULL
+                SELECT COUNT(*) FROM metrics m
+                JOIN players p ON p.user_id = m.user_id
+                WHERE m.metric_key = ?
+                  AND m.value IS NOT NULL
+                  AND m.season_sub_key IS NOT NULL
+                  AND p.sample_enabled = 1
                 """,
                 (spec.key,),
             ).fetchone()[0]
@@ -362,10 +424,12 @@ class SqliteLocalRankRepository:
         season_sub_key: int | None,
         include_current: bool,
     ) -> tuple[int, int, int]:
+        comparison = "<" if _ascending_metric(metric_key) else ">"
         row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS sample_count,
-                   SUM(CASE WHEN m.value > ? THEN 1 ELSE 0 END) AS greater_count,
+                   SUM(CASE WHEN m.value {comparison} ? THEN 1 ELSE 0 END)
+                       AS greater_count,
                    SUM(CASE WHEN m.value = ? THEN 1 ELSE 0 END) AS tie_count
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
@@ -398,19 +462,20 @@ class SqliteLocalRankRepository:
         player_id: int,
         nick: str,
         metrics: Mapping[str, MetricValue],
+        sample_enabled: bool = True,
     ) -> None:
         timestamp = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """
             INSERT INTO players(user_id, nick, updated_at, sample_enabled, sampled_at)
-            VALUES (?, ?, ?, 1, ?)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 nick = excluded.nick,
                 updated_at = excluded.updated_at,
-                sample_enabled = 1,
+                sample_enabled = excluded.sample_enabled,
                 sampled_at = excluded.sampled_at
             """,
-            (player_id, nick, timestamp, timestamp),
+            (player_id, nick, timestamp, int(sample_enabled), timestamp),
         )
         for key, metric in metrics.items():
             value = coerce_positive_int(metric.get("value"))
@@ -437,3 +502,7 @@ class SqliteLocalRankRepository:
                     None if display in (None, "") else str(display),
                 ),
             )
+
+
+def _ascending_metric(key: str) -> bool:
+    return any(spec.key == key and spec.ascending for spec in LOCAL_METRICS)

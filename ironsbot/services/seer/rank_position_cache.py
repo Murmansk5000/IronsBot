@@ -26,6 +26,7 @@ def _record_cached_match(
         if item.id == user_id:
             result.rank = start + offset + 1
             result.score = item.score
+            result.observed_score = item.score
             return True
     return False
 
@@ -38,6 +39,7 @@ def restore_cached_rank_after_timeout(
 
     result.rank = int(cached_item.rank_index) + 1
     result.score = int(cached_item.score)
+    result.observed_score = result.score
     result.failure = "查询超时"
     result.fallback_cached_at = float(cached_item.fetched_at)
     result.fetched_at = result.fallback_cached_at

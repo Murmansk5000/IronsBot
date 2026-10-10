@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.observation_cache import ObservationCache
 from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
@@ -66,6 +69,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ironsbot.config.models.seer import RankQueryConfig
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.rank_models import (
         PeakSeasonRankSummary,
@@ -82,6 +86,7 @@ if TYPE_CHECKING:
     )
 
 _BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
+logger = logging.getLogger(__name__)
 _LAST_CONFIRMED_RANK_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
@@ -176,8 +181,13 @@ class RankService(RankCacheQueryMixin):
     fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
     exclusions: RankExclusionPolicy | None = field(default=None)
     page_parallelism: Callable[[], int] = field(default=lambda: 1)
+    spawn: TaskSpawner | None = field(default=None, repr=False, compare=False)
+    _confirmed: ObservationCache = field(
+        default_factory=ObservationCache, init=False, compare=False, repr=False
+    )
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "_confirmed", ObservationCache(self.spawn))
         if self.exclusions is None:
             object.__setattr__(
                 self,
@@ -386,6 +396,34 @@ class RankService(RankCacheQueryMixin):
         search_limit: int | None = None,
         anchor_only: bool = False,
     ) -> RankLookupResult:
+        from ironsbot.services.seer.rank_observation_cache import find_confirmed_rank
+
+        return await find_confirmed_rank(
+            self,
+            game,
+            user_id=user_id,
+            title=title,
+            score_name=score_name,
+            key=key,
+            sub_key=sub_key,
+            target_score=target_score,
+            search_limit=search_limit,
+            anchor_only=anchor_only,
+        )
+
+    async def _find_rank_uncached(  # noqa: PLR0913
+        self,
+        game: HeadlessGame,
+        *,
+        user_id: int,
+        title: str,
+        score_name: str,
+        key: int,
+        sub_key: int,
+        target_score: int | None = None,
+        search_limit: int | None = None,
+        anchor_only: bool = False,
+    ) -> RankLookupResult:
         rank_key = self.exclusion_policy.rank_key_for_protocol(
             key=key,
             sub_key=sub_key,
@@ -546,16 +584,26 @@ class RankService(RankCacheQueryMixin):
         standard_score: int | None = None,
         wild_score: int | None = None,
         expert_score: int | None = None,
+        master_score: int | None = None,
         progress: RankSummaryProgress | None = None,
         anchor_only: bool = False,
     ) -> PeakSeasonRankSummary:
+        seasons: list[int | None] = []
+        for resolve in (self.current_peak_sub_key, self.current_master_sub_key):
+            try:
+                seasons.append(resolve())
+            except DataUnavailableError:  # noqa: PERF203
+                logger.exception("peak season unavailable: source=%s", resolve.__name__)
+                seasons.append(None)
         return await rank_summary.fetch_peak_season_rank_summary(
             game,
             user_id,
             standard_score=standard_score,
             wild_score=wild_score,
             expert_score=expert_score,
-            current_peak_sub_key=self.current_peak_sub_key(),
+            master_score=master_score,
+            current_peak_sub_key=seasons[0],
+            current_master_sub_key=seasons[1],
             find_rank=self.find_rank,
             progress=progress,
             anchor_only=anchor_only,

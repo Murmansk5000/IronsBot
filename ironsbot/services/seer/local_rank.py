@@ -18,6 +18,7 @@ from ironsbot.services.seer.local_rank_models import (
     LocalRankEntry,
     LocalRankSummary,
 )
+from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
 )
@@ -51,6 +52,10 @@ logger = logging.getLogger(__name__)
 
 class LocalRankRepository(Protocol):
     max_players: int
+
+    def metric_standings(
+        self, player_id: int, inputs: Mapping[str, tuple[int, int | None]]
+    ) -> dict[str, tuple[int, int, int]]: ...
 
     def entries(
         self,
@@ -161,6 +166,29 @@ class LocalRankService:
     def stats(self) -> LocalRankCacheStats:
         return self.repository.stats(LOCAL_METRICS)
 
+    def current_summary(
+        self,
+        player_id: int,
+        metrics: Mapping[str, MetricValue],
+        *,
+        peak_sub_key: int | None,
+    ) -> LocalRankSummary:
+        if not self.config.enabled or self.exclusion_policy.excludes_from_sample(
+            player_id
+        ):
+            return LocalRankSummary()
+        inputs = {
+            spec.key: (value, peak_sub_key if spec.season_limited else None)
+            for spec in LOCAL_METRICS
+            if (metric := metrics.get(spec.key)) is not None
+            and (value := coerce_positive_int(metric.get("value"))) is not None
+        }
+        return self._format_summary(
+            metrics,
+            self.repository.metric_standings(player_id, inputs),
+            peak_sub_key=peak_sub_key,
+        )
+
     def can_cache(self, player_id: int) -> bool:
         return not self.exclusion_policy.excludes_from_sample(
             player_id
@@ -216,6 +244,9 @@ class LocalRankService:
         peak_standard_score: int | None,
         peak_wild_score: int | None,
         peak_expert_score: int | None,
+        peak_master_score: int | None = None,
+        master_sub_key: int | None = None,
+        available_modes: frozenset[str] | None = None,
         clear_metric_keys: frozenset[str] = frozenset(),
     ) -> LocalRankSummary:
         current_metrics = collect_metrics(
@@ -228,6 +259,9 @@ class LocalRankService:
             peak_standard_score=peak_standard_score,
             peak_wild_score=peak_wild_score,
             peak_expert_score=peak_expert_score,
+            peak_master_score=peak_master_score,
+            master_sub_key=master_sub_key,
+            available_modes=available_modes,
         )
         for metric_key in clear_metric_keys:
             current_metrics.pop(metric_key, None)
@@ -375,6 +409,11 @@ class LocalRankService:
             peak_standard_score=peak_standard_score,
             peak_wild_score=peak_wild_score,
             peak_expert_score=peak_expert_score,
+            peak_master_score=build_peak_rating_score(
+                unity_peak.current_m_rank, unity_peak.current_m_star
+            ),
+            master_sub_key=self.rank.current_master_sub_key(),
+            available_modes=PEAK_MODE_NAMES,
         )
 
     @staticmethod

@@ -46,6 +46,14 @@ def test_beiming_commands_and_beijing_completion_time() -> None:
         assert parse_rank_list_command(f"{alias}11-20") == RankListCommand(
             kind="global", rank_key="北冥试炼", start_rank=11, limit=10
         )
+        assert (
+            parse_rank_list_command(f"{alias}2-1")
+            == parse_rank_list_command(f"{alias}1-2")
+            == RankListCommand(kind="global", rank_key="北冥试炼", limit=2)
+        )
+        assert parse_rank_list_command(f"{alias}2-2") == RankListCommand(
+            kind="global", rank_key="北冥试炼", start_rank=2, limit=1
+        )
         assert parse_rank_player_target_command(
             f"{alias}700001"
         ) == RankPlayerTargetCommand("北冥试炼", "700001")
@@ -59,6 +67,23 @@ def test_beiming_commands_and_beijing_completion_time() -> None:
         timestamp="2026-09-25 12:00:00",
     )
     assert "1. 玩家甲（700001） 完成时间：2026-09-24 14:57:55" in message
+    items = [
+        RankEntry(id=700001, nick="玩家甲", score=_FINISHED_AT),
+        RankEntry(id=700002, nick="玩家乙", score=_FINISHED_AT + 1),
+    ]
+    first_two = format_global_rank_message(
+        spec, items, timestamp="2026-09-25 12:00:00", requested_count=2
+    )
+    assert "第 1-2 名" in first_two
+    second = format_global_rank_message(
+        spec,
+        items[1:],
+        timestamp="2026-09-25 12:00:00",
+        start_rank=2,
+        requested_count=1,
+    )
+    assert "第 2 名" in second
+    assert "2. 玩家乙" in second
 
 
 @pytest.mark.asyncio
