@@ -38,7 +38,10 @@ MIN_QUALITY_WIDTH = 480
 
 
 @pytest.mark.asyncio
-async def test_prepare_bytes_shares_original_fallback_and_does_not_download() -> None:
+@pytest.mark.parametrize("horizontal", [False, True])
+async def test_prepare_bytes_shares_original_fallback_and_does_not_download(
+    *, horizontal: bool
+) -> None:
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
@@ -47,24 +50,35 @@ async def test_prepare_bytes_shares_original_fallback_and_does_not_download() ->
 
     sources = (b"first", b"second", b"third")
     service = ImageCollageService(fetch, fail)
-    assert await service.prepare_bytes(()) == ()
+    assert await service.prepare_bytes((), horizontal=horizontal) == ()
     assert (
-        tuple(image.content for image in await service.prepare_bytes(sources))
+        tuple(
+            image.content
+            for image in await service.prepare_bytes(sources, horizontal=horizontal)
+        )
         == sources
     )
-    assert (await service.prepare_bytes((b"single",)))[0].content == b"single"
+    assert (await service.prepare_bytes((b"single",), horizontal=horizontal))[
+        0
+    ].content == b"single"
 
 
 @pytest.mark.asyncio
-async def test_prepare_bytes_combines_three_images() -> None:
+@pytest.mark.parametrize("horizontal", [False, True])
+async def test_prepare_bytes_combines_three_images(*, horizontal: bool) -> None:
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
     service = ImageCollageService(fetch, render_adaptive_collage)
     sources = tuple(_png(10, 10, (value, 0, 0, 255)) for value in (10, 20, 30))
-    output = await service.prepare_bytes(sources)
+    output = await service.prepare_bytes(sources, horizontal=horizontal)
     assert len(output) == 1
     assert output[0].content is not None
+    with Image.open(BytesIO(output[0].content)) as image:
+        assert image.size == ((30, 10) if horizontal else (10, 30))
+        for index, value in enumerate((10, 20, 30)):
+            position = (index * 10 + 5, 5) if horizontal else (5, index * 10 + 5)
+            assert image.getpixel(position) == (value, 0, 0, 255)
 
 
 @pytest.mark.asyncio

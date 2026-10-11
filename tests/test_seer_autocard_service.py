@@ -416,6 +416,7 @@ async def test_chip_media_uses_shared_collage_and_preserves_levels(
         raise AssertionError
 
     def render(images: Sequence[bytes], **limits: int) -> bytes:
+        assert limits["horizontal"] is True
         if merge_failure:
             raise ImageCollageError.render_failed()
         return render_adaptive_collage(images, **limits)
@@ -432,6 +433,11 @@ async def test_chip_media_uses_shared_collage_and_preserves_levels(
     message = await service.outbound(entry)
     assert message.parts[-1] == TextPart(entry.text)
     assert len(message.parts) == (4 if merge_failure else 2)
+    if not merge_failure:
+        part = message.parts[0]
+        assert isinstance(part, BinaryImagePart)
+        with Image.open(BytesIO(part.content)) as preview:
+            assert preview.size == (768, 256)
     single = await service.outbound(entry, include_additional_images=False)
     assert len(single.parts) == VARIANT_IMAGE_COUNT
 
