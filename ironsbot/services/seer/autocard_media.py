@@ -12,6 +12,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage
+    from ironsbot.services.messaging.image_collage import ImageCollageService
 
     from .autocard import AutocardEntry
     from .images import SeerImageSource
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class AutocardMediaService:
     images: SeerImageSource
+    image_collage: ImageCollageService | None = None
 
     async def outbound(
         self,
@@ -54,6 +56,11 @@ class AutocardMediaService:
             contents = tuple(
                 image for content in contents if (image := _chip_preview(content))
             )
+            if self.image_collage is not None:
+                prepared = await self.image_collage.prepare_bytes(contents)
+                contents = tuple(
+                    image.content for image in prepared if image.content is not None
+                )
         return entry.to_outbound(image_contents=contents)
 
 
