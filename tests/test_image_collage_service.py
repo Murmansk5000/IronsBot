@@ -37,6 +37,51 @@ MAX_COMBINED_ANIMATION_DURATION_MS = 10_000
 MIN_QUALITY_WIDTH = 480
 
 
+@pytest.mark.asyncio
+async def test_prepare_bytes_shares_original_fallback_and_does_not_download() -> None:
+    async def fetch(_url: str, _limit: int) -> bytes:
+        raise AssertionError
+
+    def fail(_images: Sequence[bytes], **_limits: int) -> bytes:
+        raise ImageCollageError.render_failed()
+
+    sources = (b"first", b"second", b"third")
+    service = ImageCollageService(fetch, fail)
+    assert await service.prepare_bytes(()) == ()
+    assert (
+        tuple(image.content for image in await service.prepare_bytes(sources))
+        == sources
+    )
+    assert (await service.prepare_bytes((b"single",)))[0].content == b"single"
+
+
+@pytest.mark.asyncio
+async def test_prepare_bytes_combines_three_images() -> None:
+    async def fetch(_url: str, _limit: int) -> bytes:
+        raise AssertionError
+
+    service = ImageCollageService(fetch, render_adaptive_collage)
+    sources = tuple(_png(10, 10, (value, 0, 0, 255)) for value in (10, 20, 30))
+    output = await service.prepare_bytes(sources)
+    assert len(output) == 1
+    assert output[0].content is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [RuntimeError("bug"), asyncio.CancelledError()])
+async def test_prepare_bytes_does_not_swallow_unexpected_errors(
+    error: BaseException,
+) -> None:
+    async def fetch(_url: str, _limit: int) -> bytes:
+        raise AssertionError
+
+    def fail(_images: Sequence[bytes], **_limits: int) -> bytes:
+        raise error
+
+    with pytest.raises(type(error)):
+        await ImageCollageService(fetch, fail).prepare_bytes((b"one", b"two"))
+
+
 def _png(width: int, height: int, color: tuple[int, int, int, int]) -> bytes:
     output = BytesIO()
     Image.new("RGBA", (width, height), color).save(output, format="PNG")
