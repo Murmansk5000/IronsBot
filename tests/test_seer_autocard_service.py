@@ -22,7 +22,7 @@ from ironsbot.services.seer.autocard import (
 from ironsbot.services.seer.autocard_media import AutocardMediaService
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
 
     from ironsbot.services.seer.data import SeerDataAccess
 
@@ -387,6 +387,53 @@ async def test_chip_media_uses_dark_background_and_keeps_text_on_failure() -> No
     with Image.open(BytesIO(part.content)) as preview:
         assert preview.size == (256, 256)
         assert preview.getpixel((0, 0)) == (32, 36, 44)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("merge_failure", [False, True])
+async def test_chip_media_uses_shared_collage_and_preserves_levels(
+    *,
+    merge_failure: bool,
+) -> None:
+    from ironsbot.integrations.image_collage import render_adaptive_collage
+    from ironsbot.services.messaging.image_collage import (
+        ImageCollageError,
+        ImageCollageService,
+    )
+    from ironsbot.services.seer.autocard import AutocardEntry
+
+    class Images:
+        async def fetch(self, kind: str, key: str, *, fallback: bool) -> bytes:
+            assert kind == "autocard_chip"
+            assert fallback is False
+            buffer = BytesIO()
+            Image.new("RGBA", (8, 8), (int(key[-1]) * 20, 100, 100, 255)).save(
+                buffer, format="PNG"
+            )
+            return buffer.getvalue()
+
+    async def no_download(_url: str, _limit: int) -> bytes:
+        raise AssertionError
+
+    def render(images: Sequence[bytes], **limits: int) -> bytes:
+        if merge_failure:
+            raise ImageCollageError.render_failed()
+        return render_adaptive_collage(images, **limits)
+
+    entry = AutocardEntry(
+        kind="chip",
+        item_id=115,
+        name="复苏之风",
+        text="完整的三级效果",
+        image_key="autocardChip_115",
+        additional_image_keys=("autocardChip_116", "autocardChip_117"),
+    )
+    service = AutocardMediaService(Images(), ImageCollageService(no_download, render))  # type: ignore[arg-type]
+    message = await service.outbound(entry)
+    assert message.parts[-1] == TextPart(entry.text)
+    assert len(message.parts) == (4 if merge_failure else 2)
+    single = await service.outbound(entry, include_additional_images=False)
+    assert len(single.parts) == VARIANT_IMAGE_COUNT
 
 
 def test_autocard_raw_selection_keeps_single_card_for_new_content() -> None:
