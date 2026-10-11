@@ -35,7 +35,6 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.target_models import BiliPushTargets
-from ironsbot.services.messaging.image_collage import ImageCollageError
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     append_outbound_text_once,
@@ -614,11 +613,7 @@ async def prepare_dynamic_image_message(
     )
     if len(urls) <= 1:
         return original
-    try:
-        prepared = await collage.prepare_urls(urls)
-    except ImageCollageError:
-        _LOGGER.warning("Bilibili collage unavailable; using original images")
-        return original
+    prepared = await collage.prepare_urls(urls)
     parts = tuple(
         RemoteImagePart(image.url)
         if image.url is not None
@@ -662,20 +657,15 @@ async def iter_dynamic_image_messages(
         for part in original.parts:
             yield OutboundMessage((part,))
         return
-    try:
-        async for image in collage.iter_prepared_urls(urls):
-            part = (
-                RemoteImagePart(image.url)
-                if image.url is not None
-                else BinaryImagePart(
-                    image.content or b"", image.content_type, image.filename
-                )
+    async for image in collage.iter_prepared_urls(urls):
+        part = (
+            RemoteImagePart(image.url)
+            if image.url is not None
+            else BinaryImagePart(
+                image.content or b"", image.content_type, image.filename
             )
-            yield OutboundMessage((part,))
-    except ImageCollageError:
-        _LOGGER.warning("Bilibili collage unavailable; using original images")
-        for part in original.parts:
-            yield OutboundMessage((part,))
+        )
+        yield OutboundMessage((part,))
 
 
 def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:
