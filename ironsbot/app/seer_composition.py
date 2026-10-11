@@ -552,7 +552,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player_requests,
     )
     autocard = AutocardService(PublishedAutocardRepository(seer_database))
-    autocard_media = AutocardMediaService(images)
+    autocard_media = AutocardMediaService(images, image_collage)
     autocard_sanctuary = AutocardSanctuaryService(
         PublishedAutocardSanctuaryRepository(seer_database)
     )
