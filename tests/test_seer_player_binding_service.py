@@ -56,6 +56,7 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         get=Mock(return_value=PlayerBindingState(_actor()))
     )
     service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
+    service._binding_change_error = Mock(return_value="")
     service._save_binding = Mock(return_value="已设置默认米米号：123456。")
 
     result = asyncio.run(
@@ -200,6 +201,7 @@ def test_direct_binding_returns_invalid_player_error_without_saving() -> None:
     )
     service._save_binding = Mock()
 
+    service._binding_change_error = Mock(return_value="")
     result = asyncio.run(service.bind_player(1, actor=_actor()))
 
     assert result.message == "❌ 米米号无效，请输入数字。"
@@ -316,11 +318,12 @@ def test_binding_change_cooldown_uses_three_beijing_calendar_days(
         now=lambda: datetime(2026, 7, 25, 23, 59, 59, tzinfo=china_timezone),
     )
 
-    assert (
-        service.unbind(_actor(10003))
-        == "默认米米号最近刚更改，请于 2026年07月26日 00:00 起再试。"
+    assert "2026年07月26日 00:00" in service._binding_change_error(
+        _actor(10003), target_player_id=654321
     )
-    assert store.get(_actor(10003)).player_id == _PLAYER_ID
+    assert service.unbind(_actor(10003)) == "已解除默认米米号。"
+    assert store.get(_actor(10003)).player_id is None
+    assert store.get(_actor(10003)).last_changed_at == changed_at
 
     service_after_cooldown = PlayerService(
         config=cast("Any", config),
@@ -330,7 +333,12 @@ def test_binding_change_cooldown_uses_three_beijing_calendar_days(
         details=cast("Any", None),
         now=lambda: datetime(2026, 7, 26, 0, 0, tzinfo=china_timezone),
     )
-    assert service_after_cooldown.unbind(_actor(10003)) == "已解除默认米米号。"
+    assert (
+        service_after_cooldown._binding_change_error(
+            _actor(10003), target_player_id=654321
+        )
+        == ""
+    )
 
 
 def test_rebinding_same_player_does_not_refresh_last_changed_at(tmp_path: Path) -> None:
