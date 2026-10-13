@@ -119,7 +119,8 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
                 format_selection_menu(
                     title=title,
                     items=tuple(
-                        f"{choice.label}（{choice.player_id}）" for choice in choices
+                        f"{choice.label}：{choice.player_id}（游戏内ID）"
+                        for choice in choices
                     ),
                 )
             ),

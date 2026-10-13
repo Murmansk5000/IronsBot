@@ -345,7 +345,8 @@ async def test_rank_partial_alias_selects_one_player() -> None:
     context = _context("成就榜玩家")
     menu = await operations["rank.global_collection"](context.text, context)
     assert isinstance(menu, PortableReply)
-    assert "玩家甲" in _text(menu.message)
+    assert "1. 玩家甲：700001（游戏内ID）" in _text(menu.message)
+    assert "2. 玩家乙：700002（游戏内ID）" in _text(menu.message)
     selected = await sessions.select("2", context, allow_deferred=True)
     assert isinstance(selected, PortableReply)
     assert _text(selected.message) == "player:成就点数:700002"

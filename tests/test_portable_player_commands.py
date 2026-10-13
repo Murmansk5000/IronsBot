@@ -489,7 +489,9 @@ async def test_partial_binding_uses_shared_menu_before_business_work(
     reply = cast(
         "PortableReply", await operations["seer.player.bind"](context.text, context)
     )
-    assert "玩家甲" in _text(reply) and "玩家乙" in _text(reply)
+    assert "1. 玩家甲：700001（游戏内ID）" in _text(reply)
+    assert "2. 玩家乙：700002（游戏内ID）" in _text(reply)
+    assert "0. 【退出】" in _text(reply)
     assert not service.bound
     stranger = _context(context.text, platform=platform, actor_id="stranger")
     assert await sessions.select("1", stranger, allow_deferred=True) is None
@@ -589,6 +591,9 @@ async def test_partial_player_queries_claim_input_and_keep_selection_safe(
     assert isinstance(reply, PortableReply)
     prompt = reply.message.prompt
     assert prompt is not None
+    assert "1. 玩家甲：700001（游戏内ID）" in _text(reply)
+    assert "2. 玩家乙：700002（游戏内ID）" in _text(reply)
+    assert "0. 【退出】" in _text(reply)
     query.assert_not_awaited()
     shortcut.assert_not_awaited()
     if selection == "button":
