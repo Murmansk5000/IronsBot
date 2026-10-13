@@ -705,6 +705,14 @@ patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利�
 label = "中奖"
 patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 
+[bilibili.category_subscriptions.accounts.example_account.categories.collaboration]
+label = "联动"
+patterns = ["联动", "联名"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.creation]
+label = "创作"
+patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
+
 [messaging]
 # Default: []
 # EN: Fixed command replies. Each action is available in both private and group

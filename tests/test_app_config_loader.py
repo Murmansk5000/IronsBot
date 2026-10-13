@@ -267,6 +267,9 @@ def _assert_example_bili_category_subscriptions(config: Settings) -> None:
     assert account.default_muted_categories == ["lottery", "winning"]
     assert account.categories["lottery"].label == "抽奖"
     assert account.categories["winning"].label == "中奖"
+    assert account.categories["collaboration"].label == "联动"
+    assert account.categories["creation"].label == "创作"
+    assert "interaction" not in account.categories
 
 
 def _assert_example_new_content(config: Settings) -> None:
