@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import PurePosixPath
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -17,13 +18,14 @@ from .http import raise_for_docker_status
 HTTP_NOT_FOUND = 404
 
 
-async def launch_supervisor(
+async def launch_supervisor(  # noqa: PLR0913 - explicit deployment handoff inputs
     client: httpx.AsyncClient,
     *,
     container_name: str,
     image: str,
     socket_path: str,
     repository_image: str = "",
+    config_next: str = "",
 ) -> str:
     old = await inspect_container(client, container_name)
     data_mount = next(
@@ -45,6 +47,42 @@ async def launch_supervisor(
     if not source or not data_mount.get("RW"):
         message = "Deployment state mount must be writable"
         raise DeploymentError(message)
+    binds = [f"{socket_path}:/var/run/docker.sock", f"{source}:/state"]
+    config_args: list[str] = []
+    if config_next:
+        if PurePosixPath(config_next).name != config_next or config_next in {".", ".."}:
+            message = "Candidate configuration must be a filename"
+            raise DeploymentError(message)
+        config_mount = next(
+            (
+                mount
+                for mount in old.get("Mounts", [])
+                if mount.get("Destination") == "/config"
+            ),
+            None,
+        )
+        config_path = next(
+            (
+                value.removeprefix("APP_CONFIG_PATH=")
+                for value in old["Config"].get("Env", [])
+                if value.startswith("APP_CONFIG_PATH=")
+            ),
+            "",
+        )
+        if (
+            not config_mount
+            or config_mount.get("Type") != "bind"
+            or PurePosixPath(config_path).parent != PurePosixPath("/config")
+        ):
+            message = "Configuration handoff requires the existing /config bind mount"
+            raise DeploymentError(message)
+        binds.append(f"{config_mount['Source']}:/config:rw")
+        config_args = [
+            "--config-next",
+            f"/config/{config_next}",
+            "--config-target",
+            config_path,
+        ]
     response = await client.post(
         "/containers/create",
         params={"name": f"ironsbot-deploy-once-{uuid4().hex[:12]}"},
@@ -58,6 +96,7 @@ async def launch_supervisor(
                 image,
                 "--repository",
                 repository_image or image,
+                *config_args,
             ],
             "Labels": {
                 "io.ironsbot.role": "deployment-supervisor",
@@ -66,7 +105,7 @@ async def launch_supervisor(
             "HostConfig": {
                 "AutoRemove": True,
                 "NetworkMode": "none",
-                "Binds": [f"{socket_path}:/var/run/docker.sock", f"{source}:/state"],
+                "Binds": binds,
             },
         },
     )
@@ -96,6 +135,7 @@ async def main() -> None:
     parser.add_argument("--container", default="ironsbot")
     parser.add_argument("--image", required=True)
     parser.add_argument("--socket", default="/var/run/docker.sock")
+    parser.add_argument("--config-next", default="")
     args = parser.parse_args()
     async with httpx.AsyncClient(
         transport=httpx.AsyncHTTPTransport(uds=args.socket),
@@ -107,6 +147,7 @@ async def main() -> None:
             container_name=args.container,
             image=args.image,
             socket_path=args.socket,
+            config_next=args.config_next,
         )
         sys.stdout.write(f"IronsBot deployment supervisor started: {ident}\n")
 
