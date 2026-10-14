@@ -38,33 +38,48 @@ MIN_QUALITY_WIDTH = 480
 
 
 @pytest.mark.asyncio
-async def test_prepare_bytes_shares_original_fallback_and_does_not_download() -> None:
+@pytest.mark.parametrize("horizontal", [False, True])
+async def test_prepare_bytes_shares_original_fallback_and_does_not_download(
+    *, horizontal: bool
+) -> None:
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
-    def fail(_images: Sequence[bytes], **_limits: int) -> bytes:
+    def fail(image_bytes: Sequence[bytes], **_limits: int | bool) -> bytes:
+        del image_bytes
         raise ImageCollageError.render_failed()
 
     sources = (b"first", b"second", b"third")
     service = ImageCollageService(fetch, fail)
-    assert await service.prepare_bytes(()) == ()
+    assert await service.prepare_bytes((), horizontal=horizontal) == ()
     assert (
-        tuple(image.content for image in await service.prepare_bytes(sources))
+        tuple(
+            image.content
+            for image in await service.prepare_bytes(sources, horizontal=horizontal)
+        )
         == sources
     )
-    assert (await service.prepare_bytes((b"single",)))[0].content == b"single"
+    assert (await service.prepare_bytes((b"single",), horizontal=horizontal))[
+        0
+    ].content == b"single"
 
 
 @pytest.mark.asyncio
-async def test_prepare_bytes_combines_three_images() -> None:
+@pytest.mark.parametrize("horizontal", [False, True])
+async def test_prepare_bytes_combines_three_images(*, horizontal: bool) -> None:
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
     service = ImageCollageService(fetch, render_adaptive_collage)
     sources = tuple(_png(10, 10, (value, 0, 0, 255)) for value in (10, 20, 30))
-    output = await service.prepare_bytes(sources)
+    output = await service.prepare_bytes(sources, horizontal=horizontal)
     assert len(output) == 1
     assert output[0].content is not None
+    with Image.open(BytesIO(output[0].content)) as image:
+        assert image.size == ((30, 10) if horizontal else (10, 30))
+        for index, value in enumerate((10, 20, 30)):
+            position = (index * 10 + 5, 5) if horizontal else (5, index * 10 + 5)
+            assert image.getpixel(position) == (value, 0, 0, 255)
 
 
 @pytest.mark.asyncio
@@ -75,7 +90,8 @@ async def test_prepare_bytes_does_not_swallow_unexpected_errors(
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
-    def fail(_images: Sequence[bytes], **_limits: int) -> bytes:
+    def fail(image_bytes: Sequence[bytes], **_limits: int | bool) -> bytes:
+        del image_bytes
         raise error
 
     with pytest.raises(type(error)):
@@ -137,6 +153,28 @@ def test_four_tall_images_are_joined_in_one_ordered_row() -> None:
     assert [result.getpixel((x, 200)) for x in (50, 150, 250, 350)] == list(colors)
 
 
+@pytest.mark.asyncio
+async def test_small_portrait_detail_fills_collage_beside_large_cover() -> None:
+    sources = (
+        _png(1280, 854, (255, 0, 0, 255)),
+        _png(120, 213, (0, 0, 255, 255)),
+    )
+
+    async def fetch(url: str, _limit: int) -> bytes:
+        return sources[int(url)]
+
+    service = ImageCollageService(fetch, render_adaptive_collage)
+    prepared_bytes = await service.prepare_bytes(sources)
+    assert len(prepared_bytes) == 1
+    assert prepared_bytes[0].content is not None
+    with Image.open(BytesIO(prepared_bytes[0].content)) as result:
+        assert result.getchannel("A").getextrema() == (255, 255)
+        assert result.width * result.height >= 1_000_000  # noqa: PLR2004
+    prepared_urls = await service.prepare_urls(("0", "1"))
+    assert len(prepared_urls) == 1
+    assert prepared_urls[0].content == prepared_bytes[0].content
+
+
 def test_four_square_images_use_two_by_two_layout() -> None:
     images = [_png(100, 100, (index * 40, 0, 0, 255)) for index in range(4)]
     result = _render(images)
@@ -180,7 +218,6 @@ def test_small_image_and_large_images_fill_the_entire_canvas() -> None:
         assert set(counts) == {*colors, (255, 255, 0, 255)}
 
 
-
 def test_small_image_can_upscale_beyond_two_times_without_padding() -> None:
     images = [_png(20, 10, (255, 0, 0, 255)), _png(82, 41, (0, 0, 255, 255))]
     with _render(images) as result:
@@ -189,14 +226,12 @@ def test_small_image_can_upscale_beyond_two_times_without_padding() -> None:
         assert red_pixels > 20 * 10 * 4
 
 
-
 def test_same_height_narrow_image_does_not_add_row_padding() -> None:
     images = [_png(100, 100, (255, 0, 0, 255)) for _index in range(3)]
     images.append(_png(40, 100, (0, 0, 255, 255)))
     with _render(images) as result:
         assert result.size == (340, 100)
         assert result.getchannel("A").getextrema() == (255, 255)
-
 
 
 @pytest.mark.parametrize(
@@ -233,13 +268,33 @@ def test_mixed_sizes_have_no_layout_whitespace_and_keep_reading_order(
         assert first_positions == sorted(first_positions)
 
 
-
 def test_transparency_is_preserved_inside_images() -> None:
     images = [_png(20, 20, (255, 0, 0, 128)) for _index in range(4)]
     with _render(images) as result:
         assert result.size == (40, 40)
         assert result.getpixel((10, 10)) == (255, 0, 0, 128)
         assert result.getchannel("A").getextrema() == (128, 128)
+
+
+def test_all_four_source_corners_survive_without_cropping() -> None:
+    output = BytesIO()
+    with Image.new("RGBA", (100, 100), "white") as source:
+        draw = ImageDraw.Draw(source)
+        for box, color in (
+            ((0, 0, 19, 19), "red"),
+            ((80, 0, 99, 19), "green"),
+            ((0, 80, 19, 99), "blue"),
+            ((80, 80, 99, 99), "black"),
+        ):
+            draw.rectangle(box, fill=color)
+        source.save(output, format="PNG")
+    with _render([output.getvalue()] * 2) as result:
+        assert result.size == (100, 200)
+        for offset in (0, 100):
+            assert result.getpixel((5, offset + 5)) == (255, 0, 0, 255)
+            assert result.getpixel((95, offset + 5)) == (0, 128, 0, 255)
+            assert result.getpixel((5, offset + 95)) == (0, 0, 255, 255)
+            assert result.getpixel((95, offset + 95)) == (0, 0, 0, 255)
 
 
 def test_pixel_limit_scales_selected_layout_without_reflowing() -> None:
@@ -250,7 +305,6 @@ def test_pixel_limit_scales_selected_layout_without_reflowing() -> None:
     with Image.open(BytesIO(content)) as result:
         assert result.width * result.height <= pixel_limit
         assert result.getchannel("A").getextrema() == (255, 255)
-
 
 
 def test_animated_image_rejects_the_complete_collage() -> None:
@@ -287,7 +341,9 @@ async def test_service_downloads_in_input_order() -> None:
         *,
         max_side: int,
         max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         assert max_side == MAX_SIDE
         assert max_pixels == MAX_PIXELS
         rendered.extend(image_bytes)
@@ -319,7 +375,9 @@ async def test_service_limits_parallel_image_downloads() -> None:
         *,
         max_side: int,
         max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         assert max_side == MAX_SIDE
         assert max_pixels == MAX_PIXELS
         assert image_bytes
@@ -484,9 +542,13 @@ async def test_service_streams_completed_media_groups_without_waiting_for_slowes
         return _gif(10, 10, ((255, 0, 255, 255), (0, 255, 255, 255)))
 
     def render_static(
-        image_bytes: Sequence[bytes], *, max_side: int, max_pixels: int
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
-        del image_bytes, max_side, max_pixels
+        del image_bytes, max_side, max_pixels, horizontal
         static_ready.set()
         return b"static-result"
 
@@ -602,48 +664,3 @@ async def test_service_preserves_failed_url_without_blocking_other_collage() -> 
     outputs = await service.prepare_urls(("one", "failed", "two"))
 
     assert [output.url for output in outputs] == ["one", "failed", "two"]
-
-
-@pytest.mark.asyncio
-async def test_small_portrait_detail_fills_collage_beside_large_cover() -> None:
-    sources = (
-        _png(1280, 854, (255, 0, 0, 255)),
-        _png(120, 213, (0, 0, 255, 255)),
-    )
-
-    async def fetch(url: str, _limit: int) -> bytes:
-        return sources[int(url)]
-
-    service = ImageCollageService(fetch, render_adaptive_collage)
-    prepared_bytes = await service.prepare_bytes(sources)
-    assert len(prepared_bytes) == 1
-    assert prepared_bytes[0].content is not None
-    with Image.open(BytesIO(prepared_bytes[0].content)) as result:
-        assert result.getchannel("A").getextrema() == (255, 255)
-        assert result.width * result.height >= 1_000_000  # noqa: PLR2004
-    prepared_urls = await service.prepare_urls(("0", "1"))
-    assert len(prepared_urls) == 1
-    assert prepared_urls[0].content == prepared_bytes[0].content
-
-
-
-def test_all_four_source_corners_survive_without_cropping() -> None:
-    output = BytesIO()
-    with Image.new("RGBA", (100, 100), "white") as source:
-        draw = ImageDraw.Draw(source)
-        for box, color in (
-            ((0, 0, 19, 19), "red"),
-            ((80, 0, 99, 19), "green"),
-            ((0, 80, 19, 99), "blue"),
-            ((80, 80, 99, 99), "black"),
-        ):
-            draw.rectangle(box, fill=color)
-        source.save(output, format="PNG")
-    with _render([output.getvalue()] * 2) as result:
-        assert result.size == (100, 200)
-        for offset in (0, 100):
-            assert result.getpixel((5, offset + 5)) == (255, 0, 0, 255)
-            assert result.getpixel((95, offset + 5)) == (0, 128, 0, 255)
-            assert result.getpixel((5, offset + 95)) == (0, 0, 255, 255)
-            assert result.getpixel((95, offset + 95)) == (0, 0, 0, 255)
-
