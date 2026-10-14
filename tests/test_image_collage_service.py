@@ -45,7 +45,8 @@ async def test_prepare_bytes_shares_original_fallback_and_does_not_download(
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
-    def fail(_images: Sequence[bytes], **_limits: int) -> bytes:
+    def fail(image_bytes: Sequence[bytes], **_limits: int | bool) -> bytes:
+        del image_bytes
         raise ImageCollageError.render_failed()
 
     sources = (b"first", b"second", b"third")
@@ -89,7 +90,8 @@ async def test_prepare_bytes_does_not_swallow_unexpected_errors(
     async def fetch(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
-    def fail(_images: Sequence[bytes], **_limits: int) -> bytes:
+    def fail(image_bytes: Sequence[bytes], **_limits: int | bool) -> bytes:
+        del image_bytes
         raise error
 
     with pytest.raises(type(error)):
@@ -289,7 +291,9 @@ async def test_service_downloads_in_input_order() -> None:
         *,
         max_side: int,
         max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         assert max_side == MAX_SIDE
         assert max_pixels == MAX_PIXELS
         rendered.extend(image_bytes)
@@ -321,7 +325,9 @@ async def test_service_limits_parallel_image_downloads() -> None:
         *,
         max_side: int,
         max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         assert max_side == MAX_SIDE
         assert max_pixels == MAX_PIXELS
         assert image_bytes
@@ -486,9 +492,13 @@ async def test_service_streams_completed_media_groups_without_waiting_for_slowes
         return _gif(10, 10, ((255, 0, 255, 255), (0, 255, 255, 255)))
 
     def render_static(
-        image_bytes: Sequence[bytes], *, max_side: int, max_pixels: int
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
-        del image_bytes, max_side, max_pixels
+        del image_bytes, max_side, max_pixels, horizontal
         static_ready.set()
         return b"static-result"
 

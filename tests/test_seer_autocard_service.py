@@ -415,11 +415,19 @@ async def test_chip_media_uses_shared_collage_and_preserves_levels(
     async def no_download(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
-    def render(images: Sequence[bytes], **limits: int) -> bytes:
-        assert limits["horizontal"] is True
+    def render(
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+        horizontal: bool = False,
+    ) -> bytes:
+        assert horizontal is True
         if merge_failure:
             raise ImageCollageError.render_failed()
-        return render_adaptive_collage(images, **limits)
+        return render_adaptive_collage(
+            image_bytes, max_side=max_side, max_pixels=max_pixels, horizontal=horizontal
+        )
 
     entry = AutocardEntry(
         kind="chip",
