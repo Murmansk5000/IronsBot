@@ -130,8 +130,13 @@ async def test_weekly_preview_combines_two_images_with_shared_collage() -> None:
         raise AssertionError
 
     def render(
-        image_bytes: Sequence[bytes], *, max_side: int, max_pixels: int
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         assert image_bytes == (first.encode(), second.encode())
         assert max_side > 0 and max_pixels > 0
         return b"combined"
@@ -155,8 +160,13 @@ async def test_weekly_preview_keeps_originals_if_collage_fails() -> None:
         raise AssertionError
 
     def failed_render(
-        image_bytes: Sequence[bytes], *, max_side: int, max_pixels: int
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         del image_bytes, max_side, max_pixels
         raise ImageCollageError.render_failed()
 

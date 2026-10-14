@@ -270,7 +270,9 @@ async def test_two_static_dynamic_images_are_sent_as_one_collage() -> None:
         *,
         max_side: int,
         max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes:
+        assert not horizontal
         assert len(image_bytes) == TWO_IMAGES
         assert max_side > 0
         assert max_pixels > 0

@@ -57,7 +57,9 @@ class AutocardMediaService:
                 image for content in contents if (image := _chip_preview(content))
             )
             if self.image_collage is not None:
-                prepared = await self.image_collage.prepare_bytes(contents)
+                prepared = await self.image_collage.prepare_bytes(
+                    contents, horizontal=True
+                )
                 contents = tuple(
                     image.content for image in prepared if image.content is not None
                 )
