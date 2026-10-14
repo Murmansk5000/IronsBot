@@ -60,6 +60,7 @@ def render_adaptive_collage(
     *,
     max_side: int,
     max_pixels: int,
+    horizontal: bool = False,
 ) -> bytes:
     decoded: list[_DecodedImage] = []
     try:
@@ -78,7 +79,7 @@ def render_adaptive_collage(
                     max(1, round(image.height * image_scale)),
                 )
             )
-        columns = _choose_columns(sizes)
+        columns = len(sizes) if horizontal else _choose_columns(sizes)
         rows = _make_rows(sizes, columns)
         canvas_width, canvas_height = _canvas_size(rows)
         scale = _output_scale(
