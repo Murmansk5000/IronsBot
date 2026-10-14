@@ -87,6 +87,7 @@ class ImageCollageRenderer(Protocol):
         *,
         max_side: int,
         max_pixels: int,
+        horizontal: bool = False,
     ) -> bytes: ...
 
 
@@ -124,13 +125,17 @@ class ImageCollageService:
         images = await asyncio.gather(*(fetch(url) for url in normalized))
         return await self.compose_bytes(images)
 
-    async def compose_bytes(self, images: Sequence[bytes]) -> bytes:
+    async def compose_bytes(
+        self, images: Sequence[bytes], *, horizontal: bool = False
+    ) -> bytes:
         self._validate_count(len(images))
+        layout = {"horizontal": True} if horizontal else {}
         return await asyncio.to_thread(
             self.render,
             tuple(images),
             max_side=self.max_output_side,
             max_pixels=self.max_output_pixels,
+            **layout,
         )
 
     async def prepare_urls(self, urls: Sequence[str]) -> tuple[PreparedImage, ...]:
@@ -141,7 +146,9 @@ class ImageCollageService:
             return ()
         return await self._prepare_assets(await self._download_assets(normalized))
 
-    async def prepare_bytes(self, images: Sequence[bytes]) -> tuple[PreparedImage, ...]:
+    async def prepare_bytes(
+        self, images: Sequence[bytes], *, horizontal: bool = False
+    ) -> tuple[PreparedImage, ...]:
         """Prepare downloaded images with the same fallback as URL inputs."""
         assets: list[_DownloadedAsset] = []
         for content in images:
@@ -153,14 +160,18 @@ class ImageCollageService:
                 _LOGGER.warning("Image inspection unavailable; using original image")
                 animated = None
             assets.append((content, content, animated))
-        return await self._prepare_assets(assets)
+        return await self._prepare_assets(assets, horizontal=horizontal)
 
     async def _prepare_assets(
-        self, assets: Sequence[_DownloadedAsset]
+        self, assets: Sequence[_DownloadedAsset], *, horizontal: bool = False
     ) -> tuple[PreparedImage, ...]:
         outputs: list[PreparedImage] = []
         for group, animated in _partition_groups(assets):
-            outputs.extend(await self._prepare_group(group, animated=animated))
+            outputs.extend(
+                await self._prepare_group(
+                    group, animated=animated, horizontal=horizontal
+                )
+            )
         return tuple(outputs)
 
     async def iter_prepared_urls(
@@ -224,6 +235,7 @@ class ImageCollageService:
         group: Sequence[tuple[_ImageSource, bytes]],
         *,
         animated: bool | None,
+        horizontal: bool = False,
     ) -> tuple[PreparedImage, ...]:
         if animated is None or len(group) == 1:
             return (_original_image(group[0][0]),)
@@ -233,7 +245,9 @@ class ImageCollageService:
             content = (
                 await self._compose_animation([item[1] for item in group])
                 if animated
-                else await self.compose_bytes([item[1] for item in group])
+                else await self.compose_bytes(
+                    [item[1] for item in group], horizontal=horizontal
+                )
             )
         except ImageCollageError:
             _LOGGER.warning("Image collage unavailable; using original images")
