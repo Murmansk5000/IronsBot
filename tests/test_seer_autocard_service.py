@@ -242,7 +242,7 @@ def test_autocard_search_merges_normal_and_awakened_card() -> None:
 
     assert result.entry is not None
     assert result.entry.item_id == CARD_ID
-    assert "🃏【群星牌】" in result.entry.text
+    assert "🃏【群星卡牌】" in result.entry.text
     assert "布布种子（普通ID：101｜觉醒ID：10101）" in result.entry.text
     assert "类型：精灵牌 | 属性：草 | 等级：2 | 费用：3" in result.entry.text
     assert "普通身材：3/5" in result.entry.text
@@ -253,7 +253,7 @@ def test_autocard_search_merges_normal_and_awakened_card() -> None:
     assert result.entry.image_keys == ("card_1",)
 
 
-def test_autocard_search_supports_card_id_and_rejects_plain_number() -> None:
+def test_autocard_search_supports_scoped_card_ids() -> None:
     service = _service()
 
     normal = service.search(f"卡{CARD_ID}").entry
@@ -263,20 +263,18 @@ def test_autocard_search_supports_card_id_and_rejects_plain_number() -> None:
     assert awakened is not None
     assert normal.text == awakened.text
     assert normal.item_id == awakened.item_id == CARD_ID
-    assert service.search(str(CARD_ID)).entry is None
+    assert service.search(f"群星卡牌{CARD_ID}").entry == normal
     assert service.search("").entry is None
 
 
-def test_autocard_search_returns_selection_prompt_for_multiple_matches() -> None:
+def test_autocard_search_separates_card_and_role_names() -> None:
     result = _service().search("破界")
 
-    assert result.prompt_values == (
-        AutocardPromptValue(kind="card", item_id=SECOND_CARD_ID),
-        AutocardPromptValue(kind="role", item_id=ROLE_ID),
-    )
-    assert "1. 破界法术（法术牌 102 普通 Lv1 火）" in result.prompt_text
-    assert "2. 破界者（角色 201 火）" in result.prompt_text
-    assert "0. 【退出】" in result.prompt_text
+    assert result.entry is not None and result.entry.item_id == SECOND_CARD_ID
+    role = _service().search("群星角色破界").entry
+    assert role is not None and role.item_id == ROLE_ID
+    assert _service().search(f"群星角色{ROLE_ID}").entry == role
+    assert _service().search(f"群星卡牌{ROLE_ID}").entry is None
 
 
 def test_autocard_partial_search_lists_each_card_pair_once() -> None:
@@ -293,7 +291,7 @@ def test_autocard_partial_search_lists_each_card_pair_once() -> None:
 
 
 def test_autocard_search_matches_awakened_variant_name() -> None:
-    entry = _service().search("群星牌觉醒布布花").entry
+    entry = _service().search("群星卡牌觉醒布布花").entry
 
     assert entry is not None
     assert entry.item_id == THIRD_CARD_ID
@@ -302,7 +300,7 @@ def test_autocard_search_matches_awakened_variant_name() -> None:
 
 
 def test_autocard_group_shows_identical_variant_fields_once() -> None:
-    entry = _service().search("群星牌布布花").entry
+    entry = _service().search("群星卡牌布布花").entry
 
     assert entry is not None
     assert entry.text.count("身材：4/5") == 1
@@ -313,7 +311,7 @@ def test_autocard_group_shows_identical_variant_fields_once() -> None:
 
 
 def test_autocard_outbound_controls_images_without_rebuilding_text() -> None:
-    entry = _service().search("群星牌布布花").entry
+    entry = _service().search("群星卡牌布布花").entry
 
     assert entry is not None
     complete = entry.to_outbound(image_contents=(b"normal", b"awakened"))
@@ -340,7 +338,7 @@ async def test_autocard_media_uses_versioned_asset_keys_and_skips_missing() -> N
                 raise RuntimeError("missing")
             return key.encode()
 
-    entry = _service().search("群星牌布布花").entry
+    entry = _service().search("群星卡牌布布花").entry
     assert entry is not None
     images = Images()
 
@@ -415,10 +413,19 @@ async def test_chip_media_uses_shared_collage_and_preserves_levels(
     async def no_download(_url: str, _limit: int) -> bytes:
         raise AssertionError
 
-    def render(images: Sequence[bytes], **limits: int) -> bytes:
+    def render(
+        image_bytes: Sequence[bytes],
+        *,
+        max_side: int,
+        max_pixels: int,
+        horizontal: bool = False,
+    ) -> bytes:
+        assert horizontal is True
         if merge_failure:
             raise ImageCollageError.render_failed()
-        return render_adaptive_collage(images, **limits)
+        return render_adaptive_collage(
+            image_bytes, max_side=max_side, max_pixels=max_pixels, horizontal=horizontal
+        )
 
     entry = AutocardEntry(
         kind="chip",
@@ -432,6 +439,11 @@ async def test_chip_media_uses_shared_collage_and_preserves_levels(
     message = await service.outbound(entry)
     assert message.parts[-1] == TextPart(entry.text)
     assert len(message.parts) == (4 if merge_failure else 2)
+    if not merge_failure:
+        part = message.parts[0]
+        assert isinstance(part, BinaryImagePart)
+        with Image.open(BytesIO(part.content)) as preview:
+            assert preview.size == (768, 256)
     single = await service.outbound(entry, include_additional_images=False)
     assert len(single.parts) == VARIANT_IMAGE_COUNT
 
@@ -445,7 +457,7 @@ def test_autocard_raw_selection_keeps_single_card_for_new_content() -> None:
 
 
 def test_autocard_without_awakened_variant_stays_single() -> None:
-    entry = _service().search("群星牌破界法术").entry
+    entry = _service().search("群星卡牌破界法术").entry
 
     assert entry is not None
     assert "破界法术（ID：102，普通）" in entry.text
