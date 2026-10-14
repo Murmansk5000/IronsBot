@@ -71,6 +71,7 @@ def render_adaptive_collage(
     *,
     max_side: int,
     max_pixels: int,
+    horizontal: bool = False,
 ) -> bytes:
     decoded: list[_DecodedImage] = []
     try:
@@ -80,7 +81,7 @@ def render_adaptive_collage(
             decoded.append(image)
             remaining_pixels -= image.width * image.height
         rows = _choose_layout(
-            decoded, max_side=max_side, max_pixels=max_pixels, horizontal=False
+            decoded, max_side=max_side, max_pixels=max_pixels, horizontal=horizontal
         )
         canvas_width, canvas_height = _canvas_size(rows)
         if (
