@@ -18,6 +18,7 @@ from urllib.parse import quote
 import httpx
 
 from .cleanup import cleanup_images
+from .configuration_handoff import ConfigurationHandoff
 from .daemon import inspect_image_info
 from .http import raise_for_docker_status
 
@@ -232,18 +233,19 @@ async def owned_deployment_images(
     return target
 
 
-async def deploy(  # noqa: PLR0913 - explicit transaction inputs and testable validator
+async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
     client: httpx.AsyncClient,
     *,
     name: str,
     image: str,
     record_path: Path,
     repository_image: str = "",
+    configuration: ConfigurationHandoff | None = None,
     validate: Callable[..., Awaitable[dict[str, Any]]] = validate_container,
 ) -> bool:
     old = await inspect_container(client, name)
     target = await owned_deployment_images(client, old, image)
-    if old["Image"] == target.image_id:
+    if old["Image"] == target.image_id and configuration is None:
         await validate(client, name, target.image_id)
         await cleanup_images(
             client, repository_image=repository_image or image, current_image=target
@@ -260,12 +262,17 @@ async def deploy(  # noqa: PLR0913 - explicit transaction inputs and testable va
         "created_at": time.time(),
         "old_container": old,
     }
+    if configuration is not None:
+        record["configuration_target"] = str(configuration.target)
+        record["configuration_backup"] = str(configuration.backup)
     write_record(record_path, record)
     new_id = ""
     renamed = False
     try:
         await prepare_previous(client, old, backup)
         renamed = True
+        if configuration is not None:
+            configuration.apply()
         config = recreation_config(old, target.image_id)
         record["target_hostname"] = config.get("Hostname", "")
         record["phase"] = "verifying"
@@ -283,6 +290,8 @@ async def deploy(  # noqa: PLR0913 - explicit transaction inputs and testable va
         record["phase"] = "rolling_back"
         recovery_record(record_path, record)
         try:
+            if configuration is not None:
+                configuration.restore()
             await restore_container(
                 client, old=old, new_id=new_id, name=name, renamed=renamed
             )
@@ -301,6 +310,8 @@ async def deploy(  # noqa: PLR0913 - explicit transaction inputs and testable va
     # Success is committed before cleanup; cleanup failure must not roll it back.
     write_record(record_path, record)
     try:
+        if configuration is not None:
+            configuration.finish()
         await remove_stopped(client, old["Id"])
         removed, retained = await cleanup_images(
             client, repository_image=repository_image or image, current_image=target
@@ -357,6 +368,8 @@ async def run_cli() -> int:
     parser.add_argument("--repository", default="")
     parser.add_argument("--socket", default="/var/run/docker.sock")
     parser.add_argument("--state-dir", default="/state")
+    parser.add_argument("--config-next", default="")
+    parser.add_argument("--config-target", default="")
     args = parser.parse_args()
     lock = Path(args.state_dir) / "operations/docker_deployment.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -374,6 +387,13 @@ async def run_cli() -> int:
                 name=args.container,
                 image=args.image,
                 repository_image=args.repository,
+                configuration=(
+                    ConfigurationHandoff.for_files(
+                        Path(args.config_target), Path(args.config_next)
+                    )
+                    if args.config_next and args.config_target
+                    else None
+                ),
                 record_path=Path(args.state_dir) / STATE_FILE,
             )
             else 1
