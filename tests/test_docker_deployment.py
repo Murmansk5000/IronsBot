@@ -12,6 +12,7 @@ import pytest
 from ironsbot.integrations.docker import client as client_module
 from ironsbot.integrations.docker.cleanup import SOURCE_LABEL, cleanup_images
 from ironsbot.integrations.docker.client import DockerClient
+from ironsbot.integrations.docker.configuration_handoff import ConfigurationHandoff
 from ironsbot.integrations.docker.deployment import (
     DeploymentError,
     boot_is_supervised,
@@ -171,14 +172,24 @@ async def test_cleanup_is_scoped_reference_safe_and_multitag_idempotent() -> Non
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", [None, "target", "rollback", "cleanup"])
+@pytest.mark.parametrize("with_configuration", [False, True])
 async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - transaction fault matrix
-    tmp_path: Path, failure: str | None
+    tmp_path: Path, failure: str | None, *, with_configuration: bool
 ) -> None:
     calls: list[tuple[str, str]] = []
     validations: list[str] = []
     active = container()
     old = deepcopy(active)
     record_path = tmp_path / "deployment.json"
+    config = tmp_path / "ironsbot.toml"
+    candidate = tmp_path / "next.toml"
+    config.write_text("old config", encoding="utf-8")
+    candidate.write_text("new config", encoding="utf-8")
+    handoff = (
+        ConfigurationHandoff.for_files(config, candidate)
+        if with_configuration
+        else None
+    )
 
     def handle(request: httpx.Request) -> httpx.Response:  # noqa: PLR0911 - fake Docker endpoints
         nonlocal active
@@ -210,6 +221,7 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
             active = container("new", "sha256:new")
             return httpx.Response(201, json={"Id": "new"})
         if path == "/containers/old/start":
+            assert config.read_text(encoding="utf-8") == "old config"
             active = old
         if request.method == "DELETE":
             assert request.url.params["force"] == "false"
@@ -221,6 +233,10 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
         _client: httpx.AsyncClient, _name: str, image: str
     ) -> dict[str, Any]:
         validations.append(image)
+        if with_configuration:
+            assert config.read_text(encoding="utf-8") == (
+                "new config" if image == "sha256:new" else "old config"
+            )
         assert ("DELETE", "/containers/old") not in calls
         if failure in {"target", "rollback"} and image == "sha256:new":
             raise DeploymentError
@@ -239,6 +255,7 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
                     image=REPO,
                     record_path=record_path,
                     validate=validate,
+                    configuration=handoff,
                 )
         else:
             assert await deploy(
@@ -247,6 +264,7 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
                 image=REPO,
                 record_path=record_path,
                 validate=validate,
+                configuration=handoff,
             ) is (failure != "target")
     record = json.loads(record_path.read_text())
     if failure == "rollback":
@@ -298,6 +316,80 @@ async def test_supervisor_runs_outside_app_and_does_not_receive_credentials() ->
             )
             == "helper"
         )
+
+
+def test_configuration_handoff_restores_exact_old_configuration(tmp_path: Path) -> None:
+    target = tmp_path / "ironsbot.toml"
+    candidate = tmp_path / "next.toml"
+    target.write_text("old configuration", encoding="utf-8")
+    candidate.write_text("new configuration", encoding="utf-8")
+    handoff = ConfigurationHandoff.for_files(target, candidate)
+    handoff.apply()
+    assert target.read_text(encoding="utf-8") == "new configuration"
+    handoff.restore()
+    assert target.read_text(encoding="utf-8") == "old configuration"
+    handoff.restore()
+
+
+def test_configuration_handoff_commits_and_removes_backup(tmp_path: Path) -> None:
+    target = tmp_path / "ironsbot.toml"
+    candidate = tmp_path / "next.toml"
+    target.write_text("old", encoding="utf-8")
+    candidate.write_text("new", encoding="utf-8")
+    handoff = ConfigurationHandoff.for_files(target, candidate)
+    handoff.apply()
+    handoff.finish()
+    assert not handoff.backup.exists()
+    assert target.read_text(encoding="utf-8") == "new"
+
+
+@pytest.mark.asyncio
+async def test_supervisor_configuration_handoff_only_mounts_existing_config() -> None:
+    old = container()
+    old["Config"]["Env"].append("APP_CONFIG_PATH=/config/ironsbot.toml")
+    old["Mounts"].append(
+        {
+            "Type": "bind",
+            "Source": "/trusted-config",
+            "Destination": "/config",
+            "RW": False,
+        }
+    )
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json=old)
+        if request.url.path == "/containers/create":
+            body = json.loads(request.content)
+            assert "/trusted-config:/config:rw" in body["HostConfig"]["Binds"]
+            assert body["Cmd"][-4:] == [
+                "--config-next",
+                "/config/next.toml",
+                "--config-target",
+                "/config/ironsbot.toml",
+            ]
+            assert "Env" not in body
+            return httpx.Response(201, json={"Id": "helper"})
+        return httpx.Response(204)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handle), base_url="http://docker"
+    ) as client:
+        await launch_supervisor(
+            client,
+            container_name="ironsbot",
+            image=REPO,
+            socket_path="/var/run/docker.sock",
+            config_next="next.toml",
+        )
+        with pytest.raises(DeploymentError, match="filename"):
+            await launch_supervisor(
+                client,
+                container_name="ironsbot",
+                image=REPO,
+                socket_path="/var/run/docker.sock",
+                config_next="../other.toml",
+            )
 
 
 @pytest.mark.parametrize(
