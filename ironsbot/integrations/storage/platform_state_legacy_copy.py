@@ -36,16 +36,17 @@ def copy_legacy_player_bindings(
         actor = onebot_actor(row["qq_user_id"], "player_bindings")
         principal = default_actor_principal(actor)
         target.execute(
-            "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 principal.kind,
                 principal.id,
                 row["player_id"],
                 row["player_nick"],
                 row["choice_completed"],
-                row["last_changed_at"],
+                row["last_changed_at"] if row["player_id"] is not None else None,
                 row["created_at"],
                 row["updated_at"],
+                row["player_id"],
             ),
         )
 
