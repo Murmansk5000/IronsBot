@@ -101,6 +101,7 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             last_changed_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
+            last_bound_player_id INTEGER,
             PRIMARY KEY (principal_kind, principal_id)
         )
         """,
