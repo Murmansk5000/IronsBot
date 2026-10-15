@@ -11,7 +11,11 @@ from ironsbot.integrations.storage.sqlite import (
     require_sqlite_columns,
 )
 from ironsbot.services.identity_principals import default_actor_principal
-from ironsbot.services.seer.player_binding import PlayerBindingState
+from ironsbot.services.seer.player_binding import (
+    PlayerBindingError,
+    PlayerBindingState,
+    binding_change_error,
+)
 
 if TYPE_CHECKING:
     import sqlite3
@@ -61,6 +65,10 @@ _MIGRATIONS = (
         3,
         callback=lambda connection: _migrate_to_principals(connection),  # noqa: PLW0108
     ),
+    SqliteMigration(
+        4,
+        callback=lambda connection: _migrate_cooldown_history(connection),  # noqa: PLW0108
+    ),
 )
 MIGRATION_NAMESPACE = "player_bindings"
 
@@ -84,7 +92,8 @@ class SqlitePlayerBindingStore:
         with self._database.connect() as conn:
             row = conn.execute(
                 """
-                SELECT player_id, player_nick, choice_completed, last_changed_at
+                SELECT player_id, player_nick, choice_completed, last_changed_at,
+                       last_bound_player_id
                 FROM player_bindings
                 WHERE principal_kind = ? AND principal_id = ?
                 """,
@@ -98,6 +107,7 @@ class SqlitePlayerBindingStore:
             str(row[1] or ""),
             bool(row[2]),
             _parse_datetime(row[3]),
+            None if row[4] is None else int(row[4]),
         )
 
     def bound_player_ids(self) -> frozenset[int]:
@@ -127,18 +137,21 @@ class SqlitePlayerBindingStore:
             if source_row is not None and (
                 target_row is None
                 or (target_row[0] is None and source_row[0] is not None)
+                or _newer_unbound_history(source_row, target_row)
             ):
                 conn.execute(
                     """
                     INSERT INTO player_bindings (
                         principal_kind, principal_id, player_id, player_nick,
-                        choice_completed, last_changed_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        choice_completed, last_changed_at, created_at, updated_at,
+                        last_bound_player_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (principal_kind, principal_id) DO UPDATE SET
                         player_id = excluded.player_id,
                         player_nick = excluded.player_nick,
                         choice_completed = excluded.choice_completed,
                         last_changed_at = excluded.last_changed_at,
+                        last_bound_player_id = excluded.last_bound_player_id,
                         updated_at = excluded.updated_at
                     """,
                     (*_principal_values(target), *source_row),
@@ -149,33 +162,87 @@ class SqlitePlayerBindingStore:
                 _principal_values(source),
             )
 
-    def bind(
+    def bind(  # noqa: PLR0913 - atomic binding policy inputs
         self,
         *,
         actor: ActorRef,
         player_id: int,
         player_nick: str,
         changed_at: datetime | None = None,
+        cooldown_days: int = 0,
+        only_if_unbound: bool = False,
+        reset_cooldown: bool = False,
     ) -> None:
         now = _utc_now(changed_at)
         principal = self._principal_for(actor)
         with self._database.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = _binding_row(conn, principal)
+            state = _state_from_row(actor, row)
+            if only_if_unbound and state.player_id not in {None, player_id}:
+                message = (
+                    "当前绑定已变化，已保留现有绑定；如需换绑，请重新发送绑定指令。"
+                )
+                raise PlayerBindingError(message)
+            error = binding_change_error(
+                state,
+                target_player_id=player_id,
+                now=datetime.fromisoformat(now),
+                cooldown_days=cooldown_days,
+            )
+            if error:
+                raise PlayerBindingError(error)
+            started_at = (
+                None
+                if reset_cooldown
+                else (
+                    row[3]
+                    if row is not None and state.last_bound_player_id == player_id
+                    else now
+                )
+            )
             conn.execute(
                 """
                 INSERT INTO player_bindings(
                     principal_kind, principal_id, player_id, player_nick,
-                    choice_completed, last_changed_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+                    choice_completed, last_changed_at, created_at, updated_at,
+                    last_bound_player_id
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
                 ON CONFLICT(principal_kind, principal_id) DO UPDATE SET
                     player_id = excluded.player_id,
                     player_nick = excluded.player_nick,
                     choice_completed = 1,
                     last_changed_at = excluded.last_changed_at,
+                    last_bound_player_id = excluded.last_bound_player_id,
                     updated_at = excluded.updated_at
                 WHERE player_bindings.player_id IS NOT excluded.player_id
+                   OR ?
                 """,
-                (*_principal_values(principal), player_id, player_nick, now, now, now),
+                (
+                    *_principal_values(principal),
+                    player_id,
+                    player_nick,
+                    started_at,
+                    now,
+                    now,
+                    player_id,
+                    reset_cooldown,
+                ),
             )
+            saved = _state_from_row(actor, _binding_row(conn, principal))
+            expected_nick = (
+                state.player_nick
+                if state.player_id == player_id and not reset_cooldown
+                else player_nick
+            )
+            if (
+                saved.player_id != player_id
+                or saved.player_nick != expected_nick
+                or not saved.choice_completed
+                or saved.last_bound_player_id != player_id
+                or (reset_cooldown and saved.last_changed_at is not None)
+            ):
+                raise PlayerBindingError("默认米米号保存校验失败，请稍后重试。")
 
     def decline(self, *, actor: ActorRef) -> None:
         now = _utc_now()
@@ -207,13 +274,57 @@ class SqlitePlayerBindingStore:
                 """
                 UPDATE player_bindings
                 SET player_id = NULL, player_nick = '',
-                    choice_completed = 1, last_changed_at = ?, updated_at = ?
+                    choice_completed = 1, updated_at = ?
                 WHERE principal_kind = ? AND principal_id = ?
                   AND player_id IS NOT NULL
                 """,
-                (now, now, *_principal_values(principal)),
+                (now, *_principal_values(principal)),
             )
             return cursor.rowcount > 0
+
+
+def _migrate_cooldown_history(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(player_bindings)")
+    }
+    if "last_bound_player_id" in columns:
+        return
+    connection.execute(
+        "ALTER TABLE player_bindings ADD COLUMN last_bound_player_id INTEGER"
+    )
+    connection.execute("UPDATE player_bindings SET last_bound_player_id = player_id")
+    connection.execute(
+        "UPDATE player_bindings SET last_changed_at = NULL WHERE player_id IS NULL"
+    )
+
+
+def _newer_unbound_history(
+    source: tuple[object, ...],
+    target: tuple[object, ...] | None,
+) -> bool:
+    if target is None or source[0] is not None or target[0] is not None:
+        return False
+    source_time = _parse_datetime(source[3]) if source[6] is not None else None
+    target_time = _parse_datetime(target[3]) if target[6] is not None else None
+    return source_time is not None and (
+        target_time is None or source_time > target_time
+    )
+
+
+def _state_from_row(
+    actor: ActorRef,
+    row: tuple[object, ...] | None,
+) -> PlayerBindingState:
+    if row is None:
+        return PlayerBindingState(actor)
+    return PlayerBindingState(
+        actor,
+        None if row[0] is None else int(str(row[0])),
+        str(row[1] or ""),
+        bool(row[2]),
+        _parse_datetime(row[3]),
+        None if row[6] is None else int(str(row[6])),
+    )
 
 
 def _migrate_to_principals(connection: sqlite3.Connection) -> None:
@@ -261,7 +372,7 @@ def _binding_row(
     return connection.execute(
         """
         SELECT player_id, player_nick, choice_completed, last_changed_at,
-               created_at, updated_at
+               created_at, updated_at, last_bound_player_id
         FROM player_bindings
         WHERE principal_kind = ? AND principal_id = ?
         """,
