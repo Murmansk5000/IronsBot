@@ -120,6 +120,9 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
         if nickname_lookup is not None
         else {}
     )
+    nicknames = {
+        player_id: nickname.strip() for player_id, nickname in nicknames.items()
+    }
     return sessions.offer_menu(
         context,
         PortableMenuSpec(
@@ -129,12 +132,9 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
                 format_selection_menu(
                     title=title,
                     items=tuple(
-                        f"{choice.label}：{choice.player_id}（游戏内ID）"
-                        + (
-                            f" · 昵称：{nicknames[choice.player_id]}"
-                            if nicknames.get(choice.player_id)
-                            else ""
-                        )
+                        f"{choice.label}："
+                        f"{nicknames.get(choice.player_id) or '昵称暂不可用'}"
+                        f"（{choice.player_id}）"
                         for choice in choices
                     ),
                 )

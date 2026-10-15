@@ -355,11 +355,18 @@ async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     context = _context("橱窗示例", platform=platform)
     menu = await operations["seer.lucky_skin_window.query"](context.text, context)
     assert isinstance(menu, OutboundMessage)
-    assert "1. 示例甲：90001（游戏内ID）" in _text(menu)
-    assert "2. 示例乙：90002（游戏内ID）" in _text(menu)
+    assert (
+        "1. 示例甲：游戏昵称甲（90001）"
+        if with_nicknames
+        else "1. 示例甲：昵称暂不可用（90001）"
+    ) in _text(menu)
+    assert (
+        "2. 示例乙：游戏昵称乙（90002）"
+        if with_nicknames
+        else "2. 示例乙：昵称暂不可用（90002）"
+    ) in _text(menu)
     assert "0. 【退出】" in _text(menu)
-    assert ("昵称：游戏昵称甲" in _text(menu)) is with_nicknames
-    assert ("昵称：游戏昵称乙" in _text(menu)) is with_nicknames
+    assert "游戏内ID" not in _text(menu)
     service.lookup_player_nicks.assert_awaited_once_with((90001, 90002))
     service.cached_query.assert_not_called()
     service.query.assert_not_awaited()

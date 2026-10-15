@@ -110,7 +110,7 @@ async def test_player_candidate_menu_uses_shared_nickname_display(
     prefix: str,
 ) -> None:
     context = _context(f"{prefix}玩家", platform=platform)
-    lookup = AsyncMock(return_value={700001: "实时甲"})
+    lookup = AsyncMock(return_value={700001: " 实时甲 ", 700002: "  "})
     resolver = PlayerIdResolver(
         lambda *_: None,
         lambda _: None,
@@ -119,10 +119,11 @@ async def test_player_candidate_menu_uses_shared_nickname_display(
             PlayerReferenceChoice(700002, "玩家乙"),
         ),
     )
+    sessions = PortableQuerySessions()
     operations = _build_player_operations(
         cast("PlayerService", _PlayerService()),
         resolver,
-        PortableQuerySessions(),
+        sessions,
         FeatureService(
             {context.message.conversation: frozenset({"seer_player"})}, {}, frozenset()
         ),
@@ -133,9 +134,14 @@ async def test_player_candidate_menu_uses_shared_nickname_display(
     reply = await operations[operation_id](context.text, context)
     assert isinstance(reply, PortableReply)
     text = cast("TextPart", reply.message.parts[0]).text
-    assert "玩家甲：700001（游戏内ID） · 昵称：实时甲" in text
-    assert "玩家乙：700002（游戏内ID）" in text
+    assert "1. 玩家甲：实时甲（700001）" in text
+    assert "2. 玩家乙：昵称暂不可用（700002）" in text
+    assert "游戏内ID" not in text
     lookup.assert_awaited_once_with((700001, 700002))
+    selected = await sessions.select("2", context, allow_deferred=True)
+    assert isinstance(selected, PortableReply)
+    assert "700002" in _text(selected)
+    lookup.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -573,8 +579,8 @@ async def test_partial_binding_uses_shared_menu_before_business_work(
     reply = cast(
         "PortableReply", await operations["seer.player.bind"](context.text, context)
     )
-    assert "1. 玩家甲：700001（游戏内ID）" in _text(reply)
-    assert "2. 玩家乙：700002（游戏内ID）" in _text(reply)
+    assert "1. 玩家甲：昵称暂不可用（700001）" in _text(reply)
+    assert "2. 玩家乙：昵称暂不可用（700002）" in _text(reply)
     assert "0. 【退出】" in _text(reply)
     assert not service.bound
     stranger = _context(context.text, platform=platform, actor_id="stranger")
@@ -673,8 +679,8 @@ async def test_partial_player_queries_claim_input_and_keep_selection_safe(
     assert isinstance(reply, PortableReply)
     prompt = reply.message.prompt
     assert prompt is not None
-    assert "1. 玩家甲：700001（游戏内ID）" in _text(reply)
-    assert "2. 玩家乙：700002（游戏内ID）" in _text(reply)
+    assert "1. 玩家甲：昵称暂不可用（700001）" in _text(reply)
+    assert "2. 玩家乙：昵称暂不可用（700002）" in _text(reply)
     assert "0. 【退出】" in _text(reply)
     query.assert_not_awaited()
     shortcut.assert_not_awaited()
