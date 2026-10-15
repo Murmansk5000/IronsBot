@@ -31,25 +31,40 @@ def copy_platform_player_bindings(
     qq_official_account_id: str | None,
 ) -> None:
     for row in state_rows(source, "player_bindings"):
-        if "principal_kind" in row:
+        columns = set(row.keys())
+        if "principal_kind" in columns:
+            has_history = "last_bound_player_id" in columns
             target.execute(
-                "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                tuple(row),
+                "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    row["principal_kind"],
+                    row["principal_id"],
+                    row["player_id"],
+                    row["player_nick"],
+                    row["choice_completed"],
+                    row["last_changed_at"]
+                    if has_history or row["player_id"] is not None
+                    else None,
+                    row["created_at"],
+                    row["updated_at"],
+                    row["last_bound_player_id"] if has_history else row["player_id"],
+                ),
             )
             continue
         actor = platform_actor_from_row(row, qq_official_account_id)
         principal = default_actor_principal(actor)
         target.execute(
-            "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 principal.kind,
                 principal.id,
                 row["player_id"],
                 row["player_nick"],
                 row["choice_completed"],
-                row["last_changed_at"],
+                row["last_changed_at"] if row["player_id"] is not None else None,
                 row["created_at"],
                 row["updated_at"],
+                row["player_id"],
             ),
         )
 

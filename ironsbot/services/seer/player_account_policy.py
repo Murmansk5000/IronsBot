@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import reference_digest
-from ironsbot.core.time import TZ_CN
+from ironsbot.services.seer.player_binding import (
+    PlayerBindingError,
+    binding_change_error,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.platform import ActorRef
@@ -37,9 +40,10 @@ class PlayerAccountPolicyMixin:
         pending: PendingPlayerQuery,
         *,
         bypass_cooldown: bool = False,
+        only_if_unbound: bool = False,
     ) -> str:
         current = self._bindings.get(actor)
-        if current.player_id == pending.player_id:
+        if current.player_id == pending.player_id and not bypass_cooldown:
             return f"当前已绑定该米米号：{pending.player_id}。"
         change_error = (
             ""
@@ -57,7 +61,16 @@ class PlayerAccountPolicyMixin:
                 player_id=pending.player_id,
                 player_nick=str(pending.user_info.nick),
                 changed_at=self._now(),
+                cooldown_days=(
+                    0
+                    if bypass_cooldown
+                    else self._config.player.binding.change_cooldown_days
+                ),
+                only_if_unbound=only_if_unbound,
+                reset_cooldown=bypass_cooldown,
             )
+        except PlayerBindingError as error:
+            return str(error)
         except Exception as error:
             logger.exception("保存米米号绑定失败")
             return f"⚠️ 默认米米号设置保存失败：{error}"
@@ -82,7 +95,9 @@ class PlayerAccountPolicyMixin:
                     "当前绑定已变化，已保留现有绑定；如需换绑，请重新发送绑定指令。"
                 )
             else:
-                status = self._save_binding(actor, pending)
+                status = self._save_binding(
+                    actor, pending, only_if_unbound=not replacing_existing
+                )
         elif replacing_existing:
             status = "已保留当前默认米米号。"
         else:
@@ -141,9 +156,17 @@ class PlayerAccountPolicyMixin:
         error = self._binding_change_error(actor, target_player_id=player_id)
         if error:
             return error
-        self._bindings.bind(
-            actor=actor, player_id=player_id, player_nick="", changed_at=self._now()
-        )
+        try:
+            self._bindings.bind(
+                actor=actor,
+                player_id=player_id,
+                player_nick="",
+                changed_at=self._now(),
+                cooldown_days=self._config.player.binding.change_cooldown_days,
+                only_if_unbound=True,
+            )
+        except PlayerBindingError as error:
+            return str(error)
         return f"已设置默认米米号：{player_id}。"
 
     def shortcut_binding_offer(self, player_id: int) -> str:
@@ -224,20 +247,9 @@ class PlayerAccountPolicyMixin:
         binding = self._bindings.get(actor)
         if target_player_id is not None and binding.player_id == target_player_id:
             return ""
-        changed_at = binding.last_changed_at
-        cooldown_days = self._config.player.binding.change_cooldown_days
-        if changed_at is None or cooldown_days <= 0:
-            return ""
-        available_date = _china_time(changed_at).date() + timedelta(days=cooldown_days)
-        if _china_time(self._now()).date() >= available_date:
-            return ""
-        return (
-            "默认米米号最近刚更改，"
-            f"请于 {available_date.strftime('%Y年%m月%d日')} 00:00 起再试。"
+        return binding_change_error(
+            binding,
+            target_player_id=target_player_id if target_player_id is not None else -1,
+            now=self._now(),
+            cooldown_days=self._config.player.binding.change_cooldown_days,
         )
-
-
-def _china_time(value: datetime) -> datetime:
-    if value.tzinfo is None or value.utcoffset() is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(TZ_CN)
