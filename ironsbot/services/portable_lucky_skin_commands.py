@@ -102,7 +102,7 @@ class PortableLuckySkinCommands:
                 player_id: int,
                 context: MessageInputContext,
             ) -> OutboundMessage:
-                return await self._query_target(context, player_id, source=source)
+                return await self.query_target(context, player_id, source=source)
 
             return await select_player_reference(
                 reference,
@@ -122,9 +122,9 @@ class PortableLuckySkinCommands:
                 return OutboundMessage.from_text(resolution.error)
             player_id = resolution.player_id
             source = resolution.source or "default"
-        return await self._query_target(context, player_id, source=source)
+        return await self.query_target(context, player_id, source=source)
 
-    async def _query_target(  # noqa: PLR0911 - each access failure has a direct reply
+    async def query_target(  # noqa: PLR0911 - each access failure has a direct reply
         self,
         context: MessageInputContext,
         player_id: int | None,

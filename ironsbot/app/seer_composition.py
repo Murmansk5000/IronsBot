@@ -76,7 +76,9 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.services.pet_config import PetConfigQueryService
+from ironsbot.services.portable_lucky_skin_commands import PortableLuckySkinCommands
 from ironsbot.services.portable_lucky_skin_result import lucky_skin_result_menu
+from ironsbot.services.portable_player_commands import PlayerDetailMenuAction
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.autocard_media import AutocardMediaService
 from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
@@ -174,6 +176,22 @@ class SeerComponents:
     player_requests: PlayerRequestProtectionService
     player_detail_extensions: PlayerDetailExtensionRegistry
     lineup_render_session: PlayerLineupRenderSessionFactory
+
+
+def _lucky_player_actions(
+    commands: PortableLuckySkinCommands,
+) -> tuple[PlayerDetailMenuAction, ...]:
+    if not commands.service.enabled:
+        return ()
+    return (
+        PlayerDetailMenuAction(
+            id="seer.lucky_skin_window.query",
+            feature="lucky_skin_window",
+            label="橱窗",
+            aliases=("橱窗", "幸运橱窗"),
+            query=partial(commands.query_target, source="numeric"),
+        ),
+    )
 
 
 async def _lookup_lucky_nickname(headless: HeadlessService, player_id: int) -> str:
@@ -624,6 +642,17 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 pet, mintmark, equipment, autocard, content_selection_scope
             ),
             external_references,
+            player_menu_actions=_lucky_player_actions(
+                PortableLuckySkinCommands(
+                    lucky_skin_window,
+                    pet,
+                    features,
+                    query_sessions,
+                    player_id_resolver,
+                    identity_principals,
+                )
+            ),
+            player_nickname_lookup=lucky_skin_window.lookup_player_nicks,
         ),
         lucky_skin_window=lucky_skin_window,
         team_resource=team_resource,

@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
-from ironsbot.core.semantic_requests import SemanticRequest, SemanticRequestSource
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+)
 from ironsbot.services.player_binding_confirmation import confirm_shortcut_binding
 from ironsbot.services.player_extension_commands import query_player_extension
 from ironsbot.services.player_reference_selection import (
@@ -34,6 +38,8 @@ from ironsbot.services.seer.player_shortcut_contracts import (
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, RankPlayerCommand
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
@@ -54,6 +60,21 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_queries import RankQueryService
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerDetailMenuAction:
+    id: str
+    feature: str
+    label: str
+    aliases: tuple[str, ...]
+    query: Callable[
+        [MessageInputContext, int], Awaitable[OutboundMessage | PortableReply]
+    ]
+
+    @property
+    def action(self) -> ActionDefinition:
+        return ActionDefinition(self.id, self.label)
+
+
 def build_portable_player_operations(  # noqa: PLR0913 - composed query dependencies
     service: PlayerService,
     resolver: PlayerIdResolver,
@@ -61,9 +82,19 @@ def build_portable_player_operations(  # noqa: PLR0913 - composed query dependen
     features: FeatureService,
     extensions: PlayerDetailExtensionRegistry,
     rank_queries: RankQueryService | None = None,
+    menu_actions: tuple[PlayerDetailMenuAction, ...] = (),
+    nickname_lookup: Callable[[tuple[int, ...]], Awaitable[dict[int, str]]]
+    | None = None,
 ) -> dict[str, PortableOperation]:
     owner = _PortablePlayerOperations(
-        service, resolver, sessions, features, extensions, rank_queries
+        service,
+        resolver,
+        sessions,
+        features,
+        extensions,
+        rank_queries,
+        menu_actions,
+        nickname_lookup,
     )
     return {
         "seer.player.query": owner.query,
@@ -81,6 +112,8 @@ class _PortablePlayerOperations:
     features: FeatureService
     extensions: PlayerDetailExtensionRegistry
     rank_queries: RankQueryService | None
+    menu_actions: tuple[PlayerDetailMenuAction, ...]
+    nickname_lookup: Callable[[tuple[int, ...]], Awaitable[dict[int, str]]] | None
 
     async def query(
         self,
@@ -122,6 +155,7 @@ class _PortablePlayerOperations:
                     self.features,
                     self.extensions,
                     self.rank_queries,
+                    menu_actions=self.menu_actions,
                     target_source=target_source,
                 )
             except BaseException:
@@ -139,6 +173,7 @@ class _PortablePlayerOperations:
             self.sessions,
             query,
             title="请选择要查询的玩家：",
+            nickname_lookup=self.nickname_lookup,
         )
 
     async def bind(
@@ -172,6 +207,7 @@ class _PortablePlayerOperations:
             self.sessions,
             execute,
             title="请选择要绑定的玩家：",
+            nickname_lookup=self.nickname_lookup,
         )
         if reply is None:
             return None
@@ -203,6 +239,7 @@ class _PortablePlayerOperations:
                 self.features,
                 self.extensions,
                 self.rank_queries,
+                menu_actions=self.menu_actions,
             )
         return _prepare_player_query_reply(
             self.service,
@@ -213,6 +250,7 @@ class _PortablePlayerOperations:
             self.features,
             self.extensions,
             self.rank_queries,
+            menu_actions=self.menu_actions,
         )
 
     async def unbind(
@@ -321,6 +359,8 @@ def _offer_binding_confirmation(  # noqa: PLR0913 - preserves query context
     features: FeatureService,
     extensions: PlayerDetailExtensionRegistry,
     rank_queries: RankQueryService | None,
+    *,
+    menu_actions: tuple[PlayerDetailMenuAction, ...] = (),
 ) -> PortableReply:
     pending = result.pending
     if pending is None:
@@ -346,6 +386,7 @@ def _offer_binding_confirmation(  # noqa: PLR0913 - preserves query context
             features,
             extensions,
             rank_queries,
+            menu_actions=menu_actions,
         )
 
     return PortableReply(
@@ -388,6 +429,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     rank_queries: RankQueryService | None,
     *,
     target_source: PlayerTargetSource = "numeric",
+    menu_actions: tuple[PlayerDetailMenuAction, ...] = (),
 ) -> PortableReply:
     if result.message:
         return _text_reply(result.message)
@@ -407,6 +449,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             features,
             extensions,
             rank_queries,
+            menu_actions=menu_actions,
         )
     requests = available_player_detail_requests(
         has_collection=pending.section_plan.has_collection,
@@ -421,7 +464,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     team_id = int(getattr(pending.user_info, "team_id", 0) or 0)
     extension_actions = tuple(
         action
-        for action in extensions.actions()
+        for action in (*extensions.actions(), *menu_actions)
         if action.id != "player_team" or team_id > 0
         if features.is_feature_allowed(
             context.message.actor,
@@ -434,6 +477,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         command: (
             PlayerShortcutCommand
             | PlayerDetailExtensionAction
+            | PlayerDetailMenuAction
             | Literal["beast_rank", "bind", "decline"]
         ),
         context: MessageInputContext,
@@ -460,6 +504,8 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 assert reply is not None
                 return reply
             return await _beast_rank_reply(rank_service, pending.player_id, context)
+        if isinstance(command, PlayerDetailMenuAction):
+            return await command.query(context, pending.player_id)
         if isinstance(command, str):
             msg = "unknown player detail action"
             raise TypeError(msg)
@@ -476,6 +522,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         command: (
             PlayerShortcutCommand
             | PlayerDetailExtensionAction
+            | PlayerDetailMenuAction
             | Literal["beast_rank", "bind", "decline"]
         ),
         context: MessageInputContext,
@@ -497,6 +544,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         command: (
             PlayerShortcutCommand
             | PlayerDetailExtensionAction
+            | PlayerDetailMenuAction
             | Literal["beast_rank", "bind", "decline"]
         ),
         _context: MessageInputContext,
@@ -506,6 +554,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     choices: tuple[
         PlayerShortcutCommand
         | PlayerDetailExtensionAction
+        | PlayerDetailMenuAction
         | Literal["beast_rank", "bind", "decline"],
         ...,
     ] = (
@@ -549,7 +598,9 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 responder.message.actor,
                 responder.message.conversation,
                 command.feature
-                if isinstance(command, PlayerDetailExtensionAction)
+                if isinstance(
+                    command, (PlayerDetailExtensionAction, PlayerDetailMenuAction)
+                )
                 else "seer_rank"
                 if command == "beast_rank"
                 else "seer_player",
@@ -588,6 +639,7 @@ async def _select_shared_player_detail(
     command: (
         PlayerShortcutCommand
         | PlayerDetailExtensionAction
+        | PlayerDetailMenuAction
         | Literal["beast_rank", "bind", "decline"]
     ),
     context: MessageInputContext,
@@ -597,6 +649,7 @@ async def _select_shared_player_detail(
     select: MenuSelect[
         PlayerShortcutCommand
         | PlayerDetailExtensionAction
+        | PlayerDetailMenuAction
         | Literal["beast_rank", "bind", "decline"]
     ],
 ) -> OutboundMessage | PortableReply:
@@ -605,7 +658,7 @@ async def _select_shared_player_detail(
         return OutboundMessage.from_text("该选项仅限菜单发起者使用。")
     required_feature = (
         command.feature
-        if isinstance(command, PlayerDetailExtensionAction)
+        if isinstance(command, (PlayerDetailExtensionAction, PlayerDetailMenuAction))
         else "seer_rank"
         if command == "beast_rank"
         else "seer_player"
@@ -624,6 +677,7 @@ def _player_detail_semantic_request(
     command: (
         PlayerShortcutCommand
         | PlayerDetailExtensionAction
+        | PlayerDetailMenuAction
         | Literal["beast_rank", "bind", "decline"]
     ),
     player_id: int,
@@ -637,7 +691,7 @@ def _player_detail_semantic_request(
         player_id=player_id,
         source=SemanticRequestSource.MENU,
     )
-    if isinstance(command, PlayerDetailExtensionAction):
+    if isinstance(command, (PlayerDetailExtensionAction, PlayerDetailMenuAction)):
         return SemanticRequest(
             action=command.action,
             target=request.target,

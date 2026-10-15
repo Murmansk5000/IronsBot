@@ -31,6 +31,8 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
     execute: PlayerReferenceAction,
     *,
     title: str,
+    nickname_lookup: Callable[[tuple[int, ...]], Awaitable[dict[int, str]]]
+    | None = None,
 ) -> PortableReply | None:
     """Select an explicit reference or resolve a direct mention/default binding."""
     reference = (reference or "").strip()
@@ -43,6 +45,7 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
             execute,
             title=title,
             enforce_query_access=True,
+            nickname_lookup=nickname_lookup,
         )
     else:
         resolution = resolver.resolve(context, reference)
