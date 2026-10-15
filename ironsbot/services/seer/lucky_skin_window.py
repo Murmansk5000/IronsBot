@@ -377,8 +377,6 @@ class LuckySkinWindowService:
         configured: PlayerAccount | None = None,
     ) -> PlayerAccount:
         account = configured or self._configured_account_for_query(request)
-        if self._features.is_actor_superuser(request.requester):
-            return account
         if request.owner is not None:
             own = self._validated_account_for_actor(request.owner)
             if own.player_id == account.player_id:

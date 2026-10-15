@@ -769,19 +769,30 @@ def test_lucky_subscription_only_appears_on_selected_bot(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
-def test_admin_queries_configured_account_without_own_subscription(
+def test_admin_cannot_login_another_configured_account(
     tmp_path: Path,
     platform: Platform,
 ) -> None:
     service, _game, _delivery, _bindings, sessions = _service(tmp_path)
     request = LuckySkinQuery(ActorRef(platform, "9999"), None, 90002)
-    assert service.cached_query(request) is None
+    with pytest.raises(LuckySkinWindowAccessError, match="尚未缓存"):
+        service.cached_query(request)
+    with pytest.raises(LuckySkinWindowAccessError, match="尚未缓存"):
+        asyncio.run(service.query(request))
     assert sessions.opens == []
-    result = asyncio.run(service.query(request))
-    assert result.player_id == request.player_id
+
+
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+def test_admin_can_read_another_accounts_existing_cache(
+    tmp_path: Path,
+    platform: Platform,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    generated = asyncio.run(service.query(_request(1002)))
+    request = LuckySkinQuery(ActorRef(platform, "9999"), None, 90002)
+
+    assert service.cached_query(request) == replace(generated, from_cache=True)
     assert len(sessions.opens) == 1
-    assert "★" not in service.format_result(result, actor=None)
-    assert service.cached_query(request) is not None
 
 
 def test_nonadmin_cannot_log_in_to_another_configured_account(
