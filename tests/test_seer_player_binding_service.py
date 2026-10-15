@@ -1,4 +1,6 @@
 import asyncio
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +15,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
-from ironsbot.services.seer.player_binding import PlayerBindingState
+from ironsbot.services.seer.player_binding import PlayerBindingError, PlayerBindingState
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -22,6 +24,41 @@ from ironsbot.services.seer.player_service import (
 from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 
 _PLAYER_ID = 123456
+
+
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("fault", ["ignore", "corrupt"])
+def test_binding_write_verification_rolls_back_silent_failures(
+    tmp_path: Path, platform: Platform, *, existing: bool, fault: str
+) -> None:
+    path = tmp_path / "bindings.sqlite"
+    store = SqlitePlayerBindingStore(path)
+    actor = ActorRef(platform, "synthetic-user")
+    if existing:
+        store.bind(actor=actor, player_id=90001, player_nick="before")
+    before = store.get(actor)
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute("CREATE TABLE write_attempts (value INTEGER)")
+        operation = "UPDATE" if existing and fault == "corrupt" else "INSERT"
+        timing = "BEFORE" if fault == "ignore" else "AFTER"
+        mutation = (
+            "SELECT RAISE(IGNORE);"
+            if fault == "ignore"
+            else "UPDATE player_bindings SET player_id = 99999;"
+        )
+        connection.execute(
+            f"CREATE TRIGGER inject_failure {timing} {operation} ON player_bindings "
+            "BEGIN INSERT INTO write_attempts VALUES (1); "
+            f"{mutation} END"
+        )
+    with pytest.raises(PlayerBindingError, match="保存校验失败"):
+        store.bind(actor=actor, player_id=90002, player_nick="after")
+    assert store.get(actor) == before
+    with closing(sqlite3.connect(path)) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM write_attempts").fetchone() == (
+            0,
+        )
 
 
 def _actor(user_id: int = 10001) -> ActorRef:
@@ -56,6 +93,7 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         get=Mock(return_value=PlayerBindingState(_actor()))
     )
     service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
+    service._binding_change_error = Mock(return_value="")
     service._save_binding = Mock(return_value="已设置默认米米号：123456。")
 
     result = asyncio.run(
@@ -79,15 +117,19 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("previous_player", [777777, _PLAYER_ID])
 def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     tmp_path: Path,
     platform: Platform,
+    previous_player: int,
 ) -> None:
     operator = ActorRef(platform, "operator")
     target = ActorRef(platform, "recipient")
     now = datetime(2026, 9, 15, tzinfo=timezone.utc)
     store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
-    store.bind(actor=target, player_id=777777, player_nick="old", changed_at=now)
+    store.bind(
+        actor=target, player_id=previous_player, player_nick="old", changed_at=now
+    )
     pending = PendingPlayerQuery(
         player_id=_PLAYER_ID,
         user_info=SimpleNamespace(nick="new"),
@@ -107,6 +149,15 @@ def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     result = asyncio.run(service.bind_player(_PLAYER_ID, actor=operator, target=target))
     assert store.get(target).player_id == _PLAYER_ID
     assert store.get(operator).player_id is None
+    assert store.get(target).last_changed_at is None
+    store.bind(
+        actor=target,
+        player_id=_PLAYER_ID + 1,
+        player_nick="next",
+        changed_at=now,
+        cooldown_days=3,
+    )
+    assert store.get(target).player_id == _PLAYER_ID + 1
     assert result.binding_replacement is None
     assert result.offer_binding is False
     assert pending.player_message.startswith("已为该成员设置默认米米号")
@@ -200,6 +251,7 @@ def test_direct_binding_returns_invalid_player_error_without_saving() -> None:
     )
     service._save_binding = Mock()
 
+    service._binding_change_error = Mock(return_value="")
     result = asyncio.run(service.bind_player(1, actor=_actor()))
 
     assert result.message == "❌ 米米号无效，请输入数字。"
@@ -316,11 +368,12 @@ def test_binding_change_cooldown_uses_three_beijing_calendar_days(
         now=lambda: datetime(2026, 7, 25, 23, 59, 59, tzinfo=china_timezone),
     )
 
-    assert (
-        service.unbind(_actor(10003))
-        == "默认米米号最近刚更改，请于 2026年07月26日 00:00 起再试。"
+    assert "2026年07月26日 00:00" in service._binding_change_error(
+        _actor(10003), target_player_id=654321
     )
-    assert store.get(_actor(10003)).player_id == _PLAYER_ID
+    assert service.unbind(_actor(10003)) == "已解除默认米米号。"
+    assert store.get(_actor(10003)).player_id is None
+    assert store.get(_actor(10003)).last_changed_at == changed_at
 
     service_after_cooldown = PlayerService(
         config=cast("Any", config),
@@ -330,7 +383,12 @@ def test_binding_change_cooldown_uses_three_beijing_calendar_days(
         details=cast("Any", None),
         now=lambda: datetime(2026, 7, 26, 0, 0, tzinfo=china_timezone),
     )
-    assert service_after_cooldown.unbind(_actor(10003)) == "已解除默认米米号。"
+    assert (
+        service_after_cooldown._binding_change_error(
+            _actor(10003), target_player_id=654321
+        )
+        == ""
+    )
 
 
 def test_rebinding_same_player_does_not_refresh_last_changed_at(tmp_path: Path) -> None:
