@@ -87,6 +87,7 @@ def _dependencies(
 ]:
     onebot = ActorRef(Platform.ONEBOT, "1001")
     service = Mock()
+    service.lookup_player_nicks = AsyncMock(return_value={})
     pet = Mock()
     principals = IdentityPrincipalService()
     if linked:
@@ -318,11 +319,17 @@ async def test_target_query_preserves_account_through_confirmation(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("selection", ["2", "0"])
+@pytest.mark.parametrize("with_nicknames", [False, True])
 async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     platform: Platform,
     selection: str,
+    *,
+    with_nicknames: bool,
 ) -> None:
     service, pet, identity, sessions, onebot = _dependencies()
+    service.lookup_player_nicks.return_value = (
+        {90001: "游戏昵称甲", 90002: "游戏昵称乙"} if with_nicknames else {}
+    )
     service.cached_query.return_value = None
     service.query = AsyncMock(
         return_value=LuckySkinWindowResult("2026-09-15", 90002, (), from_cache=False),
@@ -351,6 +358,9 @@ async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     assert "1. 示例甲：90001（游戏内ID）" in _text(menu)
     assert "2. 示例乙：90002（游戏内ID）" in _text(menu)
     assert "0. 【退出】" in _text(menu)
+    assert ("昵称：游戏昵称甲" in _text(menu)) is with_nicknames
+    assert ("昵称：游戏昵称乙" in _text(menu)) is with_nicknames
+    service.lookup_player_nicks.assert_awaited_once_with((90001, 90002))
     service.cached_query.assert_not_called()
     service.query.assert_not_awaited()
     await sessions.select(selection, context)

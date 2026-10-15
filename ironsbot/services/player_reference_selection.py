@@ -68,6 +68,8 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
     *,
     title: str,
     enforce_query_access: bool = False,
+    nickname_lookup: Callable[[tuple[int, ...]], Awaitable[dict[int, str]]]
+    | None = None,
 ) -> OutboundMessage | PortableReply | None:
     source = resolver.reference_source(reference)
     if enforce_query_access:
@@ -110,6 +112,11 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
                 return OutboundMessage.from_text(error)
         return await execute(choice.player_id, context)
 
+    nicknames = (
+        await nickname_lookup(tuple(choice.player_id for choice in choices))
+        if nickname_lookup is not None
+        else {}
+    )
     return sessions.offer_menu(
         context,
         PortableMenuSpec(
@@ -120,6 +127,11 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
                     title=title,
                     items=tuple(
                         f"{choice.label}：{choice.player_id}（游戏内ID）"
+                        + (
+                            f" · 昵称：{nicknames[choice.player_id]}"
+                            if nicknames.get(choice.player_id)
+                            else ""
+                        )
                         for choice in choices
                     ),
                 )

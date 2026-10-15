@@ -217,6 +217,7 @@ class LuckySkinWindowService:
         *,
         today: Callable[[], date] | None = None,
         renderer: LuckySkinWindowRenderer | None = None,
+        nickname_lookup: Callable[[int], Awaitable[str]] | None = None,
     ) -> None:
         self._config = config
         self._features = features
@@ -228,6 +229,7 @@ class LuckySkinWindowService:
         self._notification_sender = notification_sender
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
         self._renderer = renderer
+        self._nickname_lookup = nickname_lookup
         self._accounts = {configured.actor: configured for configured in accounts}
         if len(self._accounts) != len(accounts):
             raise LuckySkinWindowConfigurationError.duplicate_actor()
@@ -242,6 +244,29 @@ class LuckySkinWindowService:
     @property
     def enabled(self) -> bool:
         return self._config.enabled
+
+    async def lookup_player_nicks(self, player_ids: tuple[int, ...]) -> dict[int, str]:
+        lookup = self._nickname_lookup
+        if lookup is None:
+            return {}
+
+        async def nickname(player_id: int) -> tuple[int, str]:
+            try:
+                value = await asyncio.wait_for(
+                    lookup(player_id), timeout=self._config.timeout_seconds
+                )
+            except Exception as error:  # noqa: BLE001 - optional menu enrichment
+                logger.warning(
+                    "Lucky-window nickname lookup failed: %s", type(error).__name__
+                )
+                return player_id, ""
+            return player_id, value.strip()
+
+        return dict(
+            await asyncio.gather(
+                *(nickname(value) for value in dict.fromkeys(player_ids))
+            )
+        )
 
     @property
     def config(self) -> LuckySkinWindowConfig:

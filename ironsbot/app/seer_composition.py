@@ -176,6 +176,11 @@ class SeerComponents:
     lineup_render_session: PlayerLineupRenderSessionFactory
 
 
+async def _lookup_lucky_nickname(headless: HeadlessService, player_id: int) -> str:
+    profile = await headless.get_game().get_user_info(player_id)
+    return str(profile.nick)
+
+
 def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boundary
     settings: Settings,
     http_clients: HttpClients,
@@ -403,6 +408,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         verify_history=verify_onebot_history,
         verify_onebot_history=settings.seer.lucky_skin_window.verify_onebot_history,
     )
+
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -418,6 +424,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         lucky_sender,
         renderer=render_window,
+        nickname_lookup=partial(_lookup_lucky_nickname, headless),
     )
     player_query_limit_store = SqlitePlayerQueryLimitStore(
         settings.paths.qq_state,

@@ -112,6 +112,7 @@ class PortableLuckySkinCommands:
                 execute,
                 title="请选择要查询橱窗的玩家：",
                 enforce_query_access=True,
+                nickname_lookup=self.service.lookup_player_nicks,
             )
         player_id = None
         source: PlayerTargetSource = "default"

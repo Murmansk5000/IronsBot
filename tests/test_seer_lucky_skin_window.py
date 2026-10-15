@@ -377,6 +377,30 @@ def _service(
     return service, game, notification_sender, bindings, sessions
 
 
+def test_nickname_enrichment_is_deduplicated_and_failure_is_optional(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    calls: list[int] = []
+    failed_player = 90002
+    slow_player = 90003
+
+    async def lookup(player_id: int) -> str:
+        calls.append(player_id)
+        if player_id == failed_player:
+            raise ConnectionError
+        if player_id == slow_player:
+            await asyncio.sleep(1)
+        return " nickname "
+
+    service._nickname_lookup = lookup
+    service._config = service.config.model_copy(update={"timeout_seconds": 0.01})
+    result = asyncio.run(service.lookup_player_nicks((90001, 90001, 90002, 90003)))
+    assert result == {90001: "nickname", 90002: "", 90003: ""}
+    assert calls == [90001, 90002, 90003]
+    assert sessions.opens == []
+
+
 def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
 
