@@ -104,10 +104,12 @@ async def test_lucky_window_is_a_lazy_permission_filtered_player_submenu(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("prefix", ["米米号", "收集", "巅峰", "群星牌"])
 async def test_player_candidate_menu_uses_shared_nickname_display(
     platform: Platform,
+    prefix: str,
 ) -> None:
-    context = _context("米米号玩家", platform=platform)
+    context = _context(f"{prefix}玩家", platform=platform)
     lookup = AsyncMock(return_value={700001: "实时甲"})
     resolver = PlayerIdResolver(
         lambda *_: None,
@@ -127,7 +129,8 @@ async def test_player_candidate_menu_uses_shared_nickname_display(
         PlayerDetailExtensionRegistry(),
         nickname_lookup=lookup,
     )
-    reply = await operations["seer.player.query"](context.text, context)
+    operation_id = "seer.player.query" if prefix == "米米号" else "seer.player.default"
+    reply = await operations[operation_id](context.text, context)
     assert isinstance(reply, PortableReply)
     text = cast("TextPart", reply.message.parts[0]).text
     assert "玩家甲：700001（游戏内ID） · 昵称：实时甲" in text

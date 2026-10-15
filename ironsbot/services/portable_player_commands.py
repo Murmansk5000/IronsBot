@@ -300,6 +300,7 @@ class _PortablePlayerOperations:
             self.sessions,
             confirmed_query,
             title="请选择要查询的玩家：",
+            nickname_lookup=self.nickname_lookup,
         )
 
 
