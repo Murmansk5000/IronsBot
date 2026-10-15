@@ -80,15 +80,19 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("previous_player", [777777, _PLAYER_ID])
 def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     tmp_path: Path,
     platform: Platform,
+    previous_player: int,
 ) -> None:
     operator = ActorRef(platform, "operator")
     target = ActorRef(platform, "recipient")
     now = datetime(2026, 9, 15, tzinfo=timezone.utc)
     store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
-    store.bind(actor=target, player_id=777777, player_nick="old", changed_at=now)
+    store.bind(
+        actor=target, player_id=previous_player, player_nick="old", changed_at=now
+    )
     pending = PendingPlayerQuery(
         player_id=_PLAYER_ID,
         user_info=SimpleNamespace(nick="new"),
@@ -108,6 +112,15 @@ def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     result = asyncio.run(service.bind_player(_PLAYER_ID, actor=operator, target=target))
     assert store.get(target).player_id == _PLAYER_ID
     assert store.get(operator).player_id is None
+    assert store.get(target).last_changed_at is None
+    store.bind(
+        actor=target,
+        player_id=_PLAYER_ID + 1,
+        player_nick="next",
+        changed_at=now,
+        cooldown_days=3,
+    )
+    assert store.get(target).player_id == _PLAYER_ID + 1
     assert result.binding_replacement is None
     assert result.offer_binding is False
     assert pending.player_message.startswith("已为该成员设置默认米米号")

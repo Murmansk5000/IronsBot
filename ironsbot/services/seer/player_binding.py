@@ -35,6 +35,7 @@ class PlayerBindingStore(Protocol):
         changed_at: datetime | None = None,
         cooldown_days: int = 0,
         only_if_unbound: bool = False,
+        reset_cooldown: bool = False,
     ) -> None: ...
 
     def decline(self, *, actor: ActorRef) -> None: ...

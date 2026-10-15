@@ -171,6 +171,7 @@ class SqlitePlayerBindingStore:
         changed_at: datetime | None = None,
         cooldown_days: int = 0,
         only_if_unbound: bool = False,
+        reset_cooldown: bool = False,
     ) -> None:
         now = _utc_now(changed_at)
         principal = self._principal_for(actor)
@@ -192,9 +193,13 @@ class SqlitePlayerBindingStore:
             if error:
                 raise PlayerBindingError(error)
             started_at = (
-                row[3]
-                if row is not None and state.last_bound_player_id == player_id
-                else now
+                None
+                if reset_cooldown
+                else (
+                    row[3]
+                    if row is not None and state.last_bound_player_id == player_id
+                    else now
+                )
             )
             conn.execute(
                 """
@@ -211,6 +216,7 @@ class SqlitePlayerBindingStore:
                     last_bound_player_id = excluded.last_bound_player_id,
                     updated_at = excluded.updated_at
                 WHERE player_bindings.player_id IS NOT excluded.player_id
+                   OR ?
                 """,
                 (
                     *_principal_values(principal),
@@ -220,6 +226,7 @@ class SqlitePlayerBindingStore:
                     now,
                     now,
                     player_id,
+                    reset_cooldown,
                 ),
             )
 

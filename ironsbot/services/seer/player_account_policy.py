@@ -43,7 +43,7 @@ class PlayerAccountPolicyMixin:
         only_if_unbound: bool = False,
     ) -> str:
         current = self._bindings.get(actor)
-        if current.player_id == pending.player_id:
+        if current.player_id == pending.player_id and not bypass_cooldown:
             return f"当前已绑定该米米号：{pending.player_id}。"
         change_error = (
             ""
@@ -67,6 +67,7 @@ class PlayerAccountPolicyMixin:
                     else self._config.player.binding.change_cooldown_days
                 ),
                 only_if_unbound=only_if_unbound,
+                reset_cooldown=bypass_cooldown,
             )
         except PlayerBindingError as error:
             return str(error)

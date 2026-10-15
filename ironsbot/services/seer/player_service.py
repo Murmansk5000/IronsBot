@@ -190,7 +190,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         """Bind self, or a recipient authorized by the administrative command."""
         recipient = target or actor
         binding = self._bindings.get(recipient)
-        if binding.player_id == player_id:
+        if binding.player_id == player_id and target is None:
             nick = f"（{binding.player_nick}）" if binding.player_nick else ""
             return PlayerQueryResult(message=f"当前已绑定该米米号：{player_id}{nick}。")
         if target is None:
