@@ -53,6 +53,7 @@ class DynamicMenuResult:
     status: DynamicMenuStatus
     dynamic_ids: tuple[str, ...] = ()
     prompt: str = ""
+    auth_invalid: bool = False
 
 
 def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:
