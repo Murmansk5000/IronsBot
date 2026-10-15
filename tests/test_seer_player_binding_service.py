@@ -1,4 +1,6 @@
 import asyncio
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +15,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
-from ironsbot.services.seer.player_binding import PlayerBindingState
+from ironsbot.services.seer.player_binding import PlayerBindingError, PlayerBindingState
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -22,6 +24,41 @@ from ironsbot.services.seer.player_service import (
 from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 
 _PLAYER_ID = 123456
+
+
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("fault", ["ignore", "corrupt"])
+def test_binding_write_verification_rolls_back_silent_failures(
+    tmp_path: Path, platform: Platform, *, existing: bool, fault: str
+) -> None:
+    path = tmp_path / "bindings.sqlite"
+    store = SqlitePlayerBindingStore(path)
+    actor = ActorRef(platform, "synthetic-user")
+    if existing:
+        store.bind(actor=actor, player_id=90001, player_nick="before")
+    before = store.get(actor)
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute("CREATE TABLE write_attempts (value INTEGER)")
+        operation = "UPDATE" if existing and fault == "corrupt" else "INSERT"
+        timing = "BEFORE" if fault == "ignore" else "AFTER"
+        mutation = (
+            "SELECT RAISE(IGNORE);"
+            if fault == "ignore"
+            else "UPDATE player_bindings SET player_id = 99999;"
+        )
+        connection.execute(
+            f"CREATE TRIGGER inject_failure {timing} {operation} ON player_bindings "
+            "BEGIN INSERT INTO write_attempts VALUES (1); "
+            f"{mutation} END"
+        )
+    with pytest.raises(PlayerBindingError, match="保存校验失败"):
+        store.bind(actor=actor, player_id=90002, player_nick="after")
+    assert store.get(actor) == before
+    with closing(sqlite3.connect(path)) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM write_attempts").fetchone() == (
+            0,
+        )
 
 
 def _actor(user_id: int = 10001) -> ActorRef:

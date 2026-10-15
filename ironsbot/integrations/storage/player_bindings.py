@@ -229,6 +229,20 @@ class SqlitePlayerBindingStore:
                     reset_cooldown,
                 ),
             )
+            saved = _state_from_row(actor, _binding_row(conn, principal))
+            expected_nick = (
+                state.player_nick
+                if state.player_id == player_id and not reset_cooldown
+                else player_nick
+            )
+            if (
+                saved.player_id != player_id
+                or saved.player_nick != expected_nick
+                or not saved.choice_completed
+                or saved.last_bound_player_id != player_id
+                or (reset_cooldown and saved.last_changed_at is not None)
+            ):
+                raise PlayerBindingError("默认米米号保存校验失败，请稍后重试。")
 
     def decline(self, *, actor: ActorRef) -> None:
         now = _utc_now()
