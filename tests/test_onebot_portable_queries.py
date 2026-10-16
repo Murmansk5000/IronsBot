@@ -148,6 +148,8 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
         resources=SimpleNamespace(
             player=service,
             player_detail_extensions=extensions,
+            player_menu_actions=(),
+            player_nickname_lookup=None,
             rank_queries=None,
         ),
         features=Mock(),
