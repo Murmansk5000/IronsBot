@@ -23,6 +23,9 @@ from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.portable_player_commands import (
+    PlayerDetailMenuAction,
+)
+from ironsbot.services.portable_player_commands import (
     build_portable_player_operations as _build_player_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -52,6 +55,93 @@ if TYPE_CHECKING:
         PlayerShortcutCommand,
     )
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_lucky_window_is_a_lazy_permission_filtered_player_submenu(
+    platform: Platform, *, enabled: bool
+) -> None:
+    context = _context("米米号700001", platform=platform)
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    query = AsyncMock(return_value=OutboundMessage.from_text("existing lucky flow"))
+    features = FeatureService(
+        {
+            context.message.conversation: frozenset(
+                {"seer_player", "lucky_skin_window"} if enabled else {"seer_player"}
+            )
+        },
+        {},
+        frozenset(),
+    )
+    operations = _build_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+        PlayerDetailExtensionRegistry(),
+        menu_actions=(
+            PlayerDetailMenuAction(
+                id="seer.lucky_skin_window.query",
+                feature="lucky_skin_window",
+                label="橱窗",
+                aliases=("橱窗", "幸运橱窗"),
+                query=query,
+            ),
+        ),
+    )
+    reply = await operations["seer.player.query"](context.text, context)
+    assert isinstance(reply, PortableReply)
+    text = cast("TextPart", reply.message.parts[0]).text
+    assert ("【橱窗】" in text) is enabled
+    query.assert_not_awaited()
+    if enabled:
+        await sessions.select("橱窗", context, allow_deferred=True)
+        query.assert_awaited_once_with(context, 700001)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("prefix", ["米米号", "收集", "巅峰", "群星牌"])
+async def test_player_candidate_menu_uses_shared_nickname_display(
+    platform: Platform,
+    prefix: str,
+) -> None:
+    context = _context(f"{prefix}玩家", platform=platform)
+    lookup = AsyncMock(return_value={700001: " 实时甲 ", 700002: "  "})
+    resolver = PlayerIdResolver(
+        lambda *_: None,
+        lambda _: None,
+        reference_search=lambda *_: (
+            PlayerReferenceChoice(700001, "玩家甲"),
+            PlayerReferenceChoice(700002, "玩家乙"),
+        ),
+    )
+    sessions = PortableQuerySessions()
+    operations = _build_player_operations(
+        cast("PlayerService", _PlayerService()),
+        resolver,
+        sessions,
+        FeatureService(
+            {context.message.conversation: frozenset({"seer_player"})}, {}, frozenset()
+        ),
+        PlayerDetailExtensionRegistry(),
+        nickname_lookup=lookup,
+    )
+    operation_id = "seer.player.query" if prefix == "米米号" else "seer.player.default"
+    reply = await operations[operation_id](context.text, context)
+    assert isinstance(reply, PortableReply)
+    text = cast("TextPart", reply.message.parts[0]).text
+    assert "1. 玩家甲：实时甲（700001）" in text
+    assert "2. 玩家乙：昵称暂不可用（700002）" in text
+    assert "游戏内ID" not in text
+    lookup.assert_awaited_once_with((700001, 700002))
+    selected = await sessions.select("2", context, allow_deferred=True)
+    assert isinstance(selected, PortableReply)
+    assert "700002" in _text(selected)
+    lookup.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -489,7 +579,9 @@ async def test_partial_binding_uses_shared_menu_before_business_work(
     reply = cast(
         "PortableReply", await operations["seer.player.bind"](context.text, context)
     )
-    assert "玩家甲" in _text(reply) and "玩家乙" in _text(reply)
+    assert "1. 玩家甲：昵称暂不可用（700001）" in _text(reply)
+    assert "2. 玩家乙：昵称暂不可用（700002）" in _text(reply)
+    assert "0. 【退出】" in _text(reply)
     assert not service.bound
     stranger = _context(context.text, platform=platform, actor_id="stranger")
     assert await sessions.select("1", stranger, allow_deferred=True) is None
@@ -577,9 +669,7 @@ async def test_partial_player_queries_claim_input_and_keep_selection_safe(
         item for item in seer_command_contracts(resolver) if item.id == operation_id
     )
     assert contract.routing_matcher is not None
-    assert contract.routing_matcher(
-        context.text, command_context_from_input(context)
-    )
+    assert contract.routing_matcher(context.text, command_context_from_input(context))
     operation = build_portable_player_operations(
         cast("PlayerService", service),
         resolver,
@@ -589,6 +679,9 @@ async def test_partial_player_queries_claim_input_and_keep_selection_safe(
     assert isinstance(reply, PortableReply)
     prompt = reply.message.prompt
     assert prompt is not None
+    assert "1. 玩家甲：昵称暂不可用（700001）" in _text(reply)
+    assert "2. 玩家乙：昵称暂不可用（700002）" in _text(reply)
+    assert "0. 【退出】" in _text(reply)
     query.assert_not_awaited()
     shortcut.assert_not_awaited()
     if selection == "button":
