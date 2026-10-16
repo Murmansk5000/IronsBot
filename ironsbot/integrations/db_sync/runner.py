@@ -13,6 +13,7 @@ import httpx
 from anyio import Path as AsyncPath
 from anyio import to_thread
 
+from ironsbot.core.time import now
 from ironsbot.integrations.db_sync.github_actions import (
     WorkflowRunResult,
     trigger_and_wait_workflow,
@@ -24,8 +25,10 @@ from ironsbot.integrations.db_sync.storage import (
     _fingerprint_content,
     _fingerprint_file,
     _normalize_fingerprint,
+    _validate_fingerprint,
     _write_bytes_atomic,
 )
+from ironsbot.services.operations.data_update import DataUpdate, DataVersion
 
 from . import formatting as sync_formatting
 from . import remote_build as sync_remote_build
@@ -33,7 +36,7 @@ from . import remote_build as sync_remote_build
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Callable, Mapping
     from datetime import datetime
 
     from ironsbot.config.models.operations import DataSourceConfig
@@ -52,6 +55,9 @@ class DatabaseSync:
     fingerprints: dict[str, str] = field(default_factory=dict)
     last_sync_statuses: dict[str, SyncStatus] = field(default_factory=dict)
     remote_build_results: dict[str, WorkflowRunResult] = field(default_factory=dict)
+    describe_database: Callable[[str], DataVersion] | None = None
+    on_updated: Callable[[DataUpdate], Awaitable[None]] | None = None
+    _reported_updates: set[str] = field(default_factory=set)
     _sync_locks: dict[str, asyncio.Lock] = field(default_factory=dict)
     _sync_all_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -130,6 +136,7 @@ class DatabaseSync:
             )
             remote = VersionInfo()
             tmp_path: AsyncPath | None = None
+            previous = self._describe(name, local_before.fingerprint)
 
             try:
                 async with httpx.AsyncClient(
@@ -186,6 +193,8 @@ class DatabaseSync:
 
                 content_bytes = bytes(content)
                 content_fingerprint = _fingerprint_content(content_bytes)
+                if name == "seerapi":
+                    _validate_fingerprint(fingerprint, content_fingerprint)
                 download_directory: str | None = None
                 if self.cache_paths is not None:
                     downloads_path = self.cache_paths.downloads_dir()
@@ -230,6 +239,27 @@ class DatabaseSync:
                         f"数据库 '{name}' 本地缓存写入时间: "
                         f"{local_timestamp_after.isoformat()}"
                     )
+                if (
+                    name == "seerapi"
+                    and cache_saved
+                    and entry.local_path
+                    and content_fingerprint != local_before.fingerprint
+                    and self.on_updated is not None
+                ):
+                    self._reported_updates.add(name)
+                    try:
+                        await self.on_updated(
+                            DataUpdate(
+                                source=name,
+                                before=previous,
+                                after=self._describe(name, content_fingerprint),
+                                completed_at=now(),
+                            )
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Data update notification failed: source=%s", name
+                        )
             except httpx.HTTPStatusError as error:
                 logger.warning(
                     f"数据库 '{name}' 同步失败（HTTP {error.response.status_code}）："
@@ -376,6 +406,14 @@ class DatabaseSync:
         *,
         title_prefix: str = "数据更新",
     ) -> str:
+        if title_prefix == "启动数据同步":
+            results = {
+                name: ok
+                for name, ok in results.items()
+                if name not in self._reported_updates
+            }
+            if not results:
+                return ""
         return sync_formatting.format_sync_result_notice(
             results,
             sync_statuses=self.last_sync_statuses,
@@ -444,6 +482,20 @@ class DatabaseSync:
 
     def _lock(self, name: str) -> asyncio.Lock:
         return self._sync_locks.setdefault(name, asyncio.Lock())
+
+    def _describe(self, name: str, fingerprint: str | None) -> DataVersion:
+        if self.describe_database is not None:
+            try:
+                description = self.describe_database(name)
+                if description.version != "unknown":
+                    return description
+            except Exception:  # noqa: BLE001 - optional metadata cannot block syncing
+                logger.warning(
+                    "Data version description unavailable: source=%s",
+                    name,
+                    exc_info=True,
+                )
+        return DataVersion(fingerprint[:12] if fingerprint else "未安装")
 
     @staticmethod
     def _fingerprint_getter(url: str) -> GetFingerprintFn | None:

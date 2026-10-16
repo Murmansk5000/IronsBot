@@ -54,6 +54,12 @@ def _fingerprint_content(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def _validate_fingerprint(expected: str | None, actual: str) -> None:
+    if expected is not None and expected != actual:
+        message = "SeerAPI download does not match its published fingerprint"
+        raise ValueError(message)
+
+
 def _fingerprint_file(file_path: str | Path) -> str | None:
     path = Path(file_path)
     if not path.exists():
