@@ -1,6 +1,6 @@
 import asyncio
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -18,15 +18,11 @@ from tests.test_db_sync_runtime import _DownloadClient, _source
 
 
 @pytest.mark.parametrize("source", ["seerapi", "aliases"])
-@pytest.mark.parametrize(
-    "old_version", ["", "invalid", "20261120120000", "20261121120000", "20261122120000"]
-)
 @pytest.mark.asyncio
-async def test_only_changed_persisted_seerapi_notifies_once(
+async def test_only_changed_persisted_data_notifies_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     source: str,
-    old_version: str,
 ) -> None:
     incoming = tmp_path / "incoming.sqlite"
     with sqlite3.connect(incoming) as conn:
@@ -34,10 +30,9 @@ async def test_only_changed_persisted_seerapi_notifies_once(
     _DownloadClient.content = incoming.read_bytes()
     monkeypatch.setattr(runner.httpx, "AsyncClient", _DownloadClient)
     target = tmp_path / "local.sqlite"
-    if old_version:
-        with sqlite3.connect(target) as conn:
-            conn.execute("CREATE TABLE baseline(id INTEGER)")
-        conn.close()
+    with sqlite3.connect(target) as conn:
+        conn.execute("CREATE TABLE baseline(id INTEGER)")
+    conn.close()
     databases = DatabaseManager()
     events: list[DataUpdate] = []
 
@@ -46,21 +41,12 @@ async def test_only_changed_persisted_seerapi_notifies_once(
         assert databases.get_engine(source) is not None
         events.append(event)
 
-    sync = DatabaseSync(
-        databases,
-        on_updated=updated,
-        describe_database=lambda _: DataVersion(
-            "test",
-            official_version="20261121120000"
-            if databases.get_engine(source) is not None
-            else old_version,
-        ),
-    )
+    sync = DatabaseSync(databases, on_updated=updated)
     sync.register(source, _source(local_path=str(target)))
     assert all(
         await asyncio.gather(sync.sync_database(source), sync.sync_database(source))
     )
-    assert len(events) == int(source == "seerapi" and old_version == "20261120120000")
+    assert len(events) == (1 if source == "aliases" else 0)
     databases.close()
 
 
@@ -106,10 +92,6 @@ async def test_failures_do_not_report_false_success_or_revert_data(
     notification = AsyncMock(
         side_effect=RuntimeError("notify") if failure == "notify" else None
     )
-    target = tmp_path / "local.sqlite"
-    with sqlite3.connect(target) as conn:
-        conn.execute("CREATE TABLE baseline(id INTEGER)")
-    conn.close()
     sync = DatabaseSync(
         databases,
         on_updated=notification,
@@ -120,6 +102,10 @@ async def test_failures_do_not_report_false_success_or_revert_data(
             else "20261120120000",
         ),
     )
+    target = tmp_path / "local.sqlite"
+    with sqlite3.connect(target) as conn:
+        conn.execute("CREATE TABLE baseline(id INTEGER)")
+    conn.close()
     sync.register("seerapi", _source(local_path=str(target)))
     if failure == "load":
 
@@ -153,17 +139,63 @@ async def test_pending_event_is_independent_of_startup_switch_and_bot_count() ->
     assert send.await_count == 2  # noqa: PLR2004
 
 
-def test_update_message_has_beijing_time_and_only_changed_season() -> None:
-    period = (
-        datetime(2026, 10, 16, 10, tzinfo=TZ_CN),
-        datetime(2027, 1, 8, 10, tzinfo=TZ_CN),
+@pytest.mark.parametrize("source,label", [("seerapi", "游戏"), ("aliases", "别名")])
+def test_update_message_has_producer_time_not_download_time(
+    source: str, label: str
+) -> None:
+    generated_at = datetime(2026, 10, 16, 2, tzinfo=timezone.utc)
+    completed_at = datetime(2026, 10, 21, 10, tzinfo=TZ_CN)
+    current = DataVersion(
+        "v2", generated_at=generated_at, official_version="20261016020000"
     )
-    current = DataVersion("v2", period, official_version="20261121120000")
-    previous = DataVersion("v1", official_version="20261120120000")
-    event = DataUpdate("seerapi", previous, current, period[0])
-    assert "20261120120000 → 20261121120000" in event.message()
-    assert "20261016" in event.message()
-    assert "2026-10-16 10:00:00" in event.message()
-    assert (
-        "巅峰赛季" not in DataUpdate("seerapi", current, current, period[0]).message()
+    event = DataUpdate(
+        source,
+        DataVersion("v1", official_version="20261015020000"),
+        current,
+        completed_at,
     )
+    if source == "seerapi":
+        assert "官方配置版本：20261015020000 → 20261016020000" in event.message()
+        time_label = "数据生成时间"
+    else:
+        assert event.message().startswith(f"📢{label}数据已更新，可查询最新数据\n")
+        time_label = "数据时间"
+    assert event.message().endswith(f"{time_label}：2026-10-16 10:00:00（北京时间）")
+    unknown = DataUpdate(source, current, DataVersion("v3"), completed_at)
+    assert unknown.message().endswith(f"{time_label}：未知")
+
+
+@pytest.mark.parametrize("source", ["seerapi", "aliases"])
+@pytest.mark.parametrize("baseline", [None, b"invalid sqlite"])
+@pytest.mark.asyncio
+async def test_first_install_is_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str, baseline: bytes | None
+) -> None:
+    incoming = tmp_path / "incoming.sqlite"
+    with sqlite3.connect(incoming) as conn:
+        conn.execute("CREATE TABLE sample(id INTEGER)")
+    _DownloadClient.content = incoming.read_bytes()
+    monkeypatch.setattr(runner.httpx, "AsyncClient", _DownloadClient)
+    databases = DatabaseManager()
+    notice = AsyncMock()
+    sync = DatabaseSync(databases, on_updated=notice)
+    target = tmp_path / "local.sqlite"
+    if baseline is not None:
+        target.write_bytes(baseline)
+    sync.register(source, _source(local_path=str(target)))
+    assert await sync.sync_database(source)
+    notice.assert_not_awaited()
+    databases.close()
+
+
+@pytest.mark.asyncio
+async def test_queued_data_notices_preserve_scope_and_both_sources() -> None:
+    send = AsyncMock()
+    service = StartupNoticeService(cast("Any", SimpleNamespace(send=send)))
+    for source in ("seerapi", "aliases"):
+        await service.publish(
+            f"{source}_data_updated", source, source, superusers_only=True
+        )
+    await service.flush_pending()
+    assert send.await_count == 2  # noqa: PLR2004
+    assert all(call.kwargs["superusers_only"] for call in send.await_args_list)

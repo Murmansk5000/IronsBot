@@ -65,19 +65,23 @@ class AdminNoticeService:
     ) -> AdminNoticeSendSummary:
         return await self.sender.send_admin_notice(
             OutboundMessage((TextPart(text),)),
-            private_actors=tuple(self.features.actors_with_superusers(feature)),
+            private_actors=tuple(self.features.private_actors_for_feature(feature)),
             group_conversations=tuple(self.features.conversations_for_feature(feature)),
             action_name=action_name,
             interval_seconds=0,
             subscription_key=subscription_key,
         )
 
-    def targets(self) -> AdminNoticeTargets:
+    def targets(self, *, superusers_only: bool = False) -> AdminNoticeTargets:
         return AdminNoticeTargets(
-            private_actors=tuple(self.features.private_admin_notice_actors()),
-            group_conversations=tuple(
-                self.features.conversations_for_feature(ADMIN_NOTICE_FEATURE)
+            private_actors=tuple(
+                actor
+                for actor in self.features.private_admin_notice_actors()
+                if not superusers_only or self.features.is_actor_superuser(actor)
             ),
+            group_conversations=()
+            if superusers_only
+            else tuple(self.features.conversations_for_feature(ADMIN_NOTICE_FEATURE)),
         )
 
     async def send(
@@ -87,12 +91,14 @@ class AdminNoticeService:
         subscription_key: str,
         action_name: str,
         interval_seconds: float = 0,
+        superusers_only: bool = False,
     ) -> AdminNoticeSendSummary:
         return await self.send_message(
             OutboundMessage.from_text(text),
             subscription_key=subscription_key,
             action_name=action_name,
             interval_seconds=interval_seconds,
+            superusers_only=superusers_only,
         )
 
     async def send_message(
@@ -102,8 +108,9 @@ class AdminNoticeService:
         subscription_key: str,
         action_name: str,
         interval_seconds: float = 0,
+        superusers_only: bool = False,
     ) -> AdminNoticeSendSummary:
-        targets = self.targets()
+        targets = self.targets(superusers_only=superusers_only)
         if targets.is_empty:
             logger.warning("%s has no admin notice targets", action_name)
             return AdminNoticeSendSummary((), ())

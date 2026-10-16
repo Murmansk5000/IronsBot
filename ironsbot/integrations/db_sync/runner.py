@@ -25,6 +25,7 @@ from ironsbot.integrations.db_sync.storage import (
     _fingerprint_content,
     _fingerprint_file,
     _normalize_fingerprint,
+    _valid_local_baseline,
     _validate_fingerprint,
     _write_bytes_atomic,
 )
@@ -212,6 +213,19 @@ class DatabaseSync:
                 tmp_path = AsyncPath(tmp_name)
                 await tmp_path.write_bytes(content_bytes)
                 self.databases.load_from_file(name, str(tmp_path))
+                notify_update = (
+                    name in {"seerapi", "aliases"}
+                    and self.on_updated is not None
+                    and entry.local_path is not None
+                    and local_before.fingerprint is not None
+                    and (
+                        name == "seerapi"
+                        or content_fingerprint != local_before.fingerprint
+                    )
+                    and await to_thread.run_sync(
+                        _valid_local_baseline, entry.local_path
+                    )
+                )
                 cache_saved, local_timestamp_after = await self._save_local_cache(
                     name,
                     entry,
@@ -243,22 +257,22 @@ class DatabaseSync:
                         f"数据库 '{name}' 本地缓存写入时间: "
                         f"{local_timestamp_after.isoformat()}"
                     )
-                if (
-                    name == "seerapi"
-                    and cache_saved
-                    and entry.local_path
-                    and self.on_updated is not None
-                ):
+                if notify_update and cache_saved and self.on_updated is not None:
                     try:
                         after = self._describe(name, content_fingerprint)
                         old, new = previous.official_version, after.official_version
-                        if not (
-                            valid_official_version(old) and valid_official_version(new)
+                        if name == "seerapi" and (
+                            old is None
+                            or new is None
+                            or not valid_official_version(old)
+                            or not valid_official_version(new)
                         ):
                             logger.info(
                                 "SeerAPI notice skipped: no valid official version pair"
                             )
-                        elif new > old:
+                        elif name != "seerapi" or (
+                            old is not None and new is not None and new > old
+                        ):
                             self._reported_updates.add(name)
                             await self.on_updated(
                                 DataUpdate(name, previous, after, now())

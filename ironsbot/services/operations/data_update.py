@@ -11,9 +11,18 @@ from ironsbot.core.time import TZ_CN
 _OFFICIAL_VERSION_LENGTH = 14
 
 
-def valid_official_version(value: str) -> bool:
+@dataclass(frozen=True, slots=True)
+class DataVersion:
+    version: str
+    season: tuple[datetime, datetime] | None = None
+    generated_at: datetime | None = None
+    official_version: str | None = None
+
+
+def valid_official_version(value: str | None) -> bool:
     if (
-        len(value) != _OFFICIAL_VERSION_LENGTH
+        value is None
+        or len(value) != _OFFICIAL_VERSION_LENGTH
         or not value.isascii()
         or not value.isdecimal()
     ):
@@ -26,13 +35,6 @@ def valid_official_version(value: str) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
-class DataVersion:
-    version: str
-    season: tuple[datetime, datetime] | None = None
-    official_version: str = ""
-
-
-@dataclass(frozen=True, slots=True)
 class DataUpdate:
     source: str
     before: DataVersion
@@ -40,16 +42,17 @@ class DataUpdate:
     completed_at: datetime
 
     def message(self) -> str:
-        lines = [
-            "SeerAPI 数据更新成功",
-            f"官方配置版本：{self.before.official_version} → "
-            f"{self.after.official_version}",
-            f"完成时间：{self.completed_at.astimezone(TZ_CN):%Y-%m-%d %H:%M:%S}",
-        ]
-        if self.after.season is not None and self.after.season != self.before.season:
-            start, end = (value.astimezone(TZ_CN) for value in self.after.season)
-            lines.append(
-                f"巅峰赛季：{start:%Y%m%d}（{start:%Y-%m-%d %H:%M}"
-                f" 至 {end:%Y-%m-%d %H:%M}）"
+        generated_at = self.after.generated_at
+        timestamp = (
+            f"{generated_at.astimezone(TZ_CN):%Y-%m-%d %H:%M:%S}（北京时间）"
+            if generated_at is not None and generated_at.tzinfo is not None
+            else "未知"
+        )
+        if self.source == "seerapi":
+            return (
+                "📢游戏配置已更新，可查询最新数据\n"
+                f"官方配置版本：{self.before.official_version}"
+                f" → {self.after.official_version}\n"
+                f"数据生成时间：{timestamp}"
             )
-        return "\n".join(lines)
+        return f"📢别名数据已更新，可查询最新数据\n数据时间：{timestamp}"

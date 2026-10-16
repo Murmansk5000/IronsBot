@@ -304,7 +304,10 @@ class SeerDatabase:
             return DataVersion(
                 publication.version,
                 period,
-                official_version=metadata.data_version if metadata else "",
+                local_published_datetime(metadata.generate_time) if metadata else None,
+                str(metadata.data_version)
+                if metadata is not None and metadata.data_version is not None
+                else None,
             )
 
     def render_category_available(self, category: str) -> bool:
