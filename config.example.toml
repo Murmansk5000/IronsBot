@@ -38,9 +38,10 @@
 # - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
 [bot]
-# 未配置专用机器人的群是否使用默认机器人处理收发；默认关闭。
+# 未配置专用机器人的群及私聊推送目标是否使用默认机器人；默认关闭。
+# 关闭时未指定目标静默跳过；普通私聊查询仍由收到消息的机器人回复。
 # 显式配置的机器人离线时始终跳过，不会回退到默认机器人。
-use_default_for_unconfigured_groups = false
+use_default_for_unconfigured_targets = false
 # Default: "prod"
 # EN: Runtime environment label.
 # ZH: 运行环境标签。
@@ -121,10 +122,10 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
-# EN: The default account handles private messages. It handles groups without an
-#     explicit route only when bot.use_default_for_unconfigured_groups is true.
-# ZH: 默认账号处理私聊；只有 bot.use_default_for_unconfigured_groups=true 时
-#     才处理未显式分配的群。启用多个官方账号时必填。
+# EN: The default account serves unassigned proactive targets only when the
+#     shared default-routing switch is enabled. Private replies stay on the receiving bot.
+# ZH: 只有共享默认路由开关开启时，默认账号才用于未指定的群或私聊推送。
+#     私聊主动查询由接收机器人回复；启用多个官方账号时必填。
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
@@ -702,12 +703,20 @@ label = "示例账号"
 default_muted_categories = ["lottery", "winning"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
-label = "抽奖"
-patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+label = "转发抽奖"
+patterns = ["转发抽奖"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.winning]
 label = "中奖"
 patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.collaboration]
+label = "联动"
+patterns = ["联动", "联名"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.creation]
+label = "创作"
+patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
 
 [messaging]
 # Default: []
@@ -998,9 +1007,9 @@ local_root = "sendpic"
 # Incoming command replies use the receiving bot; proactive pushes use these routes.
 # ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
 # 普通查询与主动推送都按下面的群/用户路由选择机器人。
-# 未配置群仅在 bot.use_default_for_unconfigured_groups=true 时使用 default_bot。
+# 未配置群或私聊推送目标仅在 bot.use_default_for_unconfigured_targets=true 时使用 default_bot。
 # 显式路由的机器人未连接时直接跳过，不会回退到 default_bot 或任意在线机器人。
-# 私聊仍可使用用户路由，并在未配置时使用 default_bot。
+# 私聊可使用显式用户路由；未配置且默认路由关闭时静默跳过。
 # 开启前请把示例 QQ 和目标别名换成真实配置。
 [messaging.bot_routing]
 enabled = false
@@ -1096,7 +1105,8 @@ sections = ["all"]
 
 [seer.player.binding]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
-# ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
+# ZH: 换成另一个默认米米号的北京时间自然日冷却，从首次绑定或成功换绑起算。
+# ZH: 解绑随时允许；绑回最后绑定的账号不受限制，也不重置冷却。
 change_cooldown_days = 3
 # ZH: 未绑定用户能否按数字米米号查询。
 allow_unbound_numeric_queries = true
