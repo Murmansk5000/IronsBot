@@ -43,9 +43,13 @@ def format_peak_line(  # noqa: PLR0913
     win_rate_key: str,
     match_key: str,
     history_label: str = "历史",
+    unknown_match_count: bool = False,
+    win_count: int | None = None,
 ) -> str:
     match_text = ""
-    if match_count > 0:
+    if unknown_match_count:
+        match_text = f"胜场{win_count}｜场次及胜率暂无法确认"
+    elif match_count > 0:
         match_text = (
             f"场次{match_count}"
             f"{format_local_rank_suffix(local_summary, match_key, label='样本场次')}"
@@ -210,6 +214,9 @@ def format_compact_peak_section(  # noqa: PLR0913
             format_peak_line(
                 "大师",
                 history_label="赛季最高",
+                unknown_match_count="master" in resolved_modes
+                and peak.current_m_all is None,
+                win_count=peak.current_m_win,
                 current=(
                     format_rank_star_compact(peak.current_m_rank, peak.current_m_star)
                     if "master" in resolved_modes
@@ -236,8 +243,6 @@ def format_compact_peak_section(  # noqa: PLR0913
             ),
         ]
     )
-    if "master" in resolved_modes and peak.current_m_all is None:
-        lines.append(f"大师胜场：{peak.current_m_win}｜场次及胜率暂无法确认")
     if resolved_modes == PEAK_MODE_NAMES and peak.current_m_all is not None:
         total = (
             peak.current_j_all
@@ -245,5 +250,5 @@ def format_compact_peak_section(  # noqa: PLR0913
             + peak.current_z_all
             + peak.current_m_all
         )
-        lines.append(f"巅峰总场次：{total}场（各模式当前赛季合计）")
+        lines.append(f"巅峰总场次：{total}场")
     return "\n".join(lines)

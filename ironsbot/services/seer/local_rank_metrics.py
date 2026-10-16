@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.value_coercion import coerce_positive_int
 from ironsbot.services.seer import local_rank_formatting
-from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES, combined_peak_season
+from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ LOCAL_METRICS: tuple[MetricSpec, ...] = (
     MetricSpec("peak_master", "大师赛季", season_limited=True),
     MetricSpec("peak_master_win_rate", "大师胜率", season_limited=True),
     MetricSpec("peak_master_matches", "大师场次", season_limited=True),
-    MetricSpec("peak_total_matches", "巅峰总场次", season_limited=True),
+    MetricSpec("peak_total_matches_v4", "巅峰总场次", season_limited=True),
 )
 
 
@@ -111,7 +111,6 @@ def collect_metrics(  # noqa: PLR0913
     peak_wild_score: int | None,
     peak_expert_score: int | None,
     peak_master_score: int | None = None,
-    master_sub_key: int | None = None,
     available_modes: frozenset[str] | None = None,
 ) -> dict[str, MetricValue]:
     breakdown = rank_summary.breakdown
@@ -210,9 +209,8 @@ def collect_metrics(  # noqa: PLR0913
                 season_sub_key=peak_sub_key,
                 display=f"{unity_peak.current_z_all}场",
             )
-        total_scope = combined_peak_season(peak_sub_key, master_sub_key)
         if (
-            total_scope is not None
+            peak_sub_key is not None
             and (available_modes or frozenset()) == PEAK_MODE_NAMES
             and unity_peak.current_m_all is not None
         ):
@@ -222,17 +220,17 @@ def collect_metrics(  # noqa: PLR0913
                 + unity_peak.current_z_all
                 + unity_peak.current_m_all
             )
-            values["peak_total_matches"] = metric(
+            values["peak_total_matches_v4"] = metric(
                 total_matches,
-                season_sub_key=total_scope,
-                display=f"{total_matches}场（各模式当前赛季合计）",
+                season_sub_key=peak_sub_key,
+                display=f"{total_matches}场",
             )
 
-    if master_sub_key is not None and "master" in (available_modes or frozenset()):
+    if peak_sub_key is not None and "master" in (available_modes or frozenset()):
         if peak_master_score is not None:
             values["peak_master"] = metric(
                 peak_master_score,
-                season_sub_key=master_sub_key,
+                season_sub_key=peak_sub_key,
                 display=local_rank_formatting.format_metric_display(
                     "peak_master", peak_master_score
                 ),
@@ -240,13 +238,13 @@ def collect_metrics(  # noqa: PLR0913
         if unity_peak.current_m_all is not None:
             values["peak_master_matches"] = metric(
                 unity_peak.current_m_all,
-                season_sub_key=master_sub_key,
+                season_sub_key=peak_sub_key,
                 display=f"{unity_peak.current_m_all}场",
             )
             values["peak_master_win_rate"] = rate_metric(
                 unity_peak.current_m_win,
                 unity_peak.current_m_all,
-                season_sub_key=master_sub_key,
+                season_sub_key=peak_sub_key,
             )
 
     return {

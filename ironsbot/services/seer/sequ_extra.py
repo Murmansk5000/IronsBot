@@ -164,7 +164,7 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
     timeout_seconds: float,
     observations: ObservationCache | None = None,
     observation_ttl: float = 300,
-    cycles: tuple[int | None, int | None] = (None, None),
+    season: int | None = None,
 ) -> UnityPeakFetchResult:
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
@@ -187,7 +187,7 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
         mode_observation = ObservationTime()
         failed_param = params[0]
         progress = {"param": failed_param}
-        cache_key = (player_id, "peak_mode", mode, cycles[1 if mode == "master" else 0])
+        cache_key = (player_id, "peak_mode", mode, season)
         cached = (
             None
             if observations is None or cache_key[-1] is None
