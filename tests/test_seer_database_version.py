@@ -142,10 +142,16 @@ def test_peak_season_unloaded_database_is_not_an_absent_season() -> None:
         data.peak_season_start()
 
 
-def test_master_season_start_uses_latest_published_pool(tmp_path: Path) -> None:
+def test_common_season_does_not_use_cost_pool_rotation(tmp_path: Path) -> None:
     source = tmp_path / "master-season.sqlite"
     engine, _ = _create_release(source, ())
     with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO peak_season(id, start_time, end_time) VALUES "
+                "(1, '2026-07-17 02:00:00', '2026-10-16 02:00:00')"
+            )
+        )
         connection.execute(
             text(
                 "INSERT INTO peak_cost_pool"
@@ -160,9 +166,9 @@ def test_master_season_start_uses_latest_published_pool(tmp_path: Path) -> None:
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
     try:
         databases.load_from_file("seerapi", str(source))
-        start = data.master_season_start()
+        start = data.peak_season_start()
         assert start is not None
-        assert start.isoformat(sep=" ") == "2026-09-04 10:00:00+08:00"
+        assert start.isoformat(sep=" ") == "2026-07-17 10:00:00+08:00"
     finally:
         databases.close()
         engine.dispose()

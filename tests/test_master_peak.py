@@ -14,7 +14,6 @@ from ironsbot.services.seer.peak_modes import (
     PEAK_MODE_NAMES,
     PEAK_MODES,
     PeakType,
-    combined_peak_season,
 )
 from ironsbot.services.seer.player_peak_formatting import format_compact_peak_section
 from ironsbot.services.seer.player_query import (
@@ -85,7 +84,6 @@ def _metrics(count: int | None, modes: frozenset[str] = PEAK_MODE_NAMES) -> dict
         rank_summary=PlayerRankSummary.empty(),
         autocard_rank_summary=None,
         peak_sub_key=REGULAR,
-        master_sub_key=MASTER,
         peak_standard_score=None,
         peak_wild_score=None,
         peak_expert_score=None,
@@ -96,23 +94,18 @@ def _metrics(count: int | None, modes: frozenset[str] = PEAK_MODE_NAMES) -> dict
 
 def test_unknown_master_count_is_not_zero_or_a_three_mode_total() -> None:
     metrics = _metrics(None)
-    assert metrics["peak_master"]["season_sub_key"] == MASTER
+    assert metrics["peak_master"]["season_sub_key"] == REGULAR
     assert "peak_master_matches" not in metrics
     assert "peak_master_win_rate" not in metrics
-    assert "peak_total_matches" not in metrics
+    assert "peak_total_matches_v4" not in metrics
 
 
-def test_total_requires_all_modes_and_both_seasons() -> None:
+def test_total_requires_all_modes_and_uses_common_season() -> None:
     count = 40
-    metric = _metrics(count)["peak_total_matches"]
+    metric = _metrics(count)["peak_total_matches_v4"]
     assert metric["value"] == 100  # noqa: PLR2004
-    assert metric["season_sub_key"] == combined_peak_season(REGULAR, MASTER)
-    assert "peak_total_matches" not in _metrics(count, frozenset(("master",)))
-    assert combined_peak_season(None, MASTER) is None
-    scope = combined_peak_season(REGULAR, MASTER)
-    assert scope != combined_peak_season(REGULAR + 1, MASTER)
-    assert scope != combined_peak_season(REGULAR, MASTER + 1)
-    assert scope != REGULAR
+    assert metric["season_sub_key"] == REGULAR
+    assert "peak_total_matches_v4" not in _metrics(count, frozenset(("master",)))
 
 
 @pytest.mark.parametrize("failure", ["查询超时", "连接已断开", None])
