@@ -603,6 +603,8 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
             peak_query=peak_query or unused,
             player=player or unused,
             player_detail_extensions=player_details or PlayerDetailExtensionRegistry(),
+            player_menu_actions=(),
+            player_nickname_lookup=None,
             rank_queries=rank_queries or unused,
             rank_admin=rank_admin or unused,
         ),

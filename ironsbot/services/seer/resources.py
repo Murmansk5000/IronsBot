@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from ironsbot.services.portable_player_commands import PlayerDetailMenuAction
     from ironsbot.services.seer.autocard import AutocardService
     from ironsbot.services.seer.autocard_media import AutocardMediaService
     from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
@@ -67,3 +70,7 @@ class SeerQueryResources:
     new_content_details: NewContentDetailService
     external_references: SeerInfoReferences
     pet_flip: PetFlipService | None = None
+    player_menu_actions: tuple[PlayerDetailMenuAction, ...] = ()
+    player_nickname_lookup: (
+        Callable[[tuple[int, ...]], Awaitable[dict[int, str]]] | None
+    ) = None
