@@ -700,7 +700,7 @@ default_muted_categories = ["lottery", "winning"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
 label = "抽奖"
-patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+patterns = ["转发抽奖"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.winning]
 label = "中奖"

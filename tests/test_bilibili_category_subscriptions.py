@@ -33,7 +33,9 @@ from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("参与本次抽奖，福利抽取三位小赛尔", ("lottery",)),
+        ("☆转发抽奖☆，福利抽取三位小赛尔", ("lottery",)),
+        ("参与本次抽奖，福利抽取三位小赛尔", ()),
+        ("游戏内开启百万旅游基金抽奖活动", ()),
         ("抽奖结果：中奖名单已发布，请查收私信通知", ("winning",)),
         ("赛尔号联动主题即将上线", ("collaboration",)),
         ("联名周边正式公开", ("collaboration",)),
