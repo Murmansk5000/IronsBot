@@ -130,6 +130,8 @@ def install(group: SeerMatcherGroup) -> None:
         group.features,
         group.resources.player_detail_extensions,
         group.resources.rank_queries,
+        menu_actions=group.resources.player_menu_actions,
+        nickname_lookup=group.resources.player_nickname_lookup,
     )
     identity_begin_matcher = group.on_message(
         policy=CommandPolicy.command(
