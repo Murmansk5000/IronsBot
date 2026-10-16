@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
@@ -23,6 +24,7 @@ from ironsbot.integrations.docker.deployment import (
 )
 from ironsbot.integrations.docker.deployment_cleanup import cleanup_residue
 from ironsbot.integrations.docker.deployment_launch import launch_supervisor
+from ironsbot.integrations.storage.sqlite_handoff import SqliteHandoff
 from ironsbot.services.operations.docker_models import (
     DockerImageInfo,
     DockerUpdateRequest,
@@ -190,6 +192,13 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
         if with_configuration
         else None
     )
+    sample_path = tmp_path / "samples.sqlite"
+    with sqlite3.connect(sample_path) as sample:
+        sample.execute("CREATE TABLE sample(value INTEGER)")
+        sample.execute("INSERT INTO sample VALUES(1)")
+    database_handoff = (
+        SqliteHandoff.within(tmp_path, "samples.sqlite") if with_configuration else None
+    )
 
     def handle(request: httpx.Request) -> httpx.Response:  # noqa: PLR0911 - fake Docker endpoints
         nonlocal active
@@ -222,6 +231,8 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
             return httpx.Response(201, json={"Id": "new"})
         if path == "/containers/old/start":
             assert config.read_text(encoding="utf-8") == "old config"
+            with sqlite3.connect(sample_path) as sample:
+                assert sample.execute("SELECT value FROM sample").fetchone() == (1,)
             active = old
         if request.method == "DELETE":
             assert request.url.params["force"] == "false"
@@ -233,6 +244,9 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
         _client: httpx.AsyncClient, _name: str, image: str
     ) -> dict[str, Any]:
         validations.append(image)
+        if database_handoff is not None and image == "sha256:new":
+            with sqlite3.connect(sample_path) as sample:
+                sample.execute("UPDATE sample SET value = 2")
         if with_configuration:
             assert config.read_text(encoding="utf-8") == (
                 "new config" if image == "sha256:new" else "old config"
@@ -256,6 +270,7 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
                     record_path=record_path,
                     validate=validate,
                     configuration=handoff,
+                    database=database_handoff,
                 )
         else:
             assert await deploy(
@@ -265,6 +280,7 @@ async def test_deployment_commit_rollback_and_cleanup(  # noqa: C901, PLR0915 - 
                 record_path=record_path,
                 validate=validate,
                 configuration=handoff,
+                database=database_handoff,
             ) is (failure != "target")
     record = json.loads(record_path.read_text())
     if failure == "rollback":
