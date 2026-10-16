@@ -6,7 +6,7 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import ActionDefinition, SemanticTarget
 from ironsbot.integrations.onebot import prompts
 from ironsbot.integrations.onebot.prompts import (
@@ -77,14 +77,17 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
 
     first = service.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=first_identity,
     )
     second = service.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=second_identity,
     )
     repeated = service.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=repeated_identity,
     )
 
