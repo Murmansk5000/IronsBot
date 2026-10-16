@@ -1,7 +1,10 @@
 """Administrator permissions are independent from explicit notice opt-ins."""
 
+from typing import Any, cast
+
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
 
 def test_multiple_superusers_with_single_explicit_notice_recipient() -> None:
@@ -34,3 +37,19 @@ def test_explicit_non_superuser_can_receive_notices_without_operator_access() ->
     recipient = ActorRef(Platform.ONEBOT, "333")
     assert features.private_admin_notice_actors() == [recipient]
     assert not features.is_actor_superuser(recipient)
+
+
+def test_superuser_scoped_notice_keeps_opt_ins_and_excludes_groups() -> None:
+    features = build_feature_service(
+        FeatureConfig(
+            user_policy={"111": ["admin_notice"], "333": ["admin_notice"]},
+            group_policy={"444": ["admin_notice"]},
+        ),
+        [111, 222],
+    )
+    service = AdminNoticeService(features, cast("Any", None))
+    scoped = service.targets(superusers_only=True)
+    assert scoped.private_actors == (ActorRef(Platform.ONEBOT, "111"),)
+    assert scoped.group_conversations == ()
+    assert ActorRef(Platform.ONEBOT, "333") in service.targets().private_actors
+    assert service.targets().group_conversations

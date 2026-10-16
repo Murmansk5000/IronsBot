@@ -164,6 +164,7 @@ BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
     PushSubscriptionOption(
         "seerapi_data_updated", "SeerAPI 数据更新通知", "admin_notice"
     ),
+    PushSubscriptionOption("aliases_data_updated", "别名数据更新通知", "admin_notice"),
     PushSubscriptionOption(
         "startup_ai_api_check",
         "启动AI接口检查通知",
