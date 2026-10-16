@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from ironsbot.config.models.features import build_feature_service
 from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
+from ironsbot.core.push_routing import PushRouteDecision
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.onebot.matchers import PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
@@ -100,7 +101,7 @@ def build_common_components(
     bot_router = BotRouter(
         settings.messaging.bot_routing,
         settings.onebot_references,
-        settings.bot.use_default_for_unconfigured_groups,
+        settings.bot.use_default_for_unconfigured_targets,
     )
     routed_onebot_groups = (
         {
@@ -121,7 +122,7 @@ def build_common_components(
     _LOGGER.info(
         "group default routing configured: enabled=%s known_groups=%d "
         "onebot_routes=%d unconfigured_onebot_groups=%d",
-        settings.bot.use_default_for_unconfigured_groups,
+        settings.bot.use_default_for_unconfigured_targets,
         len(settings.identities.groups),
         len(routed_onebot_groups),
         len(known_onebot_groups - routed_onebot_groups),
@@ -140,6 +141,7 @@ def build_common_components(
         Platform.ONEBOT: onebot_messenger,
     }
     qq_official = None
+    ingress_routing = None
     if settings.bot.qq_official.enabled_accounts:
         _configure_qq_sdk_api(sandbox=settings.bot.qq_official.sandbox)
         try:
@@ -209,6 +211,24 @@ def build_common_components(
             for user, alias in settings.bot.qq_official.private_routes.items()
             if settings.identities.users[user].qq is not None
         },
+        use_default_for_unconfigured_targets=settings.bot.use_default_for_unconfigured_targets,
+        onebot_preferred_users=frozenset(
+            str(
+                settings.onebot_references.resolve_user(
+                    target, location=f"messaging.bot_routing.users.{target}"
+                )
+            )
+            for target in settings.messaging.bot_routing.users
+        )
+        if settings.messaging.bot_routing.enabled
+        else frozenset(),
+        group_route=lambda conversation: (
+            bot_router.push_route(conversation)
+            if conversation.platform is Platform.ONEBOT
+            else ingress_routing.push_route(conversation)
+            if ingress_routing is not None
+            else PushRouteDecision("unavailable", conversation, "platform_disabled")
+        ),
     )
     proactive_delivery = ProactiveMessageDelivery(
         outbound_messenger,
@@ -281,12 +301,12 @@ def _build_qq_official_ingress_routing(
     routing = QQOfficialIngressRouting(
         account_ids[default_alias],
         preferred_accounts,
-        settings.bot.use_default_for_unconfigured_groups,
+        settings.bot.use_default_for_unconfigured_targets,
     )
     _LOGGER.info(
         "QQ Official group routing configured: default_for_unconfigured=%s "
         "known_endpoints=%d preferred_groups=%d unconfigured_groups=%d",
-        settings.bot.use_default_for_unconfigured_groups,
+        settings.bot.use_default_for_unconfigured_targets,
         sum(len(target.official) for target in settings.identities.groups.values()),
         len(preferred_accounts),
         sum(
