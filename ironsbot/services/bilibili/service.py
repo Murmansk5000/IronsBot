@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.image_collage import ImageCollageService
 
 logger = logging.getLogger(__name__)
+HTTP_OK = 200
 
 
 async def _unavailable_dynamic_detail(
@@ -213,15 +214,23 @@ class BilibiliService:
         if not query_uids:
             return DynamicMenuResult(status="no_accounts")
 
-        feed = await self.fetch_feed(self.cookie_store.load())
-        if is_bili_auth_invalid(feed.status_code, feed.data):
-            return DynamicMenuResult(status="auth_invalid")
-
-        target_dynamics = target_dynamics_from_response(
-            feed.data,
-            query_uids,
-            newest_first=True,
-        )
+        auth_invalid = False
+        target_dynamics = []
+        try:
+            feed = await self.fetch_feed(self.cookie_store.load())
+        except Exception as error:  # noqa: BLE001 - keep persisted history available
+            logger.warning(
+                "Bilibili history refresh failed; reading local cache: %s",
+                type(error).__name__,
+            )
+        else:
+            auth_invalid = is_bili_auth_invalid(feed.status_code, feed.data)
+            if feed.status_code == HTTP_OK and not auth_invalid:
+                target_dynamics = target_dynamics_from_response(
+                    feed.data,
+                    query_uids,
+                    newest_first=True,
+                )
         if target_dynamics:
             save_target_dynamics(
                 self.history,
@@ -234,12 +243,16 @@ class BilibiliService:
             uids=query_uids,
         )
         if not records:
-            return DynamicMenuResult(status="no_history")
+            return DynamicMenuResult(
+                status="auth_invalid" if auth_invalid else "no_history",
+                auth_invalid=auth_invalid,
+            )
 
         return DynamicMenuResult(
             status="ok",
             dynamic_ids=tuple(dynamic_record_ids(records)),
             prompt=build_dynamic_menu_text(records),
+            auth_invalid=auth_invalid,
         )
 
     def select_dynamic(
