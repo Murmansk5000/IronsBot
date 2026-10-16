@@ -26,6 +26,7 @@ async def launch_supervisor(  # noqa: PLR0913 - explicit deployment handoff inpu
     socket_path: str,
     repository_image: str = "",
     config_next: str = "",
+    sqlite_path: str = "",
 ) -> str:
     old = await inspect_container(client, container_name)
     data_mount = next(
@@ -97,6 +98,7 @@ async def launch_supervisor(  # noqa: PLR0913 - explicit deployment handoff inpu
                 "--repository",
                 repository_image or image,
                 *config_args,
+                *(["--sqlite-path", sqlite_path] if sqlite_path else []),
             ],
             "Labels": {
                 "io.ironsbot.role": "deployment-supervisor",
@@ -136,6 +138,7 @@ async def main() -> None:
     parser.add_argument("--image", required=True)
     parser.add_argument("--socket", default="/var/run/docker.sock")
     parser.add_argument("--config-next", default="")
+    parser.add_argument("--sqlite-path", default="")
     args = parser.parse_args()
     async with httpx.AsyncClient(
         transport=httpx.AsyncHTTPTransport(uds=args.socket),
@@ -148,6 +151,7 @@ async def main() -> None:
             image=args.image,
             socket_path=args.socket,
             config_next=args.config_next,
+            sqlite_path=args.sqlite_path,
         )
         sys.stdout.write(f"IronsBot deployment supervisor started: {ident}\n")
 
