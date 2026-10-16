@@ -17,6 +17,8 @@ from urllib.parse import quote
 
 import httpx
 
+from ironsbot.integrations.storage.sqlite_handoff import SqliteHandoff
+
 from .cleanup import cleanup_images
 from .configuration_handoff import ConfigurationHandoff
 from .daemon import inspect_image_info
@@ -134,17 +136,20 @@ async def remove_stopped(client: httpx.AsyncClient, ident: str) -> None:
         raise_for_docker_status(response)
 
 
-async def restore_container(
+async def restore_container(  # noqa: PLR0913 - explicit rollback inputs
     client: httpx.AsyncClient,
     *,
     old: dict[str, Any],
     new_id: str,
     name: str,
     renamed: bool,
+    before_start: Callable[[], None] | None = None,
 ) -> None:
     if new_id:
         await docker_post(client, f"/containers/{new_id}/stop", params={"t": 10})
         await remove_stopped(client, new_id)
+    if before_start is not None:
+        before_start()
     current = await inspect_container(client, old["Id"])
     if renamed or (current.get("Name") and current["Name"].lstrip("/") != name):
         await docker_post(
@@ -233,7 +238,7 @@ async def owned_deployment_images(
     return target
 
 
-async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
+async def deploy(  # noqa: C901, PLR0913, PLR0915 - explicit supervised transaction
     client: httpx.AsyncClient,
     *,
     name: str,
@@ -241,11 +246,12 @@ async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
     record_path: Path,
     repository_image: str = "",
     configuration: ConfigurationHandoff | None = None,
+    database: SqliteHandoff | None = None,
     validate: Callable[..., Awaitable[dict[str, Any]]] = validate_container,
 ) -> bool:
     old = await inspect_container(client, name)
     target = await owned_deployment_images(client, old, image)
-    if old["Image"] == target.image_id and configuration is None:
+    if old["Image"] == target.image_id and configuration is None and database is None:
         await validate(client, name, target.image_id)
         await cleanup_images(
             client, repository_image=repository_image or image, current_image=target
@@ -265,6 +271,9 @@ async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
     if configuration is not None:
         record["configuration_target"] = str(configuration.target)
         record["configuration_backup"] = str(configuration.backup)
+    if database is not None:
+        record["database_target"] = str(database.target)
+        record["database_backup"] = str(database.snapshot)
     write_record(record_path, record)
     new_id = ""
     renamed = False
@@ -273,6 +282,8 @@ async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
         renamed = True
         if configuration is not None:
             configuration.apply()
+        if database is not None:
+            database.save()
         config = recreation_config(old, target.image_id)
         record["target_hostname"] = config.get("Hostname", "")
         record["phase"] = "verifying"
@@ -293,7 +304,12 @@ async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
             if configuration is not None:
                 configuration.restore()
             await restore_container(
-                client, old=old, new_id=new_id, name=name, renamed=renamed
+                client,
+                old=old,
+                new_id=new_id,
+                name=name,
+                renamed=renamed,
+                before_start=database.restore if database is not None else None,
             )
             await validate(client, name, old["Image"])
             record.update(phase="rolled_back", completed_at=time.time())
@@ -312,6 +328,8 @@ async def deploy(  # noqa: PLR0913, PLR0915 - explicit supervised transaction
     try:
         if configuration is not None:
             configuration.finish()
+        if database is not None:
+            database.finish()
         await remove_stopped(client, old["Id"])
         removed, retained = await cleanup_images(
             client, repository_image=repository_image or image, current_image=target
@@ -370,6 +388,7 @@ async def run_cli() -> int:
     parser.add_argument("--state-dir", default="/state")
     parser.add_argument("--config-next", default="")
     parser.add_argument("--config-target", default="")
+    parser.add_argument("--sqlite-path", default="")
     args = parser.parse_args()
     lock = Path(args.state_dir) / "operations/docker_deployment.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -395,6 +414,11 @@ async def run_cli() -> int:
                     else None
                 ),
                 record_path=Path(args.state_dir) / STATE_FILE,
+                database=(
+                    SqliteHandoff.within(Path(args.state_dir), args.sqlite_path)
+                    if args.sqlite_path
+                    else None
+                ),
             )
             else 1
         )
