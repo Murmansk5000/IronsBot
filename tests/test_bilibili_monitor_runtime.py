@@ -9,7 +9,11 @@ import pytest
 from ironsbot.core.bilibili import BiliBoostWindow, BiliPollingConfig
 from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili import monitor as monitor_module
-from ironsbot.services.bilibili.monitor import MonitorCheckResult, run_monitor_check
+from ironsbot.services.bilibili.monitor import (
+    SEER_OFFICIAL_UID,
+    MonitorCheckResult,
+    run_monitor_check,
+)
 from ironsbot.services.bilibili.runtime import (
     BILIBILI_REFRESH_BUSY,
     BILIBILI_REFRESH_COMPLETED,
@@ -170,14 +174,14 @@ def test_bili_monitor_registers_default_half_hour_bursts_once(tmp_path: Path) ->
     )
 
 
-def test_new_dynamic_stops_the_rest_of_its_release_burst(
+@pytest.mark.parametrize("uid", [None, 912345678, SEER_OFFICIAL_UID])
+def test_only_seer_discovery_stops_the_rest_of_its_release_burst(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
+    uid: int | None,
 ) -> None:
     service = build_test_bilibili_service(tmp_path)
-    service.config = service.config.model_copy(
-        update={"polling": BiliPollingConfig()}
-    )
+    service.config = service.config.model_copy(update={"polling": BiliPollingConfig()})
     calls = 0
 
     async def fake_check_logic(*_args: object, **_kwargs: object) -> MonitorCheckResult:
@@ -186,29 +190,79 @@ def test_new_dynamic_stops_the_rest_of_its_release_burst(
         return MonitorCheckResult(
             executed=True,
             valid_response=True,
-            discovered_new=True,
+            discovered_new=uid is not None,
+            discovered_uids=frozenset((uid,)) if uid is not None else frozenset(),
         )
 
     monkeypatch.setattr(monitor_module, "_do_check_logic", fake_check_logic)
 
     async def scenario() -> None:
-        first = await run_monitor_check(
-            service,
-            on_auth_invalid=_ignore_auth_invalid,
-            send_push=_ignore_push,
-            now=datetime(2026, 1, 1, 2, 0, 1, tzinfo=timezone.utc),
-        )
-        second = await run_monitor_check(
-            service,
-            on_auth_invalid=_ignore_auth_invalid,
-            send_push=_ignore_push,
-            now=datetime(2026, 1, 1, 2, 0, 2, tzinfo=timezone.utc),
-        )
-        assert first.discovered_new
-        assert not second.executed
+        for second in (1, 2, 5, 10):
+            now = datetime(2026, 1, 1, 2, 0, second, tzinfo=timezone.utc)
+            result = await run_monitor_check(
+                service,
+                on_auth_invalid=_ignore_auth_invalid,
+                send_push=_ignore_push,
+                now=now,
+            )
+            assert result.executed == (second == 1 or uid != SEER_OFFICIAL_UID)
 
     asyncio.run(scenario())
-    assert calls == 1
+    assert calls == (1 if uid == SEER_OFFICIAL_UID else BOOST_ATTEMPT_COUNT)
+
+
+def test_overlapping_burst_checks_preserve_pending_and_future_offsets(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    service = build_test_bilibili_service(tmp_path)
+    calls = 0
+
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def check(*_args: object, **_kwargs: object) -> MonitorCheckResult:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                entered.set()
+                await release.wait()
+            return MonitorCheckResult(
+                executed=True,
+                valid_response=True,
+                discovered_new=True,
+                discovered_uids=frozenset(
+                    (SEER_OFFICIAL_UID if calls == BOOST_ATTEMPT_COUNT else 912345678,)
+                ),
+            )
+
+        monkeypatch.setattr(monitor_module, "_do_check_logic", check)
+
+        async def at(second: int) -> MonitorCheckResult:
+            return await run_monitor_check(
+                service,
+                on_auth_invalid=_ignore_auth_invalid,
+                send_push=_ignore_push,
+                now=datetime(2026, 1, 1, 2, 0, second, tzinfo=timezone.utc),
+            )
+
+        first = asyncio.create_task(at(1))
+        overlapping_checks = 2
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            assert not (await at(2)).executed
+        finally:
+            release.set()
+        await asyncio.wait_for(first, 1)
+        assert calls == overlapping_checks
+        assert not service.pending_boost_slots
+        assert (await at(5)).executed
+        assert (await at(10)).executed
+        assert not (await at(10)).executed
+        assert calls == BOOST_ATTEMPT_COUNT
+
+    asyncio.run(scenario())
 
 
 def test_empty_release_burst_response_keeps_later_offsets(
@@ -216,9 +270,7 @@ def test_empty_release_burst_response_keeps_later_offsets(
     monkeypatch: MonkeyPatch,
 ) -> None:
     service = build_test_bilibili_service(tmp_path)
-    service.config = service.config.model_copy(
-        update={"polling": BiliPollingConfig()}
-    )
+    service.config = service.config.model_copy(update={"polling": BiliPollingConfig()})
     calls = 0
 
     async def fake_check_logic(*_args: object, **_kwargs: object) -> MonitorCheckResult:

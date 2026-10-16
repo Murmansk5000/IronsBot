@@ -310,7 +310,11 @@ class PortableCommandRouter:
         request_service = self._query_sessions.interactions.request_service
         request = self._direct_request(command_id, command)
         admission = (
-            request_service.admit(actor=context.message.actor, request=request)
+            request_service.admit(
+                actor=context.message.actor,
+                conversation=context.message.conversation,
+                request=request,
+            )
             if request_service is not None and request is not None
             else None
         )

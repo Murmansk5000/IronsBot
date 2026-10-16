@@ -156,6 +156,7 @@ def _admit_semantic_request(
         return request, None, None
     decision = request_service.admit(
         actor=message_input_context(event).message.actor,
+        conversation=message_input_context(event).message.conversation,
         request=request,
     )
     if decision.allowed:
