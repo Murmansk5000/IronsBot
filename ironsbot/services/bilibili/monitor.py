@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ from ironsbot.services.bilibili.target_models import BiliPushTargets
 
 logger = logging.getLogger(__name__)
 HTTP_OK = 200
+SEER_OFFICIAL_UID = 1310714247
 AuthInvalidHandler = Callable[[str], Awaitable[None]]
 DynamicPushSender = Callable[
     [dict[str, Any], int, int, BiliPushTargets, tuple[str, ...]],
@@ -52,6 +54,7 @@ class DynamicPushBatch:
     checkpoint_changed: bool
     discovered_new: bool = False
     delivery_tasks: tuple[asyncio.Task[None], ...] = ()
+    discovered_uids: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +93,7 @@ class MonitorCheckResult:
     executed: bool = False
     valid_response: bool = False
     discovered_new: bool = False
+    discovered_uids: frozenset[int] = frozenset()
 
     def __bool__(self) -> bool:
         return self.executed
@@ -145,6 +149,7 @@ async def _push_new_dynamics(
 ) -> DynamicPushBatch:
     checkpoint_changed = False
     discovered_new = False
+    discovered_uids: set[int] = set()
     delivery_tasks: list[asyncio.Task[None]] = []
     cookie = cookie or service.cookie_store.load()
     for pub_ts, feed_item in valid_dynamics:
@@ -189,6 +194,7 @@ async def _push_new_dynamics(
             continue
 
         discovered_new = True
+        discovered_uids.add(author_mid)
 
         if decision.status in {"suppressed", "no_targets"}:
             _log_non_delivery_decision(decision.status, snapshot)
@@ -227,7 +233,12 @@ async def _push_new_dynamics(
             )
         )
 
-    return DynamicPushBatch(checkpoint_changed, discovered_new, tuple(delivery_tasks))
+    return DynamicPushBatch(
+        checkpoint_changed,
+        discovered_new,
+        tuple(delivery_tasks),
+        frozenset(discovered_uids),
+    )
 
 
 async def _do_check_logic(
@@ -283,6 +294,7 @@ async def _do_check_logic(
             executed=True,
             valid_response=True,
             discovered_new=push_batch.discovered_new,
+            discovered_uids=push_batch.discovered_uids,
         )
 
     except Exception:
@@ -359,8 +371,21 @@ async def run_monitor_check(  # noqa: PLR0913 - monitor coordination boundary
             service.pending_check = False
             service.pending_regular_check = False
             service.pending_boost_slots.clear()
+            started = time.monotonic()
+            logger.info(
+                "Bilibili dynamic check started: boost_offsets=%s catch_up=%s",
+                [slot.starts_at.isoformat() for slot in due_boost_slots],
+                catch_up,
+            )
             result = await _do_check_logic(service, on_auth_invalid, send_push)
-            if result.discovered_new and due_boost_slots:
+            logger.info(
+                "Bilibili dynamic check finished: valid=%s discovered_uids=%s "
+                "elapsed=%.3fs",
+                result.valid_response,
+                sorted(result.discovered_uids),
+                time.monotonic() - started,
+            )
+            if SEER_OFFICIAL_UID in result.discovered_uids and due_boost_slots:
                 mark_boost_slots_completed(
                     service.auto_check_state,
                     due_boost_slots,

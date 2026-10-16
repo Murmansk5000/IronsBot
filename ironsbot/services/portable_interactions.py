@@ -17,7 +17,7 @@ from ironsbot.services.seer.data_queries import DataQueryImageReply
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.core.platform import ActorRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.core.response_admission import ResponseAdmissionDecision
     from ironsbot.core.semantic_requests import SemanticRequest
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -27,7 +27,11 @@ if TYPE_CHECKING:
 
 class MenuRequestAdmission(Protocol):
     def admit(
-        self, *, actor: ActorRef, request: SemanticRequest
+        self,
+        *,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        request: SemanticRequest,
     ) -> ResponseAdmissionDecision: ...
     def finish(self, token: object) -> None: ...
     def release(self, token: object) -> None: ...
@@ -183,7 +187,11 @@ class PortableInteractions:
         owner = self.sessions.quoted_owner(context) or context
         request = self.sessions.resolve_semantic_request(text, owner, context)
         return (
-            self.request_service.admit(actor=context.message.actor, request=request)
+            self.request_service.admit(
+                actor=context.message.actor,
+                conversation=context.message.conversation,
+                request=request,
+            )
             if request is not None
             else None
         )

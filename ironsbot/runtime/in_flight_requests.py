@@ -14,7 +14,7 @@ from ironsbot.core.response_admission import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.core.semantic_requests import SemanticRequest
 
 
@@ -25,6 +25,7 @@ class SuperuserLookup(Protocol):
 @dataclass(frozen=True, slots=True)
 class InFlightRequestToken:
     actor: ActorRef
+    conversation: ConversationRef
     request: SemanticRequest
     token_id: str
 
@@ -51,7 +52,7 @@ class _RecentCompletion:
 
 @dataclass(slots=True)
 class InFlightRequestService:
-    """Reserve one real user action and suppress its recent duplicate replies.
+    """Reserve a user action within its conversation and suppress duplicates.
 
     A request stays reserved while it is executing or waiting in a menu FIFO.
     After the handler finishes normally, its semantic identity remains silent
@@ -61,10 +62,12 @@ class InFlightRequestService:
 
     features: SuperuserLookup
     config: DuplicateResponseConfig
-    _entries: dict[tuple[ActorRef, str, str], _InFlightRequestEntry] = field(
-        default_factory=dict
-    )
-    _recent_completions: dict[tuple[ActorRef, str, str], _RecentCompletion] = field(
+    _entries: dict[
+        tuple[ActorRef, ConversationRef, str, str], _InFlightRequestEntry
+    ] = field(default_factory=dict)
+    _recent_completions: dict[
+        tuple[ActorRef, ConversationRef, str, str], _RecentCompletion
+    ] = field(
         default_factory=dict
     )
 
@@ -72,6 +75,7 @@ class InFlightRequestService:
         self,
         *,
         actor: ActorRef,
+        conversation: ConversationRef,
         request: SemanticRequest,
         now: float | None = None,
     ) -> InFlightRequestDecision:
@@ -80,7 +84,7 @@ class InFlightRequestService:
 
         current_time = monotonic() if now is None else now
         self._prune_recent_completions(current_time)
-        key = (actor, request.action.id, request.target.key)
+        key = (actor, conversation, request.action.id, request.target.key)
         if entry := self._entries.get(key):
             return self._reject_duplicate(entry)
         if completion := self._recent_completions.get(key):
@@ -92,6 +96,7 @@ class InFlightRequestService:
             allowed=True,
             token=InFlightRequestToken(
                 actor=actor,
+                conversation=conversation,
                 request=request,
                 token_id=token_id,
             ),
@@ -116,10 +121,17 @@ class InFlightRequestService:
     def _release(
         self,
         token: object,
-    ) -> tuple[tuple[ActorRef, str, str], _InFlightRequestEntry] | None:
+    ) -> tuple[
+        tuple[ActorRef, ConversationRef, str, str], _InFlightRequestEntry
+    ] | None:
         if not isinstance(token, InFlightRequestToken):
             return None
-        key = (token.actor, token.request.action.id, token.request.target.key)
+        key = (
+            token.actor,
+            token.conversation,
+            token.request.action.id,
+            token.request.target.key,
+        )
         entry = self._entries.get(key)
         if entry is not None and entry.token_id == token.token_id:
             self._entries.pop(key, None)
