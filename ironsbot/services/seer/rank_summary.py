@@ -332,12 +332,12 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     master_score: int | None = None,
     current_peak_sub_key: int | None,
     find_rank: FindRank,
-    current_master_sub_key: int | None = None,
+    modes: frozenset[str] | None = None,
     progress: RankSummaryProgress | None = None,
     anchor_only: bool = False,
     run_lookup_jobs: RunLookupJobs | None = None,
 ) -> PeakSeasonRankSummary:
-    if current_peak_sub_key is None and current_master_sub_key is None:
+    if current_peak_sub_key is None:
         return PeakSeasonRankSummary.empty()
 
     specs: list[_PeakRankLookupSpec] = []
@@ -370,14 +370,14 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
                 ),
             )
         )
-    if current_master_sub_key is not None:
+    if current_peak_sub_key is not None:
         specs.append(
             _PeakRankLookupSpec(
                 id="master_peak",
                 title="大师赛季榜",
                 score_name="段位分",
                 key=MASTER_PEAK_USER_RANK_KEY,
-                sub_key=current_master_sub_key,
+                sub_key=current_peak_sub_key,
                 candidate_score=master_score,
                 search_without_score=True,
             )
@@ -407,6 +407,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
             ),
         )
         for spec in specs
+        if modes is None or spec.id.removesuffix("_peak") in modes
     )
     results = await _run_lookup_jobs(jobs, run_lookup_jobs, progress)
     return PeakSeasonRankSummary.from_results(results)

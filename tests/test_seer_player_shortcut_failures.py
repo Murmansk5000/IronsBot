@@ -66,7 +66,6 @@ async def test_season_database_failure_preserves_peak_base_data(
         current_peak_sub_key=Mock(
             side_effect=DataUnavailableError("巅峰赛季数据读取失败")
         ),
-        current_master_sub_key=lambda: 8,
         fetch_peak_summary=AsyncMock(
             return_value=PeakSeasonRankSummary.from_results(
                 {
@@ -130,7 +129,6 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
         fetch_master_peak_summary=AsyncMock(),
         fetch_autocard_summary=AsyncMock(),
         current_peak_sub_key=lambda: 7,
-        current_master_sub_key=lambda: 8,
     )
     local = SimpleNamespace(
         config=SimpleNamespace(enabled=True), upsert_metrics=AsyncMock()
@@ -182,7 +180,6 @@ async def test_sample_has_its_own_budget_after_rank_deadline(
     )
     rank = SimpleNamespace(
         current_peak_sub_key=lambda: 7,
-        current_master_sub_key=lambda: 8,
         fetch_player_summary=slow_rank,
         fetch_peak_summary=slow_rank,
         fetch_master_peak_summary=AsyncMock(return_value=PeakSeasonRankSummary.empty()),
@@ -252,7 +249,6 @@ async def test_master_rank_waits_for_verified_personal_peak_packet(
     )
     rank = SimpleNamespace(
         current_peak_sub_key=lambda: 7,
-        current_master_sub_key=lambda: 8,
         fetch_peak_summary=master_summary,
         fetch_master_peak_summary=master_summary,
     )
@@ -341,10 +337,6 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
         def current_peak_sub_key() -> int:
             return 7
 
-        @staticmethod
-        def current_master_sub_key() -> int:
-            return 8
-
         async def fetch_player_summary(
             self,
             game: object,
@@ -372,7 +364,6 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
                 player_id,
                 find_rank=find_rank,
                 current_peak_sub_key=7,
-                current_master_sub_key=8,
                 run_lookup_jobs=runner,
                 **kwargs,
             )
@@ -714,7 +705,6 @@ async def test_detail_completeness_uses_all_requested_stages(
         ),
         fetch_autocard_summary=AsyncMock(return_value=result),
         current_peak_sub_key=lambda: 7,
-        current_master_sub_key=lambda: 8,
     )
     game = SimpleNamespace(
         get_user_info=AsyncMock(return_value=SimpleNamespace(nick="player")),

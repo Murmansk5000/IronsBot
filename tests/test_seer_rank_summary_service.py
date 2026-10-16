@@ -39,7 +39,7 @@ EXPERT_SCORE = 2500
 CURRENT_PEAK_SCORE = 300033
 CURRENT_PEAK_RANK = 33
 CURRENT_PEAK_LINEAR_RANK = 12
-PEAK_MODE_COUNT = 3
+PEAK_MODE_COUNT = 4
 MASTER_SUB_KEY = 20260904
 
 
@@ -131,7 +131,7 @@ async def test_peak_rank_summary_keeps_other_modes_when_one_rank_times_out() -> 
 
 
 @pytest.mark.asyncio
-async def test_peak_rank_summary_queries_master_with_its_own_season() -> None:
+async def test_peak_rank_summary_queries_master_with_common_season() -> None:
     calls: list[dict[str, object]] = []
 
     async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
@@ -141,8 +141,8 @@ async def test_peak_rank_summary_queries_master_with_its_own_season() -> None:
     summary = await fetch_peak_season_rank_summary(
         object(),
         USER_ID,
-        current_peak_sub_key=None,
-        current_master_sub_key=MASTER_SUB_KEY,
+        current_peak_sub_key=MASTER_SUB_KEY,
+        modes=frozenset(("master",)),
         find_rank=find_rank,
     )
 
@@ -352,6 +352,7 @@ async def test_peak_rank_summary_reaches_expert_after_earlier_score_misses() -> 
         STANDARD_PEAK_USER_RANK_KEY,
         WILD_PEAK_USER_RANK_KEY,
         EXPERT_PEAK_USER_RANK_KEY,
+        MASTER_PEAK_USER_RANK_KEY,
     ]
     assert summary.expert.rank == CURRENT_PEAK_RANK
     assert summary.expert.score == EXPERT_SCORE
@@ -411,7 +412,11 @@ async def test_peak_rank_summary_queries_current_season_without_candidate_score(
 
     assert len(calls) == PEAK_MODE_COUNT
     assert all("target_score" not in call for call in calls)
-    assert all(call["search_limit"] == 0 for call in calls)
+    assert all(
+        call["search_limit"]
+        == (None if call["key"] == MASTER_PEAK_USER_RANK_KEY else 0)
+        for call in calls
+    )
     assert summary.standard.rank == CURRENT_PEAK_LINEAR_RANK
     assert summary.standard.score == CURRENT_PEAK_SCORE
 

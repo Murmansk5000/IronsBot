@@ -75,22 +75,18 @@ async def test_old_master_cache_does_not_poison_other_modes_or_new_data() -> Non
     cache.save((PLAYER, "peak_mode", "master", SEASON), [b"\0" * 4] * 3, stamp)
     game = Game()
     result = await fetch_unity_peak_partial(
-        game, PLAYER, timeout_seconds=2, observations=cache, cycles=(SEASON, SEASON)
+        game, PLAYER, timeout_seconds=2, observations=cache, season=SEASON
     )
     assert result.available_modes == PEAK_MODE_NAMES
     assert tuple(game.calls) == MASTER_PARAMS
     assert result.info.current_m_all == MASTER_MATCHES
     game.calls.clear()
     await fetch_unity_peak_partial(
-        game, PLAYER, timeout_seconds=2, observations=cache, cycles=(SEASON, SEASON)
+        game, PLAYER, timeout_seconds=2, observations=cache, season=SEASON
     )
     assert game.calls == []
     await fetch_unity_peak_partial(
-        game,
-        PLAYER,
-        timeout_seconds=2,
-        observations=cache,
-        cycles=(SEASON + 1, SEASON + 1),
+        game, PLAYER, timeout_seconds=2, observations=cache, season=SEASON + 1
     )
     assert tuple(game.calls) == PEAK_PARAMS
 
@@ -100,7 +96,7 @@ async def test_missing_master_total_is_unavailable_and_not_cached() -> None:
     game = Game(fail=408307)
     cache = ObservationCache()
     result = await fetch_unity_peak_partial(
-        game, PLAYER, timeout_seconds=2, observations=cache, cycles=(SEASON, SEASON)
+        game, PLAYER, timeout_seconds=2, observations=cache, season=SEASON
     )
     assert "master" not in result.available_modes
     assert result.info.current_m_all is None
@@ -118,11 +114,7 @@ async def test_concurrent_reads_share_each_mode() -> None:
     results = await asyncio.gather(
         *(
             fetch_unity_peak_partial(
-                game,
-                PLAYER,
-                timeout_seconds=2,
-                observations=cache,
-                cycles=(SEASON, SEASON),
+                game, PLAYER, timeout_seconds=2, observations=cache, season=SEASON
             )
             for _ in range(2)
         )
@@ -144,11 +136,7 @@ async def test_invalid_counts_keep_personal_rating_but_are_not_cached() -> None:
 
     cache = ObservationCache()
     result = await fetch_unity_peak_partial(
-        InvalidGame(),
-        PLAYER,
-        timeout_seconds=2,
-        observations=cache,
-        cycles=(SEASON, SEASON),
+        InvalidGame(), PLAYER, timeout_seconds=2, observations=cache, season=SEASON
     )
     assert "master" in result.available_modes
     assert result.info.current_m_rank == 13  # noqa: PLR2004
