@@ -269,5 +269,5 @@ def format_compact_peak_section(  # noqa: PLR0913
             + peak.current_z_all
             + peak.current_m_all
         )
-        lines.append(f"巅峰总场次：{total}场（各模式当前赛季合计）")
+        lines.append(f"巅峰总场次：{total}场")
     return "\n".join(lines)

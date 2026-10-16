@@ -233,7 +233,7 @@ def validate_player_peak_season(
         clear_metric_keys.update(metric_keys[1:])
 
     if invalidates_total_matches:
-        clear_metric_keys.add("peak_total_matches")
+        clear_metric_keys.add("peak_total_matches_v4")
 
     return ValidatedPlayerPeak(
         unity_peak=replace(unity_peak, **peak_updates),

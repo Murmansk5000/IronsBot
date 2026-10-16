@@ -49,7 +49,7 @@ class GlobalRankSpec:
     key: int
     sub_key: int
     unit: str
-    sub_key_source: Literal["fixed", "peak_season", "master_season"] = "fixed"
+    sub_key_source: Literal["fixed", "peak_season"] = "fixed"
     score_format: str = ""
     ascending: bool = False
     beast_metric: str = ""
@@ -188,7 +188,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         MASTER_PEAK_USER_RANK_KEY,
         0,
         "分",
-        sub_key_source="master_season",
+        sub_key_source="peak_season",
         score_format="peak_rating",
     ),
 }
@@ -240,6 +240,6 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
         "样本大师场次榜", "peak_master_matches", season_limited=True
     ),
     "巅峰总场次": LocalRankSpec(
-        "样本巅峰总场次榜", "peak_total_matches", season_limited=True
+        "样本巅峰总场次榜", "peak_total_matches_v4", season_limited=True
     ),
 }

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.core.value_coercion import coerce_positive_int
+from ironsbot.integrations.storage.peak_season_migration import migrate_peak_season
 from ironsbot.integrations.storage.sqlite import (
     SqliteDatabase,
     SqliteMigration,
@@ -83,6 +84,7 @@ _MIGRATIONS = (
     # already recorded schema version 1. Re-run the idempotent column repair
     # so those databases receive the new profile-cache columns on startup.
     SqliteMigration(2, callback=_migrate),
+    SqliteMigration(3, callback=migrate_peak_season),
 )
 
 

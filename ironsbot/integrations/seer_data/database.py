@@ -5,7 +5,6 @@ import json
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
 from threading import RLock
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from weakref import WeakKeyDictionary
@@ -18,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, or_, select
 
+from ironsbot.services.operations.data_update import DataVersion
 from ironsbot.services.seer.data import (
     SEERAPI_DB,
     DataGetter,
@@ -53,6 +53,7 @@ from .release_contract import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
+    from datetime import datetime
 
     from seerapi_models import PetORM, PetSkinORM
     from sqlalchemy.engine import Engine
@@ -276,30 +277,23 @@ class SeerDatabase:
             logger.warning("failed to read peak season", exc_info=True)
             raise DataUnavailableError("巅峰赛季数据读取失败") from error
 
-    def master_season_start(self) -> datetime | None:
-        try:
-            with self._databases.session(SEERAPI_DB) as session:
-                if session is None:
-                    raise DataUnavailableError("大师赛季数据未加载")
-                value = session.execute(
-                    text(
-                        "SELECT start_time FROM peak_cost_pool "
-                        "ORDER BY start_time DESC LIMIT 1"
-                    )
-                ).scalar_one_or_none()
-                if value is None:
-                    return None
-                return local_published_datetime(
-                    value if isinstance(value, datetime) else str(value)
-                )
-        except SQLAlchemyError as error:
-            logger.warning("failed to read master season", exc_info=True)
-            raise DataUnavailableError("大师赛季数据读取失败") from error
-
     def version(self) -> str:
         """Return the release version cached when the in-memory DB was loaded."""
 
         return self._publication().version
+
+    def update_description(self) -> DataVersion:
+        with self._databases.session(SEERAPI_DB) as session:
+            season = session.get(PeakSeasonORM, 1) if session is not None else None
+            period = (
+                (
+                    local_published_datetime(season.start_time),
+                    local_published_datetime(season.end_time),
+                )
+                if season is not None
+                else None
+            )
+        return DataVersion(self.version(), period)
 
     def render_category_available(self, category: str) -> bool:
         """Return whether the loaded release proves all assets for a renderer."""
