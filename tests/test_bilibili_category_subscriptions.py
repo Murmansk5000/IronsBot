@@ -30,6 +30,34 @@ from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("☆转发抽奖☆，福利抽取三位小赛尔", ("lottery",)),
+        ("参与本次抽奖，福利抽取三位小赛尔", ()),
+        ("游戏内开启百万旅游基金抽奖活动", ()),
+        ("抽奖结果：中奖名单已发布，请查收私信通知", ("winning",)),
+        ("赛尔号联动主题即将上线", ("collaboration",)),
+        ("联名周边正式公开", ("collaboration",)),
+        ("创作激励开启，欢迎投稿", ("creation",)),
+        ("同人作品征集与二创活动", ("creation",)),
+        ("请填写问卷并参加投票", ()),
+    ],
+)
+def test_example_categories_separate_lottery_winning_collaboration_and_creation(
+    text: str,
+    expected: tuple[str, ...],
+) -> None:
+    path = Path(__file__).resolve().parents[1] / "config.example.toml"
+    config = BiliConfig.model_validate(
+        tomllib.loads(path.read_text(encoding="utf-8"))["bilibili"]
+    )
+    account = config.category_subscriptions.accounts["example_account"]
+    assert account.categories["lottery"].label == "转发抽奖"
+    dynamic = {"modules": {"module_dynamic": {"desc": {"text": text}}}}
+    assert classify_dynamic(dynamic, account) == expected
+
+
 def _service(
     path: Path, *, categories: bool = True
 ) -> tuple[BiliTargetService, ConversationRef]:
@@ -153,31 +181,3 @@ def test_normal_account_has_three_independent_stage_options(
         "仅超级管理员可以修改动态提醒订阅。"
     )
     assert not service.unsubscribe_store.is_unsubscribed(conversation, options[0].key)
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("☆转发抽奖☆，福利抽取三位小赛尔", ("lottery",)),
-        ("参与本次抽奖，福利抽取三位小赛尔", ()),
-        ("游戏内开启百万旅游基金抽奖活动", ()),
-        ("抽奖结果：中奖名单已发布，请查收私信通知", ("winning",)),
-        ("赛尔号联动主题即将上线", ("collaboration",)),
-        ("联名周边正式公开", ("collaboration",)),
-        ("创作激励开启，欢迎投稿", ("creation",)),
-        ("同人作品征集与二创活动", ("creation",)),
-        ("请填写问卷并参加投票", ()),
-    ],
-)
-def test_example_categories_separate_lottery_winning_collaboration_and_creation(
-    text: str,
-    expected: tuple[str, ...],
-) -> None:
-    path = Path(__file__).resolve().parents[1] / "config.example.toml"
-    config = BiliConfig.model_validate(
-        tomllib.loads(path.read_text(encoding="utf-8"))["bilibili"]
-    )
-    account = config.category_subscriptions.accounts["example_account"]
-    assert account.categories["lottery"].label == "转发抽奖"
-    dynamic = {"modules": {"module_dynamic": {"desc": {"text": text}}}}
-    assert classify_dynamic(dynamic, account) == expected
