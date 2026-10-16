@@ -60,6 +60,36 @@ async def test_daily_claim_is_atomic_and_survives_restart(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_unconfigured_lucky_target_does_not_claim_render_or_notify() -> None:
+    routes = PrivateConversationRoutes(
+        onebot_enabled=False,
+        default_account="app",
+        official_accounts=frozenset({"app"}),
+    )
+    actor = ActorRef(Platform.ONEBOT, "123456")
+    routes.register(
+        CrossPlatformIdentityLink(actor.id, OfficialIdentity("app", "user", "c2c"), 1)
+    )
+    claims = Mock()
+    notices = Mock()
+    notices.send_private_to_superusers = AsyncMock()
+    delivery = Mock()
+    sender = LuckySkinWindowOutboundSender(
+        delivery,
+        Mock(),
+        claims,
+        routes,
+        PortableQuerySessions(),
+        IdentityPrincipalService().actor_principal,
+        admin_notices=notices,
+    )
+    assert not await sender.send_daily_notice(actor, "sample", day="2026-10-14")
+    claims.claim.assert_not_called()
+    delivery.send.assert_not_called()
+    notices.send_private_to_superusers.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "outcome", ["success", "failed", "uncertain", "unavailable", "td"]
 )
@@ -69,6 +99,7 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
     actor = ActorRef(Platform.ONEBOT, "123456")
     principals = IdentityPrincipalService()
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"app"}),
         default_account="app",
@@ -190,9 +221,7 @@ async def test_daily_onebot_history_check_never_retries_accepted_send(
         can_send_proactively=True
     )
     delivery.send = AsyncMock(
-        return_value=ProactiveDeliverySummary(
-            (target,), (), (), ((target, receipt),)
-        )
+        return_value=ProactiveDeliverySummary((target,), (), (), ((target, receipt),))
     )
     history_check = AsyncMock(
         side_effect=RuntimeError("history unavailable")
@@ -206,7 +235,9 @@ async def test_daily_onebot_history_check_never_retries_accepted_send(
         delivery,
         Mock(is_unsubscribed=Mock(return_value=False)),
         store,
-        PrivateConversationRoutes(),
+        PrivateConversationRoutes(
+            use_default_for_unconfigured_targets=True,
+        ),
         PortableQuerySessions(),
         principals.actor_principal,
         render=AsyncMock(return_value=OutboundMessage.from_text("window")),

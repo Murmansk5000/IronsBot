@@ -59,11 +59,20 @@ class LuckySkinWindowOutboundSender:
     ) = None
     verify_onebot_history: bool = False
 
-    async def send_daily_notice(
+    async def send_daily_notice(  # noqa: C901 - independent route and receipt checks
         self, actor: ActorRef, message: str | LuckySkinWindowResult, *, day: str
     ) -> bool:
         source = private_conversation_for_actor(actor)
-        conversation = self.private_routes.resolve(source)
+        route = self.private_routes.decision_for(source)
+        if route.status == "skipped":
+            _LOGGER.info(
+                "daily lucky skipped by routing policy: day=%s recipient=%s reason=%s",
+                day,
+                reference_digest(actor.id),
+                route.reason,
+            )
+            return False
+        conversation = route.target
         if any(
             self.subscriptions.is_unsubscribed(
                 target, LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY
@@ -71,9 +80,12 @@ class LuckySkinWindowOutboundSender:
             for target in {source, conversation}
         ):
             return False
-        if not self.delivery.messenger.capabilities_for(
-            conversation
-        ).can_send_proactively:
+        if (
+            route.status == "unavailable"
+            or not self.delivery.messenger.capabilities_for(
+                conversation
+            ).can_send_proactively
+        ):
             _LOGGER.warning(
                 "daily lucky route unavailable: day=%s recipient=%s platform=%s",
                 day,

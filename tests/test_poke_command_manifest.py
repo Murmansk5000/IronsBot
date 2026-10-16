@@ -68,6 +68,49 @@ def test_manifest_generator_scans_git_history_once(monkeypatch: MonkeyPatch) -> 
     assert len(calls) == 1
 
 
+def test_real_history_without_archive_preserves_reviewed_seed(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from scripts.generate_poke_command_introductions import (
+        MANIFEST_PATH,
+        SEED_COMMIT,
+        build_manifest,
+    )
+
+    monkeypatch.setattr(
+        "scripts.generate_poke_command_introductions._git_object_exists",
+        lambda _revision: False,
+    )
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", SEED_COMMIT, "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert ancestor.returncode == 0
+    seed = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["commands"]
+    original = {
+        "about.official_identity_info": "2026-09-15T21:28:37+08:00",
+        "activity.new": "2026-08-15T11:17:31+08:00",
+        "seer.autocard.sanctuary": "2026-08-11T17:32:19+08:00",
+        "seer.data.peak_environment_changes": "2026-08-14T23:15:23+08:00",
+        "seer.pet.avatar": "2026-09-04T13:32:39+08:00",
+        "seer.player.identity.begin": "2026-09-15T04:08:49+08:00",
+        "seer.player.identity.confirm": "2026-09-15T04:08:49+08:00",
+        "seer.player.identity.revoke": "2026-09-15T04:08:49+08:00",
+        "seer.player.identity.status": "2026-09-15T04:08:49+08:00",
+    }
+    assert {key: seed[key] for key in original} == original
+    assert seed["seer.pet.flip"] == "2026-09-23T20:09:13+08:00"
+    later = {
+        "rank.global_collection": "2026-09-23T22:08:31+08:00",
+        "seer.player.query": "2026-09-23T22:08:31+08:00",
+        "seer.pet.query": "2026-09-26T10:58:34+08:00",
+        "seer.lucky_skin_window.query": "2026-10-16T11:17:53+08:00",
+    }
+    assert build_manifest((*seed, *later))["commands"] == {**seed, **later}
+
+
 def test_manifest_generator_uses_checked_in_seed_without_archive(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,

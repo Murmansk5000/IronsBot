@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -18,7 +19,6 @@ from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     ImageNotFoundError,
 )
-from ironsbot.services.messaging.topic_commands import build_topic_operations
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableTextInputSpec,
@@ -63,8 +63,6 @@ def build_portable_messaging_operations(
         )
         for action in messaging.portable_command_actions
     }
-    if messaging.topics is not None:
-        operations.update(build_topic_operations(messaging.topics))
     operations["messaging.push_subscription"] = _subscription_operation(
         messaging,
         sessions,
@@ -75,6 +73,10 @@ def build_portable_messaging_operations(
             sessions,
             refresh_push_time_jobs,
         )
+    if messaging.topics is not None:
+        from ironsbot.services.messaging.topic_commands import build_topic_operations
+
+        operations.update(build_topic_operations(messaging.topics))
     return operations
 
 
@@ -156,7 +158,11 @@ class _PortableSubscriptionMenus:
             if submenu is not None:
                 submenu_options, submenu_prompt = submenu
                 return menu.submenu(option, submenu_options, submenu_prompt)
-            result = self.messaging.toggle_subscription(self.conversation, option)
+            result = await asyncio.to_thread(
+                self.messaging.toggle_subscription,
+                self.conversation,
+                option,
+            )
             return await menu.root(notice=result)
 
         return self._install(options, select, prompt, notice)
@@ -177,7 +183,11 @@ class _PortableSubscriptionMenus:
                 return await menu.root(
                     notice="普通群成员只能查看本群推送订阅，不能修改。",
                 )
-            result = self.messaging.toggle_subscription(self.conversation, option)
+            result = await asyncio.to_thread(
+                self.messaging.toggle_subscription,
+                self.conversation,
+                option,
+            )
             refreshed = self.messaging.subscription_submenu(
                 self.conversation,
                 parent,
