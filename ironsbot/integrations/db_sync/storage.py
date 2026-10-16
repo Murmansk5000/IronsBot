@@ -2,8 +2,9 @@
 import hashlib
 import logging
 import os
+import sqlite3
 import tempfile
-from contextlib import suppress
+from contextlib import closing, suppress
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -11,8 +12,23 @@ from pathlib import Path
 import httpx
 
 from ironsbot.core.time import TZ_CN
+from ironsbot.integrations.storage.sqlite import open_sqlite_connection
 
 logger = logging.getLogger(__name__)
+
+
+def _valid_local_baseline(file_path: str) -> bool:
+    try:
+        with closing(open_sqlite_connection(file_path, read_only=True)) as connection:
+            return (
+                connection.execute("PRAGMA quick_check").fetchall() == [("ok",)]
+                and connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+                ).fetchone()
+                is not None
+            )
+    except (OSError, sqlite3.Error):
+        return False
 
 
 def _write_bytes_atomic(file_path: str, content: bytes) -> None:

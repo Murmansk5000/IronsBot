@@ -25,6 +25,7 @@ from ironsbot.integrations.db_sync.storage import (
     _fingerprint_content,
     _fingerprint_file,
     _normalize_fingerprint,
+    _valid_local_baseline,
     _validate_fingerprint,
     _write_bytes_atomic,
 )
@@ -208,6 +209,16 @@ class DatabaseSync:
                 tmp_path = AsyncPath(tmp_name)
                 await tmp_path.write_bytes(content_bytes)
                 self.databases.load_from_file(name, str(tmp_path))
+                notify_update = (
+                    name in {"seerapi", "aliases"}
+                    and self.on_updated is not None
+                    and entry.local_path is not None
+                    and local_before.fingerprint is not None
+                    and content_fingerprint != local_before.fingerprint
+                    and await to_thread.run_sync(
+                        _valid_local_baseline, entry.local_path
+                    )
+                )
                 cache_saved, local_timestamp_after = await self._save_local_cache(
                     name,
                     entry,
@@ -239,13 +250,7 @@ class DatabaseSync:
                         f"数据库 '{name}' 本地缓存写入时间: "
                         f"{local_timestamp_after.isoformat()}"
                     )
-                if (
-                    name == "seerapi"
-                    and cache_saved
-                    and entry.local_path
-                    and content_fingerprint != local_before.fingerprint
-                    and self.on_updated is not None
-                ):
+                if notify_update and cache_saved and self.on_updated is not None:
                     self._reported_updates.add(name)
                     try:
                         await self.on_updated(
