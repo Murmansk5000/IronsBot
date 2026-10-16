@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from ironsbot.config.models.messaging import CommandCooldownConfig
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -17,6 +19,37 @@ OTHER_USER_ID = 200
 ACTOR = ActorRef(Platform.ONEBOT, str(USER_ID))
 OTHER_ACTOR = ActorRef(Platform.ONEBOT, str(OTHER_USER_ID))
 DUPLICATE_MESSAGE = "重复请求"
+GROUP = ConversationRef(Platform.ONEBOT, "group", "group-a")
+
+
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+def test_reservation_completion_and_release_are_conversation_scoped(
+    platform: Platform,
+) -> None:
+    service = _service()
+    actor = ActorRef(platform, "ordinary-user")
+    group_a = ConversationRef(platform, "group", "a")
+    group_b = ConversationRef(platform, "group", "b")
+    private = ConversationRef(platform, "private", "ordinary-user")
+    request = _request("seer_pet_info", "5000")
+    first = service.admit(actor=actor, conversation=group_a, request=request, now=0)
+    second = service.admit(actor=actor, conversation=group_b, request=request, now=0)
+    third = service.admit(actor=actor, conversation=private, request=request, now=0)
+    assert first.allowed and second.allowed and third.allowed
+    assert not service.admit(
+        actor=actor, conversation=group_a, request=request, now=1
+    ).allowed
+    service.finish(first.token, now=2)
+    service.release(second.token)
+    assert service.admit(
+        actor=actor, conversation=group_b, request=request, now=3
+    ).allowed
+    assert not service.admit(
+        actor=actor, conversation=group_a, request=request, now=3
+    ).allowed
+    assert not service.admit(
+        actor=actor, conversation=private, request=request, now=3
+    ).allowed
 
 
 def _request(action_id: str, target_key: str) -> SemanticRequest:
@@ -50,11 +83,13 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
 
     first = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=0,
     )
     second = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=1,
     )
@@ -66,6 +101,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
 
     assert not service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=2,
     ).allowed
@@ -74,6 +110,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
 
     completed_duplicate = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=64,
     )
@@ -82,12 +119,14 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
 
     assert not service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=64.5,
     ).allowed
 
     assert service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=65,
     ).allowed
@@ -97,6 +136,7 @@ def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
     service = _service()
     first = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=0,
     )
@@ -106,6 +146,7 @@ def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
 
     assert service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
         now=1,
     ).allowed
@@ -116,19 +157,23 @@ def test_in_flight_request_keeps_actors_actions_and_targets_independent() -> Non
 
     first = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
     )
     assert first.allowed
     assert service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5001"),
     ).allowed
     assert service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_image", "5000"),
     ).allowed
     assert service.admit(
         actor=OTHER_ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
     ).allowed
 
@@ -139,10 +184,12 @@ def test_in_flight_request_keeps_platform_actor_namespaces_isolated() -> None:
 
     assert service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
     ).allowed
     assert service.admit(
         actor=official_actor,
+        conversation=GROUP,
         request=_request("seer_pet_info", "5000"),
     ).allowed
 
@@ -152,10 +199,12 @@ def test_in_flight_request_superusers_bypass_reservations() -> None:
 
     first = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer.player.collection", "712345678"),
     )
     second = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer.player.collection", "712345678"),
     )
 
@@ -167,12 +216,14 @@ def test_in_flight_request_stale_token_does_not_release_new_reservation() -> Non
     service = _service()
     first = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_mintmark_query", "45001"),
     )
     assert first.token is not None
     service.finish(first.token, now=0)
     second = service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_mintmark_query", "45001"),
         now=60,
     )
@@ -182,5 +233,6 @@ def test_in_flight_request_stale_token_does_not_release_new_reservation() -> Non
 
     assert not service.admit(
         actor=ACTOR,
+        conversation=GROUP,
         request=_request("seer_mintmark_query", "45001"),
     ).allowed
