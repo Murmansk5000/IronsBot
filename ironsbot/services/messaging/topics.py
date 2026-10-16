@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from functools import partial
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage
 from ironsbot.core.platform import ActorRef, ConversationRef
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.messaging.topic_models import (
@@ -26,7 +27,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.outbound import OutboundMessage
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
     from ironsbot.services.operations.scheduler import Scheduler
@@ -240,7 +240,15 @@ class PushTopicService:
             topic_subscription_key(key),
         ):
             return None
-        return source
+        routes = self.delivery.private_routes
+        if routes is None:
+            return source
+        decision = routes.decision_for(source)
+        return (
+            decision.target
+            if (decision.status == "ready" and self.allowed_target(decision.target))
+            else None
+        )
 
     async def _send_claimed(
         self,
@@ -259,7 +267,10 @@ class PushTopicService:
             )
             if summary.succeeded:
                 status = "delivered"
-            elif summary.uncertain:
+            elif summary.uncertain or any(
+                result.failure_kind is DeliveryFailureKind.UNCERTAIN
+                for _, result in summary.results
+            ):
                 status = "uncertain"
             elif summary.failed:
                 status = "failed"

@@ -33,6 +33,7 @@ def _link(app: str = "app1", *, member: bool = False) -> CrossPlatformIdentityLi
 
 def test_member_link_becomes_same_app_private_address() -> None:
     routes = BiliPrivateRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"app1"}),
         default_account="app1",
@@ -48,6 +49,7 @@ def test_member_link_becomes_same_app_private_address() -> None:
 
 def test_verified_user_route_selection_and_unlink() -> None:
     routes = BiliPrivateRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"app1", "app2"}),
         default_account="app2",
@@ -69,6 +71,7 @@ def test_verified_user_route_selection_and_unlink() -> None:
 
 def test_explicit_private_account_does_not_fall_back_to_other_bot() -> None:
     routes = BiliPrivateRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"app1", "app2"}),
         default_account="app1",
@@ -104,7 +107,9 @@ def test_target_conversion_preserves_modes_and_unsubscribe(tmp_path: Path) -> No
     principals.register_identity_link(link)
     principals.register_private_link(link)
     routes = BiliPrivateRoutes(
-        onebot_enabled=False, official_accounts=frozenset({"app1"})
+        use_default_for_unconfigured_targets=True,
+        onebot_enabled=False,
+        official_accounts=frozenset({"app1"}),
     )
     routes.register(link)
     service = build_test_bilibili_service(tmp_path)
@@ -141,7 +146,9 @@ def test_target_conversion_preserves_modes_and_unsubscribe(tmp_path: Path) -> No
 def test_configured_per_user_accounts_follow_private_route(tmp_path: Path) -> None:
     service = build_test_bilibili_service(tmp_path)
     routes = BiliPrivateRoutes(
-        onebot_enabled=False, official_accounts=frozenset({"app1"})
+        use_default_for_unconfigured_targets=True,
+        onebot_enabled=False,
+        official_accounts=frozenset({"app1"}),
     )
     routes.register(_link())
     endpoint = routes.resolve(SOURCE)

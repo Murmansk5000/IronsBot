@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
+from ironsbot.core.push_routing import PushRouteDecision
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import BotRoutingConfig
@@ -28,7 +29,7 @@ def _connected_onebot_bots() -> dict[int, Bot]:
 class BotRouter:
     config: BotRoutingConfig
     references: OneBotReferenceResolver
-    use_default_for_unconfigured_groups: bool = False
+    use_default_for_unconfigured_targets: bool = False
 
     def _configured_bot_id(self, conversation: ConversationRef) -> int | None:
         if conversation.kind == "group":
@@ -78,7 +79,7 @@ class BotRouter:
         )
         if routed_bot_id is not None:
             return bot_id == routed_bot_id
-        if not self.use_default_for_unconfigured_groups:
+        if not self.use_default_for_unconfigured_targets:
             return False
         default_bot_id = (
             self.config.resolve_bot_reference(self.config.default_bot)
@@ -99,11 +100,20 @@ class BotRouter:
             return False
         if self.config.enabled and self._configured_bot_id(conversation) is not None:
             return True
-        if conversation.kind == "group" and not (
-            self.use_default_for_unconfigured_groups
-        ):
+        if not self.use_default_for_unconfigured_targets:
             return False
         return self.config.default_bot is not None
+
+    def push_route(self, conversation: ConversationRef) -> PushRouteDecision:
+        if self.config.enabled and self._configured_bot_id(conversation) is not None:
+            return PushRouteDecision("ready", conversation)
+        if not self.use_default_for_unconfigured_targets:
+            return PushRouteDecision("skipped", conversation, "unconfigured_target")
+        return PushRouteDecision(
+            "ready" if self.config.default_bot is not None else "unavailable",
+            conversation,
+            "" if self.config.default_bot is not None else "missing_default_bot",
+        )
 
     def for_conversation(self, conversation: ConversationRef) -> Bot | None:
         """Route one typed OneBot conversation at the integration edge."""
@@ -131,12 +141,9 @@ class BotRouter:
             )
             return None
 
-        if (
-            conversation.kind == "group"
-            and not self.use_default_for_unconfigured_groups
-        ):
+        if not self.use_default_for_unconfigured_targets:
             logger.info(
-                "unconfigured OneBot group skipped: target_ref={}",
+                "unconfigured OneBot push target skipped: target_ref={}",
                 reference_digest(conversation.id),
             )
             return None
