@@ -53,6 +53,7 @@ def test_example_categories_separate_lottery_winning_collaboration_and_creation(
         tomllib.loads(path.read_text(encoding="utf-8"))["bilibili"]
     )
     account = config.category_subscriptions.accounts["example_account"]
+    assert account.categories["lottery"].label == "转发抽奖"
     dynamic = {"modules": {"module_dynamic": {"desc": {"text": text}}}}
     assert classify_dynamic(dynamic, account) == expected
 

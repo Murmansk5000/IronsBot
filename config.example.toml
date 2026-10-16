@@ -699,7 +699,7 @@ label = "示例账号"
 default_muted_categories = ["lottery", "winning"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
-label = "抽奖"
+label = "转发抽奖"
 patterns = ["转发抽奖"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.winning]
