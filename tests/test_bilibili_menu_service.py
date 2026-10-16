@@ -16,6 +16,7 @@ from ironsbot.integrations.storage.bilibili_history import (
 )
 from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.dynamic_history import (
+    BiliDynamicHistoryStore,
     DynamicHistoryRecord,
 )
 from ironsbot.services.bilibili.menu import (
@@ -27,6 +28,42 @@ from ironsbot.services.bilibili.menu import (
 from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 from ironsbot.services.bilibili.service import BiliFeedResponse
 from tests.helpers.bilibili import build_test_bilibili_service
+
+
+@pytest.mark.parametrize("failure", ["network", "http", "auth"])
+@pytest.mark.parametrize("cached", [False, True])
+def test_history_query_uses_local_cache_when_refresh_fails(
+    tmp_path: Path, failure: str, *, cached: bool
+) -> None:
+    service = build_test_bilibili_service(
+        tmp_path,
+        feature_config=FeatureConfig(group_policy={"1001": ["bili_query"]}),
+    )
+    if cached:
+        _save_record(service.history, _record("local")._replace(uid=912345678))
+        _save_record(service.history, _record("unrelated")._replace(uid=888888))
+
+    async def fetch(_cookie: str) -> BiliFeedResponse:
+        if failure == "network":
+            raise ConnectionError
+        return BiliFeedResponse(
+            status_code=403 if failure == "auth" else 503, data={"code": -1}
+        )
+
+    service.fetch_feed = fetch
+    result = asyncio.run(
+        service.query_dynamic_menu(
+            actor=ActorRef(Platform.ONEBOT, "2001"),
+            conversation=ConversationRef(Platform.ONEBOT, "group", "1001"),
+        )
+    )
+    assert result.auth_invalid is (failure == "auth")
+    if cached:
+        assert result.status == "ok"
+        assert result.dynamic_ids == ("local",)
+        assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
+    else:
+        assert result.status == ("auth_invalid" if failure == "auth" else "no_history")
 
 
 def _record(
@@ -49,18 +86,20 @@ def _record(
 
 
 def _save_record(
-    history: SqliteBiliDynamicHistoryStore,
+    history: BiliDynamicHistoryStore,
     record: DynamicHistoryRecord,
 ) -> None:
-    history.save_item(
-        record.item,
-        pub_ts=record.pub_ts,
-        author_mid=record.uid,
-        author_name=record.author_name,
-        brief=record.brief,
-        pushed=record.pushed,
-        suppressed=record.suppressed,
-        suppression_reason=record.suppression_reason,
+    history.save_snapshot(
+        DynamicHistorySnapshot(
+            record.item,
+            pub_ts=record.pub_ts,
+            author_mid=record.uid,
+            author_name=record.author_name,
+            brief=record.brief,
+            pushed=record.pushed,
+            suppressed=record.suppressed,
+            suppression_reason=record.suppression_reason,
+        )
     )
 
 
