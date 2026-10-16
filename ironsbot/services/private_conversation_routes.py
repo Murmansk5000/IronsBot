@@ -2,9 +2,11 @@
 """Resolve configured QQ recipients using known official user endpoints."""
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
+from ironsbot.core.push_routing import PushRouteDecision
 from ironsbot.services.identity_link_store import CrossPlatformIdentityLink
 
 _LOGGER = logging.getLogger(__name__)
@@ -16,6 +18,9 @@ class PrivateConversationRoutes:
     official_accounts: frozenset[str] = frozenset()
     default_account: str | None = None
     preferred_accounts: dict[str, str] = field(default_factory=dict)
+    use_default_for_unconfigured_targets: bool = False
+    onebot_preferred_users: frozenset[str] = frozenset()
+    group_route: Callable[[ConversationRef], PushRouteDecision] | None = None
     _links: dict[ConversationRef, str] = field(default_factory=dict)
     _warned: set[str] = field(default_factory=set)
 
@@ -41,12 +46,42 @@ class PrivateConversationRoutes:
         )
 
     def resolve(self, source: ConversationRef) -> ConversationRef:
-        if (
-            source.kind != "private"
-            or source.platform is not Platform.ONEBOT
-            or self.onebot_enabled
-        ):
-            return source
+        return self.decision_for(source).target
+
+    def decision_for(self, source: ConversationRef) -> PushRouteDecision:  # noqa: PLR0911
+        if source.kind != "private":
+            return (
+                self.group_route(source)
+                if self.group_route is not None
+                else PushRouteDecision("ready", source)
+            )
+        if source.platform is Platform.QQ_OFFICIAL:
+            qq_id = self._links.get(source)
+            if qq_id is not None:
+                return self.decision_for(
+                    ConversationRef(Platform.ONEBOT, "private", qq_id)
+                )
+            # An explicit AppID-scoped C2C endpoint does not use default routing.
+            return PushRouteDecision(
+                "ready"
+                if source.account_id in self.official_accounts
+                else "unavailable",
+                source,
+                ""
+                if source.account_id in self.official_accounts
+                else "unknown_account",
+            )
+        if source.platform is not Platform.ONEBOT:
+            return PushRouteDecision("unavailable", source, "unsupported_platform")
+        explicit = (
+            source.id in self.onebot_preferred_users
+            if self.onebot_enabled
+            else source.id in self.preferred_accounts
+        )
+        if not explicit and not self.use_default_for_unconfigured_targets:
+            return PushRouteDecision("skipped", source, "unconfigured_target")
+        if self.onebot_enabled:
+            return PushRouteDecision("ready", source)
         candidates = [
             endpoint
             for endpoint, qq_id in self._links.items()
@@ -55,7 +90,7 @@ class PrivateConversationRoutes:
         account = self.preferred_accounts.get(source.id, self.default_account)
         preferred = [c for c in candidates if c.account_id == account]
         if len(preferred) == 1:
-            return preferred[0]
+            return PushRouteDecision("ready", preferred[0])
         if source.id not in self._warned:
             self._warned.add(source.id)
             _LOGGER.warning(
@@ -68,23 +103,9 @@ class PrivateConversationRoutes:
                     else "missing C2C endpoint"
                 ),
             )
-        return source
+        return PushRouteDecision("unavailable", source, "private_route_unavailable")
 
     def selected_for(self, conversation: ConversationRef) -> ConversationRef | None:
         """Return the sole permitted private push endpoint for a known recipient."""
-        if conversation.kind != "private":
-            return conversation
-        if conversation.platform is Platform.ONEBOT:
-            selected = self.resolve(conversation)
-            if selected.platform is Platform.ONEBOT and not self.onebot_enabled:
-                return None
-            return selected
-        if conversation.platform is Platform.QQ_OFFICIAL:
-            qq_id = self._links.get(conversation)
-            if qq_id is not None:
-                return self.selected_for(
-                    ConversationRef(Platform.ONEBOT, "private", qq_id)
-                )
-            if conversation.account_id in self.official_accounts:
-                return conversation
-        return None
+        decision = self.decision_for(conversation)
+        return decision.target if decision.status == "ready" else None

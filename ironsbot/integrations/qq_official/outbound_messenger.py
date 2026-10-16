@@ -325,14 +325,13 @@ def _reference_group_reply(
         or not payloads
     ):
         return payloads
-    # Reference every image in a batch. Markdown text keeps its own mention to
-    # avoid QQ clients duplicating combined Markdown with a native reference.
+    # Split image replies must keep references on trailing plain text as well.
+    # Markdown keeps its own mention to avoid duplicated client presentation.
     return tuple(
         replace(payload, reference_id=context.sequence)
-        if isinstance(payload, QQOfficialImagePayload)
-        or (index == 0 and not payload.markdown)
+        if isinstance(payload, QQOfficialImagePayload) or not payload.markdown
         else payload
-        for index, payload in enumerate(payloads)
+        for payload in payloads
     )
 
 

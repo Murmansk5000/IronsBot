@@ -51,7 +51,7 @@ port = {port}
 log_level = "INFO"
 plugin_manifest = "core"
 superusers = [{USER_ID}]
-use_default_for_unconfigured_groups = true
+use_default_for_unconfigured_targets = true
 
 [messaging.bot_routing]
 enabled = false
@@ -113,6 +113,8 @@ def _connect_when_ready(port: int) -> ClientConnection:
                 open_timeout=min(HANDSHAKE_TIMEOUT_SECONDS, remaining),
             )
         except InvalidStatus as error:
+            # A timed-out handshake may have registered the bot before the
+            # server processes its disconnect. Never retry an initial 403.
             if (
                 error.response.status_code != HTTPStatus.FORBIDDEN
                 or not handshake_timed_out
@@ -127,29 +129,33 @@ def _connect_when_ready(port: int) -> ClientConnection:
     raise OneBotSocketStartupError from last_error
 
 
-def test_connect_retries_duplicate_403_only_after_timeout(
+def test_connect_retries_duplicate_bot_403_only_after_handshake_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     connection = cast("ClientConnection", object())
-    outcomes = [
+    outcomes: list[Exception | ClientConnection] = [
         TimeoutError(),
         InvalidStatus(Response(403, "Forbidden", Headers())),
         connection,
     ]
     timeouts: list[float] = []
 
-    def scripted(
-        _url: str, *, open_timeout: float, proxy: None, **kwargs: object
+    def scripted_connect(
+        _url: str,
+        *,
+        additional_headers: dict[str, str],
+        open_timeout: float,
+        proxy: None,
     ) -> ClientConnection:
         assert proxy is None
-        assert kwargs["additional_headers"] == {"X-Self-ID": str(BOT_ID)}
+        assert additional_headers == {"X-Self-ID": str(BOT_ID)}
         timeouts.append(open_timeout)
-        result = outcomes.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
-    monkeypatch.setattr(f"{__name__}.connect", scripted)
+    monkeypatch.setattr(f"{__name__}.connect", scripted_connect)
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)
     assert _connect_when_ready(12345) is connection
     assert timeouts == [HANDSHAKE_TIMEOUT_SECONDS] * 3
@@ -157,29 +163,33 @@ def test_connect_retries_duplicate_403_only_after_timeout(
 
 @pytest.mark.parametrize("prior_error", [None, ConnectionRefusedError()])
 def test_connect_does_not_retry_authentication_403(
-    monkeypatch: pytest.MonkeyPatch, prior_error: OSError | None
+    monkeypatch: pytest.MonkeyPatch,
+    prior_error: OSError | None,
 ) -> None:
     rejection = InvalidStatus(Response(403, "Forbidden", Headers()))
     outcomes = [prior_error, rejection] if prior_error is not None else [rejection]
-    expected_calls = len(outcomes)
+    calls: list[str] = []
 
-    def rejected(_url: str, **_kwargs: object) -> ClientConnection:
+    def rejected_connect(url: str, **_kwargs: object) -> ClientConnection:
+        calls.append(url)
         raise outcomes.pop(0)
 
-    monkeypatch.setattr(f"{__name__}.connect", rejected)
+    expected_calls = len(outcomes)
+    monkeypatch.setattr(f"{__name__}.connect", rejected_connect)
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)
     with pytest.raises(InvalidStatus) as error:
         _connect_when_ready(12345)
     assert error.value is rejection
-    assert not outcomes
-    assert expected_calls > 0
+    assert len(calls) == expected_calls
 
 
-def test_connect_retries_share_total_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_connect_handshake_retries_share_total_startup_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     elapsed = [0.0]
     timeouts: list[float] = []
 
-    def timeout(
+    def timeout_connect(
         _url: str, *, open_timeout: float, **_kwargs: object
     ) -> ClientConnection:
         timeouts.append(open_timeout)
@@ -189,13 +199,13 @@ def test_connect_retries_share_total_deadline(monkeypatch: pytest.MonkeyPatch) -
     def advance(seconds: float) -> None:
         elapsed[0] += seconds
 
-    monkeypatch.setattr(f"{__name__}.connect", timeout)
+    monkeypatch.setattr(f"{__name__}.connect", timeout_connect)
     monkeypatch.setattr(time, "monotonic", lambda: elapsed[0])
     monkeypatch.setattr(time, "sleep", advance)
     with pytest.raises(OneBotSocketStartupError):
         _connect_when_ready(12345)
     assert elapsed[0] == STARTUP_TIMEOUT_SECONDS
-    assert all(0 < value <= HANDSHAKE_TIMEOUT_SECONDS for value in timeouts)
+    assert all(0 < timeout <= HANDSHAKE_TIMEOUT_SECONDS for timeout in timeouts)
 
 
 def _reply_text(action: dict[str, Any]) -> str:
@@ -273,7 +283,9 @@ def test_full_process_handles_onebot_websocket_event(
                         )
                         echo = action.get("echo")
                         if action.get("action") in {
-                            "send_msg", "send_private_msg", "send_group_msg"
+                            "send_msg",
+                            "send_private_msg",
+                            "send_group_msg",
                         }:
                             websocket.send(
                                 json.dumps(
@@ -309,8 +321,8 @@ def test_full_process_handles_onebot_websocket_event(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
-            assert "Unknown ForwardRef" not in log_path.read_text(encoding="utf-8")
 
     assert reply_received
     log_text = ANSI_ESCAPE.sub("", log_path.read_text(encoding="utf-8"))
     assert "Current Env: test" in log_text
+    assert "Unknown ForwardRef" not in log_text

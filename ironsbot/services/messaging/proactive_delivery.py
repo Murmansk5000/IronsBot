@@ -53,6 +53,7 @@ class ProactiveDeliverySummary:
     failed: tuple[ConversationRef, ...]
     uncertain: tuple[ConversationRef, ...] = ()
     results: tuple[tuple[ConversationRef, SendResult], ...] = ()
+    skipped: tuple[ConversationRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,11 +124,11 @@ class ProactiveMessageDelivery:
     ) -> ProactiveDeliverySummary:
         """Deliver per-conversation messages without exposing adapter targets."""
 
-        selected, unavailable = self._select_requests(requests)
+        selected, unavailable, policy_skipped = self._select_requests(requests)
         if subscription_key:
             selected = self._filter_subscribed(selected, subscription_key)
         if not selected:
-            return ProactiveDeliverySummary((), ())
+            return ProactiveDeliverySummary((), (), skipped=policy_skipped)
 
         blocked = unavailable.intersection(request.conversation for request in selected)
         pending = [
@@ -192,6 +193,7 @@ class ProactiveMessageDelivery:
                 if request.conversation in state.uncertain
             ),
             tuple(state.results.items()),
+            policy_skipped,
         )
         skipped = sum(
             1
@@ -210,16 +212,32 @@ class ProactiveMessageDelivery:
 
     def _select_requests(
         self, requests: Iterable[ProactiveDeliveryRequest]
-    ) -> tuple[tuple[ProactiveDeliveryRequest, ...], set[ConversationRef]]:
+    ) -> tuple[
+        tuple[ProactiveDeliveryRequest, ...],
+        set[ConversationRef],
+        tuple[ConversationRef, ...],
+    ]:
         routes = self.private_routes
         if routes is None:
-            return _unique_requests(requests), set()
+            return _unique_requests(requests), set(), ()
         selected: dict[ConversationRef, ProactiveDeliveryRequest] = {}
         unavailable: set[ConversationRef] = set()
+        skipped: dict[ConversationRef, None] = {}
         for request in requests:
-            target = routes.selected_for(request.conversation)
-            if target is None:
-                target = request.conversation
+            decision = routes.decision_for(request.conversation)
+            target = decision.target
+            if decision.status == "skipped":
+                skipped[target] = None
+                _LOGGER.info(
+                    "push target skipped by routing policy: platform=%s kind=%s "
+                    "recipient=%s reason=%s",
+                    target.platform.value,
+                    target.kind,
+                    reference_digest(target.id),
+                    decision.reason,
+                )
+                continue
+            if decision.status == "unavailable":
                 unavailable.add(target)
                 _LOGGER.warning(
                     "private push route unavailable: platform=%s recipient=%s",
@@ -229,7 +247,7 @@ class ProactiveMessageDelivery:
             selected.setdefault(
                 target, ProactiveDeliveryRequest(target, request.message)
             )
-        return tuple(selected.values()), unavailable
+        return tuple(selected.values()), unavailable, tuple(skipped)
 
     async def _notify_private_failures(
         self, action_name: str, summary: ProactiveDeliverySummary
