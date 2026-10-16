@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger("ironsbot.seer.rank_player_scheduler")
 _MAX_ACTIVE_PAGES = 3
+_ANCHOR_PHASES = frozenset(("recent_anchor", "cached_window"))
 _CURRENT_SCHEDULER: ContextVar["PlayerRankPageScheduler | None"] = ContextVar(
     "player_rank_page_scheduler",
     default=None,
@@ -75,7 +76,11 @@ class _LookupStats:
 class PlayerRankPageScheduler:
     """Run independent boards in parallel while keeping every board ordered."""
 
-    def __init__(self, config: PlayerRankLookupConfig) -> None:
+    def __init__(
+        self,
+        config: PlayerRankLookupConfig,
+        jobs: Sequence[PlayerRankLookupJob] = (),
+    ) -> None:
         self._config = config
         self._deadline: float | None = None
         self._queue: deque[_PageRequest[Any]] = deque()
@@ -84,6 +89,21 @@ class PlayerRankPageScheduler:
         self._stats: dict[str, _LookupStats] = {}
         self._active_lookup_ids: dict[str, int] = {}
         self._active_pages = 0
+        # Hold broad searches across gaps between an anchor's neighbor batches.
+        self._pending_anchors = {job.id for job in jobs}
+        self._job_priorities = {
+            job.id: (job.priority_group, job.priority_rank) for job in jobs
+        }
+
+    def finish_anchor_phase(self, lookup_id: str) -> None:
+        if lookup_id in self._pending_anchors:
+            self._pending_anchors.remove(lookup_id)
+            _LOGGER.info(
+                "player rank anchor phase finished: lookup=%s pending=%s",
+                lookup_id,
+                len(self._pending_anchors),
+            )
+            self._queue_ready.set()
 
     @contextmanager
     def lookup_context(self, lookup_id: str) -> Generator[None, None, None]:
@@ -100,6 +120,9 @@ class PlayerRankPageScheduler:
         if not lookup_id:
             return await operation()
 
+        policy = rank_page_policy.get() or RankPagePolicy()
+        if policy.phase not in _ANCHOR_PHASES:
+            self.finish_anchor_phase(lookup_id)
         future: asyncio.Future[T] = asyncio.get_running_loop().create_future()
         self._queue.append(
             _PageRequest(
@@ -107,7 +130,7 @@ class PlayerRankPageScheduler:
                 title=title,
                 operation=operation,
                 future=future,
-                policy=rank_page_policy.get() or RankPagePolicy(),
+                policy=policy,
             )
         )
         self._queue_ready.set()
@@ -150,10 +173,12 @@ class PlayerRankPageScheduler:
         self._queue = deque(
             sorted(
                 (request for request in self._queue if not request.future.done()),
-                key=lambda request: request.policy.priority,
+                key=self._page_priority,
             )
         )
         for index, request in enumerate(self._queue):
+            if self._pending_anchors and request.policy.phase not in _ANCHOR_PHASES:
+                continue
             if (
                 request.policy.parallel
                 or request.lookup_id not in self._active_lookup_ids
@@ -161,6 +186,14 @@ class PlayerRankPageScheduler:
                 del self._queue[index]
                 return request
         return None
+
+    def _page_priority(self, request: _PageRequest[Any]) -> tuple[int, int, int, int]:
+        phase = request.policy.phase
+        phase_priority = {"exclusion_prefix": 2, "linear_scan": 3}.get(phase, 1)
+        if phase in _ANCHOR_PHASES:
+            phase_priority = 0
+        group, rank = self._job_priorities.get(request.lookup_id, (3, 2**31 - 1))
+        return phase_priority, request.policy.priority, group, rank
 
     async def _process_request(self, request: _PageRequest[Any]) -> None:
         stats = self._stats.setdefault(request.lookup_id, _LookupStats())
@@ -269,7 +302,7 @@ async def run_player_rank_lookup_jobs(
 
     if not jobs:
         return {}
-    scheduler = PlayerRankPageScheduler(config)
+    scheduler = PlayerRankPageScheduler(config, jobs)
     token = _CURRENT_SCHEDULER.set(scheduler)
     ordered_jobs = sorted(
         jobs,
@@ -286,8 +319,11 @@ async def run_player_rank_lookup_jobs(
             job.priority_rank,
             job.target_score,
         )
-        with scheduler.lookup_context(job.id):
-            result = await job.operation()
+        try:
+            with scheduler.lookup_context(job.id):
+                result = await job.operation()
+        finally:
+            scheduler.finish_anchor_phase(job.id)
         stats = scheduler.lookup_stats(job.id)
         _LOGGER.info(
             "player rank lookup completed: id=%s title=%s rank=%s failure=%s "
