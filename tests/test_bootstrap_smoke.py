@@ -14,7 +14,8 @@ def test_generator_bootstrap_resolves_real_ai_registration_annotations(
 ) -> None:
     config_path = tmp_path / "bootstrap.toml"
     config_path.write_text(
-        (ROOT / "config.example.toml").read_text(encoding="utf-8"), encoding="utf-8"
+        (ROOT / "config.example.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
     )
     script = """
 import socket
@@ -22,19 +23,21 @@ import traceback
 import nonebot.dependencies as dependencies
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent
 from nonebot.log import logger
-def forbidden(*args, **kwargs):
+
+def network_forbidden(*args, **kwargs):
     raise AssertionError("registration must not connect to the network")
-socket.socket.connect = forbidden
-socket.create_connection = forbidden
+
+socket.socket.connect = network_forbidden
+socket.create_connection = network_forbidden
 logger.remove()
 warnings = []
-def warning(message):
+def record_warning(message):
     if "Unknown ForwardRef" in str(message):
         warnings.append(str(message) + "\\n" + "".join(traceback.format_stack()))
-logger.add(warning, level="WARNING")
+logger.add(record_warning, level="WARNING")
 original = dependencies.get_typed_signature
 registered = set()
-def checked(call):
+def checked_signature(call):
     signature = original(call)
     source = getattr(call, "func", call)
     if getattr(source, "__module__", "") == "ironsbot.plugins.onebot.ai":
@@ -45,7 +48,7 @@ def checked(call):
                 assert signature.parameters["bot"].annotation is Bot, name
             registered.add(name)
     return signature
-dependencies.get_typed_signature = checked
+dependencies.get_typed_signature = checked_signature
 from scripts.generate_poke_command_introductions import _command_ids
 assert _command_ids()
 assert registered == {"_capture_ai_prompt", "install.<locals>.run_ai_chat"}, registered
@@ -58,11 +61,7 @@ print("AI_REGISTRATION_OK")
             ("QQ_OFFICIAL_", "APP_ID_", "APP_SECRET_", "ONEBOT_", "AI_KEY")
         ):
             del environment[key]
-    environment.update(
-        APP_CONFIG_PATH=str(config_path),
-        PYTHONPATH=str(ROOT),
-        AI_KEY_DEEPSEEK="test-only-registration-no-network",
-    )
+    environment.update(APP_CONFIG_PATH=str(config_path), PYTHONPATH=str(ROOT))
     result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=tmp_path,

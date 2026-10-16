@@ -4,12 +4,14 @@ from typing import TYPE_CHECKING, cast
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
+    MessageEvent,
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
@@ -17,6 +19,9 @@ from ironsbot.integrations.onebot.matchers import (
     bind_async,
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -24,6 +29,11 @@ from ironsbot.integrations.onebot.replies import (
     send_matcher_message,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
+from ironsbot.services.messaging.topic_commands import (
+    build_topic_operations,
+    parse_topic_command,
+    topic_command_contracts,
+)
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
@@ -108,9 +118,9 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
 ) -> None:
-    from .topics import install_topic_commands
+    if messaging.topics is not None:
+        _install_topics(registry, messaging)
 
-    install_topic_commands(registry, messaging)
     async def handle_mention_reply(
         matcher: Matcher,
         event: GroupMessageEvent,
@@ -192,3 +202,45 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
             messaging,
         )
     )
+
+
+def _install_topics(registry: MatcherFactory, messaging: MessagingService) -> None:
+    assert messaging.topics is not None
+    topics = messaging.topics
+    operations = build_topic_operations(topics)
+
+    def matches(event: PrivateMessageEvent | GroupMessageEvent) -> bool:
+        return (
+            parse_topic_command(message_input_context(event).text, topics.known_keys)
+            is not None
+        )
+
+    def command_id(event: MessageEvent, _state: T_State) -> str:
+        parsed = parse_topic_command(
+            message_input_context(event).text, topics.known_keys
+        )
+        assert parsed is not None
+        return f"messaging.topic.{parsed.action}"
+
+    async def handle(
+        matcher: Matcher, event: PrivateMessageEvent | GroupMessageEvent
+    ) -> None:
+        context = message_input_context(event)
+        result = await operations[command_id(event, {})](context.text, context)
+        assert isinstance(result, OutboundMessage)
+        await finish_matcher_message(
+            matcher,
+            render_onebot_outbound_message(result),
+            event=event,
+        )
+
+    matcher = registry.on_message(
+        policy=CommandPolicy.command(
+            command_id,
+            help_ids=tuple(contract.id for contract in topic_command_contracts()),
+        ),
+        rule=Rule(matches) & explicit_command(),
+        priority=_message_subscription_priority(registry),
+        block=True,
+    )
+    matcher.append_handler(handle)

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import os
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -403,6 +405,22 @@ def test_contributions_define_the_lifecycle_order() -> None:
     assert [name for name, _hook in lifecycle.bot_connect_hooks] == [
         "team_audit_followups",
     ]
+
+
+def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
+    lifecycle = ApplicationLifecycle.from_contributions(
+        cast("Driver", object()), DEFINITIONS, task_owner=TaskOwner(),
+    )
+    executed: list[str] = []
+
+    def record(name: str) -> None:
+        executed.append(name)
+
+    lifecycle.shutdown_hooks = tuple(
+        (name, partial(record, name)) for name, _hook in lifecycle.shutdown_hooks
+    )
+    asyncio.run(lifecycle.shutdown())
+    assert executed == ["headless_seer", "push_topics", "scheduler"]
 
 
 def test_internal_plugins_use_only_the_matcher_factory() -> None:
