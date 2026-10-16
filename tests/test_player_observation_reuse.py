@@ -108,7 +108,6 @@ def rank_service() -> RankService:
         RankQueryConfig(),
         cast("Any", SimpleNamespace()),
         lambda: None,
-        lambda: None,
         AsyncMock(),
         spawn=TaskOwner().create,
     )
@@ -218,7 +217,7 @@ async def test_peak_retries_only_failed_mode_and_invalidates_cycle() -> None:
         PLAYER,
         timeout_seconds=1,
         observations=cache,
-        cycles=(7, 8),
+        season=7,
     )
     assert first.mode_errors
     second = await fetch_unity_peak_partial(
@@ -226,7 +225,7 @@ async def test_peak_retries_only_failed_mode_and_invalidates_cycle() -> None:
         PLAYER,
         timeout_seconds=1,
         observations=cache,
-        cycles=(7, 8),
+        season=7,
     )
     assert not second.mode_errors
     assert second.fetched_at == first.fetched_at
@@ -237,10 +236,10 @@ async def test_peak_retries_only_failed_mode_and_invalidates_cycle() -> None:
         PLAYER,
         timeout_seconds=1,
         observations=cache,
-        cycles=(9, 8),
+        season=9,
     )
     assert counts[PEAK_PARAMS_BY_MODE[0][1][0]] == 2
-    assert counts[PEAK_PARAMS_BY_MODE[3][1][0]] == 1
+    assert counts[PEAK_PARAMS_BY_MODE[3][1][0]] == 2
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 
 from ironsbot.services.seer.peak import PeakPeriodTimes
+from ironsbot.services.seer.peak_modes import PeakType
 
 from .published_time import local_published_datetime
 
@@ -52,17 +53,12 @@ class PublishedPeakRepository:
         with self._data.query(load_peak_vote_snapshots) as votes:
             return votes
 
-    def period(self, *, monthly: bool) -> PeakPeriodTimes | None:
+    def period(
+        self, *, monthly: bool, mode: PeakType = PeakType.STANDARD
+    ) -> PeakPeriodTimes | None:
         with self._data.query(
-            partial(load_peak_period_times, monthly=monthly)
+            partial(load_peak_period_times, monthly=monthly, mode=mode)
         ) as period:
-            return period
-
-    def master_period(self, *, monthly: bool) -> PeakPeriodTimes | None:
-        # Both raw master subkeys share the cost-pool start date; the monthly
-        # key's 1e9 prefix is applied by peak_pet_period, just as in the client.
-        del monthly
-        with self._data.query(load_peak_master_period_times) as period:
             return period
 
     def pets(self, pet_ids: set[int]) -> dict[int, PeakPetSnapshot]:
@@ -170,8 +166,11 @@ def load_peak_period_times(
     session: Session,
     *,
     monthly: bool,
+    mode: PeakType = PeakType.STANDARD,
 ) -> PeakPeriodTimes | None:
     if monthly:
+        if mode is PeakType.MASTER:
+            return load_peak_cost_pool_period_times(session)
         pool = session.exec(select(PeakExpertPoolORM)).first()
         return (
             None
@@ -190,7 +189,8 @@ def load_peak_period_times(
     )
 
 
-def load_peak_master_period_times(session: Session) -> PeakPeriodTimes | None:
+def load_peak_cost_pool_period_times(session: Session) -> PeakPeriodTimes | None:
+    """The cost pool is a rotation period, not a separate peak season."""
     row = session.execute(
         text(
             "SELECT start_time, end_time FROM peak_cost_pool "
