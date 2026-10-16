@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -20,6 +20,7 @@ from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.services.identity_link_store import OfficialIdentity
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.portable_lucky_skin_commands import (
+    PortableLuckySkinCommands,
     build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -87,6 +88,7 @@ def _dependencies(
 ]:
     onebot = ActorRef(Platform.ONEBOT, "1001")
     service = Mock()
+    service.lookup_player_nicks = AsyncMock(return_value={})
     pet = Mock()
     principals = IdentityPrincipalService()
     if linked:
@@ -135,6 +137,39 @@ def _operations(
             identity,
         ),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_standalone_and_player_submenu_share_lucky_query_target(
+    platform: Platform,
+) -> None:
+    from ironsbot.app.seer_composition import _lucky_player_actions
+
+    service, pet, identity, sessions, _ = _dependencies()
+    service.enabled = True
+    context = _context("橱窗90002", platform=platform)
+    commands = PortableLuckySkinCommands(
+        cast("LuckySkinWindowService", service),
+        cast("PetQueryService", pet),
+        FeatureService({}, {}, frozenset()),
+        sessions,
+        PlayerIdResolver(lambda value, _conversation: int(value), lambda _actor: 90002),
+        identity,
+    )
+    expected = OutboundMessage.from_text("shared lucky result")
+    with patch.object(
+        PortableLuckySkinCommands, "query_target", new_callable=AsyncMock
+    ) as query_target:
+        query_target.return_value = expected
+        actions = _lucky_player_actions(commands)
+        assert len(actions) == 1
+        assert await commands.query(context.text, context) is expected
+        query_target.assert_awaited_once_with(context, 90002, source="numeric")
+        query_target.reset_mock()
+        assert await actions[0].query(context, 90002) is expected
+        query_target.assert_awaited_once_with(context, 90002, source="numeric")
+    service.cached_query.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -318,11 +353,17 @@ async def test_target_query_preserves_account_through_confirmation(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("selection", ["2", "0"])
+@pytest.mark.parametrize("with_nicknames", [False, True])
 async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     platform: Platform,
     selection: str,
+    *,
+    with_nicknames: bool,
 ) -> None:
     service, pet, identity, sessions, onebot = _dependencies()
+    service.lookup_player_nicks.return_value = (
+        {90001: "游戏昵称甲", 90002: "游戏昵称乙"} if with_nicknames else {}
+    )
     service.cached_query.return_value = None
     service.query = AsyncMock(
         return_value=LuckySkinWindowResult("2026-09-15", 90002, (), from_cache=False),
@@ -348,7 +389,19 @@ async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
     context = _context("橱窗示例", platform=platform)
     menu = await operations["seer.lucky_skin_window.query"](context.text, context)
     assert isinstance(menu, OutboundMessage)
-    assert "示例甲" in _text(menu) and "示例乙" in _text(menu)
+    assert (
+        "1. 示例甲：游戏昵称甲（90001）"
+        if with_nicknames
+        else "1. 示例甲：昵称暂不可用（90001）"
+    ) in _text(menu)
+    assert (
+        "2. 示例乙：游戏昵称乙（90002）"
+        if with_nicknames
+        else "2. 示例乙：昵称暂不可用（90002）"
+    ) in _text(menu)
+    assert "0. 【退出】" in _text(menu)
+    assert "游戏内ID" not in _text(menu)
+    service.lookup_player_nicks.assert_awaited_once_with((90001, 90002))
     service.cached_query.assert_not_called()
     service.query.assert_not_awaited()
     await sessions.select(selection, context)

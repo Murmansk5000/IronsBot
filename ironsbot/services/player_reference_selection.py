@@ -31,6 +31,8 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
     execute: PlayerReferenceAction,
     *,
     title: str,
+    nickname_lookup: Callable[[tuple[int, ...]], Awaitable[dict[int, str]]]
+    | None = None,
 ) -> PortableReply | None:
     """Select an explicit reference or resolve a direct mention/default binding."""
     reference = (reference or "").strip()
@@ -43,6 +45,7 @@ async def select_player_target(  # noqa: PLR0913 - explicit session and domain p
             execute,
             title=title,
             enforce_query_access=True,
+            nickname_lookup=nickname_lookup,
         )
     else:
         resolution = resolver.resolve(context, reference)
@@ -68,6 +71,8 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
     *,
     title: str,
     enforce_query_access: bool = False,
+    nickname_lookup: Callable[[tuple[int, ...]], Awaitable[dict[int, str]]]
+    | None = None,
 ) -> OutboundMessage | PortableReply | None:
     source = resolver.reference_source(reference)
     if enforce_query_access:
@@ -110,6 +115,14 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
                 return OutboundMessage.from_text(error)
         return await execute(choice.player_id, context)
 
+    nicknames = (
+        await nickname_lookup(tuple(choice.player_id for choice in choices))
+        if nickname_lookup is not None
+        else {}
+    )
+    nicknames = {
+        player_id: nickname.strip() for player_id, nickname in nicknames.items()
+    }
     return sessions.offer_menu(
         context,
         PortableMenuSpec(
@@ -119,7 +132,10 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
                 format_selection_menu(
                     title=title,
                     items=tuple(
-                        f"{choice.label}（{choice.player_id}）" for choice in choices
+                        f"{choice.label}："
+                        f"{nicknames.get(choice.player_id) or '昵称暂不可用'}"
+                        f"（{choice.player_id}）"
+                        for choice in choices
                     ),
                 )
             ),

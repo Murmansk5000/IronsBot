@@ -326,6 +326,8 @@ def build_test_plugin_registry(
                     format_error=lambda _player_id, error: str(error),
                 ),
                 player_detail_extensions=PlayerDetailExtensionRegistry(),
+                player_menu_actions=(),
+                player_nickname_lookup=None,
                 rank_queries=SimpleNamespace(
                     help_message=lambda: "",
                     default_limit=lambda _group_id: 10,
