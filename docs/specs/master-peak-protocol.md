@@ -66,9 +66,18 @@ converted, and no historical match count is inferred.
 No real-player query was performed in this change. Real-account verification
 remains a separate external acceptance item.
 
-## Season Compatibility
+## Common Season (2026-10-16)
 
-Individual master samples use the master subkey. Four-mode total samples use
-the exact negative integer pair `-(regular * 100000000 + master)`. This fits
-SQLite int64 for eight-digit date subkeys, needs no schema migration and
-excludes legacy three-mode totals. Changing either season changes the scope.
+Official ConfigPackage `20261015224012` publishes the common season starting
+2026-10-16 10:00 and ending 2027-01-08 10:00 (Asia/Shanghai).
+All cost rows publish `subkeyTotal=20261016`, `subkeyMonth=1020261016`;
+their `time=2026_10_23 10:00:00` is a pool rotation boundary, not season end.
+The application uses the published common `peak_season` for all four modes.
+Monthly statistics retain the actual cost-pool subperiod and key prefix.
+
+Sample migration 3 archives originals in `legacy_peak_metrics`, converts
+master scope `20260904` to common `20260717`, and preserves sample timestamps.
+Only verified four-mode pairs (equal seasons, or `20260717` + `20260904`)
+convert to `peak_total_matches_v4`. Old three-mode totals and unknown pairs
+are archived, not reused. Runtime pair encoding and separate master-season
+lookup have been removed. Raw protocol caches are not rewritten.

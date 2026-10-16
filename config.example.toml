@@ -38,8 +38,8 @@
 # - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
 [bot]
-# 未配置专用机器人的群是否使用默认机器人处理收发；未配置的私聊目标是否使用默认机器人发送。
-# 默认关闭；私聊入站仍由接收消息的机器人处理，不受此开关限制。
+# 未配置专用机器人的群及私聊推送目标是否使用默认机器人；默认关闭。
+# 关闭时未指定目标静默跳过；普通私聊查询仍由收到消息的机器人回复。
 # 显式配置的机器人离线时始终跳过，不会回退到默认机器人。
 use_default_for_unconfigured_targets = false
 # Default: "prod"
@@ -122,12 +122,10 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
-# EN: Private replies stay on the receiving account. Groups without an explicit
-#     route use this default account only when bot.use_default_for_unconfigured_targets is true.
-#     Unconfigured private pushes also require that switch; explicit user routes are separate.
-# ZH: 私聊回复由收到消息的账号处理；未分配的群仅在
-# bot.use_default_for_unconfigured_targets=true 时使用默认账号；未配置的私聊主动发送也受此开关限制。
-# 显式私聊路由与已知 C2C 端点仍决定推送账号；启用多个官方账号时必填。
+# EN: The default account serves unassigned proactive targets only when the
+#     shared default-routing switch is enabled. Private replies stay on the receiving bot.
+# ZH: 只有共享默认路由开关开启时，默认账号才用于未指定的群或私聊推送。
+#     私聊主动查询由接收机器人回复；启用多个官方账号时必填。
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
@@ -706,12 +704,20 @@ label = "示例账号"
 default_muted_categories = ["lottery", "winning"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
-label = "抽奖"
-patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+label = "转发抽奖"
+patterns = ["转发抽奖"]
 
 [bilibili.category_subscriptions.accounts.example_account.categories.winning]
 label = "中奖"
 patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.collaboration]
+label = "联动"
+patterns = ["联动", "联名"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.creation]
+label = "创作"
+patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
 
 [messaging]
 # Default: []
@@ -1100,7 +1106,8 @@ sections = ["all"]
 
 [seer.player.binding]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
-# ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
+# ZH: 换成另一个默认米米号的北京时间自然日冷却，从首次绑定或成功换绑起算。
+# ZH: 解绑随时允许；绑回最后绑定的账号不受限制，也不重置冷却。
 change_cooldown_days = 3
 # ZH: 未绑定用户能否按数字米米号查询。
 allow_unbound_numeric_queries = true
