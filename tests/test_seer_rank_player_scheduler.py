@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
+
+import pytest
 
 from ironsbot.config.models.seer import PlayerRankLookupConfig
+from ironsbot.core.rank_lookup_context import RankPagePolicy, rank_page_policy
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_player_scheduler import (
     PlayerRankLookupJob,
@@ -83,6 +87,156 @@ def test_player_rank_scheduler_runs_independent_boards_concurrently() -> None:
         release.set()
         results = await task
         assert set(results) == {"a", "b", "c"}
+
+    asyncio.run(run())
+
+
+def _phased_job(
+    job_id: str,
+    phases: tuple[str, ...],
+    events: list[str],
+    release: asyncio.Event | None = None,
+) -> PlayerRankLookupJob:
+    async def operation() -> RankLookupResult:
+        scheduler = current_player_rank_page_scheduler()
+        assert scheduler is not None
+        for index, phase in enumerate(phases):
+
+            async def fetch(index: int = index, phase: str = phase) -> None:
+                events.append(f"{job_id}:{phase}:{index}")
+                if index == 0 and release is not None:
+                    await release.wait()
+                await asyncio.sleep(0)
+
+            token = rank_page_policy.set(RankPagePolicy(phase))
+            try:
+                await scheduler.fetch_page(job_id, fetch)
+            finally:
+                rank_page_policy.reset(token)
+            await asyncio.sleep(0)
+        return RankLookupResult(title=job_id, score_name="score", rank=1)
+
+    return replace(_job(job_id, events), operation=operation)
+
+
+def test_all_anchor_neighbors_finish_before_any_broad_search() -> None:
+    async def run() -> None:
+        events: list[str] = []
+        release = asyncio.Event()
+        task = asyncio.create_task(
+            run_player_rank_lookup_jobs(
+                [
+                    _phased_job(
+                        "cached",
+                        ("recent_anchor", "cached_window", "cached_window", "search"),
+                        events,
+                        release,
+                    ),
+                    _phased_job("other", ("cached_window", "search"), events),
+                    _phased_job("unknown", ("linear_scan",), events),
+                ],
+                PlayerRankLookupConfig(),
+            )
+        )
+        await _wait_for_event_count(events, 2)
+        assert set(events) == {"cached:recent_anchor:0", "other:cached_window:0"}
+        release.set()
+        results = await asyncio.wait_for(task, 1)
+        last_anchor = events.index("cached:cached_window:2")
+        assert events.index("other:search:1") > last_anchor
+        assert events.index("cached:search:3") > last_anchor
+        assert events.index("unknown:linear_scan:0") > last_anchor
+        assert all(result.rank == 1 for result in results.values())
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_anchor_job_without_pages_does_not_block_other_searches(*, fails: bool) -> None:
+    async def run() -> None:
+        events: list[str] = []
+
+        async def finish() -> RankLookupResult:
+            if fails:
+                raise ConnectionError("unavailable")
+            return RankLookupResult(title="cached", score_name="score", rank=1)
+
+        results = await asyncio.wait_for(
+            run_player_rank_lookup_jobs(
+                [
+                    replace(_job("cached", events), operation=finish, priority_group=0),
+                    _phased_job("unknown", ("linear_scan",), events),
+                ],
+                PlayerRankLookupConfig(),
+            ),
+            1,
+        )
+        assert events == ["unknown:linear_scan:0"]
+        assert results["unknown"].rank == 1
+        assert results["cached"].failure == ("查询失败" if fails else None)
+
+    asyncio.run(run())
+
+
+def test_page_priority_prefers_known_score_to_linear_scan() -> None:
+    async def run() -> None:
+        events: list[str] = []
+        jobs = [
+            _phased_job("unknown", ("linear_scan",), events),
+            *(
+                _phased_job(f"known{index}", ("score_probe",), events)
+                for index in range(3)
+            ),
+        ]
+        await run_player_rank_lookup_jobs(jobs, PlayerRankLookupConfig())
+        assert events[-1] == "unknown:linear_scan:0"
+
+    asyncio.run(run())
+
+
+def test_anchor_timeout_releases_waiting_searches_within_total_budget() -> None:
+    async def run() -> None:
+        events: list[str] = []
+        results = await asyncio.wait_for(
+            run_player_rank_lookup_jobs(
+                [
+                    _phased_job("cached", ("cached_window",), events, asyncio.Event()),
+                    _phased_job("unknown", ("linear_scan",), events),
+                ],
+                PlayerRankLookupConfig(
+                    page_timeout_seconds=0.02,
+                    total_timeout_seconds=0.02,
+                    page_retry_count=0,
+                ),
+            ),
+            1,
+        )
+        assert events == ["cached:cached_window:0"]
+        assert all(result.failure == "查询超时" for result in results.values())
+
+    asyncio.run(run())
+
+
+def test_rank_confirmation_precedes_exclusion_prefix_and_unknown_scan() -> None:
+    async def run() -> None:
+        events: list[str] = []
+        await run_player_rank_lookup_jobs(
+            [
+                _phased_job("unknown", ("linear_scan",), events),
+                *(
+                    _phased_job(f"prefix{index}", ("exclusion_prefix",), events)
+                    for index in range(3)
+                ),
+                *(
+                    _phased_job(f"known{index}", ("score_probe",), events)
+                    for index in range(3)
+                ),
+            ],
+            PlayerRankLookupConfig(),
+        )
+        assert all(":score_probe:" in event for event in events[:3])
+        assert all(":exclusion_prefix:" in event for event in events[3:6])
+        assert events[-1] == "unknown:linear_scan:0"
 
     asyncio.run(run())
 
