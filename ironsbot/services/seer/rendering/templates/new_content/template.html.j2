@@ -147,10 +147,10 @@
           {% if item.pool_preview %}
             <div class="pool-preview">
               <div class="pool-title">{{ item.pool_preview.title }}</div>
-              {% if item.pool_preview.kind == 'standard' %}
+              {% if item.pool_preview.kind in ('standard', 'master') %}
                 <table class="pool-matrix">
                   <thead><tr>
-                    <th class="pool-cell pool-corner"><span>原限制 ↓</span><span>新限制 →</span></th>
+                    <th class="pool-cell pool-corner"><span>{{ '原竞技点' if item.pool_preview.kind == 'master' else '原限制' }} ↓</span><span>{{ '新竞技点' if item.pool_preview.kind == 'master' else '新限制' }} →</span></th>
                     {% for header in item.pool_preview.headers %}<th class="pool-cell pool-column">{{ header }}</th>{% endfor %}
                   </tr></thead>
                   <tbody>
