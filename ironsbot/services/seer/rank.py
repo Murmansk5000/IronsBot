@@ -177,7 +177,6 @@ class RankService(RankCacheQueryMixin):
     config: RankQueryConfig
     cache: RankPageCache
     peak_season_start: Callable[[], datetime | None]
-    master_season_start: Callable[[], datetime | None]
     fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
     exclusions: RankExclusionPolicy | None = field(default=None)
     page_parallelism: Callable[[], int] = field(default=lambda: 1)
@@ -212,18 +211,10 @@ class RankService(RankCacheQueryMixin):
         start = self.peak_season_start()
         return None if start is None else datetime_to_sub_key(start)
 
-    def current_master_sub_key(self) -> int | None:
-        start = self.master_season_start()
-        return None if start is None else datetime_to_sub_key(start)
-
     def resolve_spec(self, spec: GlobalRankSpec) -> GlobalRankSpec:
         if spec.sub_key_source == "fixed":
             return spec
-        sub_key = (
-            self.current_peak_sub_key()
-            if spec.sub_key_source == "peak_season"
-            else self.current_master_sub_key()
-        )
+        sub_key = self.current_peak_sub_key()
         return spec if sub_key is None else replace(spec, sub_key=sub_key)
 
     def get_spec(self, rank_key: str) -> GlobalRankSpec:
@@ -588,13 +579,11 @@ class RankService(RankCacheQueryMixin):
         progress: RankSummaryProgress | None = None,
         anchor_only: bool = False,
     ) -> PeakSeasonRankSummary:
-        seasons: list[int | None] = []
-        for resolve in (self.current_peak_sub_key, self.current_master_sub_key):
-            try:
-                seasons.append(resolve())
-            except DataUnavailableError:  # noqa: PERF203
-                logger.exception("peak season unavailable: source=%s", resolve.__name__)
-                seasons.append(None)
+        try:
+            season = self.current_peak_sub_key()
+        except DataUnavailableError:
+            logger.exception("peak season unavailable")
+            season = None
         return await rank_summary.fetch_peak_season_rank_summary(
             game,
             user_id,
@@ -602,8 +591,7 @@ class RankService(RankCacheQueryMixin):
             wild_score=wild_score,
             expert_score=expert_score,
             master_score=master_score,
-            current_peak_sub_key=seasons[0],
-            current_master_sub_key=seasons[1],
+            current_peak_sub_key=season,
             find_rank=self.find_rank,
             progress=progress,
             anchor_only=anchor_only,
@@ -621,8 +609,8 @@ class RankService(RankCacheQueryMixin):
         return await rank_summary.fetch_peak_season_rank_summary(
             game,
             user_id,
-            current_peak_sub_key=None,
-            current_master_sub_key=self.current_master_sub_key(),
+            current_peak_sub_key=self.current_peak_sub_key(),
+            modes=frozenset(("master",)),
             find_rank=self.find_rank,
             progress=progress,
             anchor_only=anchor_only,
