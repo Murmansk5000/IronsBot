@@ -38,6 +38,7 @@ def test_private_td_time_and_preferences_follow_selected_bot(tmp_path: Path) -> 
     )
     principals = IdentityPrincipalService()
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app", "public-app"}),
         default_account="local-app",

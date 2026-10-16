@@ -46,7 +46,7 @@ port = {port}
 log_level = "INFO"
 plugin_manifest = "core"
 superusers = [{USER_ID}]
-use_default_for_unconfigured_groups = true
+use_default_for_unconfigured_targets = true
 
 [messaging.bot_routing]
 enabled = false
@@ -186,7 +186,9 @@ def test_full_process_handles_onebot_websocket_event(
                         )
                         echo = action.get("echo")
                         if action.get("action") in {
-                            "send_msg", "send_private_msg", "send_group_msg"
+                            "send_msg",
+                            "send_private_msg",
+                            "send_group_msg",
                         }:
                             websocket.send(
                                 json.dumps(
