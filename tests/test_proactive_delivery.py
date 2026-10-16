@@ -239,6 +239,7 @@ def _text(message: OutboundMessage) -> str:
 @pytest.mark.asyncio
 async def test_private_push_uses_one_selected_bot_and_no_cross_bot_fallback() -> None:
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app", "public-app"}),
         default_account="local-app",
@@ -301,6 +302,7 @@ async def test_private_push_uses_one_selected_bot_and_no_cross_bot_fallback() ->
 @pytest.mark.asyncio
 async def test_activity_and_scheduled_private_push_share_selected_bot() -> None:
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app"}),
         default_account="local-app",
@@ -344,6 +346,7 @@ async def test_activity_and_scheduled_private_push_share_selected_bot() -> None:
 async def test_private_unsubscribe_survives_selected_bot_change(tmp_path: Path) -> None:
     principals = IdentityPrincipalService()
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app", "public-app"}),
         default_account="local-app",
@@ -856,7 +859,9 @@ async def test_lucky_skin_sender_skips_unsubscribed_or_duplicate_notice(
         delivery,
         cast("PushSubscriptionRepository", subscriptions),
         claims,
-        PrivateConversationRoutes(),
+        PrivateConversationRoutes(
+            use_default_for_unconfigured_targets=True,
+        ),
         PortableQuerySessions(),
         principals.actor_principal,
     )
@@ -878,7 +883,9 @@ async def test_lucky_skin_sender_uses_typed_private_delivery(tmp_path: Path) -> 
         delivery,
         cast("PushSubscriptionRepository", subscriptions),
         SqliteDailyDeliveryStore(tmp_path / "daily.sqlite"),
-        PrivateConversationRoutes(),
+        PrivateConversationRoutes(
+            use_default_for_unconfigured_targets=True,
+        ),
         PortableQuerySessions(),
         IdentityPrincipalService().actor_principal,
     )

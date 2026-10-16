@@ -46,6 +46,7 @@ async def test_member_binding_is_reused_as_private_address_within_same_app(
     )
     principals.register_identity_link(link)
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"app", "other"}),
         default_account="app",
@@ -88,6 +89,7 @@ async def test_member_binding_is_reused_as_private_address_within_same_app(
 
 def test_private_route_never_falls_back_to_a_different_official_bot() -> None:
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app", "public-app"}),
         default_account="public-app",
@@ -115,6 +117,7 @@ def test_private_route_never_falls_back_to_a_different_official_bot() -> None:
 
 def test_selected_private_endpoint_is_shared_by_linked_bots() -> None:
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app", "public-app"}),
         default_account="local-app",

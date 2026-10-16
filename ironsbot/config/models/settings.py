@@ -11,6 +11,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     ValidationError,
     field_validator,
     model_validator,
@@ -359,7 +360,7 @@ class BotConfig(BaseModel):
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
     plugin_manifest: Literal["full", "core"] = "full"
-    use_default_for_unconfigured_groups: bool = False
+    use_default_for_unconfigured_targets: StrictBool = False
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
@@ -502,9 +503,7 @@ class Settings(BaseModel):
             )
         self._validate_private_routes(declared, active)
 
-    def _validate_private_routes(
-        self, declared: set[str], active: set[str]
-    ) -> None:
+    def _validate_private_routes(self, declared: set[str], active: set[str]) -> None:
         unknown_users = sorted(
             set(self.bot.qq_official.private_routes) - set(self.identities.users)
         )

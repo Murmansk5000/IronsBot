@@ -17,7 +17,12 @@ from ironsbot.core.outbound import (
     ReplyContext,
     TextPart,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
@@ -29,7 +34,10 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.integrations.qq_official.recipient_state import (
     QQOfficialRecipientStateStore,
 )
+from ironsbot.integrations.qq_official.runtime import deliver_qq_official_reply
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
+from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -545,8 +553,9 @@ async def test_group_member_mention_is_one_markdown_passive_reply() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("markdown", [False, True])
+@pytest.mark.parametrize("text_after_image", [False, True])
 async def test_every_image_in_mixed_reply_references_the_source(
-    *, markdown: bool
+    *, markdown: bool, text_after_image: bool
 ) -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger({"app": False}, bot_provider=lambda _: bot)
@@ -561,18 +570,62 @@ async def test_every_image_in_mixed_reply_references_the_source(
         _reply(GROUP, "event-id", "source-index"),
         OutboundMessage(
             (
-                *caption,
+                *(() if text_after_image else caption),
                 BinaryImagePart(b"png", "image/png"),
                 RemoteImagePart("https://example.test/image"),
+                *(caption if text_after_image else ()),
             )
         ),
     )
 
     assert result.delivered
-    text, first, second = bot.calls[0][2]
+    if text_after_image:
+        first, second, text = bot.calls[0][2]
+    else:
+        text, first, second = bot.calls[0][2]
     assert text.reference_id == (None if markdown else "source-index")
     assert first.reference_id == second.reference_id == "source-index"
     assert bot.calls[0][3:] == ("event-id", 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_mintmark_shaped_reply_addresses_every_delivered_part(
+    *, with_image: bool
+) -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger({"app": False}, bot_provider=lambda _: bot)
+    actor = ActorRef(Platform.QQ_OFFICIAL, "member", "member", GROUP.id, "app")
+    incoming = IncomingMessageRef(
+        Platform.QQ_OFFICIAL,
+        actor,
+        GROUP,
+        "event-id",
+        "query",
+        sequence="source-index",
+        reply_deadline=FUTURE_DEADLINE,
+    )
+    query = QueryReply(
+        leading_text="mark name\n",
+        image=b"png" if with_image else None,
+        text="attributes",
+    )
+    await deliver_qq_official_reply(
+        messenger, incoming, PortableReply(query.to_outbound())
+    )
+    payloads = bot.calls[0][2]
+    if with_image:
+        image, text = payloads
+        assert isinstance(image, QQOfficialImagePayload)
+        assert isinstance(text, QQOfficialTextPayload)
+        assert image.reference_id == text.reference_id == "source-index"
+        assert not text.markdown
+        assert text.content == "mark name\nattributes"
+    else:
+        (text,) = payloads
+        assert isinstance(text, QQOfficialTextPayload)
+        assert text.markdown
+        assert 'id="member"' in text.content
 
 
 @pytest.mark.asyncio

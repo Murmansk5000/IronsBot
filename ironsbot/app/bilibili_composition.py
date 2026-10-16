@@ -129,6 +129,17 @@ def _private_routes(settings: Settings) -> BiliPrivateRoutes:
             for user, alias in settings.bot.qq_official.private_routes.items()
             if settings.identities.users[user].qq is not None
         },
+        use_default_for_unconfigured_targets=settings.bot.use_default_for_unconfigured_targets,
+        onebot_preferred_users=frozenset(
+            str(
+                settings.onebot_references.resolve_user(
+                    target, location=f"messaging.bot_routing.users.{target}"
+                )
+            )
+            for target in settings.messaging.bot_routing.users
+        )
+        if settings.messaging.bot_routing.enabled
+        else frozenset(),
     )
 
 
