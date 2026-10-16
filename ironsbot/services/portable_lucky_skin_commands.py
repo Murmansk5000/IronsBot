@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
-from ironsbot.services.player_reference_selection import select_player_reference
+from ironsbot.services.player_reference_selection import select_player_target
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
@@ -95,8 +95,12 @@ class PortableLuckySkinCommands:
         if reference is None:
             msg = "invalid lucky window command"
             raise ValueError(msg)
-        if reference and not context.has_member_mentions:
-            source = self.resolver.reference_source(reference)
+        if reference or context.has_member_mentions:
+            source: PlayerTargetSource = (
+                "member"
+                if context.has_member_mentions
+                else self.resolver.reference_source(reference)
+            )
 
             async def execute(
                 player_id: int,
@@ -104,25 +108,17 @@ class PortableLuckySkinCommands:
             ) -> OutboundMessage:
                 return await self.query_target(context, player_id, source=source)
 
-            return await select_player_reference(
+            reply = await select_player_target(
                 reference,
                 context,
                 self.resolver,
                 self.sessions,
                 execute,
                 title="请选择要查询橱窗的玩家：",
-                enforce_query_access=True,
                 nickname_lookup=self.service.lookup_player_nicks,
             )
-        player_id = None
-        source: PlayerTargetSource = "default"
-        if reference or context.has_member_mentions:
-            resolution = self.resolver.resolve(context, reference)
-            if resolution.error is not None:
-                return OutboundMessage.from_text(resolution.error)
-            player_id = resolution.player_id
-            source = resolution.source or "default"
-        return await self.query_target(context, player_id, source=source)
+            return reply.message if reply is not None else None
+        return await self.query_target(context, None, source="default")
 
     async def query_target(  # noqa: PLR0911 - each access failure has a direct reply
         self,

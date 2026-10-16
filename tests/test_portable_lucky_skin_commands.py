@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -20,6 +20,7 @@ from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.services.identity_link_store import OfficialIdentity
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.portable_lucky_skin_commands import (
+    PortableLuckySkinCommands,
     build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -136,6 +137,39 @@ def _operations(
             identity,
         ),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_standalone_and_player_submenu_share_lucky_query_target(
+    platform: Platform,
+) -> None:
+    from ironsbot.app.seer_composition import _lucky_player_actions
+
+    service, pet, identity, sessions, _ = _dependencies()
+    service.enabled = True
+    context = _context("橱窗90002", platform=platform)
+    commands = PortableLuckySkinCommands(
+        cast("LuckySkinWindowService", service),
+        cast("PetQueryService", pet),
+        FeatureService({}, {}, frozenset()),
+        sessions,
+        PlayerIdResolver(lambda value, _conversation: int(value), lambda _actor: 90002),
+        identity,
+    )
+    expected = OutboundMessage.from_text("shared lucky result")
+    with patch.object(
+        PortableLuckySkinCommands, "query_target", new_callable=AsyncMock
+    ) as query_target:
+        query_target.return_value = expected
+        actions = _lucky_player_actions(commands)
+        assert len(actions) == 1
+        assert await commands.query(context.text, context) is expected
+        query_target.assert_awaited_once_with(context, 90002, source="numeric")
+        query_target.reset_mock()
+        assert await actions[0].query(context, 90002) is expected
+        query_target.assert_awaited_once_with(context, 90002, source="numeric")
+    service.cached_query.assert_not_called()
 
 
 @pytest.mark.asyncio
