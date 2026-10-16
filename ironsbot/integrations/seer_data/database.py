@@ -284,6 +284,11 @@ class SeerDatabase:
 
     def update_description(self) -> DataVersion:
         with self._databases.session(SEERAPI_DB) as session:
+            metadata = (
+                session.exec(select(ApiMetadataORM)).first()
+                if session is not None
+                else None
+            )
             season = session.get(PeakSeasonORM, 1) if session is not None else None
             period = (
                 (
@@ -293,7 +298,11 @@ class SeerDatabase:
                 if season is not None
                 else None
             )
-        return DataVersion(self.version(), period)
+        return DataVersion(
+            self.version(),
+            period,
+            local_published_datetime(metadata.generate_time) if metadata else None,
+        )
 
     def render_category_available(self, category: str) -> bool:
         """Return whether the loaded release proves all assets for a renderer."""

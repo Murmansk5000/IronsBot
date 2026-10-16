@@ -19,6 +19,7 @@ class StartupNoticePart:
     subscription_key: str
     action_name: str
     message: str
+    superusers_only: bool = False
 
 
 @dataclass(slots=True)
@@ -32,16 +33,26 @@ class StartupNoticeService:
     _pending_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def publish(
-        self, subscription_key: str, action_name: str, message: str
+        self,
+        subscription_key: str,
+        action_name: str,
+        message: str,
+        *,
+        superusers_only: bool = False,
     ) -> None:
         async with self._pending_lock:
             if not self.ready:
                 self.pending.append(
-                    StartupNoticePart(subscription_key, action_name, message)
+                    StartupNoticePart(
+                        subscription_key, action_name, message, superusers_only
+                    )
                 )
                 return
         await self.admin_notices.send(
-            message, subscription_key=subscription_key, action_name=action_name
+            message,
+            subscription_key=subscription_key,
+            action_name=action_name,
+            superusers_only=superusers_only,
         )
 
     async def flush_pending(self) -> None:
@@ -54,6 +65,7 @@ class StartupNoticeService:
                         part.message,
                         subscription_key=part.subscription_key,
                         action_name=part.action_name,
+                        superusers_only=part.superusers_only,
                     )
                 except Exception:  # noqa: PERF203 - notify remaining independent events
                     logger.exception("Queued data update notification failed")
