@@ -265,7 +265,7 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
 def _assert_example_bili_category_subscriptions(config: Settings) -> None:
     account = config.bilibili.category_subscriptions.accounts["example_account"]
     assert account.default_muted_categories == ["lottery", "winning"]
-    assert account.categories["lottery"].label == "抽奖"
+    assert account.categories["lottery"].label == "转发抽奖"
     assert account.categories["winning"].label == "中奖"
     assert account.categories["collaboration"].label == "联动"
     assert account.categories["creation"].label == "创作"
