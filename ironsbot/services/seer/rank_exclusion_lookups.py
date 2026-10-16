@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from ironsbot.core.rank_lookup_context import RankPagePolicy, rank_page_policy
 from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 from ironsbot.services.seer.rank_models import (
@@ -18,6 +20,8 @@ from ironsbot.services.seer.rank_pagination import (
     RankPageConflictError,
     RankPageSequence,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _rank_page_sequence(rank_key: str | None) -> RankPageSequence:
@@ -138,15 +142,25 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
     visible_count = 0
     page_size = service.page_size()
     raw_start = 0
+    _LOGGER.info(
+        "player rank exclusion prefix started: key=%s raw_rank=%s excluded_count=%s",
+        key,
+        raw_rank,
+        len(excluded_ids),
+    )
     while raw_start <= raw_target_index:
-        page = await service.fetch_page_result(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=raw_start,
-            end=raw_start + page_size - 1,
-            use_cache=False,
-        )
+        token = rank_page_policy.set(RankPagePolicy("exclusion_prefix"))
+        try:
+            page = await service.fetch_page_result(
+                game,
+                key=key,
+                sub_key=sub_key,
+                start=raw_start,
+                end=raw_start + page_size - 1,
+                use_cache=False,
+            )
+        finally:
+            rank_page_policy.reset(token)
         result.include_observation(page.fetched_at)
         page_items = page.items
         sequence.include((int(item.id), int(item.score)) for item in page_items)
