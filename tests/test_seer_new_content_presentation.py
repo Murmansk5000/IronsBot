@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from jinja2 import Environment, FileSystemLoader
+
 from ironsbot.services.seer.new_content import NewContentCategory, NewContentItem
+from ironsbot.services.seer.render_paths import (
+    NEW_CONTENT_TEMPLATE_PATH,
+    SHARED_TEMPLATE_PATH,
+)
 from ironsbot.services.seer.rendering.new_content import (
     NewContentMenuItem,
     present_new_content_menu,
@@ -139,9 +146,10 @@ def test_expert_and_master_pool_previews_keep_their_distinct_units() -> None:
         ),
         {},
     )
+    master_item = _pool_item("peak_master_pool", 3, 4, 6)
     master = present_pool_changes(
         "peak_master_pool",
-        (_pool_item("peak_master_pool", 3, 4, 6),),
+        (master_item,),
         {},
     )
 
@@ -149,7 +157,72 @@ def test_expert_and_master_pool_previews_keep_their_distinct_units() -> None:
         "不限 → 限0",
         "限0 → 不限",
     )
-    assert tuple(row.direction for row in master.direction_rows) == ("4 点 → 6 点",)
+    assert master.headers == ("到6 点", "到4 点")
+    assert tuple(row.label for row in master.matrix_rows) == ("从6 点", "从4 点")
+    assert master.matrix_rows[1].cells[0][0].entity_id == master_item.entity_id
+    assert master.direction_rows == ()
+
+
+def test_master_pool_matrix_preserves_cost_tiers_and_entry_exit() -> None:
+    transitions = ((35, 20), (20, 10), (10, 6), (None, 35), (6, None))
+    items = tuple(
+        _pool_item("peak_master_pool", index, previous, current)
+        for index, (previous, current) in enumerate(transitions, start=1)
+    )
+    preview = present_pool_changes("peak_master_pool", items, {})
+
+    assert preview.headers == ("到35 点", "到20 点", "到10 点", "到6 点", "到未列入")
+    assert tuple(row.label for row in preview.matrix_rows) == (
+        "从35 点",
+        "从20 点",
+        "从10 点",
+        "从6 点",
+        "从未列入",
+    )
+    for row, column, entity_id in (
+        (0, 1, 1),
+        (1, 2, 2),
+        (2, 3, 3),
+        (4, 0, 4),
+        (3, 4, 5),
+    ):
+        assert preview.matrix_rows[row].cells[column][0].entity_id == entity_id
+    assert sum(len(cell) for row in preview.matrix_rows for cell in row.cells) == len(
+        items
+    )
+    assert preview.other_rows == ()
+
+
+def test_master_pool_matrix_without_changes_is_empty() -> None:
+    preview = present_pool_changes("peak_master_pool", (), {})
+
+    assert preview.title == "大师池变化｜本周未变化"
+    assert preview.matrix_rows == ()
+    assert preview.headers == ()
+
+
+def test_master_pool_template_renders_cost_matrix() -> None:
+    preview = present_pool_changes(
+        "peak_master_pool",
+        (_pool_item("peak_master_pool", 1, 35, 6),),
+        {("peak_master_pool", 1): "data:image/png;base64,test-head"},
+    )
+    document = present_new_content_menu(
+        "2026-10-16", [replace(_item(), is_category=True, pool_preview=preview)], {}
+    )
+    environment = Environment(
+        loader=FileSystemLoader([NEW_CONTENT_TEMPLATE_PATH, SHARED_TEMPLATE_PATH]),
+        autoescape=True,
+    )
+
+    html = environment.get_template("template.html.j2").render(document.templates)
+
+    assert '<table class="pool-matrix">' in html
+    assert "原竞技点 ↓" in html
+    assert "新竞技点 →" in html
+    assert "从35 点" in html
+    assert "到6 点" in html
+    assert "data:image/png;base64,test-head" in html
 
 
 def test_new_content_template_renders_pool_change_previews() -> None:
