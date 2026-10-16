@@ -645,7 +645,6 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 pet, mintmark, equipment, autocard, content_selection_scope
             ),
             external_references,
-            pet_flip=PetFlipService(PublishedPetFlipRepository(seer_database), images),
             player_menu_actions=_lucky_player_actions(
                 PortableLuckySkinCommands(
                     lucky_skin_window,
@@ -657,6 +656,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 )
             ),
             player_nickname_lookup=lucky_skin_window.lookup_player_nicks,
+            pet_flip=PetFlipService(PublishedPetFlipRepository(seer_database), images),
         ),
         lucky_skin_window=lucky_skin_window,
         team_resource=team_resource,

@@ -84,7 +84,7 @@ def messaging_command_contracts(
         if action.enabled
     )
     return (
-        *topic_command_contracts(topics),
+        *(topic_command_contracts(topics) if topics is not None else ()),
         *configured,
         *keyword_replies,
         *schedules,
