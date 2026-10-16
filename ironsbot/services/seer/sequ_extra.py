@@ -167,7 +167,7 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
     timeout_seconds: float,
     observations: ObservationCache | None = None,
     observation_ttl: float = 300,
-    cycles: tuple[int | None, int | None] = (None, None),
+    season: int | None = None,
 ) -> UnityPeakFetchResult:
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
@@ -190,15 +190,14 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
         mode_observation = ObservationTime()
         failed_param = params[0]
         progress = {"param": failed_param}
-        mode_season = cycles[1 if mode == "master" else 0]
         cache_key = (
-            (player_id, "peak_mode", mode, mode_season, params)
+            (player_id, "peak_mode", mode, season, params)
             if mode == "master"
-            else (player_id, "peak_mode", mode, mode_season)
+            else (player_id, "peak_mode", mode, season)
         )
         cached = (
             None
-            if observations is None or mode_season is None
+            if observations is None or season is None
             else observations.get(
                 cache_key,
                 observation_ttl,
@@ -214,7 +213,7 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
             read = partial(
                 _read_peak_mode, game, player_id, params, mode_deadline, progress
             )
-            if observations is not None and mode_season is not None:
+            if observations is not None and season is not None:
                 item = await observations.share(cache_key, read)
             else:
                 item = await read()
@@ -246,7 +245,7 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
         )
         if not counts_valid:
             mode_errors.append((mode, "场次数据异常"))
-        if observations is not None and mode_season is not None and counts_valid:
+        if observations is not None and season is not None and counts_valid:
             observations.save(cache_key, mode_chunks, mode_observation.fetched_at)
 
     info = parse_unity_peak(b"".join(chunks))

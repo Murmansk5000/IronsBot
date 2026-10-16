@@ -131,9 +131,9 @@ class PeakRepository(Protocol):
 
     def votes(self) -> tuple[PeakVoteSnapshot, ...]: ...
 
-    def period(self, *, monthly: bool) -> PeakPeriodTimes | None: ...
-
-    def master_period(self, *, monthly: bool) -> PeakPeriodTimes | None: ...
+    def period(
+        self, *, monthly: bool, mode: PeakType = PeakType.STANDARD
+    ) -> PeakPeriodTimes | None: ...
 
     def pets(self, pet_ids: set[int]) -> dict[int, PeakPetSnapshot]: ...
 
@@ -678,11 +678,7 @@ class PeakQueryService:
         if game is None:
             return PeakQueryResult(message=error)
         name, peak_type = parse_peak_type(command)
-        source = (
-            self._repository.master_period(monthly=False)
-            if peak_type is PeakType.MASTER
-            else self._repository.period(monthly=False)
-        )
+        source = self._repository.period(monthly=False, mode=peak_type)
         period = peak_pet_period(source, monthly=False)
         if period is None:
             return PeakQueryResult(
@@ -728,9 +724,7 @@ class PeakQueryService:
         monthly = "月" in command
         with self._render_session() as rendering:
             period = peak_pet_period(
-                rendering.repository.master_period(monthly=monthly)
-                if peak_type is PeakType.MASTER
-                else rendering.repository.period(monthly=monthly),
+                rendering.repository.period(monthly=monthly, mode=peak_type),
                 monthly=monthly,
             )
             if period is None:

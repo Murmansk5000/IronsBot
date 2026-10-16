@@ -73,9 +73,7 @@ class PlayerDetailService:
         self._spawn = spawn
         self._requests = requests
         self._observations = ObservationCache(spawn)
-        self._peak_cache_cycle: (
-            tuple[tuple[int | None, int | None], tuple[int, ...]] | None
-        ) = None
+        self._peak_cache_cycle: tuple[int, tuple[int, ...]] | None = None
         self._background_refreshes: dict[int, _BackgroundRefresh] = {}
         self._cached_replies: dict[
             tuple[int, PlayerShortcutKind],
@@ -335,11 +333,11 @@ class PlayerDetailService:
     ) -> QueryReply | None:
         if kind == "peak":
             from ironsbot.services.seer.player_shortcut_queries import (
-                _peak_observation_cycles,
+                _peak_observation_season,
             )
 
-            old_cycle = _peak_observation_cycles(self._rank)
-            cycle = None if None in old_cycle else (old_cycle, PEAK_PERSONAL_SCHEMA)
+            season = _peak_observation_season(self._rank)
+            cycle = None if season is None else (season, PEAK_PERSONAL_SCHEMA)
             if cycle != self._peak_cache_cycle or cycle is None:
                 for old_key in tuple(self._cached_replies):
                     if old_key[1] == "peak":

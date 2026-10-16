@@ -86,7 +86,7 @@ _PEAK_METRIC_KEYS = frozenset(
         "peak_master",
         "peak_master_win_rate",
         "peak_master_matches",
-        "peak_total_matches",
+        "peak_total_matches_v4",
     )
 )
 _PEAK_METRIC_KEYS_BY_MODE: dict[str, frozenset[str]] = {
@@ -325,7 +325,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
             timeout_seconds=deadline.remaining(timeout_seconds),
             observations=observations,
             observation_ttl=observation_ttl,
-            cycles=_peak_observation_cycles(rank),
+            season=_peak_observation_season(rank),
         ),
     )
     unity_peak = peak_result.info
@@ -373,11 +373,6 @@ async def _fetch_peak_message(  # noqa: PLR0913
         rank_summary,
         available_modes=peak_result.available_modes,
     )
-    try:
-        master_sub_key = rank.current_master_sub_key()
-    except DataUnavailableError as error:
-        master_sub_key = None
-        extra_errors.append(str(error))
     metrics = collect_metrics(
         more_info=SimpleNamespace(total_achieve=0, pet_all_num=0),
         unity_part_one=UnityPartOneInfo(),
@@ -389,7 +384,6 @@ async def _fetch_peak_message(  # noqa: PLR0913
         peak_wild_score=validated_peak.scores.wild,
         peak_expert_score=validated_peak.scores.expert,
         peak_master_score=validated_peak.scores.master,
-        master_sub_key=master_sub_key,
         available_modes=peak_result.available_modes,
     )
     for metric_key in validated_peak.clear_metric_keys:
@@ -635,14 +629,11 @@ async def _resolve_collection_more_info(  # noqa: PLR0913
     )
 
 
-def _peak_observation_cycles(rank: RankService) -> tuple[int | None, int | None]:
-    cycles: list[int | None] = []
-    for read in (rank.current_peak_sub_key, rank.current_master_sub_key):
-        try:
-            cycles.append(read())
-        except DataUnavailableError:  # noqa: PERF203
-            cycles.append(None)
-    return cycles[0], cycles[1]
+def _peak_observation_season(rank: RankService) -> int | None:
+    try:
+        return rank.current_peak_sub_key()
+    except DataUnavailableError:
+        return None
 
 
 def _has_collection_more_info(value: Any) -> bool:
@@ -697,7 +688,7 @@ def _peak_metric_keys_for_modes(available_modes: frozenset[str]) -> frozenset[st
         )
     )
     if available_modes == PEAK_MODE_NAMES:
-        keys.add("peak_total_matches")
+        keys.add("peak_total_matches_v4")
     return frozenset(keys)
 
 

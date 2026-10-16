@@ -21,7 +21,6 @@ class PeakMode:
     suit_keys: tuple[int, int]
     title_keys: tuple[int, int]
     personal_params: tuple[int, ...]
-    master_season: bool = False
 
 
 # Master facts were verified against the official GameLogic DLL, not inferred
@@ -62,7 +61,6 @@ PEAK_MODES = {
         (260, 261),
         (262, 263),
         (408302, 408303, 408306, 408307),
-        master_season=True,
     ),
 }
 PEAK_MODE_NAMES = frozenset(mode.slug for mode in PEAK_MODES.values())
@@ -70,13 +68,6 @@ PEAK_TYPE_NAME_MAP = {kind: mode.name for kind, mode in PEAK_MODES.items()}
 PEAK_PET_KEY_MAP = {kind: mode.pet_keys for kind, mode in PEAK_MODES.items()}
 PEAK_SUIT_KEY_MAP = {kind: mode.suit_keys for kind, mode in PEAK_MODES.items()}
 PEAK_TITLE_KEY_MAP = {kind: mode.title_keys for kind, mode in PEAK_MODES.items()}
-
-
-def combined_peak_season(regular: int | None, master: int | None) -> int | None:
-    """Exact pair encoding fits SQLite int64 for eight-digit date subkeys."""
-    if regular is None or master is None:
-        return None
-    return -(regular * 100_000_000 + master)
 
 
 def valid_peak_counts(wins: int, total: int | None) -> bool:

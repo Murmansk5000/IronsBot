@@ -104,9 +104,6 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
         def current_peak_sub_key(self) -> int:
             return 7
 
-        def current_master_sub_key(self) -> int:
-            return 8
-
         async def fetch_player_summary(
             self, game: Any, player_id: int, **kwargs: Any
         ) -> Any:
@@ -272,7 +269,6 @@ def _service(
             SimpleNamespace(
                 config=config.rank,
                 current_peak_sub_key=lambda: 7,
-                current_master_sub_key=lambda: 8,
             ),
         ),
         cast("Any", object()),
@@ -737,7 +733,7 @@ def test_peak_reply_cache_requires_current_protocol_and_season() -> None:
     assert service._cached_reply(PLAYER_ID, "collection") is collection
     service._store_reply(PLAYER_ID, "peak", peak)
     assert service._cached_reply(PLAYER_ID, "peak") is peak
-    service._peak_cache_cycle = ((None, None), current_cycle[1])
+    service._peak_cache_cycle = (current_cycle[0] - 1, current_cycle[1])
     assert service._cached_reply(PLAYER_ID, "peak") is None
     assert service._cached_reply(PLAYER_ID, "collection") is collection
 

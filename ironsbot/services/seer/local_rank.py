@@ -245,7 +245,6 @@ class LocalRankService:
         peak_wild_score: int | None,
         peak_expert_score: int | None,
         peak_master_score: int | None = None,
-        master_sub_key: int | None = None,
         available_modes: frozenset[str] | None = None,
         clear_metric_keys: frozenset[str] = frozenset(),
     ) -> LocalRankSummary:
@@ -260,7 +259,6 @@ class LocalRankService:
             peak_wild_score=peak_wild_score,
             peak_expert_score=peak_expert_score,
             peak_master_score=peak_master_score,
-            master_sub_key=master_sub_key,
             available_modes=available_modes,
         )
         for metric_key in clear_metric_keys:
@@ -412,7 +410,6 @@ class LocalRankService:
             peak_master_score=build_peak_rating_score(
                 unity_peak.current_m_rank, unity_peak.current_m_star
             ),
-            master_sub_key=self.rank.current_master_sub_key(),
             available_modes=PEAK_MODE_NAMES,
         )
 

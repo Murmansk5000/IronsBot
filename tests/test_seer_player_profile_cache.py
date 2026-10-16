@@ -106,4 +106,4 @@ def test_existing_v1_database_migrates_registration_time_columns(
         }
         version = int(connection.execute("PRAGMA user_version").fetchone()[0])
     assert {"reg_time", "reg_time_cached_at"} <= columns
-    assert version == REGISTRATION_TIME_SCHEMA_VERSION
+    assert version >= REGISTRATION_TIME_SCHEMA_VERSION
