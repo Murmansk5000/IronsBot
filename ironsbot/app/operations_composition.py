@@ -71,11 +71,14 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
 
     async def updated(event: DataUpdate) -> None:
         await startup_notice.publish(
-            "seerapi_data_updated", "SeerAPI data updated", event.message()
+            f"{event.source}_data_updated",
+            f"{event.source} data updated",
+            event.message(),
+            superusers_only=True,
         )
 
     database_sync.describe_database = lambda name: (
-        DataVersion(seer_database.version())
+        seer_database.update_description()
         if name == "seerapi"
         else DataVersion("unknown")
     )

@@ -291,6 +291,7 @@ class SeerDatabase:
             if publication.version == UNKNOWN_VERSION:
                 return DataVersion(UNKNOWN_VERSION)
             with SQLModelSession(engine) as session:
+                metadata = session.exec(select(ApiMetadataORM)).first()
                 season = session.get(PeakSeasonORM, 1)
             period = (
                 (
@@ -303,6 +304,7 @@ class SeerDatabase:
             return DataVersion(
                 publication.version,
                 period,
+                local_published_datetime(metadata.generate_time) if metadata else None,
             )
 
     def render_category_available(self, category: str) -> bool:
