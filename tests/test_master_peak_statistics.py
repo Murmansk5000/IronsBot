@@ -61,7 +61,6 @@ def _metrics(
         rank_summary=PlayerRankSummary.empty(),
         autocard_rank_summary=None,
         peak_sub_key=SEASON,
-        master_sub_key=SEASON,
         peak_standard_score=MASTER_SCORE,
         peak_wild_score=MASTER_SCORE,
         peak_expert_score=1500,
@@ -97,7 +96,7 @@ def test_four_mode_rates_share_personal_counts_and_precision() -> None:
         assert metrics[f"peak_{mode}_matches"]["season_sub_key"] == SEASON
     assert "大师：圣皇4星｜历史圣皇5星" in message
     assert "巅峰总场次：12场" in message
-    assert metrics["peak_total_matches"]["value"] == MATCHES * len(MODE_FIELDS)
+    assert metrics["peak_total_matches_v4"]["value"] == MATCHES * len(MODE_FIELDS)
 
 
 @pytest.mark.parametrize(("mode", "prefix", "title"), MODE_FIELDS)
@@ -109,7 +108,7 @@ def test_successful_zero_matches_do_not_compute_a_rate(
     assert "胜率" not in line
     assert "数据异常" not in line
     assert f"peak_{mode}_win_rate" not in _metrics(peak)
-    assert "peak_total_matches" in _metrics(peak)
+    assert "peak_total_matches_v4" in _metrics(peak)
 
 
 @pytest.mark.parametrize(("mode", "prefix", "title"), MODE_FIELDS)
@@ -127,7 +126,7 @@ def test_invalid_counts_are_visible_and_never_enter_samples(
     assert "巅峰总场次" not in message
     metrics = _metrics(peak)
     assert not any(key.startswith(f"peak_{mode}") for key in metrics)
-    assert "peak_total_matches" not in metrics
+    assert "peak_total_matches_v4" not in metrics
     for other in PEAK_MODE_NAMES - {mode}:
         assert f"peak_{other}_win_rate" in metrics
 
@@ -145,7 +144,7 @@ def test_missing_mode_uses_error_and_cannot_publish_stale_samples(
     assert "巅峰总场次" not in message
     metrics = _metrics(_peak(), modes)
     assert not any(key.startswith(f"peak_{mode}") for key in metrics)
-    assert "peak_total_matches" not in metrics
+    assert "peak_total_matches_v4" not in metrics
 
 
 def test_empty_available_modes_is_not_the_default_all_modes() -> None:
@@ -183,4 +182,4 @@ def test_boolean_counts_cannot_publish_numeric_samples() -> None:
     peak = replace(_peak(), current_m_win=True)
     assert "场次数据异常" in _message(peak)
     assert "peak_master" not in _metrics(peak)
-    assert "peak_total_matches" not in _metrics(peak)
+    assert "peak_total_matches_v4" not in _metrics(peak)

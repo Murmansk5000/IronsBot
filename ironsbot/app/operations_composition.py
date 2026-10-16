@@ -75,9 +75,7 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
         )
 
     database_sync.describe_database = lambda name: (
-        DataVersion(
-            seer_database.version(), official_version=seer_database.official_version()
-        )
+        seer_database.update_description()
         if name == "seerapi"
         else DataVersion("unknown")
     )

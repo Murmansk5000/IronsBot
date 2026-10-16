@@ -305,7 +305,7 @@ async def test_master_rank_player_query_uses_verified_personal_score(
             key=256,
             sub_key=MASTER_SUB_KEY,
             unit="分",
-            sub_key_source="master_season",
+            sub_key_source="peak_season",
             score_format="peak_rating",
         ),
     )
