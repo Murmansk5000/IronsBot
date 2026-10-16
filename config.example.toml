@@ -21,6 +21,10 @@
 # - seer_pet / seer_mintmark / seer_player / seer_rank / seer_autocard：
 #   只开放精灵资料、刻印、米米号、榜单、群星牌等单项赛尔功能。
 # - pet_config：本地精灵配置图查询，独立于 seer 功能包。
+# - pet_flip：抛精灵 @成员甲 @成员乙，独立于 seer 功能包。
+# - push_topics：通用主题推送；all 包含此功能，但不会自动建立订阅。
+#   超管可发送：推送新建 公告 群公告；订阅公告；推送 公告 内容。
+#   群订阅由群主/管理员管理；TD 可切换已有订阅，无需新增环境变量。
 # - image：图片发送；meeting：会议回复。
 # - bili_query / bili_push：B 站动态查询 / 推送。
 # - web_activity_link / web_activity_push：游戏外签到链接查询 / 定时提醒。
@@ -34,9 +38,10 @@
 # - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
 [bot]
-# 未配置专用机器人的群是否使用默认机器人处理收发；默认关闭。
+# 未配置专用机器人的群是否使用默认机器人处理收发；未配置的私聊目标是否使用默认机器人发送。
+# 默认关闭；私聊入站仍由接收消息的机器人处理，不受此开关限制。
 # 显式配置的机器人离线时始终跳过，不会回退到默认机器人。
-use_default_for_unconfigured_groups = false
+use_default_for_unconfigured_targets = false
 # Default: "prod"
 # EN: Runtime environment label.
 # ZH: 运行环境标签。
@@ -117,12 +122,12 @@ sandbox = false
 # EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
 # ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
 startup_timeout_seconds = 15.0
-# EN: Private replies stay on the receiving account; private push account selection
-#     is separate from this group default-routing switch. Groups without an explicit
-#     route use this account only when bot.use_default_for_unconfigured_groups is true.
-# ZH: 私聊回复由收到消息的账号处理；私聊推送另按已知端点和私聊路由策略选择账号。
-# 未显式分配的群仅在 bot.use_default_for_unconfigured_groups=true 时使用默认账号。
-# 启用多个官方账号时必填。
+# EN: Private replies stay on the receiving account. Groups without an explicit
+#     route use this default account only when bot.use_default_for_unconfigured_targets is true.
+#     Unconfigured private pushes also require that switch; explicit user routes are separate.
+# ZH: 私聊回复由收到消息的账号处理；未分配的群仅在
+# bot.use_default_for_unconfigured_targets=true 时使用默认账号；未配置的私聊主动发送也受此开关限制。
+# 显式私聊路由与已知 C2C 端点仍决定推送账号；启用多个官方账号时必填。
 default_account = "example_bot"
 
 # EN: Optional logical group alias -> account alias ownership. The selected account
@@ -846,6 +851,7 @@ transport_failure_cooldown_seconds = 60.0
 # per-account Bilibili dynamic pushes and seer_activity_push.
 # 内置推送项包括机器人启动、启动镜像检查、启动数据同步、AI 聊天异常、
 # B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、其它管理通知、
+# 无头维护封包通知也使用 headless_seer_notice，可在 TD 中退订；只发管理通知目标。
 # 按账号拆分的 B站动态和活动结束提醒。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅", "推送管理"]
@@ -996,9 +1002,9 @@ local_root = "sendpic"
 # Group ingress and proactive pushes use these routes; private replies stay on the receiving bot.
 # ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
 # 群入站和主动推送按下面的群/用户路由选择机器人；私聊回复仍由收到事件的机器人处理。
-# 未配置群仅在 bot.use_default_for_unconfigured_groups=true 时使用 default_bot。
+# 未配置群或私聊推送目标仅在 bot.use_default_for_unconfigured_targets=true 时使用 default_bot。
 # 显式路由的机器人未连接时直接跳过，不会回退到 default_bot 或任意在线机器人。
-# 私聊仍可使用用户路由，并在未配置时使用 default_bot。
+# 私聊可使用显式用户路由；未配置且默认路由关闭时静默跳过。
 # 开启前请把示例 QQ 和目标别名换成真实配置。
 [messaging.bot_routing]
 enabled = false
@@ -1531,6 +1537,7 @@ image_dir = "data/pet_configs"
 # 数据同步分两层：
 # - 普通启动/定时同步默认只下载 GitHub Release 里已经构建好的 SQLite。
 # - /更新数据 会先只读检查 release 指纹，再选择同步已发布数据或构建上游后同步。
+# - /同步数据、/数据更新 是同一入口；强制入口也接受 /强制同步数据、/强制数据更新。
 # - /强制更新数据 仅在选择构建上游时传 force=true，用于排查或 parser 修复后重跑。
 # 如果只是想避免开机慢，改 on_startup=false；如果想开机也检查远程构建，改 startup_trigger_remote_build=true。
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。

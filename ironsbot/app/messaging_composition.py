@@ -72,22 +72,22 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     ) -> tuple[ConversationRef, ...]:
         kind, separator, reference = value.partition(":")
         if not separator or kind not in {"群", "私聊"}:
-            message = "直发目标格式为 群:群别名 或 私聊:用户别名。"
-            raise ValueError(message)
-        target = (
-            settings.platform_references.group_conversation_ref(
-                reference, location="push_topics.direct"
-            )
+            msg = "直发目标格式为 群:群别名 或 私聊:用户别名。"
+            raise ValueError(msg)
+        resolver = settings.platform_references
+        targets = (
+            resolver.group_conversation_refs(reference, location="push_topics.direct")
             if kind == "群"
-            else settings.platform_references.private_conversation_ref(
-                reference, location="push_topics.direct"
+            else resolver.private_conversation_refs(
+                reference,
+                location="push_topics.direct",
             )
         )
-        return (
-            (target,)
+        return tuple(
+            target
+            for target in targets
             if target.platform == source.platform
             and target.account_id == source.account_id
-            else ()
         )
 
     topics = PushTopicService(
@@ -122,7 +122,6 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             ),
             _prepare_extra_push_options=bili_targets.prepare_subscription_labels,
             _subscription_submenu_providers=(bili_targets,),
-            topics=topics,
             _mention_reply_targets=tuple(
                 tuple(
                     actor
@@ -153,6 +152,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             },
             _actor_principal=identity_principals.actor_principal,
             _private_routes=private_routes,
+            topics=topics,
         ),
         sendpic=SendpicService(
             settings.messaging.sendpic,

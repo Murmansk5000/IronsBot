@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, cast
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
@@ -123,7 +124,8 @@ async def handle_push_subscription_select(
         not isinstance(event, GroupMessageEvent)
         or not is_group_push_subscription_manager(messaging, event)
     ):
-        _, menu_prompt = messaging.subscription_menu(
+        _, menu_prompt = await asyncio.to_thread(
+            messaging.subscription_menu,
             conversation,
             read_only=True,
         )
@@ -154,11 +156,13 @@ async def handle_push_subscription_select(
             replace_menu_anchor=True,
         )
 
-    result_message = messaging.toggle_subscription(
+    result_message = await asyncio.to_thread(
+        messaging.toggle_subscription,
         conversation,
         option,
     )
-    refreshed_options, menu_prompt = messaging.subscription_menu(
+    refreshed_options, menu_prompt = await asyncio.to_thread(
+        messaging.subscription_menu,
         conversation,
     )
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options

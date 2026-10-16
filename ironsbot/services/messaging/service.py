@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -95,7 +96,6 @@ class MessagingService:
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
     _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
-    topics: PushTopicService | None = None
     _mention_reply_targets: tuple[tuple[ActorRef, ...], ...] = ()
     _actor_principal: Callable[[ActorRef], ActorPrincipal] | None = None
     _command_mentions: Mapping[str, tuple[ActorRef, ...]] = field(default_factory=dict)
@@ -103,6 +103,7 @@ class MessagingService:
         default_factory=ScheduleRendererRegistry
     )
     _private_routes: PrivateConversationRoutes | None = None
+    topics: PushTopicService | None = None
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -246,7 +247,8 @@ class MessagingService:
         preparation_warning = await self.prepare_subscription_options(
             conversation,
         )
-        options, prompt = self.subscription_menu(
+        options, prompt = await asyncio.to_thread(
+            self.subscription_menu,
             conversation,
             read_only=read_only,
         )
@@ -344,7 +346,7 @@ class MessagingService:
 
     async def start(self, scheduler: Scheduler) -> None:
         try:
-            result = self._prune_stale_preferences()
+            result = await asyncio.to_thread(self._prune_stale_preferences)
         except Exception:
             logger.exception("startup push preference cleanup failed")
         else:

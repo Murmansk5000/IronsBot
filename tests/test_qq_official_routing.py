@@ -9,7 +9,7 @@ def test_default_account_owns_private_and_unassigned_groups() -> None:
     routing = QQOfficialIngressRouting(
         "public-app",
         {},
-        use_default_for_unconfigured_groups=True,
+        use_default_for_unconfigured_targets=True,
     )
 
     assert routing.allows(

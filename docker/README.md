@@ -521,6 +521,19 @@ The Unraid template exposes a minimal variable set and mounts a config
 directory. Put behavior and runtime settings in `/config/ironsbot.toml`; keep
 only `APP_CONFIG_PATH` and secret values as environment variables.
 
+## Topic Push and Pet Flip
+
+Docker and Unraid deployments enable `push_topics` and `pet_flip` through the
+mounted TOML feature policies. Both belong to `all`; enabling topic push does
+not subscribe any group or user. No new container variables, secret fields or
+port mappings are required. Keep the existing `/app/data` mount for persistent
+topic subscriptions and delivery records. See the main README for commands,
+administrative permissions and programmatic scheduling.
+
+Unraid 中文说明：在 TOML 的群或用户功能配置中加入 `push_topics`、`pet_flip`，
+已有 `all` 会包含它们；不需要修改 XML 模板、增加环境变量或修改端口。
+主题需要显式订阅，已有 TD 订阅与机器人路由继续生效。
+
 ## Privacy Notes
 
 Do not put private QQ IDs, group IDs, team IDs, meeting links, meeting numbers, account passwords, or tokens into files committed to GitHub.

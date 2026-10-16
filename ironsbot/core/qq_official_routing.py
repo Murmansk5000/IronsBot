@@ -4,6 +4,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from ironsbot.core.push_routing import PushRouteDecision
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ConversationRef
 
 
 @dataclass(slots=True)
@@ -12,7 +18,7 @@ class QQOfficialIngressRouting:
 
     default_account_id: str
     preferred_accounts_by_onebot_group: dict[str, str]
-    use_default_for_unconfigured_groups: bool = False
+    use_default_for_unconfigured_targets: bool = False
     _onebot_groups_by_endpoint: dict[tuple[str, str], str] = field(
         default_factory=dict,
         repr=False,
@@ -45,13 +51,25 @@ class QQOfficialIngressRouting:
         )
         if onebot_group_id is None:
             return (
-                self.use_default_for_unconfigured_groups
+                self.use_default_for_unconfigured_targets
                 and account_id == self.default_account_id
             )
         preferred = self.preferred_accounts_by_onebot_group.get(onebot_group_id)
         if preferred is not None:
             return account_id == preferred
         return (
-            self.use_default_for_unconfigured_groups
+            self.use_default_for_unconfigured_targets
             and account_id == self.default_account_id
         )
+
+    def push_route(self, conversation: ConversationRef) -> PushRouteDecision:
+        group = self._onebot_groups_by_endpoint.get(
+            (conversation.account_id or "", conversation.id)
+        )
+        preferred = self.preferred_accounts_by_onebot_group.get(group or "")
+        if preferred is None and not self.use_default_for_unconfigured_targets:
+            return PushRouteDecision("skipped", conversation, "unconfigured_target")
+        selected = preferred or self.default_account_id
+        if selected != conversation.account_id:
+            return PushRouteDecision("skipped", conversation, "different_group_owner")
+        return PushRouteDecision("ready", conversation)

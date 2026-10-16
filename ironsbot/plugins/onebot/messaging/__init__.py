@@ -45,7 +45,9 @@ def help_visible(
     config: MessageConfig,
 ) -> bool:
     actions = [*config.commands, *config.keyword_replies, *config.schedules]
-    return any(
+    return feature_help_visible(
+        context, features=features, feature="push_topics"
+    ) or any(
         action.enabled
         and feature_help_visible(
             context,
@@ -100,11 +102,11 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
         features=frozenset(
             {
                 Feature.TEXT,
-                Feature.PUSH_TOPICS,
                 Feature.TEXT_PUSH,
                 Feature.WEB_ACTIVITY_LINK,
                 Feature.WEB_ACTIVITY_PUSH,
                 Feature.SEERINFO,
+                Feature.PUSH_TOPICS,
             }
         ),
         help=HelpEntry(

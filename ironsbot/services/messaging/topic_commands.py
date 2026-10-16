@@ -4,25 +4,20 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.command_catalog import CommandAccess, CommandContract
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.messaging.topics import TopicPublication
 
 if TYPE_CHECKING:
-
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.messaging.topics import PushTopicService
     from ironsbot.services.portable_reply import PortableOperation
-
-
-def reference_digest(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,21 +124,21 @@ def build_topic_operations(
             message.conversation,
             "push_topics",
         ):
-            return OutboundMessage((TextPart("当前会话未启用主题推送。"),))
+            return OutboundMessage.from_text("当前会话未启用主题推送。")
         is_admin = service.features.is_actor_superuser(message.actor)
         if command.action in _ADMIN_ACTIONS and not is_admin:
-            return OutboundMessage((TextPart("此操作仅限超级管理员。"),))
+            return OutboundMessage.from_text("此操作仅限超级管理员。")
         if command.action in {"subscribe", "unsubscribe"} and (
             message.conversation.kind == "group"
             and not is_admin
             and message.group_role not in GROUP_MANAGER_ROLES
         ):
-            return OutboundMessage((TextPart("仅群主和管理员可以修改本群订阅。"),))
+            return OutboundMessage.from_text("仅群主和管理员可以修改本群订阅。")
         try:
             result = await _execute(service, command, context)
         except ValueError as exc:
             result = str(exc)
-        return OutboundMessage((TextPart(result),))
+        return OutboundMessage.from_text(result)
 
     return {f"messaging.topic.{action}": execute for action, _, _ in _COMMANDS}
 
@@ -222,7 +217,7 @@ async def _execute(  # noqa: C901, PLR0911 - explicit topic command dispatch
     counts = await service.publish(
         key,
         TopicPublication(
-            OutboundMessage((TextPart(content),)),
+            OutboundMessage.from_text(content),
             dedup_key=f"command:{target.platform.value}:{target.account_id}:{target.id}:"
             f"{context.message.message_id}",
         ),

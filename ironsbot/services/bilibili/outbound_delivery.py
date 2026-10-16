@@ -255,12 +255,19 @@ class BilibiliDynamicOutboundSender:
         routes = self.delivery.private_routes
 
         def selected(conversations: Iterable[ConversationRef]) -> list[ConversationRef]:
-            return list(
-                dict.fromkeys(
-                    (routes.selected_for(target) or target) if routes else target
-                    for target in conversations
-                )
-            )
+            result = []
+            for target in conversations:
+                decision = routes.decision_for(target) if routes else None
+                if decision is not None and decision.status == "skipped":
+                    _LOGGER.info(
+                        "Bilibili target skipped by routing policy: "
+                        "recipient=%s reason=%s",
+                        reference_digest(target.id),
+                        decision.reason,
+                    )
+                    continue
+                result.append(decision.target if decision is not None else target)
+            return list(dict.fromkeys(result))
 
         full_groups = selected(targets.full_group_conversations)
         full_privates = selected(targets.full_private_conversations)

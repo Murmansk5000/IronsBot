@@ -759,6 +759,7 @@ def test_lucky_subscription_only_appears_on_selected_bot(tmp_path: Path) -> None
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
     principals = IdentityPrincipalService()
     routes = PrivateConversationRoutes(
+        use_default_for_unconfigured_targets=True,
         onebot_enabled=False,
         official_accounts=frozenset({"local-app", "public-app"}),
         default_account="local-app",
