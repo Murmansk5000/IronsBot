@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class DataVersion:
     version: str
     season: tuple[datetime, datetime] | None = None
+    generated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,15 +27,11 @@ class DataUpdate:
     completed_at: datetime
 
     def message(self) -> str:
-        lines = [
-            "SeerAPI 数据更新成功",
-            f"版本：{self.before.version} → {self.after.version}",
-            f"完成时间：{self.completed_at.astimezone(TZ_CN):%Y-%m-%d %H:%M:%S}",
-        ]
-        if self.after.season is not None and self.after.season != self.before.season:
-            start, end = (value.astimezone(TZ_CN) for value in self.after.season)
-            lines.append(
-                f"巅峰赛季：{start:%Y%m%d}（{start:%Y-%m-%d %H:%M}"
-                f" 至 {end:%Y-%m-%d %H:%M}）"
-            )
-        return "\n".join(lines)
+        label = {"seerapi": "游戏", "aliases": "别名"}[self.source]
+        generated_at = self.after.generated_at
+        timestamp = (
+            f"{generated_at.astimezone(TZ_CN):%Y-%m-%d %H:%M:%S}（北京时间）"
+            if generated_at is not None and generated_at.tzinfo is not None
+            else "未知"
+        )
+        return f"📢{label}数据已更新，可查询最新数据\n数据时间：{timestamp}"
