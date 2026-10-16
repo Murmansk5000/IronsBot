@@ -60,35 +60,33 @@ def present_pool_changes(
             PoolChangePet(item.entity_id, images.get((category, item.entity_id)))
         )
 
-    if category == "peak_pool":
-        known = {
-            (previous, current) for previous in _POOL_LIMITS for current in _POOL_LIMITS
+    master = category == "peak_master_pool"
+    limits = _POOL_LIMITS
+    label = _master_cost_label if master else _limit_label
+    if master:
+        costs = {
+            value
+            for transition in grouped
+            for value in transition
+            if isinstance(value, int) and value >= 0
         }
+        limits = tuple(sorted(costs, reverse=True))
+        if any(None in transition for transition in grouped):
+            limits = (*limits, None)
+
+    if category in {"peak_pool", "peak_master_pool"}:
+        known = {(previous, current) for previous in limits for current in limits}
         matrix_rows = tuple(
             PoolChangeMatrixRow(
-                f"从{_limit_label(previous)}",
+                f"从{label(previous)}",
                 tuple(
-                    tuple(grouped.get((previous, current), ()))
-                    for current in _POOL_LIMITS
+                    tuple(grouped.get((previous, current), ())) for current in limits
                 ),
             )
-            for previous in _POOL_LIMITS
+            for previous in limits
         )
         direction_rows: tuple[PoolChangeDirectionRow, ...] = ()
-        kind = "standard"
-    elif category == "peak_master_pool":
-        known = set(grouped)
-        matrix_rows = ()
-        direction_rows = tuple(
-            PoolChangeDirectionRow(
-                f"{_master_cost_label(previous)} → {_master_cost_label(current)}",
-                tuple(pets),
-            )
-            for (previous, current), pets in sorted(
-                grouped.items(), key=lambda entry: str(entry[0])
-            )
-        )
-        kind = "master"
+        kind = "master" if master else "standard"
     else:
         known = {(None, 0), (0, None)}
         matrix_rows = ()
@@ -102,7 +100,9 @@ def present_pool_changes(
         kind = "expert"
 
     other_rows = tuple(
-        PoolChangeDirectionRow(_transition_label(*transition), tuple(pets))
+        PoolChangeDirectionRow(
+            f"{label(transition[0])} → {label(transition[1])}", tuple(pets)
+        )
         for transition, pets in sorted(
             (
                 (transition, pets)
@@ -120,7 +120,7 @@ def present_pool_changes(
     return PoolChangePreview(
         kind=kind,
         title=title,
-        headers=tuple(f"到{_limit_label(limit)}" for limit in _POOL_LIMITS),
+        headers=tuple(f"到{label(limit)}" for limit in limits),
         matrix_rows=matrix_rows,
         direction_rows=direction_rows,
         other_rows=other_rows,
