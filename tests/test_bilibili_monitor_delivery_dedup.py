@@ -1,9 +1,11 @@
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.services.bilibili.monitor import _push_new_dynamics
+from ironsbot.services.bilibili.monitor import _push_new_dynamics, run_monitor_check
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot_for_item,
@@ -16,6 +18,60 @@ from tests.helpers.bilibili import build_test_bilibili_service
 AUTHOR_UID = 59224295
 SEER_UID = 1310714247
 PUB_TS = 1_786_043_659
+
+
+def test_only_new_official_feed_item_ends_burst_after_other_account_discovery(
+    tmp_path: Path,
+) -> None:
+    config = BiliConfig.model_validate(
+        {
+            "accounts": {
+                "other": {"uid": AUTHOR_UID},
+                "official": {"uid": SEER_UID},
+            },
+            "push": {"accounts": ["other", "official"]},
+        }
+    )
+    service = build_test_bilibili_service(tmp_path, config=config)
+    service.history.save_checkpoints({AUTHOR_UID: PUB_TS - 1, SEER_UID: PUB_TS - 1})
+    other = _item()
+    official = _item()
+    official["id_str"] = "90000002"
+    official["modules"]["module_author"]["mid"] = SEER_UID
+    calls = 0
+    expected_checks = 4
+
+    async def feed(_cookie: str) -> BiliFeedResponse:
+        nonlocal calls
+        calls += 1
+        items = [other, official] if calls == expected_checks else [other]
+        return BiliFeedResponse(200, {"code": 0, "data": {"items": items}})
+
+    async def ignore(*_args: Any) -> None:
+        return None
+
+    service.fetch_feed = feed
+
+    async def scenario() -> None:
+        observations: list[frozenset[int]] = []
+        for second in (1, 2, 5, 10, 10):
+            result = await run_monitor_check(
+                service,
+                on_auth_invalid=ignore,
+                send_push=ignore,
+                now=datetime(2026, 1, 1, 2, 0, second, tzinfo=timezone.utc),
+            )
+            observations.append(result.discovered_uids)
+        assert observations == [
+            frozenset((AUTHOR_UID,)),
+            frozenset(),
+            frozenset(),
+            frozenset((SEER_UID,)),
+            frozenset(),
+        ]
+
+    asyncio.run(scenario())
+    assert calls == expected_checks
 
 
 def _item() -> dict[str, Any]:
@@ -70,6 +126,7 @@ def test_monitor_does_not_redeliver_persisted_dynamic_when_checkpoint_is_missing
 
     assert sent == []
     assert batch.checkpoint_changed
+    assert not batch.discovered_uids
     assert checkpoints == {AUTHOR_UID: PUB_TS}
 
 
@@ -108,6 +165,7 @@ def test_monitor_marks_category_muted_seer_dynamic_as_processed(
     assert sent == []
     assert batch.checkpoint_changed
     assert batch.discovered_new
+    assert batch.discovered_uids == frozenset((SEER_UID,))
     assert checkpoints == {SEER_UID: PUB_TS}
     assert saved is not None
     assert saved.pushed
@@ -196,6 +254,7 @@ def test_monitor_releases_discovery_before_slow_delivery(
             send_push,
         )
         assert len(batch.delivery_tasks) == 1
+        assert batch.discovered_uids == frozenset((AUTHOR_UID,))
         await delivery_started.wait()
         assert not batch.delivery_tasks[0].done()
         release_delivery.set()
