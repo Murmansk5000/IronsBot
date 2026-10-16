@@ -587,6 +587,7 @@ class MatcherFactory:
                 if self.in_flight_requests is not None:
                     request_decision = self.in_flight_requests.admit(
                         actor=message_input_context(event).message.actor,
+                        conversation=message_input_context(event).message.conversation,
                         request=request,
                     )
                     if request_decision.token is not None:

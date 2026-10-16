@@ -16,7 +16,7 @@ from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -609,10 +609,12 @@ async def test_queued_conversation_releases_cancelled_pending_reservations() -> 
     )
     active = requests.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=_semantic_request("1"),
     )
     pending = requests.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=_semantic_request("2"),
     )
     assert active.token is not None
@@ -630,10 +632,12 @@ async def test_queued_conversation_releases_cancelled_pending_reservations() -> 
         await waiting
     assert requests.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=_semantic_request("2"),
     ).allowed
     assert not requests.admit(
         actor=ActorRef(Platform.ONEBOT, "1"),
+        conversation=ConversationRef(Platform.ONEBOT, "group", "test-group"),
         request=_semantic_request("1"),
     ).allowed
 
