@@ -61,15 +61,15 @@ def build_portable_bilibili_operations(
             _LOGGER.exception("portable Bilibili dynamic menu failed")
             return OutboundMessage.from_text("❌ 获取动态列表失败。")
 
-        if result.status == "no_accounts":
-            return OutboundMessage.from_text("📭 当前会话没有配置可查询的 B 站账号。")
-        if result.status == "auth_invalid":
+        if result.auth_invalid or result.status == "auth_invalid":
             await notify_auth_invalid("用户查询动态时发现 B 站登录失效")
-            return OutboundMessage.from_text(
-                "⚠️ B 站 Cookie 已失效，请超级管理员重新登录。"
-            )
-        if result.status == "no_history":
-            return OutboundMessage.from_text("📭 没有可展示的历史动态。")
+        notices = {
+            "no_accounts": "📭 当前会话没有配置可查询的 B 站账号。",
+            "auth_invalid": "⚠️ B 站 Cookie 已失效，请超级管理员重新登录。",
+            "no_history": "📭 没有可展示的历史动态。",
+        }
+        if notice := notices.get(result.status):
+            return OutboundMessage.from_text(notice)
 
         return sessions.offer_menu(
             context,
