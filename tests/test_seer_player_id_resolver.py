@@ -25,14 +25,14 @@ _CURRENT_PLAYER_ID = 600
 _MENTIONED_PLAYER_ID = 800
 
 
-def test_partial_reference_visibility_and_exact_precedence() -> None:
+def test_exact_and_partial_references_share_visibility_checks() -> None:
     context = _context()
     registry = PlayerAccountRegistry(
         (
             PlayerAccount(
                 700001, "公开玩家", ("玩家甲", "玩家甲号"), None, public=True
             ),
-            PlayerAccount(700002, "群内玩家", (), None),
+            PlayerAccount(700002, "群内玩家", ("玩家甲乙",), None),
             PlayerAccount(700003, "隐藏玩家", (), None),
         ),
         private_alias_groups={context.message.conversation: ("群内玩家",)},
@@ -72,6 +72,7 @@ def test_partial_reference_visibility_and_exact_precedence() -> None:
         c.player_id for c in resolver.reference_choices("玩家甲", actor, conversation)
     ] == [
         700001,
+        700002,
     ]
     assert [
         c.player_id

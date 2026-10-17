@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Shared exact-first matching for command names and domain references."""
+"""Shared normalized matching for command names and domain references."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ MatchKind = Literal["exact", "partial", "none"]
 
 @dataclass(frozen=True, slots=True)
 class MatchResult(Generic[T]):
+    """Keep every allowed candidate; kind describes the strongest match."""
+
     kind: MatchKind = "none"
     matches: tuple[T, ...] = ()
 
@@ -54,7 +56,7 @@ class TextMatchRule:
             elif allow_partial and any(key in name for name in keys):
                 partial.append(candidate)
         if exact:
-            return MatchResult("exact", tuple(exact))
+            return MatchResult("exact", tuple(exact + partial))
         return MatchResult("partial", tuple(partial)) if partial else MatchResult()
 
     def contains_pattern(self, text: str) -> str:

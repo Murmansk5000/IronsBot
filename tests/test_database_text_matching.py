@@ -46,15 +46,26 @@ def _getter() -> Getter[MintmarkClassCategoryORM]:
     )
 
 
-def test_sql_exact_names_and_aliases_share_priority_and_deduplicate(
+def test_sql_exact_and_partial_names_and_aliases_are_combined_and_deduplicated(
     matching_session: Session,
 ) -> None:
     sessions = {"seerapi": matching_session, "aliases": matching_session}
     getter = _getter()
-    assert [item.id for item in getter(sessions, "星光")] == [1, 3]
+    assert [item.id for item in getter(sessions, "星光")] == [1, 3, 2]
     assert {item.id for item in getter(sessions, "光")} == {1, 2, 3}
     assert [item.id for item in getter(sessions, "3")] == [3]
     assert not getter(sessions, "999")
+
+
+def test_name_and_alias_resolvers_keep_longer_candidates(
+    matching_session: Session,
+) -> None:
+    sessions = {"seerapi": matching_session, "aliases": matching_session}
+    assert {
+        item.id for item in NameResolver(MintmarkClassCategoryORM)(sessions, "星光")
+    } == {1, 2}
+    aliases = AliasResolver(MintmarkClassCategoryORM, MintmarkClassAliasORM)
+    assert [item.id for item in aliases(sessions, "星光")] == [3, 2]
 
 
 def test_sql_partial_queries_do_not_treat_percent_as_a_wildcard(

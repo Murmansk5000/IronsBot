@@ -213,21 +213,14 @@ class PlayerAccountRegistry:
         matched = rule.select(
             reference, visible, names=lambda account: (account.name, *account.aliases)
         )
-        return tuple(
-            PlayerReferenceChoice(
-                account.player_id,
-                next(
-                    label
-                    for label in (account.name, *account.aliases)
-                    if (
-                        rule.matches(reference, label)
-                        if matched.kind == "exact"
-                        else normalized in rule.key(label)
-                    )
-                ),
-            )
-            for account in matched.matches
-        )
+        choices = []
+        for account in matched.matches:
+            labels = (account.name, *account.aliases)
+            label = next(
+                (label for label in labels if rule.matches(reference, label)), None
+            ) or next(label for label in labels if normalized in rule.key(label))
+            choices.append(PlayerReferenceChoice(account.player_id, label))
+        return tuple(choices)
 
     def _build_private_alias_groups(
         self,
