@@ -10,13 +10,16 @@ result = rule.select(argument, records, names=lambda row: (row.name, *row.aliase
 ```
 
 `MatchResult.kind` is `exact`, `partial`, or `none`. Collect names and aliases in
-one call: any complete match excludes all partial matches. Partial matching
+one call: complete matches come first, followed by all partial matches. The kind
+describes the strongest match in the result, not every candidate. Partial matching
 uses the entire normalized argument. Empty normalized arguments never match.
 Deduplicate domain candidates by their stable IDs before displaying a menu.
+Domain menu limits and the single-character overflow fallback still apply after
+collecting the candidates.
 
 Resolve numeric IDs before text. For SQL-backed data, `Getter.resolve_matches`
-provides separate exact/partial phases so combined entity queries retain this
-priority. `TextMatchRule.contains_pattern` escapes `%`, `_`, and backslashes;
+provides exact/partial phases that are combined and deduplicated by stable ID.
+`TextMatchRule.contains_pattern` escapes `%`, `_`, and backslashes;
 pass `escape="\\"` to SQL LIKE. Existing ignored separators remain ignored.
 
 For fixed commands and configured reply/AI-intent keywords, use

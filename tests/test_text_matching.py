@@ -4,7 +4,7 @@ from ironsbot.core.text_matching import TextMatchRule
 from ironsbot.integrations.seer_data.normalization import normalize_key
 
 
-def test_exact_names_and_aliases_exclude_partial_candidates() -> None:
+def test_exact_names_and_aliases_keep_partial_candidates() -> None:
     labels = {
         1: ("星光之主", "星光"),
         2: ("星光", "光明"),
@@ -12,11 +12,15 @@ def test_exact_names_and_aliases_exclude_partial_candidates() -> None:
     }
     rule = TextMatchRule(normalize_key)
     result = rule.select("星 光", labels, names=labels.__getitem__)
-    assert result.kind == "exact" and result.matches == (1, 2)
+    assert result.kind == "exact" and result.matches == (1, 2, 3)
     partial = rule.select("之", labels, names=labels.__getitem__)
     assert partial.kind == "partial" and partial.matches == (1, 3)
     alias = rule.select("光明", labels, names=labels.__getitem__)
     assert alias.kind == "exact" and alias.matches == (2,)
+    exact_only = rule.select(
+        "星光", labels, names=labels.__getitem__, allow_partial=False
+    )
+    assert exact_only.matches == (1, 2)
 
 
 def test_whole_argument_normalization_and_empty_guard() -> None:

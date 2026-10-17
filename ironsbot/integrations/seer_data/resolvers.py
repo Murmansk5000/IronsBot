@@ -71,7 +71,7 @@ class IdResolver(Generic[_T_Model]):
 
 
 class NameResolver(Generic[_T_Model]):
-    """按名称精确优先、部分匹配后备搜索，返回完整模型对象。"""
+    """按名称搜索所有包含匹配，返回完整模型对象。"""
 
     __slots__ = ("db_name", "model", "name_column")
 
@@ -100,9 +100,7 @@ class NameResolver(Generic[_T_Model]):
         )
 
     def __call__(self, sessions: SessionMap, arg: str) -> Iterable[_T_Model]:
-        return self.resolve_matches(sessions, arg, "exact") or self.resolve_matches(
-            sessions, arg, "partial"
-        )
+        return self.resolve_matches(sessions, arg, "partial")
 
     def resolve_matches(
         self, sessions: SessionMap, arg: str, kind: Literal["exact", "partial"]
@@ -213,7 +211,7 @@ class DatabaseAliasLookup(Generic[_T_Model]):
             self._matching_aliases(text, kind)
             if kind is not None
             else self._matching_aliases(text, "exact")
-            or self._matching_aliases(text, "partial")
+            + self._matching_aliases(text, "partial")
         )
         if not aliases:
             return AliasResolution(reference=text)
@@ -297,10 +295,11 @@ class Getter(Generic[_T_Model]):
                 if isinstance(resolver, IdResolver):
                     return tuple(resolver(sessions, arg))
         kinds: tuple[Literal["exact", "partial"], ...] = ("exact", "partial")
+        seen: dict[int, _T_Model] = {}
         for kind in kinds:
-            if matches := self.resolve_matches(sessions, arg, kind):
-                return matches
-        return ()
+            for obj in self.resolve_matches(sessions, arg, kind):
+                seen.setdefault(obj.id, obj)
+        return tuple(seen.values())
 
     def resolve_matches(
         self, sessions: SessionMap, arg: str, kind: Literal["exact", "partial"]

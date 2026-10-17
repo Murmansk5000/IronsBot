@@ -297,7 +297,9 @@ def _custom_series_ids(
     groups: dict[str, set[int]] = {}
     for member in members:
         groups.setdefault(normalize_key(member.name), set()).add(member.target_id)
-    matched = TextMatchRule(normalize_key).select(
+    rule = TextMatchRule(normalize_key)
+    exact = rule.select(prefix, groups, names=lambda name: (name,), allow_partial=False)
+    matched = exact if exact.matches else rule.select(
         prefix, groups, names=lambda name: (name,)
     )
     if matched.kind == "partial" and len(matched.matches) != 1:
@@ -418,7 +420,11 @@ class MintmarkSeriesResolver:
                         labels[alias.target_id].extend(
                             (alias.name, alias.name.removesuffix("系列"))
                         )
-        result = TextMatchRule(normalize_key).select(
+        rule = TextMatchRule(normalize_key)
+        exact = rule.select(
+            raw_prefix, labels, names=labels.__getitem__, allow_partial=False
+        )
+        result = exact if exact.matches else rule.select(
             raw_prefix, labels, names=labels.__getitem__
         )
         if result.kind == "partial" and len(result.matches) != 1:

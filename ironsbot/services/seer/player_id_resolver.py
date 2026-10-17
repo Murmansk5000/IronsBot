@@ -172,13 +172,20 @@ class PlayerIdResolver:
         actor: ActorRef,
         conversation: ConversationRef,
     ) -> tuple[PlayerReferenceChoice, ...]:
-        """Return exact visible aliases before partial candidates."""
+        """Collect all visible name matches, retaining numeric ID semantics."""
         player_id = self._lookup_reference(reference, actor, conversation)
-        if player_id is not None:
-            return (PlayerReferenceChoice(player_id, reference.strip()),)
-        if self._reference_search is None:
-            return ()
-        return self._reference_search(reference, actor, conversation)
+        choices = (
+            (PlayerReferenceChoice(player_id, reference.strip()),)
+            if player_id is not None
+            else ()
+        )
+        if reference.strip().isdecimal() or self._reference_search is None:
+            return choices
+        candidates = self._reference_search(reference, actor, conversation)
+        seen = {choice.player_id: choice for choice in choices}
+        for choice in candidates:
+            seen.setdefault(choice.player_id, choice)
+        return tuple(seen.values())
 
     def has_reference_choices(
         self,
