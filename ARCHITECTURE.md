@@ -1454,16 +1454,15 @@ The authoritative TOML top-level schema is:
 ```
 
 Nested models may live in separate files, but they are reachable only through
-`Settings`. Models use `extra="forbid"` to collect unknown TOML paths.
-The loader logs those paths as warnings, then validates with `extra="ignore"`;
-unknown fields are ignored, not translated into supported configuration.
+`Settings`. Models retain `extra="forbid"`; the configuration loader warns about
+unknown TOML fields and ignores them without restoring retired schemas.
 Unregistered feature references in ordinary bundles and target policies also
 warn and grant nothing, while valid entries remain effective. An effectively
 empty bundle grants nothing; it never falls back to another bundle. Explicit
 custom feature declarations through `all` retain their existing contract.
-Invalid recognized values, unsafe bundle definitions, unknown account references
-in supported fields, and incomplete actions still fail validation. Credential injection
-also rejects secrets for undeclared official accounts or AI providers.
+Invalid known values, unsafe bundle definitions, unknown account references,
+incomplete actions, and invalid section names still fail startup with their
+exact configuration path.
 
 The loader has no cache, cleanup pass, fallback schema, or automatic mutation.
 Missing TOML is a deployment concern: the

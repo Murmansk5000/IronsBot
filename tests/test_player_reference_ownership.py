@@ -20,7 +20,6 @@ from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.seer.query.commands import (
     player,
     player_shortcuts,
@@ -293,10 +292,10 @@ def test_player_command_ownership_matches_resolution(
     )
     if not group:
         # Exercise the actual AI routing rule, without invoking a completion API.
-        assert not _capture_ai_prompt(
-            event,
-            {},
-            AiInputRoutingService(features, catalog),
+        assert (
+            not AiInputRoutingService(features, catalog)
+            .decide(message_input_context(event), command_context(event))
+            .try_chat
         )
     binding.assert_not_called()
 

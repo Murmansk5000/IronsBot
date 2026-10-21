@@ -15,8 +15,9 @@ from ironsbot.core.messaging import (
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.sendpic import LocalBackend
-from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.sendpic import (
     IndexedImageRequest,
@@ -176,10 +177,10 @@ async def test_indexed_inputs_match_installed_rules_and_catalog(
             if c.matches_direct_input(context, text)
         ] == matched
         if private:
-            assert not _capture_ai_prompt(
-                event,
-                {},
-                AiInputRoutingService(FEATURES, catalog),
+            assert (
+                not AiInputRoutingService(FEATURES, catalog)
+                .decide(message_input_context(event), command_context(event))
+                .try_chat
             )
     backend.count.assert_not_awaited()
     backend.get_file.assert_not_awaited()
@@ -274,10 +275,13 @@ def test_without_image_feature_known_image_command_does_not_fall_into_ai() -> No
         CommandContext(ACTOR, PRIVATE), disabled, "表情2"
     )
     assert catalog.recognizes_direct_input(CommandContext(ACTOR, PRIVATE), "表情2")
-    assert not _capture_ai_prompt(
-        private_message_event("表情2", user_id=100),
-        {},
-        AiInputRoutingService(disabled, catalog),
+    assert (
+        not AiInputRoutingService(disabled, catalog)
+        .decide(
+            message_input_context(private_message_event("表情2", user_id=100)),
+            command_context(private_message_event("表情2", user_id=100)),
+        )
+        .try_chat
     )
 
 

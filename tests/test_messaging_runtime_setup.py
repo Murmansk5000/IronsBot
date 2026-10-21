@@ -34,8 +34,8 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.messaging import matcher_rules
 from ironsbot.plugins.onebot.messaging import matchers as messaging_matchers
 from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
@@ -533,10 +533,10 @@ def test_push_menu_private_entry_is_claimed_and_not_captured_by_ai(
         messaging.feature_policy,
         text,
     )
-    assert not _capture_ai_prompt(
-        event,
-        {},
-        AiInputRoutingService(messaging.feature_policy, catalog),
+    assert (
+        not AiInputRoutingService(messaging.feature_policy, catalog)
+        .decide(message_input_context(event), command_context(event))
+        .try_chat
     )
 
 

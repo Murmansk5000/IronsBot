@@ -1,17 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import (
-    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
-    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
-)
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
@@ -19,26 +11,13 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.context import build_notice_source, command_context
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.portable_queries import (
-    make_portable_operation_handler,
-)
 from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
-from ironsbot.services.ai.fallback_operations import execute_intent, resolve_intent
 from ironsbot.services.help_visibility import feature_help_visible
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.services.ai.actions import AiIntentActionExecutor
-    from ironsbot.services.ai.input_routing import AiInputRoutingService
-    from ironsbot.services.ai.service import AiService
 
-ACTION_KEY = "_ai_intent_action"
-ACTION_SOURCE_CONTEXT_KEY = "_ai_intent_source_context"
 
 __plugin_meta__ = PluginMetadata(
     name="AI意图分析",
@@ -48,94 +27,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-@dataclass(frozen=True, slots=True)
-class AiIntentDependencies:
-    """OneBot dependencies needed by the configured AI action adapter."""
-
-    service: AiService
-    executor: AiIntentActionExecutor
-    input_routing: AiInputRoutingService
-
-
-def _resolve_action_command_id(
-    _event: MessageEvent,
-    state: T_State,
-) -> str:
-    action = state.get(ACTION_KEY)
-    action_id = str(getattr(action, "id", "")).strip()
-    return f"ai_intent.{action_id}" if action_id else "ai_intent"
-
-
-def install(
-    registry: MatcherFactory,
-    dependencies: AiIntentDependencies,
-    command_help_ids: tuple[str, ...],
-) -> None:
-    if not command_help_ids:
-        return
-
-    async def match_action(
-        bot: Bot,
-        event: MessageEvent,
-        state: T_State,
-    ) -> bool:
-        text = event.get_plaintext().strip()
-        input_context = message_input_context(event)
-        if not dependencies.input_routing.decide(
-            input_context,
-            command_context(event),
-        ).try_intent:
-            return False
-        source_context = await build_notice_source(
-            event,
-            text,
-            bot=bot,
-        )
-        action = await resolve_intent(
-            dependencies.service,
-            dependencies.input_routing,
-            input_context,
-            text,
-            source_context=source_context,
-        )
-        if action is None:
-            return False
-        state[ACTION_KEY] = action
-        state[ACTION_SOURCE_CONTEXT_KEY] = source_context
-        return True
-
-    async def handle_action(
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        async def operation(text: str, context: MessageInputContext):
-            del context
-            reply = await execute_intent(
-                dependencies.executor,
-                state[ACTION_KEY],
-                text,
-                source_context=str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "")
-                or None,
-            )
-            if reply is None:
-                matcher.block = False
-            return reply
-
-        await make_portable_operation_handler(operation)(matcher, state, event)
-
-    matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            _resolve_action_command_id,
-            help_ids=command_help_ids,
-        ),
-        rule=Rule(match_action),
-        priority=registry.priority("ai_intent"),
-        block=True,
-    )
-    matcher.append_handler(handle_action)
 
 
 def plugin_contribution(

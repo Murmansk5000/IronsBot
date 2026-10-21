@@ -1,5 +1,7 @@
 # 固定图片口令配置
 
+[返回 README](../../README.md) · [消息与订阅配置](../configuration-and-subscriptions.md)
+
 [fixed-images.toml](fixed-images.toml) 展示五个内置口令的完整配置形态。
 这些口令及图片现在随程序默认启用，不需要把该片段复制进运行配置。
 需要关闭或覆盖某个内置口令时，只需在现有 `[messaging.sendpic]` 后使用相同 ID；

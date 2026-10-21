@@ -23,9 +23,10 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY
 from ironsbot.plugins.onebot import pet_config as pet_config_plugin
-from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.seer.query.commands import (
     autocard,
     autocard_sanctuary,
@@ -134,10 +135,13 @@ def test_affix_catalog_and_private_ai_ownership(
         for command in catalog.available_for_context(context, features)
         if command.matches_direct_input(context, text)
     ] == [expected]
-    assert not _capture_ai_prompt(
-        private_message_event(text, user_id=int(_ACTOR.id)),
-        {},
-        AiInputRoutingService(features, catalog),
+    assert (
+        not AiInputRoutingService(features, catalog)
+        .decide(
+            message_input_context(private_message_event(text, user_id=int(_ACTOR.id))),
+            command_context(private_message_event(text, user_id=int(_ACTOR.id))),
+        )
+        .try_chat
     )
     assert not catalog.claims_direct_input(
         context, FeatureService({}, {}, frozenset()), text

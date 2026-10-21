@@ -12,7 +12,8 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.plugins.onebot.ai import _capture_ai_prompt
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.seer import rank_list_parsing
 from ironsbot.services.seer.command_contracts import seer_command_contracts
@@ -114,10 +115,13 @@ def test_non_example_peak_and_stat_commands_are_owned(
         for command in catalog.available_for_context(context, features)
         if command.matches_direct_input(context, text)
     ] == [expected]
-    assert not _capture_ai_prompt(
-        private_message_event(text, user_id=100),
-        {},
-        AiInputRoutingService(features, catalog),
+    assert (
+        not AiInputRoutingService(features, catalog)
+        .decide(
+            message_input_context(private_message_event(text, user_id=100)),
+            command_context(private_message_event(text, user_id=100)),
+        )
+        .try_chat
     )
 
 
@@ -165,10 +169,13 @@ async def test_every_peak_alias_matches_installed_rule_and_catalog(
             == policy.help_ids
         )
         assert not catalog.claims_direct_input(context, disabled, text)
-        assert not _capture_ai_prompt(
-            private_message_event(text, user_id=100),
-            {},
-            AiInputRoutingService(features, catalog),
+        assert (
+            not AiInputRoutingService(features, catalog)
+            .decide(
+                message_input_context(private_message_event(text, user_id=100)),
+                command_context(private_message_event(text, user_id=100)),
+            )
+            .try_chat
         )
         for invalid in (f"/{text}", f"{text}是什么", f" {text}", " ".join(text)):
             assert not await rule(
