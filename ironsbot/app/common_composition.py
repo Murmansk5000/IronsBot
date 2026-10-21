@@ -13,7 +13,6 @@ from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.core.push_routing import PushRouteDecision
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
-from ironsbot.integrations.onebot.outbound_hooks import OneBotOutboundRateLimitHooks
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -29,6 +28,7 @@ from ironsbot.services.messaging.proactive_delivery import (
     ProactiveMessageDelivery,
 )
 from ironsbot.services.onebot_routing import OneBotRoutingPolicy
+from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 if TYPE_CHECKING:
@@ -55,6 +55,7 @@ class CommonComponents:
     promotions: PromotionCatalog
     subscriptions: PushUnsubscribeStore
     bot_router: BotRouter
+    own_commands: OwnAccountCommandPolicy
     onebot_messenger: OneBotOutboundMessenger
     outbound_messenger: PlatformOutboundMessenger
     qq_official: QQOfficialRuntime | None
@@ -128,9 +129,11 @@ def build_common_components(
     )
     promotions = PromotionCatalog(settings.promotions)
     platform_selection = settings.outbound_platform_selection
+    own_commands = OwnAccountCommandPolicy(settings.bot.onebot.self_commands)
     onebot_messenger = OneBotOutboundMessenger(
         bot_router,
         outbound,
+        self_commands=own_commands,
         enabled=platform_selection.onebot_outbound_enabled,
         transport_failure_cooldown_seconds=(
             settings.messaging.proactive_delivery.transport_failure_cooldown_seconds
@@ -249,7 +252,6 @@ def build_common_components(
         ),
         private_routes=private_routes,
     )
-    OneBotOutboundRateLimitHooks(outbound).install()
     admin_notices = AdminNoticeService(
         features,
         OutboundAdminNoticeSender(proactive_delivery, private_routes),
@@ -265,6 +267,7 @@ def build_common_components(
         promotions=promotions,
         subscriptions=subscriptions,
         bot_router=bot_router,
+        own_commands=own_commands,
         onebot_messenger=onebot_messenger,
         outbound_messenger=outbound_messenger,
         qq_official=qq_official,

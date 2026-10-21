@@ -134,7 +134,7 @@ def test_manifest_team_audit_owns_its_feature_and_lifecycle() -> None:
     assert contribution.features == frozenset({Feature.TEAM_AUDIT})
     assert contribution.commands == ()
     assert [name for name, _hook in contribution.hooks.bot_connect] == [
-        "team_audit_followups"
+        "team_audit_recovery"
     ]
 
 
@@ -386,6 +386,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "messaging",
         "docker_update",
         "lucky_skin_window_schedule",
+        "team_audit_followups",
         "team_resource_jobs",
         "activity_reminder_jobs",
         "headless_reconnect_jobs",
@@ -395,6 +396,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "scheduler",
         "push_topics",
+        "team_audit_followups",
         "headless_seer",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
@@ -404,7 +406,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "headless_seer_check",
     ]
     assert [name for name, _hook in lifecycle.bot_connect_hooks] == [
-        "team_audit_followups",
+        "team_audit_recovery",
     ]
 
 
@@ -423,7 +425,12 @@ def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
         (name, partial(record, name)) for name, _hook in lifecycle.shutdown_hooks
     )
     asyncio.run(lifecycle.shutdown())
-    assert executed == ["headless_seer", "push_topics", "scheduler"]
+    assert executed == [
+        "headless_seer",
+        "team_audit_followups",
+        "push_topics",
+        "scheduler",
+    ]
 
 
 def test_internal_plugins_use_only_the_matcher_factory() -> None:

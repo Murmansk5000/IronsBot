@@ -53,26 +53,25 @@ def test_late_failed_send_cannot_refund_a_new_permit_after_reset() -> None:
 
 
 @pytest.mark.asyncio
-async def test_permit_scopes_restore_and_do_not_apply_to_other_groups() -> None:
+async def test_nested_send_attempts_settle_each_group_independently() -> None:
     service = _service()
 
     async def inner(attempt: OutboundSendAttempt) -> SendResult:
-        assert service.owns_send(101)
-        assert not service.owns_send(100)
+        assert not attempt.started
         attempt.start()
         return SendResult(delivered=True, message_id="2")
 
     async def outer(attempt: OutboundSendAttempt) -> SendResult:
-        assert service.owns_send(100)
-        assert not service.owns_send(101)
+        assert not attempt.started
         assert (await service.execute_send(101, inner)).delivered
-        assert service.owns_send(100)
+        assert not service.acquire_reply(100).allowed
+        assert not service.acquire_reply(101).allowed
         attempt.start()
         return SendResult(delivered=True, message_id="1")
 
     assert (await service.execute_send(100, outer)).delivered
-    assert not service.owns_send(100)
     assert not service.acquire_reply(100).allowed
+    assert not service.acquire_reply(101).allowed
 
 
 @pytest.mark.asyncio
@@ -90,7 +89,6 @@ async def test_explicit_send_interruption_preserves_only_started_attempts(
 
     with pytest.raises(error):
         await service.execute_send(100, send)
-    assert not service.owns_send(100)
     assert service.acquire_reply(100).allowed is not started
 
 
@@ -120,7 +118,6 @@ async def test_explicit_send_settles_from_receipt_not_exception_truthiness(
         return expected
 
     assert await service.execute_send(100, send) is expected
-    assert not service.owns_send(100)
     assert service.acquire_reply(100).allowed is released
 
 

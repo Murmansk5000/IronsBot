@@ -2,21 +2,17 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from typing import TYPE_CHECKING
 
 import pytest
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.exception import MockApiException
-from nonebot.matcher import current_event
 
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
 )
-from ironsbot.core.outbound import SendResult
-from ironsbot.integrations.onebot.outbound_hooks import OneBotOutboundRateLimitHooks
+from ironsbot.core.outbound import DeliveryFailureKind, SendResult
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.services.messaging import outbound_limits
 from ironsbot.services.messaging.outbound_limits import (
     GroupOutboundRateLimitService,
@@ -29,13 +25,11 @@ from tests.helpers.runtime import build_test_runtime
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
-    from nonebot.adapters import Event
 
 GROUP_ID = 100
 OTHER_GROUP_ID = 101
 ADMIN_GROUP_ID = 200
 SUPERUSER_ID = 201
-HOOK_BOT = Mock(spec=Bot)
 
 
 def _windows(
@@ -236,190 +230,97 @@ def test_priority_queue_is_unbounded_and_prefers_superuser_replies(
         service.reset()
 
 
-def test_superuser_group_reply_uses_priority_queue() -> None:
-    service = _service(
-        windows=_windows((60.0, 1)),
-        superuser_ids=(SUPERUSER_ID,),
-    )
-    hooks = OneBotOutboundRateLimitHooks(service)
+@pytest.mark.asyncio
+async def test_superuser_send_uses_explicit_actor_and_priority_queue() -> None:
+    service = _service(windows=_windows((60.0, 1)), superuser_ids=(SUPERUSER_ID,))
+    reserved = service.acquire_reply(GROUP_ID)
+    calls: list[str | None] = []
 
-    async def run() -> None:
-        first = service.acquire_reply(GROUP_ID)
-        assert first.permit is not None
+    async def send(attempt: OutboundSendAttempt) -> SendResult:
+        calls.append(attempt.cooldown_notice)
+        attempt.start()
+        return SendResult(delivered=True, message_id="1")
 
-        data: dict[str, object] = {
-            "group_id": GROUP_ID,
-            "message": "superuser reply",
-        }
-        token = current_event.set(cast("Event", SimpleNamespace(user_id=SUPERUSER_ID)))
-        try:
-            queued = asyncio.create_task(
-                hooks.check(
-                    HOOK_BOT,
-                    "send_group_msg",
-                    data,
-                )
-            )
-            await asyncio.sleep(0)
-        finally:
-            current_event.reset(token)
-
-        assert not queued.done()
-        service.rollback(first.permit)
-        await queued
-        await hooks.finalize(
-            HOOK_BOT,
-            None,
-            "send_group_msg",
-            data,
-            {"message_id": 1},
+    waiting = asyncio.create_task(
+        service.execute_send(
+            GROUP_ID, send, actor=ActorRef(Platform.ONEBOT, str(SUPERUSER_ID))
         )
-
+    )
     try:
-        asyncio.run(run())
+        await asyncio.sleep(0)
+        assert not waiting.done()
+        assert not calls
+        service.rollback(reserved.permit)
+        assert (await asyncio.wait_for(waiting, timeout=1)).delivered
+        assert calls == ["进入冷却"]
     finally:
         service.reset()
+        await asyncio.gather(waiting, return_exceptions=True)
 
 
-def test_api_failure_drops_pending_pushes_but_keeps_superuser_replies() -> None:
+@pytest.mark.asyncio
+async def test_transport_failure_clears_push_queue_not_operator_queue() -> None:
     service = _service(windows=_windows((60.0, 1)))
-    hooks = OneBotOutboundRateLimitHooks(service)
+    pending: list[asyncio.Task[OutboundRateLimitDecision]] = []
 
-    async def run() -> None:
-        data: dict[str, object] = {"group_id": GROUP_ID, "message": "正文"}
-        await hooks.check(
-            HOOK_BOT,
-            "send_group_msg",
-            data,
-        )
-        assert str(data["message"]) == "正文\n\n进入冷却"
-
-        waiting_push = asyncio.create_task(
-            service.acquire_push(GROUP_ID, source="waiting")
-        )
-        waiting_superuser = asyncio.create_task(
-            service.acquire_superuser_reply(GROUP_ID)
+    async def offline(attempt: OutboundSendAttempt) -> SendResult:
+        assert attempt.cooldown_notice == "进入冷却"
+        pending.extend(
+            (
+                asyncio.create_task(service.acquire_push(GROUP_ID, source="waiting")),
+                asyncio.create_task(service.acquire_superuser_reply(GROUP_ID)),
+            )
         )
         await asyncio.sleep(0)
-
-        await hooks.finalize(
-            HOOK_BOT,
-            RuntimeError("账号状态为离线"),
-            "send_group_msg",
-            data,
-            None,
+        attempt.start()
+        attempt.interrupted = True
+        return SendResult(
+            delivered=False,
+            error_code="offline",
+            failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
         )
-        dropped_push = await waiting_push
-        assert not dropped_push.allowed
-        assert dropped_push.reason == "queue_cleared"
-
-        released_superuser = await waiting_superuser
-        assert released_superuser.allowed
-        service.rollback(released_superuser.permit)
-
-        retry_data: dict[str, object] = {
-            "group_id": GROUP_ID,
-            "message": "重试",
-        }
-        await hooks.check(
-            HOOK_BOT,
-            "send_group_msg",
-            retry_data,
-        )
-        assert str(retry_data["message"]) == "重试\n\n进入冷却"
 
     try:
-        asyncio.run(run())
-    finally:
-        service.reset()
+        assert not (await service.execute_send(GROUP_ID, offline)).delivered
+        dropped, operator = await asyncio.wait_for(asyncio.gather(*pending), timeout=1)
+        assert not dropped.allowed
+        assert dropped.reason == "queue_cleared"
+        assert operator.allowed
+        service.rollback(operator.permit)
 
-
-def test_api_hook_suppresses_messages_after_group_limit() -> None:
-    service = _service(windows=_windows((60.0, 1)))
-    hooks = OneBotOutboundRateLimitHooks(service)
-
-    async def run() -> None:
-        first: dict[str, object] = {"group_id": GROUP_ID, "message": "first"}
-        await hooks.check(
-            HOOK_BOT,
-            "send_group_msg",
-            first,
-        )
-        await hooks.finalize(
-            HOOK_BOT,
-            None,
-            "send_group_msg",
-            first,
-            {"message_id": 1},
-        )
-
-        with pytest.raises(MockApiException):
-            await hooks.check(
-                HOOK_BOT,
-                "send_group_msg",
-                {"group_id": GROUP_ID, "message": "blocked"},
-            )
-
-    try:
-        asyncio.run(run())
-    finally:
-        service.reset()
-
-
-def test_managed_send_permit_is_not_counted_twice() -> None:
-    service = _service(windows=_windows((60.0, 1)))
-    hooks = OneBotOutboundRateLimitHooks(service)
-
-    async def run() -> None:
-        async def send(attempt: OutboundSendAttempt) -> SendResult:
+        async def retry(attempt: OutboundSendAttempt) -> SendResult:
             assert attempt.cooldown_notice == "进入冷却"
-            data: dict[str, object] = {"group_id": GROUP_ID, "message": "push"}
             attempt.start()
-            await hooks.check(
-                HOOK_BOT,
-                "send_group_msg",
-                data,
-            )
-            await hooks.finalize(
-                HOOK_BOT, None, "send_group_msg", data, {"message_id": 1}
-            )
-            return SendResult(delivered=True, message_id="1")
+            return SendResult(delivered=True, message_id="retry")
 
-        assert (await service.execute_send(GROUP_ID, send, proactive=True)).delivered
-
-        with pytest.raises(MockApiException):
-            await hooks.check(
-                HOOK_BOT,
-                "send_group_msg",
-                {"group_id": GROUP_ID, "message": "blocked"},
-            )
-
-    try:
-        asyncio.run(run())
+        assert (await service.execute_send(GROUP_ID, retry)).delivered
     finally:
         service.reset()
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 @pytest.mark.asyncio
-async def test_uncertain_hook_failure_cannot_refund_reserved_capacity() -> None:
+@pytest.mark.parametrize("group_id", [GROUP_ID, None])
+async def test_explicit_sender_enforces_group_window_without_api_hooks(
+    group_id: int | None,
+) -> None:
     service = _service(windows=_windows((60.0, 1)))
-    hooks = OneBotOutboundRateLimitHooks(service)
-    data: dict[str, object] = {"group_id": GROUP_ID, "message": "result"}
-    await hooks.check(HOOK_BOT, "send_group_msg", data)
-    await hooks.finalize(HOOK_BOT, TimeoutError(), "send_group_msg", data, None)
-    assert not service.acquire_reply(GROUP_ID).allowed
+    notices: list[str | None] = []
 
+    async def send(attempt: OutboundSendAttempt) -> SendResult:
+        notices.append(attempt.cooldown_notice)
+        attempt.start()
+        return SendResult(delivered=True, message_id="1")
 
-@pytest.mark.asyncio
-async def test_native_hook_does_not_consume_other_adapters_capacity() -> None:
-    from nonebot.adapters import Bot as AdapterBot
-
-    service = _service(windows=_windows((60.0, 1)))
-    hooks = OneBotOutboundRateLimitHooks(service)
-    data: dict[str, object] = {"group_id": GROUP_ID, "message": "other adapter"}
-    bot = Mock(spec=AdapterBot)
-    await hooks.check(bot, "send_group_msg", data)
-    await hooks.finalize(
-        bot, RuntimeError("not our protocol"), "send_group_msg", data, None
-    )
-    assert service.acquire_reply(GROUP_ID).allowed
+    assert (await service.execute_send(group_id, send)).delivered
+    second = await service.execute_send(group_id, send)
+    if group_id is None:
+        assert second.delivered
+        assert notices == [None, None]
+    else:
+        assert not second.delivered
+        assert not second.attempted
+        assert second.error_code == "rate_limit"
+        assert notices == ["进入冷却"]

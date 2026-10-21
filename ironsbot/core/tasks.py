@@ -31,6 +31,7 @@ class TaskSpawner(Protocol):
     def __call__(
         self,
         coroutine: Coroutine[Any, Any, T],
+        /,
         *,
         name: str,
     ) -> asyncio.Task[T]: ...

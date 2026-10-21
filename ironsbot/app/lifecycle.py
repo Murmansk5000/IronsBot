@@ -34,6 +34,9 @@ class ConnectedBotIdentityError(ValueError):
 @dataclass(slots=True)
 class TaskOwner:
     tasks: set[asyncio.Task[Any]] = field(default_factory=set)
+    _draining: set[asyncio.Task[Any]] = field(
+        default_factory=set, init=False, repr=False
+    )
 
     def create(
         self,
@@ -46,21 +49,35 @@ class TaskOwner:
         task.add_done_callback(self._finished)
         return task
 
+    def create_draining(
+        self, coroutine: Coroutine[Any, Any, T], *, name: str
+    ) -> asyncio.Task[T]:
+        task = self.create(coroutine, name=name)
+        self._draining.add(task)
+        return task
+
     def _finished(self, task: asyncio.Task[Any]) -> None:
         self.tasks.discard(task)
+        self._draining.discard(task)
         if task.cancelled():
             return
         error = task.exception()
         if error is not None:
-            logger.error("background task {} failed: {}", task.get_name(), error)
+            logger.error(
+                "owned task {} failed: error_type={}",
+                task.get_name(),
+                type(error).__name__,
+            )
 
     async def cancel_all(self) -> None:
         tasks = tuple(self.tasks)
         for task in tasks:
-            task.cancel()
+            if task not in self._draining:
+                task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self.tasks.clear()
+        self._draining.clear()
 
 
 @dataclass(slots=True)

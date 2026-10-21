@@ -193,6 +193,32 @@ async def test_production_entry_does_not_call_matcher_send(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("private", [False, True])
+async def test_actual_command_sends_enforce_windows_without_global_quota_hooks(
+    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, *, private: bool
+) -> None:
+    from ironsbot.core.platform import ActorRef
+    from tests.helpers.onebot_events import group_message_event, private_message_event
+
+    monkeypatch.setattr(Bot, "_calling_api_hook", set())
+    monkeypatch.setattr(Bot, "_called_api_hook", set())
+    runtime.limits.config = OutboundRateLimitConfig(
+        enabled=True,
+        windows=[OutboundRateLimitWindowConfig(window_seconds=60, max_messages=1)],
+        cooldown_message="outbound limit",
+    )
+    if private:
+        runtime.user_policies[ActorRef(Platform.ONEBOT, "101")] = frozenset({"help"})
+    event = private_message_event if private else group_message_event
+    await handle_event(runtime.bot, event("执行", user_id=101, message_id=100))
+    assert len(runtime.sends) == 1
+    assert str(runtime.sends[0]["message"]).count("outbound limit") == int(not private)
+    await handle_event(runtime.bot, event("菜单", user_id=101, message_id=101))
+    assert len(runtime.sends) == (len(("result", "menu")) if private else 1)
+    runtime.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_source_account_mismatch_is_rejected_before_business(
     runtime: SimpleNamespace,
 ) -> None:

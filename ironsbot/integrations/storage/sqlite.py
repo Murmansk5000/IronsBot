@@ -1,20 +1,24 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import re
 import sqlite3
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from ironsbot.core.tasks import TaskSpawner
+
 RowFactory = Callable[[sqlite3.Cursor, sqlite3.Row], object] | type[sqlite3.Row]
 MigrationCallback = Callable[[sqlite3.Connection], None]
 _SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_T = TypeVar("_T")
 
 
 class SqliteMigrationError(RuntimeError):
@@ -72,6 +76,7 @@ class SqliteDatabase:
     migration_namespace: str | None = None
     row_factory: RowFactory | None = None
     pragmas: bool = True
+    spawn: TaskSpawner | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         versions = tuple(migration.version for migration in self.migrations)
@@ -81,6 +86,40 @@ class SqliteDatabase:
             self.migration_namespace
         ):
             raise SqliteMigrationError.invalid_namespace(self.migration_namespace)
+
+    async def run_transaction(
+        self, operation: Callable[[sqlite3.Connection], _T]
+    ) -> _T:
+        """Run a complete transaction off-loop and drain it before cancellation."""
+
+        if self.spawn is None:
+            message = "Async SQLite transactions require an owned task spawner"
+            raise RuntimeError(message)
+        await asyncio.sleep(0)
+        worker = self.spawn(
+            asyncio.to_thread(self._run_transaction, operation),
+            name="sqlite_transaction",
+        )
+        cancelled = False
+        while True:
+            try:
+                result = await asyncio.shield(worker)
+                break
+            except asyncio.CancelledError:
+                if worker.cancelled():
+                    raise
+                cancelled = True
+            except Exception:
+                if cancelled:
+                    raise asyncio.CancelledError from None
+                raise
+        if cancelled:
+            raise asyncio.CancelledError
+        return result
+
+    def _run_transaction(self, operation: Callable[[sqlite3.Connection], _T]) -> _T:
+        with self.connect() as connection:
+            return operation(connection)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
