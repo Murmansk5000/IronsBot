@@ -937,8 +937,14 @@ SeerAPI 模型依赖跟踪 `Murmansk-Seer/seerapi` 的 `main`，实际版本由 
 
 本仓库已经是独立维护线，不再直接 merge 或 rebase
 [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot) 的 `main`。
-GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不会自动合并、
-提交、推送或发布镜像。
+GitHub Actions 里的 upstream workflow 每天北京时间 **12:00** 检查上游，并保留巡检报告。
+发现主分支尚未包含的上游提交时，创建附有提交摘要和链接的 GitHub Issue，
+指派给仓库所有者；通知是否送达遵循个人 GitHub 通知设置。
+同一上游最新提交只通知一次，关闭 Issue 后也不重复创建；上游再有新提交时另行通知。
+该工作流使用仓库自带的 `GITHUB_TOKEN`（`contents: read`、`issues: write`），
+无需另配密钥，仓库需开启 Issues。组织名下的 fork 应将脚本中的收件人改为可指派的成员。
+定时运行以默认分支上的工作流为准，GitHub 调度可能延迟；也可以手动运行。
+它不会自动合并、提交、推送或发布镜像。
 
 处理上游更新时按类型选择性吸收：
 

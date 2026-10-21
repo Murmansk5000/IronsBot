@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "ironsbot" / "_generated" / "poke_command_introductions.json"
 BASELINE_COMMIT = "c83f48e8dd65ba71dd4227c8251083b9443ded4b"
 ARCHIVE_COMMIT = "55a39fd12c8b562f8ac3eb8b95d5a71325e8981f"
-SEED_COMMIT = "8f46bbe14cc41046fe0fbaa44f37897f6361722b"
+SEED_COMMIT = "863e47296cbeb08e7f874ee992a5feb92d1d44e8"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))

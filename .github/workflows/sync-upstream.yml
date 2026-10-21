@@ -2,21 +2,28 @@ name: Check Upstream Updates
 
 on:
     schedule:
-        # 04:30 Asia/Shanghai every day
-        - cron: "30 20 * * *"
+        # 12:00 Asia/Shanghai every day (GitHub schedules use UTC)
+        - cron: "0 4 * * *"
     workflow_dispatch:
+
+concurrency:
+    group: upstream-update-notification
+    cancel-in-progress: false
 
 jobs:
     check-upstream:
         runs-on: ubuntu-latest
+        timeout-minutes: 5
         permissions:
             contents: read
+            issues: write
 
         steps:
             - name: Checkout
               uses: actions/checkout@v7
               with:
                   fetch-depth: 0
+                  ref: ${{ github.event.repository.default_branch }}
 
             - name: Fetch upstream
               run: |
@@ -59,6 +66,11 @@ jobs:
                     echo
                     echo "- data or alias changes: move to the data/alias database pipeline"
                     echo "- small bug fixes: manually port or cherry-pick with review"
-                    echo "- Seer query/rendering changes: update the vendor boundary or service layer"
+                    echo "- Seer query/rendering changes: adapt the integrations or service layer"
                     echo "- upstream structural refactors: ignore unless they fix a concrete bug here"
                   } >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Notify upstream updates through GitHub Issues
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: python scripts/notify_upstream_updates.py
