@@ -37,13 +37,11 @@ class Scheduler(Protocol):
 
 
 class SchedulerLifecycle(Scheduler, Protocol):
-    """Application-owned scheduler operations needed by the OneBot adapter."""
-
-    def bind(self, backend: Any) -> None: ...
+    """Application-owned scheduler lifecycle, independent of platform adapters."""
 
     def start(self) -> None: ...
 
-    def shutdown(self) -> None: ...
+    async def shutdown(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

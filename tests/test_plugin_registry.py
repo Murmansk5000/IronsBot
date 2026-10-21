@@ -350,18 +350,10 @@ def test_manifest_scheduled_restart_owns_its_lifecycle() -> None:
     ]
 
 
-def test_manifest_scheduler_owns_its_lifecycle() -> None:
-    contribution = DEFINITIONS_BY_ID["scheduler"]
-
-    assert contribution.commands == ()
-    assert [name for name, _hook in contribution.hooks.startup] == ["scheduler"]
-    assert [name for name, _hook in contribution.hooks.shutdown] == ["scheduler"]
-
-
 def test_manifest_contributions_follow_the_legacy_bridge() -> None:
     plugin_ids = tuple(definition.id for definition in DEFINITIONS)
 
-    assert plugin_ids[0] == "scheduler"
+    assert plugin_ids[0] == "seer_query"
     assert plugin_ids.index("seer_query") < plugin_ids.index("bilibili")
     assert plugin_ids.index("bilibili") < plugin_ids.index("messaging")
     assert plugin_ids.index("messaging") < plugin_ids.index("ai_chat")
@@ -379,7 +371,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
     )
 
     assert [name for name, _hook in lifecycle.startup_hooks] == [
-        "scheduler",
         "render_crash_capture",
         "local_rank_jobs",
         "rank_page_jobs",
@@ -395,7 +386,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "scheduled_restart_jobs",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
-        "scheduler",
         "push_topics",
         "team_audit_followups",
         "headless_seer",
@@ -430,7 +420,6 @@ def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
         "headless_seer",
         "team_audit_followups",
         "push_topics",
-        "scheduler",
     ]
 
 
@@ -576,12 +565,6 @@ def test_internal_plugins_use_only_the_matcher_factory() -> None:
                     / "plugins"
                     / "onebot"
                     / "scheduled_restart"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "scheduler"
                     / "__init__.py",
                     ROOT
                     / "ironsbot"
