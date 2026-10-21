@@ -21,7 +21,9 @@ from ironsbot.services.ai.fallback_operations import (
 )
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.source_context import format_ai_source_context
+from ironsbot.services.command_delivery import CommandReplyDelivery
 from ironsbot.services.command_errors import CommandErrorReporter
+from ironsbot.services.command_ingress import CommandIngress
 from ironsbot.services.identity_link_commands import (
     build_portable_identity_link_operations,
 )
@@ -94,6 +96,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.inbound_claims import InboundMessageClaims
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import SendResult
     from ironsbot.core.plugin_install import PluginContributionCatalog
@@ -104,16 +107,19 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.identity_observation import SilentIdentityObservationService
     from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.official_union_identity import OfficialUnionIdentityService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
+    from ironsbot.services.portable_reply import DeliveryStage
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -155,8 +161,12 @@ class PortableCommandRouter:
         ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
         admin_notices: AdminNoticeService | None = None,
+        errors: CommandErrorReporter | None = None,
         messaging: MessagingService | None = None,
         identity_principals: IdentityPrincipalService | None = None,
+        identity_observer: SilentIdentityObservationService | None = None,
+        union_identity: OfficialUnionIdentityService | None = None,
+        inbound_claims: InboundMessageClaims | None = None,
         query_sessions: PortableQuerySessions | None = None,
         resolved_target_commands: frozenset[str] = frozenset(),
     ) -> None:
@@ -184,10 +194,20 @@ class PortableCommandRouter:
         self._ai_intent_actions = ai_intent_actions
         self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
-        self._errors = CommandErrorReporter(admin_notices)
+        self._errors = (
+            errors if errors is not None else CommandErrorReporter(admin_notices)
+        )
         self._messaging = messaging
         self._identity_principals = identity_principals
         self._query_sessions = query_sessions or PortableQuerySessions()
+        self.delivery = CommandReplyDelivery(
+            self._query_sessions, self._errors, identity_observer
+        )
+        self.ingress = CommandIngress(
+            self, self.delivery, identity_observer, union_identity
+        )
+        if inbound_claims is not None:
+            self.ingress = replace(self.ingress, claims=inbound_claims)
         self._query_sessions.access_resolver = menu_access_resolver(catalog, features)
         from ironsbot.services.portable_menu_access import explicit_command_resolver
 
@@ -195,10 +215,17 @@ class PortableCommandRouter:
             catalog, features
         )
 
-    def record_menu_delivery(
-        self, context: MessageInputContext, message: OutboundMessage, result: SendResult
-    ) -> None:
-        self._query_sessions.record_delivery(context, message, result)
+    async def execute(
+        self,
+        context: MessageInputContext,
+        send: Callable[[OutboundMessage], Awaitable[SendResult]],
+        *,
+        on_sent: Callable[[DeliveryStage, SendResult], None] | None = None,
+    ) -> bool:
+        reply = await self.dispatch(context)
+        if reply is None:
+            return False
+        return await self.delivery.deliver(context, reply, send, on_sent=on_sent)
 
     def recognizes(
         self,
@@ -254,7 +281,11 @@ class PortableCommandRouter:
             except Exception as error:  # noqa: BLE001 - shared business boundary
                 reply = PortableReply(await self._errors.reply(context, error))
             return (
-                replace(reply, on_operation_error=partial(self._errors.reply, context))
+                replace(
+                    reply,
+                    on_operation_error=partial(self._errors.reply, context),
+                    on_delivery_error=partial(self._errors.report, context),
+                )
                 if reply is not None
                 else None
             )
@@ -462,9 +493,13 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     features: FeatureService,
     ai: AiService,
     identity_principals: IdentityPrincipalService | None = None,
+    identity_observer: SilentIdentityObservationService | None = None,
+    union_identity: OfficialUnionIdentityService | None = None,
+    inbound_claims: InboundMessageClaims | None = None,
     ai_intent_actions: AiIntentActionExecutor | None = None,
     addressed_input_hints: AddressedInputHintService,
     admin_notices: AdminNoticeService | None = None,
+    errors: CommandErrorReporter | None = None,
     team_resource: TeamResourceService,
     lucky_skin_window: LuckySkinWindowService | None = None,
     activity: ActivityService | None = None,
@@ -704,7 +739,11 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
         admin_notices=admin_notices,
+        errors=errors,
         messaging=messaging,
+        identity_observer=identity_observer,
+        union_identity=union_identity,
+        inbound_claims=inbound_claims,
         identity_principals=identity_principals,
         query_sessions=sessions,
         resolved_target_commands=frozenset(

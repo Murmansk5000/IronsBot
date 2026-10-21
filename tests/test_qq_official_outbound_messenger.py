@@ -35,10 +35,10 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.integrations.qq_official.recipient_state import (
     QQOfficialRecipientStateStore,
 )
-from ironsbot.integrations.qq_official.runtime import deliver_qq_official_reply
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryReply
+from tests.helpers.official_replies import deliver_reply
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -641,9 +641,7 @@ async def test_mintmark_shaped_reply_addresses_every_delivered_part(
         image=b"png" if with_image else None,
         text="attributes",
     )
-    await deliver_qq_official_reply(
-        messenger, incoming, PortableReply(query.to_outbound())
-    )
+    await deliver_reply(messenger, incoming, PortableReply(query.to_outbound()))
     payloads = bot.calls[0][2]
     if with_image:
         image, text = payloads

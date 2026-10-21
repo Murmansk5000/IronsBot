@@ -3,39 +3,36 @@
 
 from __future__ import annotations
 
-import re
-from collections import OrderedDict
-from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import Adapter, Event, GroupMessageEvent, Message
 from pydantic import PrivateAttr
 
+from ironsbot.core.own_commands import OwnAccountInput
+from ironsbot.core.platform import ConversationRef, Platform
+
 if TYPE_CHECKING:
     from nonebot.adapters import Bot
 
-    from ironsbot.config.models.transport import SelfCommandsConfig
-
-_RETENTION_SECONDS = 600
-_MAX_RECORDS = 4096
-_ADMIN_BIND = re.compile(r"^绑定米米号\s*\d+$")
+    from ironsbot.core.own_commands import OwnAccountCommand
 
 
 class SelfCommandEvent(GroupMessageEvent):
     _accepted: bool = PrivateAttr(default=False)
     _admin_binding: bool = PrivateAttr(default=False)
 
-    def accept(self, text: str) -> None:
+    def apply_command(self, command: OwnAccountCommand) -> None:
         references = Message(
             segment
             for segment in (self.original_message or self.message)
             if segment.type in {"reply", "at"}
         )
-        self.message = references + Message(text)
+        self.message = references + Message(command.text)
         self.original_message = self.message.copy()
-        self.raw_message = text
+        self.raw_message = command.text
         self.to_me = False
         self._accepted = True
+        self._admin_binding = command.admin_binding
 
     @property
     def accepted(self) -> bool:
@@ -67,67 +64,40 @@ def is_unaccepted_self_message(event: GroupMessageEvent | Event) -> bool:
     )
 
 
-class SelfCommandGate:
-    """Bounded event and outbound echo retention, owned by one application."""
+def own_account_input(event: SelfCommandEvent) -> OwnAccountInput:
+    return _snapshot(
+        str(event.self_id),
+        str(event.group_id),
+        event.original_message or event.message,
+        is_own_message=event.user_id == event.self_id,
+    )
 
-    def __init__(self, config: SelfCommandsConfig) -> None:
-        self.config = config
-        self._recent: OrderedDict[tuple[str, str, str, str], float] = OrderedDict()
 
-    def _prune(self, now: float) -> None:
-        while self._recent:
-            if (
-                next(iter(self._recent.values())) > now - _RETENTION_SECONDS
-                and len(self._recent) <= _MAX_RECORDS
-            ):
-                break
-            self._recent.popitem(last=False)
+def own_account_echo(
+    bot: Bot, api: str, data: dict[str, Any]
+) -> OwnAccountInput | None:
+    if api not in {"send_group_msg", "send_msg"}:
+        return None
+    group_id = data.get("group_id")
+    if group_id is None or "message" not in data:
+        return None
+    return _snapshot(
+        bot.self_id, str(group_id), Message(data["message"]), is_own_message=True
+    )
 
-    def _remember(self, key: tuple[str, str, str, str], now: float) -> None:
-        self._recent[key] = now
-        self._recent.move_to_end(key)
-        self._prune(now)
 
-    def accept(self, event: SelfCommandEvent) -> bool:
-        if event.user_id != event.self_id:
-            return False
-        message = event.original_message or event.message
-        text = message.extract_plain_text()
-        mentions = [segment for segment in message if segment.type == "at"]
-        admin_bind = (
-            _ADMIN_BIND.fullmatch(text.strip()) is not None
-            and len(mentions) == 1
-            and str(mentions[0].data.get("qq", "")).isdecimal()
-            and str(mentions[0].data["qq"]) != str(event.self_id)
-            and all(segment.type in {"text", "reply", "at"} for segment in message)
-        )
-        if admin_bind:
-            command = text.strip()
-        else:
-            if not self.config.enabled or any(
-                segment.type not in {"text", "reply"} for segment in message
-            ):
-                return False
-            prefix = next((p for p in self.config.prefixes if text.startswith(p)), None)
-            if prefix is None or not (command := text[len(prefix) :].strip()):
-                return False
-        now = monotonic()
-        self._prune(now)
-        scope = (str(event.self_id), str(event.group_id))
-        key = (*scope, "event", str(event.message_id))
-        if key in self._recent or (*scope, "outbound", text) in self._recent:
-            return False
-        self._remember(key, now)
-        event.accept(command)
-        event._admin_binding = admin_bind
-        return True
-
-    async def record_outbound(self, bot: Bot, api: str, data: dict[str, Any]) -> None:
-        if not self.config.enabled or api not in {"send_group_msg", "send_msg"}:
-            return
-        group_id = data.get("group_id")
-        if group_id is None or "message" not in data:
-            return
-        text = Message(data["message"]).extract_plain_text()
-        if any(text.startswith(prefix) for prefix in self.config.prefixes):
-            self._remember((bot.self_id, str(group_id), "outbound", text), monotonic())
+def _snapshot(
+    account_id: str, group_id: str, message: Message, *, is_own_message: bool
+) -> OwnAccountInput:
+    return OwnAccountInput(
+        account_id,
+        ConversationRef(Platform.ONEBOT, "group", group_id),
+        is_own_message,
+        message.extract_plain_text(),
+        tuple(
+            str(segment.data.get("qq", ""))
+            for segment in message
+            if segment.type == "at"
+        ),
+        any(segment.type not in {"text", "reply", "at"} for segment in message),
+    )

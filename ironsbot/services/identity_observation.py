@@ -175,7 +175,7 @@ class SilentIdentityObservationService:
             return
         account.groups[link.official_group_openid] = int(link.onebot_group_id)
 
-    def record_official_reply(
+    def record_reply(
         self,
         incoming: IncomingMessageRef,
         message: OutboundMessage,
@@ -221,7 +221,7 @@ class SilentIdentityObservationService:
         )
         return token
 
-    def discard_official_reply(self, token: int | None) -> None:
+    def discard_reply(self, token: int | None) -> None:
         if token is None:
             return
         self._pending = [item for item in self._pending if item.token != token]
@@ -306,7 +306,7 @@ class SilentIdentityObservationService:
             if match is None:
                 return False
             matched, qq_id = match
-            self.discard_official_reply(matched.token)
+            self.discard_reply(matched.token)
             group_discovered = False
             if matched.onebot_group_id is None:
                 try:
