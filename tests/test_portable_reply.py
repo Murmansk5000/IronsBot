@@ -15,7 +15,7 @@ from ironsbot.services.portable_reply import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
     from ironsbot.services.portable_reply import ProgressReporter
 
@@ -95,7 +95,7 @@ async def test_additional_stream_sends_each_message_when_yielded() -> None:
     release_second = asyncio.Event()
     sent: list[str] = []
 
-    async def stream() -> AsyncIterator[OutboundMessage]:
+    async def stream() -> AsyncGenerator[OutboundMessage, None]:
         yield OutboundMessage.from_text("image-one")
         await release_second.wait()
         yield OutboundMessage.from_text("image-two")
