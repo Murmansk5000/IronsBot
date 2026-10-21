@@ -100,8 +100,7 @@ class OfficialAddressService:
             # Reintroduce source-specific eligibility after production SQLite
             # has been migrated with independently verified C2C observations.
             if key not in self._configured and (
-                address is None
-                or not (address.member_seen or address.private_seen)
+                address is None or not (address.member_seen or address.private_seen)
             ):
                 continue
             app_id, openid = key

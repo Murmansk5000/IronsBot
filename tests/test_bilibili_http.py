@@ -121,9 +121,7 @@ def test_truncated_opus_uses_full_paragraphs_before_hydration() -> None:
             content_max_chars=CONTENT_MAX_CHARS,
             summary_max_chars=SUMMARY_MAX_CHARS,
             use_ai=True,
-        ).compact(
-            dynamic_content(hydrated)
-        )
+        ).compact(dynamic_content(hydrated))
     )
     assert compacted is not None and compacted.generated_by_ai
     assert summarized_lengths == [len(full_body)]

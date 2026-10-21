@@ -117,11 +117,7 @@ def _install(
 
 
 def plugin_contribution(
-    *,
-    service: DockerUpdateService,
-    features: FeatureService,
-    startup_notice: StartupNoticeService,
-    query_sessions: PortableQuerySessions,
+    *, features: FeatureService, startup_notice: StartupNoticeService
 ) -> PluginContribution:
     """Declare Docker maintenance commands and startup preflight reporting."""
 
@@ -135,9 +131,6 @@ def plugin_contribution(
             visible=partial(superuser_help_visible, features=features),
         ),
         commands=docker_command_contracts(),
-        install=partial(
-            _install, service=service, query_sessions=query_sessions, features=features
-        ),
         hooks=PluginHooks(
             startup=(
                 (
@@ -153,9 +146,7 @@ if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
         plugin_contribution(
-            service=context.resources.docker_update,
             features=context.resources.features,
             startup_notice=context.resources.startup_notice,
-            query_sessions=context.resources.query_sessions,
         ),
     )

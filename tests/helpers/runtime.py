@@ -12,12 +12,12 @@ from ironsbot.config.models.features import (
     build_feature_service,
 )
 from ironsbot.config.models.messaging import (
-    BotRoutingConfig,
     CommandCooldownConfig,
     OutboundRateLimitConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.onebot.matchers import MatcherFactory
@@ -89,7 +89,7 @@ def build_test_runtime(  # noqa: PLR0913
         tasks.create,
     )
     router = BotRouter(
-        BotRoutingConfig(),
+        OneBotRoutingConfig(),
         qq_references,
     )
     subscriptions = PushUnsubscribeStore(isolated_state_path)

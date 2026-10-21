@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_generator_bootstrap_resolves_real_ai_registration_annotations(
+def test_generator_bootstrap_resolves_shared_ingress_annotations(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "bootstrap.toml"
@@ -21,7 +21,8 @@ def test_generator_bootstrap_resolves_real_ai_registration_annotations(
 import socket
 import traceback
 import nonebot.dependencies as dependencies
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent
+from nonebot.adapters import Event
+from nonebot.matcher import Matcher
 from nonebot.log import logger
 
 def network_forbidden(*args, **kwargs):
@@ -40,18 +41,23 @@ registered = set()
 def checked_signature(call):
     signature = original(call)
     source = getattr(call, "func", call)
-    if getattr(source, "__module__", "") == "ironsbot.plugins.onebot.ai":
+    if getattr(source, "__module__", "") == (
+        "ironsbot.integrations.onebot.command_ingress"
+    ):
         name = source.__qualname__
-        if name.endswith(("_capture_ai_prompt", "run_ai_chat")):
-            assert signature.parameters["event"].annotation is MessageEvent, name
-            if name.endswith("run_ai_chat"):
-                assert signature.parameters["bot"].annotation is Bot, name
+        if name.endswith(("accepts", "handle")):
+            assert signature.parameters["event"].annotation is Event, name
+            if name.endswith("handle"):
+                assert signature.parameters["matcher"].annotation is Matcher, name
             registered.add(name)
     return signature
 dependencies.get_typed_signature = checked_signature
 from scripts.generate_poke_command_introductions import _command_ids
 assert _command_ids()
-assert registered == {"_capture_ai_prompt", "install.<locals>.run_ai_chat"}, registered
+assert registered == {
+    "install_command_ingress.<locals>.accepts",
+    "install_command_ingress.<locals>.handle",
+}, registered
 assert not warnings, "\\n".join(warnings)
 print("AI_REGISTRATION_OK")
 """

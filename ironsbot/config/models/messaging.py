@@ -51,7 +51,6 @@ SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
 SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM or HH:MM:SS"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
-BotReference = str | int
 COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR = (
     "messaging.command_cooldown.cooldown_message must not be empty"
 )
@@ -213,56 +212,6 @@ class CommandCooldownConfig(BaseModel):
         command_id: str,
     ) -> tuple[CommandCooldownWindowConfig, ...]:
         return tuple(self.commands.get(command_id, self.windows))
-
-
-class BotRoutingConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    default_bot: BotReference | None = None
-    bot_aliases: dict[str, int] = Field(default_factory=dict)
-    groups: dict[str, BotReference] = Field(default_factory=dict)
-    users: dict[str, BotReference] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def validate_references(self) -> Self:
-        invalid_aliases = [
-            alias
-            for alias, bot_id in self.bot_aliases.items()
-            if not alias.strip() or bot_id <= 0
-        ]
-        if invalid_aliases:
-            msg = "messaging.bot_routing.bot_aliases contains invalid entries"
-            raise ValueError(msg)
-
-        invalid_targets = [
-            f"messaging.bot_routing.{mapping_name}.{target}"
-            for mapping_name, mapping in (
-                ("groups", self.groups),
-                ("users", self.users),
-            )
-            for target, bot_ref in mapping.items()
-            if not target.strip() or self.resolve_bot_reference(bot_ref) is None
-        ]
-        if (
-            self.default_bot is not None
-            and self.resolve_bot_reference(self.default_bot) is None
-        ):
-            invalid_targets.append("messaging.bot_routing.default_bot")
-        if invalid_targets:
-            msg = "unknown or invalid bot reference(s): " + ", ".join(invalid_targets)
-            raise ValueError(msg)
-        return self
-
-    def resolve_bot_reference(self, reference: BotReference) -> int | None:
-        if isinstance(reference, int):
-            return reference if reference > 0 else None
-        normalized = reference.strip()
-        if normalized in self.bot_aliases:
-            return self.bot_aliases[normalized]
-        if normalized.isdigit() and int(normalized) > 0:
-            return int(normalized)
-        return None
 
 
 class BaseMessageAction(BaseModel):
@@ -553,7 +502,6 @@ class TeamAuditWelcomeConfig(BaseModel):
 class MessageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    bot_routing: BotRoutingConfig = Field(default_factory=BotRoutingConfig)
     command_cooldown: CommandCooldownConfig = Field(
         default_factory=CommandCooldownConfig
     )

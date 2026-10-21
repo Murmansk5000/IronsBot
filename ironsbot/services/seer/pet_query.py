@@ -66,9 +66,7 @@ class PetQueryService:
     ) -> QueryResult[PetImageSelection]:
         return await self._search_image(arg, self._build_image_reply)
 
-    async def search_avatar(
-        self, arg: str
-    ) -> QueryResult[PetImageSelection]:
+    async def search_avatar(self, arg: str) -> QueryResult[PetImageSelection]:
         return await self._search_image(arg, self._build_avatar_reply)
 
     async def _search_image(
@@ -160,9 +158,7 @@ class PetQueryService:
             )
         )
 
-    async def select_avatar(
-        self, selection: PetImageSelection
-    ) -> QueryResult[object]:
+    async def select_avatar(self, selection: PetImageSelection) -> QueryResult[object]:
         return QueryResult(reply=await self._build_avatar_reply(selection))
 
     async def _build_avatar_reply(self, selection: PetImageSelection) -> QueryReply:

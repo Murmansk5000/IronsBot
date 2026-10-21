@@ -3,6 +3,26 @@
 IronsBot selects one outbound platform during configuration loading. It never
 fails over between QQ Official and OneBot at runtime.
 
+## 路由配置归属
+
+机器人归属统一放在 `bot` 下，不放在业务消息配置 `messaging` 下：
+
+| 接入端 | 配置位置 | 作用 |
+| --- | --- | --- |
+| OneBot / NapCat | `bot.onebot.routing` | `enabled`、`default_bot`、`bot_aliases`、`groups`、`users`；群入站归属及主动投递 |
+| QQ 官方 | `bot.qq_official.group_routes` | 逻辑群别名到官方账号别名 |
+| QQ 官方 | `bot.qq_official.private_routes` | 私聊推送用户别名到官方账号别名 |
+| 共同默认策略 | `bot.use_default_for_unconfigured_targets` | 是否为未指定的目标使用默认机器人；默认关闭 |
+
+迁移时，把原 `[messaging.bot_routing]` 和其 `bot_aliases`、`groups`、`users`
+子表的前缀整体改为 `[bot.onebot.routing]`，字段和值保持不变。
+旧表不会自动迁移或继续生效：加载器会警告旧字段路径后忽略，未填写新表时使用默认值。
+迁移后删除旧表，避免已指定群变成未配置目标。
+
+官方端路由原本就在 `bot.qq_official`，本次不改其结构、OpenID 或 AppID。
+两端收到的私聊查询仍由接收账号回复；主动消息按用户路由选择账号。
+不新增或更名 env、Docker、Unraid 变量，不修改生产 TOML 或数据库。
+
 ## NapCat-only deployment
 
 Do not define any `APP_SECRET_*` variables.

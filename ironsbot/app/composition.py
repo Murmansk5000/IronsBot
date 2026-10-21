@@ -593,16 +593,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         onebot_ingress=onebot_ingress,
         private_extensions=private_extensions,
     )
-    matcher_factory = MatcherFactory(
-        CommandCooldownService(settings.messaging.command_cooldown, features),
-        settings.bot.matcher_priority,
-        in_flight_requests=InFlightRequestService(
-            features,
-            settings.messaging.command_cooldown,
-        ),
+    query_sessions.interactions.request_service = InFlightRequestService(
+        features, settings.messaging.command_cooldown
     )
-    query_sessions.interactions.request_service = matcher_factory.in_flight_requests
-    query_sessions.interactions.cooldown = matcher_factory.cooldown
+    query_sessions.interactions.cooldown = CommandCooldownService(
+        settings.messaging.command_cooldown, features
+    )
+    matcher_factory = MatcherFactory(
+        query_sessions.interactions.cooldown,
+        settings.bot.matcher_priority,
+        in_flight_requests=query_sessions.interactions.request_service,
+    )
     resource_startup_hooks: list[NamedLifecycleHook] = [
         (
             "identity_links",

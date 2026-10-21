@@ -86,7 +86,5 @@ async def update_image_and_restart(
             _message, action = await docker_update.prepare_restart_only()
             await docker_update.execute_restart(action)
         except Exception:
-            logger.exception(
-                "scheduled Docker restart failed; restarting bot process"
-            )
+            logger.exception("scheduled Docker restart failed; restarting bot process")
             await fallback_restart()

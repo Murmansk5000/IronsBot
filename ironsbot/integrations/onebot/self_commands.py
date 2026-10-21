@@ -27,7 +27,8 @@ class SelfCommandEvent(GroupMessageEvent):
 
     def accept(self, text: str) -> None:
         references = Message(
-            segment for segment in (self.original_message or self.message)
+            segment
+            for segment in (self.original_message or self.message)
             if segment.type in {"reply", "at"}
         )
         self.message = references + Message(text)
@@ -108,7 +109,7 @@ class SelfCommandGate:
             ):
                 return False
             prefix = next((p for p in self.config.prefixes if text.startswith(p)), None)
-            if prefix is None or not (command := text[len(prefix):].strip()):
+            if prefix is None or not (command := text[len(prefix) :].strip()):
                 return False
         now = monotonic()
         self._prune(now)

@@ -259,9 +259,7 @@ def _migrate_to_principals(connection: sqlite3.Connection) -> None:
             (row[0], *_principal_values(principal), *row[6:]),
         )
     connection.execute("DROP TABLE player_query_usage")
-    connection.execute(
-        "ALTER TABLE player_query_usage_v3 RENAME TO player_query_usage"
-    )
+    connection.execute("ALTER TABLE player_query_usage_v3 RENAME TO player_query_usage")
 
 
 def _usage_key(

@@ -7,7 +7,7 @@ import asyncio
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol, overload
+from typing import TYPE_CHECKING, Protocol
 from weakref import WeakValueDictionary
 
 from ironsbot.core.outbound import OutboundMessage
@@ -107,18 +107,27 @@ class _SelectionRun:
             self.acquired = False
 
     def wrap(self, reply: PortableReply) -> PortableReply:
+        settled = False
+
         def failed() -> None:
+            if settled:
+                return
             self.failed = True
             reply.delivery_failed()
 
         def finished() -> None:
+            nonlocal settled
+            if settled:
+                return
+            settled = True
             try:
-                if reply.on_finished is not None:
-                    reply.on_finished()
+                reply.finished()
             finally:
                 self.failed = self.failed or reply.outcome.failed
-                self.complete()
-                self.release()
+                try:
+                    self.complete()
+                finally:
+                    self.release()
 
         self.handed_off = True
         return replace(reply, on_delivery_failed=failed, on_finished=finished)
@@ -178,22 +187,6 @@ class PortableInteractions:
     def invalidate(self, context: MessageInputContext) -> None:
         self.invalidate_key(self.sessions._key(context))
 
-    @overload
-    async def execute_request(
-        self,
-        request: SemanticRequest,
-        context: MessageInputContext,
-        operation: Callable[[], Awaitable[PortableReply]],
-    ) -> PortableReply: ...
-
-    @overload
-    async def execute_request(
-        self,
-        request: SemanticRequest,
-        context: MessageInputContext,
-        operation: Callable[[], Awaitable[PortableReply | None]],
-    ) -> PortableReply | None: ...
-
     async def execute_request(
         self,
         request: SemanticRequest,
@@ -218,12 +211,14 @@ class PortableInteractions:
             if self.request_service is not None
             else None
         )
-        run = _SelectionRun(asyncio.Lock(), self.request_service, decision)
-        if run.denied:
-            return run.feedback() or PortableReply(
-                OutboundMessage.from_text("重复请求"), is_current=lambda: False
-            )
+        run = _SelectionRun(
+            asyncio.Lock(), self.request_service, decision, self.cooldown
+        )
         try:
+            if not run.denied:
+                run.admit_cooldown(context.message.actor, request)
+            if run.denied:
+                return run.feedback()
             with semantic_request_scope(request, actor=context.message.actor):
                 result = await operation()
                 return run.wrap(result) if result is not None else None
@@ -337,8 +332,7 @@ class PortableInteractions:
                 result = task.result()
                 if result is not None:
                     result.delivery_failed()
-                    if result.on_finished is not None:
-                        result.on_finished()
+                    result.finished()
 
         return PortableReply(
             OutboundMessage.from_text(
@@ -442,8 +436,7 @@ class PortableInteractions:
                 return
             released = True
             generation.running -= 1
-            if reply.on_finished is not None:
-                reply.on_finished()
+            reply.finished()
 
         async def follow_up() -> OutboundMessage:
             assert reply.follow_up is not None

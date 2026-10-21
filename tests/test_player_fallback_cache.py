@@ -123,9 +123,7 @@ async def test_live_failure_checks_cache_at_return_time(
         return PlayerQueryResult(message="live unavailable")
 
     monkeypatch.setattr(service, "_query", fail)
-    task = asyncio.create_task(
-        service.query(PLAYER, actor=actor, explicit=True)
-    )
+    task = asyncio.create_task(service.query(PLAYER, actor=actor, explicit=True))
     try:
         await asyncio.wait_for(started.wait(), timeout=1)
         clocks[0] += elapsed
