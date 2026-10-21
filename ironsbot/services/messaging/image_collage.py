@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 
 DEFAULT_MAX_IMAGES = 18
 DEFAULT_MAX_SOURCE_BYTES = 20 * 1024 * 1024
@@ -178,7 +178,7 @@ class ImageCollageService:
 
     async def iter_prepared_urls(
         self, urls: Sequence[str]
-    ) -> AsyncIterator[PreparedImage]:
+    ) -> AsyncGenerator[PreparedImage, None]:
         """Yield independently composed media groups as soon as each is ready."""
 
         normalized = tuple(dict.fromkeys(url.strip() for url in urls if url.strip()))

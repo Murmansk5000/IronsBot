@@ -5,18 +5,27 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import AsyncExitStack, aclosing, contextmanager
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from ironsbot.core.message_origin import current_message_origin, message_origin
 from ironsbot.core.outbound import OutboundMessage, SendResult
+from ironsbot.core.semantic_requests import (
+    current_semantic_request_trace,
+    semantic_request_trace_scope,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.semantic_requests import SemanticRequestTrace
     from ironsbot.services.seer.data_queries import DataQueryImageReply
 
 PortableFollowUp = Callable[[], Awaitable[OutboundMessage]]
-PortableMessageStream = Callable[[], AsyncIterator[OutboundMessage]]
+PortableMessageStream = Callable[[], AsyncGenerator[OutboundMessage, None]]
 PortableErrorReply = Callable[[Exception], Awaitable[OutboundMessage]]
 ProgressReporter = Callable[[str], Awaitable[None]]
 ProgressOperation = Callable[
@@ -47,23 +56,40 @@ class PortableReply:
     initial_is_advisory: bool = False
     outcome: RequestOutcome = field(default_factory=RequestOutcome, compare=False)
     on_operation_error: PortableErrorReply | None = None
+    origin: MessageInputContext | None = field(
+        default_factory=current_message_origin, compare=False, repr=False
+    )
+    semantic_trace: SemanticRequestTrace | None = field(
+        default_factory=current_semantic_request_trace, compare=False, repr=False
+    )
+
+    @contextmanager
+    def execution_scope(self) -> Iterator[None]:
+        with (
+            message_origin(self.origin),
+            semantic_request_trace_scope(self.semantic_trace),
+        ):
+            yield
 
     def delivered(self) -> None:
-        if self.on_delivered is not None:
-            self.on_delivered()
+        with self.execution_scope():
+            if self.on_delivered is not None:
+                self.on_delivered()
 
     def delivery_failed(self) -> None:
-        self.outcome.failed = True
-        if self.on_delivery_failed is not None:
-            self.on_delivery_failed()
+        with self.execution_scope():
+            self.outcome.failed = True
+            if self.on_delivery_failed is not None:
+                self.on_delivery_failed()
 
     def finished(self) -> None:
-        try:
-            if self.on_finished is not None:
-                self.on_finished()
-        except BaseException:
-            self.outcome.failed = True
-            raise
+        with self.execution_scope():
+            try:
+                if self.on_finished is not None:
+                    self.on_finished()
+            except BaseException:
+                self.outcome.failed = True
+                raise
 
 
 async def deliver_portable_reply(
@@ -74,43 +100,47 @@ async def deliver_portable_reply(
 ) -> bool:
     """Own ordered delivery and abort unfinished work on every interrupted path."""
 
-    async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
-        return await _transmit_reply(reply, send, message, stage, on_sent)
+    with reply.execution_scope():
 
-    completed = False
-    try:
-        initial_sent = await transmit(reply.message, "initial")
-        if not initial_sent and not reply.initial_is_advisory:
-            return False
-        if initial_sent:
-            reply.delivered()
-        if not await _transmit_additional(reply, transmit):
-            return False
-        if reply.continuation is not None:
-            next_reply = await _continue_reply(reply)
-            completed = next_reply is None or await deliver_portable_reply(
-                next_reply,
-                send,
-                on_sent=on_sent,
-            )
-            reply.outcome.failed |= next_reply is not None and next_reply.outcome.failed
-            return completed
-        if reply.follow_up is not None:
-            if reply.is_current is not None and not reply.is_current():
-                return False
-            message = await _follow_up_message(
-                reply.follow_up, reply.on_operation_error
-            )
-            completed = await transmit(message, "follow_up")
-        else:
-            completed = True
-        return completed
-    finally:
+        async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
+            return await _transmit_reply(reply, send, message, stage, on_sent)
+
+        completed = False
         try:
-            if not completed:
-                reply.delivery_failed()
+            initial_sent = await transmit(reply.message, "initial")
+            if not initial_sent and not reply.initial_is_advisory:
+                return False
+            if initial_sent:
+                reply.delivered()
+            if not await _transmit_additional(reply, transmit):
+                return False
+            if reply.continuation is not None:
+                next_reply = await _continue_reply(reply)
+                completed = next_reply is None or await deliver_portable_reply(
+                    next_reply,
+                    send,
+                    on_sent=on_sent,
+                )
+                reply.outcome.failed |= (
+                    next_reply is not None and next_reply.outcome.failed
+                )
+                return completed
+            if reply.follow_up is not None:
+                if reply.is_current is not None and not reply.is_current():
+                    return False
+                message = await _follow_up_message(
+                    reply.follow_up, reply.on_operation_error
+                )
+                completed = await transmit(message, "follow_up")
+            else:
+                completed = True
+            return completed
         finally:
-            reply.finished()
+            try:
+                if not completed:
+                    reply.delivery_failed()
+            finally:
+                reply.finished()
 
 
 async def _transmit_additional(
@@ -121,11 +151,16 @@ async def _transmit_additional(
         if not await transmit(message, "additional"):
             return False
     if reply.additional_stream is not None:
-        async for message in _stream_messages(reply):
-            if not await transmit(message, "additional"):
-                return False
-            if reply.outcome.failed:
-                return False
+        async with aclosing(_stream_messages(reply)) as messages:
+            while True:
+                if reply.is_current is not None and not reply.is_current():
+                    return False
+                try:
+                    message = await anext(messages)
+                except StopAsyncIteration:
+                    break
+                if not await transmit(message, "additional") or reply.outcome.failed:
+                    return False
     return True
 
 
@@ -181,15 +216,22 @@ async def _continue_reply(reply: PortableReply) -> PortableReply | None:
     )
 
 
-async def _stream_messages(reply: PortableReply) -> AsyncIterator[OutboundMessage]:
+async def _stream_messages(
+    reply: PortableReply,
+) -> AsyncGenerator[OutboundMessage, None]:
     assert reply.additional_stream is not None
-    try:
-        async for message in reply.additional_stream():
-            yield message
-    except Exception as error:
-        if reply.on_operation_error is None:
-            raise
-        yield replace(await reply.on_operation_error(error), request_succeeded=False)
+    async with AsyncExitStack() as cleanup:
+        try:
+            stream = reply.additional_stream()
+            cleanup.push_async_callback(stream.aclose)
+            async for message in stream:
+                yield message
+        except Exception as error:
+            if reply.on_operation_error is None:
+                raise
+            yield replace(
+                await reply.on_operation_error(error), request_succeeded=False
+            )
 
 
 async def progress_operation_reply(
