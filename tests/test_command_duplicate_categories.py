@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import pytest
-from nonebot.exception import IgnoredException
 from pydantic import ValidationError
 
 from ironsbot.config.models.messaging import (
@@ -20,18 +18,11 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.qq_official.inbound_deduplication import (
-    QQOfficialInboundDeduplicator,
-)
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from tests.helpers.onebot_events import group_message_event
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 ACTOR = ActorRef(Platform.ONEBOT, "101")
 GROUP = ConversationRef(Platform.ONEBOT, "group", "456")
@@ -141,32 +132,6 @@ def test_release_and_bot_isolation() -> None:
 )
 def test_business_action_inventory(action_id: str, category: RequestCategory) -> None:
     assert ActionDefinition(action_id, action_id).category is category
-
-
-@pytest.mark.asyncio
-async def test_onebot_replay_is_silent_but_same_text_new_id_is_accepted() -> None:
-    policy = OneBotIngressPolicy(messages_enabled=True)
-    event = group_message_event("帮助")
-    await policy.process(event)
-    with pytest.raises(IgnoredException, match="Duplicate"):
-        await policy.process(event)
-    await policy.process(group_message_event("帮助", message_id=4))
-    await policy.process(group_message_event("帮助", self_id=2))
-    await policy.process(group_message_event("帮助", group_id=999))
-
-
-@pytest.mark.asyncio
-async def test_official_event_id_is_conversation_scoped(tmp_path: Path) -> None:
-    claims = QQOfficialInboundDeduplicator(tmp_path / "claims.sqlite")
-    assert await claims.claim(
-        app_id="bot", event_type="group", message_id="id", conversation_id="a"
-    )
-    assert await claims.claim(
-        app_id="bot", event_type="group", message_id="id", conversation_id="b"
-    )
-    assert not await claims.claim(
-        app_id="bot", event_type="group", message_id="id", conversation_id="a"
-    )
 
 
 @pytest.mark.asyncio

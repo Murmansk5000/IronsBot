@@ -36,9 +36,9 @@ from ironsbot.integrations.qq_official.message_rendering import (
 from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
-from ironsbot.integrations.qq_official.runtime import deliver_qq_official_reply
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.services.portable_reply import PortableReply
+from tests.helpers.official_replies import deliver_reply
 
 if TYPE_CHECKING:
     from qqbot_agent_sdk.api_client import QQApiClient
@@ -331,7 +331,7 @@ async def test_image_query_delivery_uses_native_reference_without_extra_at_messa
     body = (*images, TextPart("caption")) if caption else images
     reply = PortableReply(OutboundMessage((MentionPart(actor), TextPart("\n"), *body)))
 
-    await deliver_qq_official_reply(messenger, incoming, reply)
+    await deliver_reply(messenger, incoming, reply)
 
     assert len(api.messages) == len(body)
     for _, _, message in api.messages[:2]:

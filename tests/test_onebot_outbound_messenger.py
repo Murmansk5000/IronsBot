@@ -85,12 +85,24 @@ class _ConcurrentBot(_Bot):
 
 
 @dataclass
-class _Router:
-    bot: _Bot | None
+class _RoutingPolicy:
     allowed: bool = True
 
     def allows_outbound(self, _conversation: ConversationRef) -> bool:
         return self.allowed
+
+    def account_name(self, account_id: str) -> str:
+        return account_id
+
+
+@dataclass
+class _Router:
+    bot: _Bot | None
+    allowed: bool = True
+
+    @property
+    def policy(self) -> _RoutingPolicy:
+        return _RoutingPolicy(self.allowed)
 
     def for_conversation(self, _conversation: ConversationRef) -> _Bot | None:
         return self.bot

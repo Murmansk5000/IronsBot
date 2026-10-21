@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
-    from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
     from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyPort
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.login import BilibiliLoginService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.command_errors import CommandErrorReporter
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.identity_observation import SilentIdentityObservationService
@@ -97,5 +98,6 @@ class ApplicationResources:
     identity_principals: IdentityPrincipalService
     identity_observer: SilentIdentityObservationService | None
     union_identity: OfficialUnionIdentityService | None
-    onebot_ingress: OneBotIngressPolicy
+    onebot_ingress: OneBotEventIngress
+    command_errors: CommandErrorReporter
     private_extensions: PrivateExtensionCatalog
