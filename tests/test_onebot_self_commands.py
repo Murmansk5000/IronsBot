@@ -1,19 +1,20 @@
-from typing import cast
 from unittest.mock import Mock
 
 import pytest
-from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.exception import IgnoredException
 from pydantic import ValidationError
 
 from ironsbot.config.models.transport import SelfCommandsConfig
+from ironsbot.core.outbound import SendResult
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
     SelfCommandEvent,
-    own_account_echo,
+    outbound_own_account_input,
     own_account_input,
 )
 from ironsbot.services.onebot_admission import OneBotAdmissionService
@@ -68,12 +69,12 @@ def test_self_command_prefix_configuration_rejects_empty_values(
 @pytest.mark.asyncio
 async def test_outbound_echo_cannot_trigger_self_command() -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
-    bot = cast("Bot", Mock(self_id="1"))
-    echo = own_account_echo(
-        bot, "send_group_msg", {"group_id": 456, "message": "demo help"}
+    echo = outbound_own_account_input(
+        "1", ConversationRef(Platform.ONEBOT, "group", "456"), Message("demo help")
     )
     assert echo is not None
-    gate.record_outbound(echo)
+    token = gate.begin_outbound(echo)
+    gate.finish_outbound(token, SendResult(delivered=True, message_id="1"))
     assert not _accept(gate, self_command_event("demo help"))
     assert _accept(gate, self_command_event("demo about", message_id=4))
 
@@ -171,48 +172,3 @@ async def test_admin_binding_passes_group_routing() -> None:
                 routing=router,
             )
         ).process(self_command_event("收集"))
-
-
-@pytest.mark.asyncio
-async def test_native_echo_hook_blocks_admin_binding_even_with_prefix_commands_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from nonebot.adapters import Bot as AdapterBot
-
-    from ironsbot.integrations.onebot import event_ingress
-
-    register = Mock()
-    monkeypatch.setattr(Bot, "on_calling_api", register)
-    monkeypatch.setattr(event_ingress, "event_preprocessor", lambda handler: handler)
-    policy = OwnAccountCommandPolicy(SelfCommandsConfig())
-    admission = OneBotEventIngress(
-        OneBotAdmissionService(messages_enabled=True, self_commands=policy)
-    )
-    admission.install()
-    register.assert_called_once()
-    hook = register.call_args.args[0]
-    message = Message("绑定米米号123456") + MessageSegment.at(42)
-    await hook(
-        Mock(spec=AdapterBot, self_id="1"),
-        "send_group_msg",
-        {
-            "group_id": 456,
-            "message": message,
-        },
-    )
-    candidate = self_command_event("绑定米米号123456")
-    candidate.original_message = message
-    assert policy.accept(own_account_input(candidate)) is not None
-    await hook(
-        cast("Bot", Mock(spec=Bot, self_id="1")),
-        "send_group_msg",
-        {
-            "group_id": 456,
-            "message": message,
-        },
-    )
-    event = self_command_event("绑定米米号123456")
-    event.original_message = message
-    with pytest.raises(IgnoredException):
-        await admission.process(event)
-    assert not event.accepted

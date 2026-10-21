@@ -36,6 +36,7 @@ from ironsbot.integrations.onebot.receipts import (
     onebot_send_failure,
     onebot_send_result,
 )
+from ironsbot.integrations.onebot.self_commands import outbound_own_account_input
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
         GroupOutboundRateLimitService,
         OutboundSendAttempt,
     )
+    from ironsbot.services.own_commands import OwnAccountCommandPolicy, OwnAccountEcho
 
 
 _ONEBOT_CAPABILITIES = DeliveryCapabilities(
@@ -97,11 +99,13 @@ class OneBotOutboundMessenger:
         outbound: GroupOutboundRateLimitService,
         *,
         enabled: bool = True,
+        self_commands: OwnAccountCommandPolicy | None = None,
         transport_failure_cooldown_seconds: float = 60.0,
     ) -> None:
         self._router = router
         self._outbound = outbound
         self._enabled = enabled
+        self._self_commands = self_commands
         self._identities: dict[str, ExecutionIdentity] = {}
         self._push_locks: dict[str, asyncio.Lock] = {}
         self._transport_unavailable_until: dict[str, float] = {}
@@ -395,16 +399,26 @@ class OneBotOutboundMessenger:
                 failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
                 execution_identity=identity,
             )
+        echo: OwnAccountEcho | None = None
+        receipt: SendResult | None = None
         try:
             message = (
                 rendered + MessageSegment.text(f"\n\n{attempt.cooldown_notice}")
                 if attempt.cooldown_notice
                 else rendered
             )
+            if self._self_commands is not None:
+                outgoing = outbound_own_account_input(
+                    identity.account_id, conversation, message
+                )
+                if outgoing is not None:
+                    echo = self._self_commands.begin_outbound(outgoing)
             attempt.start()
             result = await _send_onebot_message(bot, conversation, message)
+            receipt = onebot_send_result(result, execution_identity=identity)
         except Exception as error:  # noqa: BLE001 - delivery boundary
             failure = onebot_send_failure(error, execution_identity=identity)
+            receipt = failure.result
             kind = failure.result.failure_kind
             attempt.interrupted = failure.interrupted or probing
             logger.warning(
@@ -421,8 +435,11 @@ class OneBotOutboundMessenger:
                 self._transport_unavailable_until[account_key] = (
                     monotonic() + self._transport_failure_cooldown_seconds
                 )
-            return failure.result
-        receipt = onebot_send_result(result, execution_identity=identity)
+            return receipt
+        finally:
+            if self._self_commands is not None:
+                self._self_commands.finish_outbound(echo, receipt)
+        assert receipt is not None
         if not receipt.delivered:
             if probing and self._transport_failure_cooldown_seconds > 0:
                 attempt.interrupted = True

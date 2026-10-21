@@ -83,6 +83,15 @@ including administrative binding messages. Transport admission never grants
 business authorization; the existing binding routing exception is a baseline,
 not an administrator grant.
 
+Composition shares one `OwnAccountCommandPolicy` between ingress and the explicit
+OneBot sender. The sender snapshots final protocol content immediately before
+submission and settles that observation from the structured receipt, including
+cancellation. Known non-delivery releases only that send; success or uncertain
+delivery retains bounded echo protection. Concurrent identical sends share one
+content record with a pending count and retained timestamp. A failed send cannot
+remove another send's record or extend its retention. No global API hook records
+outbound content, and no native SDK-data ledger or ambient context is used.
+
 ### Transport Admission (Target)
 
 `OneBotAdmissionService` owns the ordering of normalized mirror observation,
@@ -94,9 +103,9 @@ command result and installs hooks. Admission failures use the same composition-
 owned error reporter as shared command execution, without replying to an
 unclaimed message or exposing exception details. Cancellation propagates.
 
-Native hook registration, mirror replay timing and outbound echo receipt
-handling remain transitional; this extraction does not complete their lifecycle
-audit or remove the framework host.
+Native event-preprocessor registration, durable replay boundaries and framework
+resource ownership remain transitional. The bounded in-memory echo policy does
+not provide cross-process recovery or remove the framework host.
 
 Identity observation and command execution use the same normalized delivery-key
 and claim-store contract, with separate purpose-owned persistence. Observing a
@@ -109,10 +118,12 @@ closed on storage errors, never switching to volatile claims at runtime.
 
 The configured numeric-group outbound windows, priority queues, administrator
 exemptions and permit accounting belong to the framework-free
-`services/messaging/outbound_limits.py`. Native API hooks decode group/actor
-facts and correlate the API callback with its permit; they do not own queue or
-permission policy. This baseline does not apply numeric-group windows to the
-official platform or alter its protocol reply quota.
+`services/messaging/outbound_limits.py`. Production sends enter the explicit
+`execute_send` boundary before protocol submission and return structured receipts.
+No global API quota hooks, SDK-data correlation table, or ambient permit context
+remain. This baseline does not apply numeric-group windows to the official
+platform or alter its protocol reply quota. Echo protection observes explicit
+send attempts; it is not an outbound quota owner.
 
 Permit identifiers remain unique across resets. Queue-worker completion is
 owned by the service, including cancellation before the coroutine starts;
@@ -350,7 +361,7 @@ feature, persistence schema, or policy decision.
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
 | Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_feature_service()` is the only policy compiler and must finish logical alias, platform endpoint and bundle expansion before constructing the service. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `integrations.onebot.identity` to construct the typed context at the edge. |
-| Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
+| Team-audit reminders | target reference | `TeamAuditService` plus a OneBot notice adapter | Application startup owns the recurring scan, connection readiness only restores pending work, and shutdown removes this service's jobs. Pending job keys and in-flight followups preserve complete actor/conversation account scopes; public policy, storage and delivery are not native matcher responsibilities. Native membership and group-increase capabilities remain OneBot-only. |
 | Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
 | Administrator notices | target reference | `AdminNoticeService` plus `OutboundAdminNoticeSender` | Resolve administrators as `ActorRef` values and send through `ProactiveMessageDelivery`; no OneBot delivery object is exposed to the service. |
 | Activity reminders | target reference | `ActivityService` plus `ActivityReminderOutboundSender` | Build typed recipients and a text message, then delegate subscription and rate-limit semantics to proactive delivery. |
@@ -1585,6 +1596,25 @@ migration entry point. It owns:
 - row factory policy;
 - schema version reads and writes;
 - ordered, atomic migrations.
+
+`run_transaction` runs connection creation, migrations, the callback, commit or
+rollback, and close in one worker thread. Async repositories receive an explicit
+task spawner from composition; application-owned transaction tasks drain before
+shared resources close. Caller cancellation waits for an already submitted
+transaction to finish: a cancelled caller does not imply a rolled-back write.
+The team-audit repository uses this async contract without synchronous CRUD
+aliases. Its lifecycle generation prevents old restore reads from registering
+jobs after stop or restart. Other repositories still require individual I/O
+audits; this is not a claim that all application storage is nonblocking.
+
+Team-audit completion uses an atomic conditional transition of the expected
+reminder, not unconditional deletion by identity. Both deletion and advancement
+compare the full scoped identity, join time, due time and stage; a newer pending
+reminder is preserved. A successful database transition is not a transaction
+with the external message send and does not promise crash-safe exactly-once.
+Followup callbacks reject future reminders and revalidate the pending state
+after membership I/O. A stopped or superseded lifecycle cannot consume the
+member-probe result to clear pending work or begin another send.
 
 Every persistent SQLite file has a migration plan with monotonically
 increasing integer versions. Opening a repository applies pending migrations
