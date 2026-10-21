@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 if TYPE_CHECKING:
-    import asyncio
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
 
 T = TypeVar("T")
 
@@ -35,3 +35,27 @@ class TaskSpawner(Protocol):
         *,
         name: str,
     ) -> asyncio.Task[T]: ...
+
+
+async def run_owned_blocking(
+    operation: Callable[[], T], *, spawn: TaskSpawner, name: str
+) -> T:
+    """Drain a submitted worker before propagating caller cancellation."""
+    await asyncio.sleep(0)
+    worker = spawn(asyncio.to_thread(operation), name=name)
+    cancelled = False
+    while True:
+        try:
+            result = await asyncio.shield(worker)
+            break
+        except asyncio.CancelledError:
+            if worker.cancelled():
+                raise
+            cancelled = True
+        except Exception:
+            if cancelled:
+                raise asyncio.CancelledError from None
+            raise
+    if cancelled:
+        raise asyncio.CancelledError
+    return result
