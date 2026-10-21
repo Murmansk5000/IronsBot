@@ -1964,6 +1964,31 @@ def test_qq_official_renderer_keeps_bilibili_hash_tags_literal() -> None:
     )
 
 
+def test_qq_official_renderer_preserves_about_link_fragment() -> None:
+    from ironsbot.services.about import AboutService
+
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "opaque-group", account_id="example-app"
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+    message = AboutService("test").message()
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage((MentionPart(member), *message.parts)),
+        conversation=conversation,
+    )
+    assert len(rendered) == 1
+    payload = rendered[0]
+    assert isinstance(payload, QQOfficialTextPayload)
+    assert "IronsBot#%E9%B8%A3%E8%B0%A2" in payload.content
+    assert r"IronsBot\#" not in payload.content
+
+
 def test_qq_official_renderer_rejects_cross_group_member_mentions() -> None:
     conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
