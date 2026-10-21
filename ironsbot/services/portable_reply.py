@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import AsyncExitStack, aclosing, contextmanager
+from contextlib import AsyncExitStack, aclosing, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -33,6 +33,9 @@ ProgressOperation = Callable[
     Awaitable[OutboundMessage | str],
 ]
 DeliveryStage = Literal["initial", "additional", "follow_up"]
+ExecutionFailureStage = Literal["send", "receipt", "cleanup"]
+DeliveryErrorReporter = Callable[[Exception, ExecutionFailureStage], Awaitable[None]]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -56,6 +59,7 @@ class PortableReply:
     initial_is_advisory: bool = False
     outcome: RequestOutcome = field(default_factory=RequestOutcome, compare=False)
     on_operation_error: PortableErrorReply | None = None
+    on_delivery_error: DeliveryErrorReporter | None = None
     origin: MessageInputContext | None = field(
         default_factory=current_message_origin, compare=False, repr=False
     )
@@ -97,13 +101,17 @@ async def deliver_portable_reply(
     send: Callable[[OutboundMessage], Awaitable[SendResult]],
     *,
     on_sent: Callable[[DeliveryStage, SendResult], None] | None = None,
+    on_receipt: Callable[[OutboundMessage, SendResult], None] | None = None,
 ) -> bool:
     """Own ordered delivery and abort unfinished work on every interrupted path."""
 
     with reply.execution_scope():
 
         async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
-            return await _transmit_reply(reply, send, message, stage, on_sent)
+            def record_receipt(message: OutboundMessage, result: SendResult) -> None:
+                _record_receipt(message, result, stage, on_sent, on_receipt)
+
+            return await _transmit_reply(reply, send, message, stage, record_receipt)
 
         completed = False
         try:
@@ -111,7 +119,8 @@ async def deliver_portable_reply(
             if not initial_sent and not reply.initial_is_advisory:
                 return False
             if initial_sent:
-                reply.delivered()
+                async with _delivery_error_scope(reply, "receipt"):
+                    reply.delivered()
             if not await _transmit_additional(reply, transmit):
                 return False
             if reply.continuation is not None:
@@ -120,6 +129,7 @@ async def deliver_portable_reply(
                     next_reply,
                     send,
                     on_sent=on_sent,
+                    on_receipt=on_receipt,
                 )
                 reply.outcome.failed |= (
                     next_reply is not None and next_reply.outcome.failed
@@ -138,9 +148,35 @@ async def deliver_portable_reply(
         finally:
             try:
                 if not completed:
-                    reply.delivery_failed()
+                    async with _delivery_error_scope(reply, "cleanup"):
+                        reply.delivery_failed()
             finally:
-                reply.finished()
+                async with _delivery_error_scope(reply, "cleanup"):
+                    reply.finished()
+
+
+@asynccontextmanager
+async def _delivery_error_scope(
+    reply: PortableReply, stage: ExecutionFailureStage
+) -> AsyncGenerator[None, None]:
+    try:
+        yield
+    except Exception as error:
+        if reply.on_delivery_error is None:
+            logger.error(  # noqa: TRY400 - transport exception text can contain credentials
+                "Reply delivery failed: stage=%s error_type=%s",
+                stage,
+                type(error).__name__,
+            )
+        else:
+            try:
+                await reply.on_delivery_error(error, stage)
+            except Exception as notice_error:  # noqa: BLE001 - never recurse into delivery alerts
+                logger.error(  # noqa: TRY400 - do not log alert delivery credentials
+                    "Delivery failure notice failed: error_type=%s",
+                    type(notice_error).__name__,
+                )
+        raise
 
 
 async def _transmit_additional(
@@ -164,26 +200,39 @@ async def _transmit_additional(
     return True
 
 
+def _record_receipt(
+    message: OutboundMessage,
+    result: SendResult,
+    stage: DeliveryStage,
+    on_sent: Callable[[DeliveryStage, SendResult], None] | None,
+    on_receipt: Callable[[OutboundMessage, SendResult], None] | None,
+) -> None:
+    if on_receipt is not None:
+        on_receipt(message, result)
+    if on_sent is not None:
+        on_sent(stage, result)
+
+
 async def _transmit_reply(
     reply: PortableReply,
     send: Callable[[OutboundMessage], Awaitable[SendResult]],
     message: OutboundMessage,
     stage: DeliveryStage,
-    on_sent: Callable[[DeliveryStage, SendResult], None] | None,
+    on_receipt: Callable[[OutboundMessage, SendResult], None],
 ) -> bool:
     if not message.request_succeeded:
         reply.outcome.failed = True
     if reply.is_current is not None and not reply.is_current():
         return False
     try:
-        receipt = await send(message)
+        async with _delivery_error_scope(reply, "send"):
+            receipt = await send(message)
     except Exception:
         if stage != "initial" or not reply.initial_is_advisory:
             raise
-        logging.getLogger(__name__).exception("Slow-query notice delivery failed")
         return False
-    if on_sent is not None:
-        on_sent(stage, receipt)
+    async with _delivery_error_scope(reply, "receipt"):
+        on_receipt(message, receipt)
     return receipt.delivered
 
 
@@ -210,9 +259,13 @@ async def _continue_reply(reply: PortableReply) -> PortableReply | None:
             replace(await reply.on_operation_error(error), request_succeeded=False)
         )
     return (
-        replace(result, on_operation_error=reply.on_operation_error)
-        if result is not None and reply.on_operation_error is not None
-        else result
+        replace(
+            result,
+            on_operation_error=reply.on_operation_error or result.on_operation_error,
+            on_delivery_error=reply.on_delivery_error or result.on_delivery_error,
+        )
+        if result is not None
+        else None
     )
 
 
@@ -223,7 +276,12 @@ async def _stream_messages(
     async with AsyncExitStack() as cleanup:
         try:
             stream = reply.additional_stream()
-            cleanup.push_async_callback(stream.aclose)
+
+            async def close_stream() -> None:
+                async with _delivery_error_scope(reply, "cleanup"):
+                    await stream.aclose()
+
+            cleanup.push_async_callback(close_stream)
             async for message in stream:
                 yield message
         except Exception as error:

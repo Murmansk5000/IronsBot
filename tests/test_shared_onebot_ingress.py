@@ -52,10 +52,13 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     saved = dict(matchers.items())
     matchers.clear()
     sends: list[dict[str, Any]] = []
-    transport = Mock(fails=False)
+    transport = Mock(fails=False, error=None)
+    notices = Mock(send=AsyncMock())
 
     async def api(_adapter: Adapter, _bot: Bot, _api: str, **data: Any) -> object:
         sends.append(data)
+        if transport.error is not None:
+            raise transport.error
         return {} if transport.fails else {"message_id": len(sends) + 100}
 
     monkeypatch.setattr(Adapter, "_call_api", api)
@@ -121,6 +124,7 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=sessions,
+        admin_notices=notices,
     )
     factory = MatcherFactory(sessions.interactions.cooldown, SimpleNamespace())
     install_command_ingress(factory, router)
@@ -136,10 +140,185 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
             policies=policies,
             group=group,
             ai=ai,
+            notices=notices,
+            errors=router.delivery.errors,
         )
     finally:
         matchers.clear()
         matchers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_actual_onebot_transport_exception_uses_shared_error_boundary(
+    runtime: SimpleNamespace, caplog: pytest.LogCaptureFixture
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    runtime.transport.error = RuntimeError("private-native-send-detail")
+    await handle_event(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=1)
+    )
+    runtime.notices.send.assert_awaited_once()
+    assert len(runtime.sends) == 1
+    assert "private-native-send-detail" not in caplog.text
+    runtime.transport.error = None
+    await handle_event(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=2)
+    )
+    assert runtime.execute.await_count == len(("failed", "recovered"))
+    assert "result" in str(runtime.sends[-1]["message"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_actual_preprocessor_fault_is_admin_only_and_stops_all_business(
+    runtime: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    *,
+    enabled: bool,
+) -> None:
+    import nonebot.message as message_runtime
+
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
+    from tests.helpers.onebot_events import group_message_event
+
+    monkeypatch.setattr(message_runtime, "_event_preprocessors", set())
+    observer = Mock(
+        observe_onebot=AsyncMock(side_effect=RuntimeError("private-mirror-detail"))
+    )
+    ingress = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=enabled,
+            identity_observer=observer,
+            errors=runtime.errors,
+        )
+    )
+    ingress.install()
+    await handle_event(runtime.bot, group_message_event("执行", user_id=101))
+    observer.observe_onebot.assert_awaited_once()
+    runtime.notices.send.assert_awaited_once()
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+    assert runtime.sends == []
+    assert "private-mirror-detail" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_own_account_menu_uses_public_replay_and_navigation(
+    runtime: SimpleNamespace,
+) -> None:
+    from ironsbot.config.models.transport import SelfCommandsConfig
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
+    from ironsbot.services.own_commands import OwnAccountCommandPolicy
+    from tests.helpers.onebot_events import self_command_event
+
+    admission = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=True,
+            self_commands=OwnAccountCommandPolicy(
+                SelfCommandsConfig(enabled=True, prefixes=["demo "])
+            ),
+        )
+    )
+
+    async def deliver(text: str, message_id: int) -> None:
+        event = self_command_event(text, message_id)
+        await admission.process(event)
+        await handle_event(runtime.bot, event)
+
+    await deliver("demo 菜单", -10)
+    await deliver("demo 1", -12)
+    count = len(runtime.sends)
+    await deliver("demo 1", -12)
+    assert len(runtime.sends) == count
+    runtime.select.assert_awaited_once()
+    await deliver("demo 0", -14)
+    assert "已退出" in str(runtime.sends[-1]["message"])
+    assert all(
+        not any(part.type == "at" for part in sent["message"]) for sent in runtime.sends
+    )
+
+
+@pytest.mark.asyncio
+async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs(
+    runtime: SimpleNamespace,
+) -> None:
+    from ironsbot.config.models.transport import SelfCommandsConfig
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
+    from ironsbot.services.own_commands import OwnAccountCommandPolicy
+    from tests.helpers.onebot_events import self_command_event
+
+    admission = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=True,
+            self_commands=OwnAccountCommandPolicy(
+                SelfCommandsConfig(enabled=True, prefixes=["demo "])
+            ),
+        )
+    )
+    runtime.transport.fails = True
+    for message_id in (1, 1):
+        event = self_command_event("demo 执行", message_id)
+        await admission.process(event)
+        await handle_event(runtime.bot, event)
+    runtime.execute.assert_awaited_once()
+    assert len(runtime.sends) == 1
+    runtime.transport.fails = False
+    fresh = self_command_event("demo 执行", 2)
+    await admission.process(fresh)
+    await handle_event(runtime.bot, fresh)
+    assert runtime.execute.await_count == len(("failed", "fresh"))
+    assert "result" in str(runtime.sends[-1]["message"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("features", [frozenset(), frozenset({"blacklist"})])
+async def test_own_account_transport_admission_does_not_bypass_business_policy(
+    runtime: SimpleNamespace, features: frozenset[str]
+) -> None:
+    from ironsbot.config.models.transport import SelfCommandsConfig
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
+    from ironsbot.services.own_commands import OwnAccountCommandPolicy
+    from tests.helpers.onebot_events import self_command_event
+
+    runtime.policies[runtime.group] = features
+    admission = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=True,
+            self_commands=OwnAccountCommandPolicy(
+                SelfCommandsConfig(enabled=True, prefixes=["demo "])
+            ),
+        )
+    )
+    event = self_command_event("demo 执行")
+    await admission.process(event)
+    assert event.accepted
+    await handle_event(runtime.bot, event)
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["执行", "unclaimed"])
+async def test_actual_onebot_only_blocks_input_claimed_by_public_runtime(
+    runtime: SimpleNamespace, text: str
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    calls = Mock()
+    probe = nonebot.on_message(priority=-30, block=False)
+
+    async def record() -> None:
+        calls()
+
+    probe.append_handler(record)
+    await handle_event(runtime.bot, group_message_event(text, user_id=101))
+    assert calls.call_count == int(text == "unclaimed")
 
 
 @pytest.mark.asyncio

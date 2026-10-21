@@ -70,14 +70,6 @@ def parse_message_event(
     )
 
 
-def message_event_family(event_type: str) -> str:
-    """Collapse both group delivery variants for duplicate suppression."""
-
-    if event_type in {GROUP_MESSAGE_CREATE, GROUP_AT_MESSAGE_CREATE}:
-        return "GROUP_MESSAGE"
-    return event_type
-
-
 def is_recipient_state_event(event_type: str) -> bool:
     """Return whether an event updates proactive-delivery eligibility."""
 

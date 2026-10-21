@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from httpx import AsyncClient
@@ -67,7 +68,6 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.integrations.qq_official.runtime import (
     QQOfficialRuntime,
     QQOfficialRuntimeAccount,
-    deliver_qq_official_reply,
     qq_official_event_is_supported,
     qq_official_event_mentions_bot,
     qq_official_event_mentions_everyone,
@@ -100,7 +100,6 @@ from ironsbot.services.portable_commands import (
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import (
     PortableReply,
-    deliver_portable_reply,
     progress_operation_reply,
 )
 from ironsbot.services.seer.command_contracts import seer_command_contracts
@@ -116,6 +115,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.seer.rank_list_models import RankListPreparedReply
+from tests.helpers.official_replies import deliver_reply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -457,13 +457,20 @@ class _TransportError(RuntimeError):
 
 
 class _FailingPortableRouter:
-    def record_menu_delivery(self, *_args: object) -> None:
-        pass
+    def __init__(self) -> None:
+        from ironsbot.services.command_delivery import CommandReplyDelivery
+        from ironsbot.services.command_errors import CommandErrorReporter
+        from ironsbot.services.command_ingress import CommandIngress
+
+        delivery = CommandReplyDelivery(PortableQuerySessions(), CommandErrorReporter())
+        self.ingress = CommandIngress(cast("PortableCommandRouter", self), delivery)
 
     def recognizes(self, _context: MessageInputContext) -> bool:
         return True
 
-    async def dispatch(self, _context: MessageInputContext) -> PortableReply:
+    async def execute(
+        self, _context: MessageInputContext, *_args: object, **_kwargs: object
+    ) -> bool:
         raise RuntimeError("sensitive-event-detail")
 
 
@@ -473,14 +480,12 @@ async def _dispatch(
     reply = await router.dispatch(context)
     if reply is not None and reply.follow_up is None:
 
-        async def send(message: OutboundMessage) -> SendResult:
-            result = SendResult(
+        async def send(_message: OutboundMessage) -> SendResult:
+            return SendResult(
                 delivered=True, message_id=f"sent:{context.message.message_id}"
             )
-            router.record_menu_delivery(context, message, result)
-            return result
 
-        await deliver_portable_reply(reply, send)
+        await router.delivery.deliver(context, reply, send)
     return reply
 
 
@@ -539,10 +544,12 @@ async def test_official_everyone_mention_never_dispatches(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["business", "transport"])
 async def test_runtime_reports_unexpected_command_failure_without_event_details(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    stage: str,
 ) -> None:
     event = _sdk_event(content="private command body")
     catalog = CommandCatalog()
@@ -568,8 +575,11 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
 
     async def fail(text: str, context: MessageInputContext) -> PortableReply:
         assert text == context.text
+        if stage == "transport":
+            return PortableReply(OutboundMessage.from_text("result"))
         raise RuntimeError("sensitive-event-detail")
 
+    notices = Mock(send=AsyncMock())
     router = PortableCommandRouter(
         catalog,
         {"test.failure": fail},
@@ -577,6 +587,7 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
         ai=cast("Any", None),
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=AddressedInputHintService(),
+        admin_notices=notices,
     )
     monkeypatch.setattr(
         EventParser,
@@ -587,6 +598,11 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
     messenger = QQOfficialOutboundMessenger(
         {"example-app": False},
         bot_provider=lambda _app_id: bot,
+    )
+    transport = (
+        Mock(reply=AsyncMock(side_effect=RuntimeError("sensitive-event-detail")))
+        if stage == "transport"
+        else messenger
     )
     async with AsyncClient() as client:
         runtime = QQOfficialRuntime(
@@ -600,14 +616,19 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
             http_client=client,
             session_root=tmp_path,
         )
-        runtime.bind(router, messenger)
-        caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
+        runtime.bind(router, transport)
+        caplog.set_level("INFO", logger="ironsbot.services.command_ingress")
 
         await runtime.handle_event("example-app", event.event_type, {})
 
-    payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
-    assert payloads == (QQOfficialTextPayload("❌ 命令执行失败，请稍后再试。"),)
-    assert bot.sent == 1
+    if stage == "business":
+        payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
+        assert payloads == (QQOfficialTextPayload("❌ 命令执行失败，请稍后再试。"),)
+        assert bot.sent == 1
+    else:
+        assert bot.sent == 0
+        cast("Mock", transport).reply.assert_awaited_once()
+    notices.send.assert_awaited_once()
     assert "account=safe-alias" in caplog.text
     assert "error_type=RuntimeError" in caplog.text
     assert "sensitive-event-detail" not in caplog.text
@@ -2066,8 +2087,8 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
         {"example-app": False},
         bot_provider=lambda _app_id: bot,
     )
-    caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
-    await deliver_qq_official_reply(messenger, incoming, reply)
+    caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.reply_transport")
+    await deliver_reply(messenger, incoming, reply)
 
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
@@ -2101,7 +2122,7 @@ async def test_qq_official_delivery_sends_additional_messages_in_order() -> None
         bot_provider=lambda _app_id: bot,
     )
 
-    await deliver_qq_official_reply(messenger, incoming, reply)
+    await deliver_reply(messenger, incoming, reply)
 
     expected_calls = [
         ("message-id", 1),
@@ -2150,7 +2171,7 @@ async def test_qq_official_delivery_does_not_add_mention_only_image_message() ->
         bot_provider=lambda _app_id: bot,
     )
 
-    await deliver_qq_official_reply(messenger, incoming, reply)
+    await deliver_reply(messenger, incoming, reply)
 
     expected_payloads = [
         (
@@ -2186,7 +2207,7 @@ async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
         bot_provider=lambda _app_id: bot,
     )
 
-    await deliver_qq_official_reply(
+    await deliver_reply(
         messenger,
         incoming,
         PortableReply(
@@ -2203,7 +2224,7 @@ async def test_qq_official_delivery_keeps_explicit_member_target() -> None:
 
 
 @pytest.mark.asyncio
-async def test_identity_observation_reply_mentions_the_group_member() -> None:
+async def test_group_reply_template_mentions_the_group_member() -> None:
     event = _sdk_event(
         event_type="GROUP_MESSAGE_CREATE",
         chat_scope="group",
@@ -2217,16 +2238,10 @@ async def test_identity_observation_reply_mentions_the_group_member() -> None:
         {"example-app": False},
         bot_provider=lambda _app_id: bot,
     )
-    observer = SimpleNamespace(
-        record_official_reply=lambda _incoming, _message: 1,
-        discard_official_reply=lambda _token: None,
-    )
-
-    await deliver_qq_official_reply(
+    await deliver_reply(
         messenger,
         incoming,
         PortableReply(OutboundMessage.from_text("result")),
-        identity_observer=cast("Any", observer),
     )
 
     payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
@@ -2258,7 +2273,7 @@ async def test_qq_official_delivery_sends_deferred_result_after_ack() -> None:
     )
 
     assert lifecycle == ["prepared"]
-    await deliver_qq_official_reply(messenger, incoming, reply)
+    await deliver_reply(messenger, incoming, reply)
 
     assert lifecycle == ["prepared", "executed"]
     expected_calls = [
@@ -2289,7 +2304,7 @@ async def test_failed_initial_delivery_cancels_deferred_operation() -> None:
         bot_provider=lambda _app_id: bot,
     )
 
-    await deliver_qq_official_reply(messenger, incoming, reply)
+    await deliver_reply(messenger, incoming, reply)
     await asyncio.wait_for(cancelled.wait(), timeout=1)
 
     assert bot.sent == 1
