@@ -229,6 +229,14 @@ assert isinstance(state.resources.identity_observer.claims, SqliteInboundMessage
 assert state.resources.identity_observer.claims.spawn == (
     state.task_owner.create_draining
 )
+assert state.resources.identity_observer.store.spawn == state.task_owner.create_draining
+mutations = state.resources.identity_linking.mutations
+assert mutations.spawn == state.task_owner.create_draining
+assert state.resources.identity_observer.mutations is mutations
+assert state.resources.union_identity.mutations is mutations
+assert state.resources.union_identity.on_link == (
+    state.resources.union_identity.addresses.accept_link
+)
 assert state.resources.identity_observer.claims.path == (
     state.settings.paths.cache_root / "identity" / "observations.sqlite"
 )

@@ -41,6 +41,7 @@ from ironsbot.services.identity_link_store import (
     CrossPlatformGroupLink,
     OfficialIdentity,
 )
+from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 from ironsbot.services.identity_observation import (
     IdentityObservationAccount,
     OneBotGroupMessageObservation,
@@ -681,7 +682,9 @@ def test_matched_mention_establishes_group_route_before_dispatch(
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
-        store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+        store = SqliteIdentityLinkStore(
+            tmp_path / "identity.sqlite", spawn=asyncio.create_task
+        )
         async with httpx.AsyncClient() as client:
             runtime = QQOfficialRuntime(
                 (QQOfficialRuntimeAccount("special-app", "secret"),),
@@ -696,8 +699,9 @@ def test_matched_mention_establishes_group_route_before_dispatch(
                 runtime.register_group_link(link)
 
             observer = SilentIdentityObservationService(
-                store,
-                {
+                mutations=IdentityMutationCoordinator(asyncio.create_task),
+                store=store,
+                accounts={
                     "special-app": IdentityObservationAccount(
                         "special-app", 4019875223, {}, frozenset({10001})
                     )
@@ -749,7 +753,9 @@ def test_non_owner_group_mention_links_member_without_dispatch(
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
-        store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+        store = SqliteIdentityLinkStore(
+            tmp_path / "identity.sqlite", spawn=asyncio.create_task
+        )
         async with httpx.AsyncClient() as client:
             runtime = QQOfficialRuntime(
                 (QQOfficialRuntimeAccount("public-app", "secret"),),
@@ -764,8 +770,9 @@ def test_non_owner_group_mention_links_member_without_dispatch(
                 runtime.register_group_link(link)
 
             observer = SilentIdentityObservationService(
-                store,
-                {
+                mutations=IdentityMutationCoordinator(asyncio.create_task),
+                store=store,
+                accounts={
                     "public-app": IdentityObservationAccount(
                         "public-app", 4012787294, {}, frozenset({2160018101})
                     )
