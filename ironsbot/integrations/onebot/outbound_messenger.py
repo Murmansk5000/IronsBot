@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, replace
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.log import logger
 
 from ironsbot.core.outbound import (
+    COMMAND_REPLY_TEMPLATE,
     DeliveryCapabilities,
     DeliveryFailureKind,
     DeliveryHistoryStatus,
@@ -18,15 +21,20 @@ from ironsbot.core.outbound import (
     ReplyContext,
     SendResult,
 )
-from ironsbot.core.platform import ConversationRef, Platform, reference_digest
+from ironsbot.core.platform import (
+    ConversationRef,
+    Platform,
+    is_supported_message_actor,
+    reference_digest,
+)
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     render_onebot_outbound_message,
 )
-from ironsbot.integrations.onebot.outbound import (
-    GroupOutboundRateLimitService,
-    OutboundRateLimitDecision,
-    use_preacquired_push_permit,
+from ironsbot.integrations.onebot.receipts import (
+    onebot_result_message_id,
+    onebot_send_failure,
+    onebot_send_result,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +42,14 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Message
 
+    from ironsbot.core.command_catalog import CommandContext
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.platform import ActorRef
     from ironsbot.integrations.onebot.router import BotRouter
+    from ironsbot.services.messaging.outbound_limits import (
+        GroupOutboundRateLimitService,
+        OutboundSendAttempt,
+    )
 
 
 _ONEBOT_CAPABILITIES = DeliveryCapabilities(
@@ -59,9 +74,18 @@ _HISTORY_TIMEOUT_SECONDS = 5.0
 class OneBotMessageSender(Protocol):
     """Minimal OneBot send API required by the platform outbound adapter."""
 
+    self_id: str
+
     async def send_private_msg(self, *, user_id: int, message: Message) -> object: ...
 
     async def send_group_msg(self, *, group_id: int, message: Message) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _ReplySource:
+    bot: OneBotMessageSender
+    identity: ExecutionIdentity
+    actor: ActorRef
 
 
 class OneBotOutboundMessenger:
@@ -86,7 +110,7 @@ class OneBotOutboundMessenger:
         )
 
     async def _identity(self, bot: Any) -> ExecutionIdentity:
-        account_id = str(getattr(bot, "self_id", "")).strip()
+        account_id = str(bot.self_id).strip()
         if account_id in self._identities:
             return self._identities[account_id]
         nickname = ""
@@ -134,18 +158,88 @@ class OneBotOutboundMessenger:
             proactive=False,
         )
 
+    async def reply_from(
+        self,
+        bot: OneBotMessageSender,
+        incoming: MessageInputContext,
+        message: OutboundMessage,
+    ) -> SendResult:
+        identity = incoming.execution_identity
+        if (
+            identity is None
+            or identity.platform is not Platform.ONEBOT
+            or incoming.message.platform is not Platform.ONEBOT
+            or incoming.message.actor.platform is not Platform.ONEBOT
+            or incoming.message.conversation.platform is not Platform.ONEBOT
+            or identity.account_id != str(bot.self_id)
+        ):
+            return SendResult(
+                delivered=False,
+                attempted=False,
+                error_code="account_mismatch",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
+        template = (
+            replace(COMMAND_REPLY_TEMPLATE, mention_sender=False)
+            if incoming.message.actor.id == identity.account_id
+            else COMMAND_REPLY_TEMPLATE
+        )
+        prepared = template.prepare(incoming.message, message)
+        return await self._deliver(
+            incoming.message.conversation,
+            prepared.message,
+            reply_to_id=prepared.context.message_id if prepared.context else None,
+            proactive=False,
+            source=_ReplySource(bot, identity, incoming.message.actor),
+        )
+
+    async def send_from(
+        self,
+        bot: OneBotMessageSender,
+        context: CommandContext,
+        message: OutboundMessage,
+    ) -> SendResult:
+        """Send a normalized notice response on its receiving connection."""
+
+        if (
+            context.actor.platform is not Platform.ONEBOT
+            or context.conversation.platform is not Platform.ONEBOT
+            or not is_supported_message_actor(context.actor, context.conversation)
+            or any(
+                account is not None and account != str(bot.self_id)
+                for account in (
+                    context.actor.account_id,
+                    context.conversation.account_id,
+                )
+            )
+        ):
+            return SendResult(
+                delivered=False,
+                attempted=False,
+                error_code="account_mismatch",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
+        return await self._deliver(
+            context.conversation,
+            message,
+            proactive=False,
+            source=_ReplySource(
+                bot, ExecutionIdentity(Platform.ONEBOT, str(bot.self_id)), context.actor
+            ),
+        )
+
     async def verify_history(
         self,
         conversation: ConversationRef,
         receipt: SendResult,
     ) -> DeliveryHistoryStatus:
-        message_id = receipt.message_id or ""
+        message_id = onebot_result_message_id(receipt)
         if (
             conversation.platform is not Platform.ONEBOT
             or not receipt.delivered
             or receipt.execution_identity is None
             or receipt.execution_identity.platform is not Platform.ONEBOT
-            or not message_id.isdecimal()
+            or message_id is None
         ):
             return DeliveryHistoryStatus.UNSUPPORTED
         bot = self._router.for_conversation(conversation)
@@ -179,6 +273,7 @@ class OneBotOutboundMessenger:
         *,
         reply_to_id: str | None = None,
         proactive: bool,
+        source: _ReplySource | None = None,
     ) -> SendResult:
         if not self._enabled:
             return SendResult(
@@ -214,6 +309,7 @@ class OneBotOutboundMessenger:
             conversation,
             rendered,
             proactive=proactive,
+            source=source,
         )
 
     async def _send_rendered(
@@ -222,8 +318,13 @@ class OneBotOutboundMessenger:
         rendered: Message,
         *,
         proactive: bool,
+        source: _ReplySource | None,
     ) -> SendResult:
-        bot = self._router.for_conversation(conversation)
+        bot = (
+            source.bot
+            if source is not None
+            else self._router.for_conversation(conversation)
+        )
         if bot is None:
             return SendResult(
                 delivered=False,
@@ -232,53 +333,43 @@ class OneBotOutboundMessenger:
                 error_message="No connected OneBot bot can deliver this message",
                 failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
-        identity = await self._identity(bot)
-        account_key = str(getattr(bot, "self_id", "") or id(bot))
-        decision = (
-            await self._outbound.acquire_push(
-                _group_id(conversation),
-                source="platform outbound",
+        identity = source.identity if source is not None else await self._identity(bot)
+        assert identity is not None
+        account_key = identity.account_id
+
+        async def send(attempt: OutboundSendAttempt) -> SendResult:
+            if proactive:
+                lock = self._push_locks.setdefault(account_key, asyncio.Lock())
+                async with lock:
+                    return await self._send_to_bot(
+                        bot,
+                        conversation,
+                        rendered,
+                        identity=identity,
+                        attempt=attempt,
+                        account_key=account_key,
+                        proactive=True,
+                    )
+            return await self._send_to_bot(
+                bot,
+                conversation,
+                rendered,
+                identity=identity,
+                attempt=attempt,
+                account_key=account_key,
+                proactive=False,
             )
-            if proactive
-            else None
+
+        result = await self._outbound.execute_send(
+            _group_id(conversation),
+            send,
+            proactive=proactive,
+            actor=source.actor if source is not None else None,
         )
-        if decision is not None and not decision.allowed:
-            return SendResult(
-                delivered=False,
-                error_code=decision.reason or "rate_limit",
-                attempted=False,
-                error_message="Outbound group message is rate limited",
-                failure_kind=DeliveryFailureKind.RETRYABLE,
-                execution_identity=identity,
-            )
-        if proactive:
-            lock = self._push_locks.setdefault(account_key, asyncio.Lock())
-            try:
-                await lock.acquire()
-            except asyncio.CancelledError:
-                if decision is not None:
-                    self._outbound.rollback(decision.permit)
-                raise
-            try:
-                return await self._send_to_bot(
-                    bot,
-                    conversation,
-                    rendered,
-                    identity=identity,
-                    decision=decision,
-                    account_key=account_key,
-                    proactive=True,
-                )
-            finally:
-                lock.release()
-        return await self._send_to_bot(
-            bot,
-            conversation,
-            rendered,
-            identity=identity,
-            decision=decision,
-            account_key=account_key,
-            proactive=False,
+        return (
+            result
+            if result.execution_identity is not None
+            else replace(result, execution_identity=identity)
         )
 
     async def _send_to_bot(  # noqa: PLR0913
@@ -288,7 +379,7 @@ class OneBotOutboundMessenger:
         rendered: Message,
         *,
         identity: ExecutionIdentity,
-        decision: OutboundRateLimitDecision | None,
+        attempt: OutboundSendAttempt,
         account_key: str,
         proactive: bool,
     ) -> SendResult:
@@ -297,8 +388,6 @@ class OneBotOutboundMessenger:
             proactive
             and self._transport_unavailable_until.get(account_key, 0) > monotonic()
         ):
-            if decision is not None:
-                self._outbound.rollback(decision.permit)
             return SendResult(
                 delivered=False,
                 error_code="transport_circuit_open",
@@ -307,15 +396,17 @@ class OneBotOutboundMessenger:
                 execution_identity=identity,
             )
         try:
-            with use_preacquired_push_permit(
-                self._outbound,
-                decision.permit if decision is not None else None,
-            ):
-                result = await _send_onebot_message(bot, conversation, rendered)
+            message = (
+                rendered + MessageSegment.text(f"\n\n{attempt.cooldown_notice}")
+                if attempt.cooldown_notice
+                else rendered
+            )
+            attempt.start()
+            result = await _send_onebot_message(bot, conversation, message)
         except Exception as error:  # noqa: BLE001 - delivery boundary
-            kind, interrupted = _classify_onebot_failure(error)
-            if decision is not None and kind is not DeliveryFailureKind.UNCERTAIN:
-                self._outbound.rollback(decision.permit)
+            failure = onebot_send_failure(error, execution_identity=identity)
+            kind = failure.result.failure_kind
+            attempt.interrupted = failure.interrupted or probing
             logger.warning(
                 "OneBot outbound delivery failed: kind={} ref={} error_type={}",
                 conversation.kind,
@@ -324,39 +415,23 @@ class OneBotOutboundMessenger:
             )
             if (
                 kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
-                or interrupted
+                or failure.interrupted
                 or probing
-            ):
-                if self._transport_failure_cooldown_seconds > 0:
-                    self._transport_unavailable_until[account_key] = (
-                        monotonic() + self._transport_failure_cooldown_seconds
-                    )
-                if proactive and conversation.kind == "group":
-                    self._outbound.discard_pending_pushes(int(conversation.id))
-            return SendResult(
-                delivered=False,
-                error_code="delivery_failed",
-                error_message=type(error).__name__,
-                failure_kind=kind,
-                execution_identity=identity,
-            )
-        message_id = onebot_result_message_id(result)
-        if message_id is None:
-            if probing and self._transport_failure_cooldown_seconds > 0:
+            ) and self._transport_failure_cooldown_seconds > 0:
                 self._transport_unavailable_until[account_key] = (
                     monotonic() + self._transport_failure_cooldown_seconds
                 )
-            return SendResult(
-                delivered=False,
-                error_code="missing_message_id",
-                error_message="OneBot send response did not include message_id",
-                failure_kind=DeliveryFailureKind.UNCERTAIN,
-                execution_identity=identity,
-            )
-        self._transport_unavailable_until.pop(account_key, None)
-        return SendResult(
-            delivered=True, message_id=message_id, execution_identity=identity
-        )
+            return failure.result
+        receipt = onebot_send_result(result, execution_identity=identity)
+        if not receipt.delivered:
+            if probing and self._transport_failure_cooldown_seconds > 0:
+                attempt.interrupted = True
+                self._transport_unavailable_until[account_key] = (
+                    monotonic() + self._transport_failure_cooldown_seconds
+                )
+        else:
+            self._transport_unavailable_until.pop(account_key, None)
+        return receipt
 
 
 def _supports_conversation(conversation: ConversationRef) -> bool:
@@ -381,39 +456,3 @@ async def _send_onebot_message(
     if conversation.kind == "private":
         return await bot.send_private_msg(user_id=target_id, message=message)
     return await bot.send_group_msg(group_id=target_id, message=message)
-
-
-def onebot_result_message_id(result: object) -> str | None:
-    if isinstance(result, dict):
-        value: Any = result.get("message_id")
-    else:
-        value = getattr(result, "message_id", None)
-    text = str(value).strip() if value is not None else ""
-    return text or None
-
-
-def _classify_onebot_failure(
-    error: Exception,
-) -> tuple[DeliveryFailureKind, bool]:
-    """Return the send disposition and whether the account needs a cooldown."""
-
-    text = " ".join((type(error).__name__, str(error), repr(error))).casefold()
-    if any(
-        marker in text
-        for marker in (
-            "1006514",
-            "账号状态为离线",
-            "账号已离线",
-        )
-    ):
-        return DeliveryFailureKind.TRANSPORT_UNAVAILABLE, True
-    interrupted = isinstance(error, ConnectionError) or any(
-        marker in text
-        for marker in (
-            "connection closed",
-            "connection reset",
-            "websocket is closed",
-            "网络连接异常",
-        )
-    )
-    return DeliveryFailureKind.UNCERTAIN, interrupted

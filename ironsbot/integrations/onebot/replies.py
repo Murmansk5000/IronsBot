@@ -15,7 +15,6 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 
 from ironsbot.core.outbound import (
     COMMAND_REPLY_TEMPLATE,
-    DeliveryFailureKind,
     OutboundMessage,
     ReplyTemplate,
     SendResult,
@@ -25,7 +24,10 @@ from ironsbot.integrations.onebot.message_rendering import (
     parse_reply_message_id,
     render_onebot_outbound_message,
 )
-from ironsbot.integrations.onebot.outbound_messenger import onebot_result_message_id
+from ironsbot.integrations.onebot.receipts import (
+    onebot_send_failure,
+    onebot_send_result,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -159,21 +161,8 @@ async def send_portable_event_reply(
     try:
         result = await matcher.send(rendered)
     except ActionFailed as error:
-        return SendResult(
-            delivered=False,
-            error_code="onebot_action_failed",
-            error_message=repr(error),
-            failure_kind=DeliveryFailureKind.RETRYABLE,
-        )
-    message_id = onebot_result_message_id(result)
-    if message_id is None:
-        return SendResult(
-            delivered=False,
-            error_code="missing_message_id",
-            error_message="OneBot matcher send response omitted message_id",
-            failure_kind=DeliveryFailureKind.UNCERTAIN,
-        )
-    return SendResult(delivered=True, message_id=message_id)
+        return onebot_send_failure(error).result
+    return onebot_send_result(result)
 
 
 def build_event_reply_message(event: MessageEvent, message: ReplyMessage) -> Message:

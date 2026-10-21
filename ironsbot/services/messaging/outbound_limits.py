@@ -1,37 +1,34 @@
 # SPDX-License-Identifier: MIT
+"""Window, queue and permit policy over normalized group and actor facts."""
+
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections import defaultdict, deque
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from functools import partial
+from typing import TYPE_CHECKING, Literal
 
-from nonebot.adapters import Bot
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
-from nonebot.exception import MockApiException
-from nonebot.log import logger
-from nonebot.matcher import current_event
-
+from ironsbot.core.outbound import DeliveryFailureKind, SendResult
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
-from ironsbot.integrations.onebot.identity import onebot_actor_ref
-from ironsbot.integrations.onebot.matcher_support import bind_async
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.config.models.messaging import (
         OutboundRateLimitConfig,
         OutboundRateLimitWindowConfig,
     )
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.platform import ActorRef
     from ironsbot.core.tasks import TaskSpawner
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
-_SUPPORTED_GROUP_SEND_APIS = frozenset(("send_msg", "send_group_msg"))
-_SUPPRESSED_RESULT_KEY = "_ironsbot_outbound_suppressed"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,10 +48,22 @@ class OutboundRateLimitDecision:
     reason: Literal["rate_limit", "queue_cleared"] | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _OutboundEvent:
     token: int
     created_at: float
+    settled: bool = False
+
+
+@dataclass(slots=True)
+class OutboundSendAttempt:
+    group_id: int | None
+    cooldown_notice: str | None = None
+    started: bool = False
+    interrupted: bool = False
+
+    def start(self) -> None:
+        self.started = True
 
 
 @dataclass(slots=True)
@@ -126,7 +135,13 @@ class MultiWindowGroupRateLimiter:
 
     def clear(self) -> None:
         self._events.clear()
-        self._next_token = 1
+
+    def claim_settlement(self, permit: OutboundPermit) -> bool:
+        for event in self._events.get(permit.group_id, ()):
+            if event.token == permit.token and not event.settled:
+                event.settled = True
+                return True
+        return False
 
     @staticmethod
     def _count_in_window(
@@ -221,9 +236,8 @@ class GroupOutboundRateLimitService:
         self._spawn = spawn
         self._limiter = MultiWindowGroupRateLimiter()
         self._push_queues: dict[int, _GroupPushQueue] = {}
-        self._api_permits: dict[int, OutboundPermit] = {}
-        self._preacquired_push_permit: ContextVar[OutboundPermit | None] = ContextVar(
-            "ironsbot_preacquired_push_permit",
+        self._active_send: ContextVar[OutboundSendAttempt | None] = ContextVar(
+            "ironsbot_outbound_send_attempt",
             default=None,
         )
 
@@ -242,6 +256,81 @@ class GroupOutboundRateLimitService:
             source="reply",
             now=now,
         )
+
+    async def acquire_send(
+        self, group_id: int | None, *, actor: ActorRef | None = None
+    ) -> OutboundRateLimitDecision:
+        if actor is not None and self.features.is_actor_superuser(actor):
+            return await self.acquire_superuser_reply(group_id)
+        return self.acquire_reply(group_id)
+
+    def owns_send(self, group_id: int | None) -> bool:
+        attempt = self._active_send.get()
+        return attempt is not None and attempt.group_id == group_id
+
+    async def execute_send(
+        self,
+        group_id: int | None,
+        send: Callable[[OutboundSendAttempt], Awaitable[SendResult]],
+        *,
+        actor: ActorRef | None = None,
+        proactive: bool = False,
+    ) -> SendResult:
+        decision = (
+            await self.acquire_push(group_id, source="platform outbound")
+            if proactive
+            else await self.acquire_send(group_id, actor=actor)
+        )
+        if not decision.allowed:
+            return SendResult(
+                delivered=False,
+                attempted=False,
+                error_code=decision.reason or "rate_limit",
+                failure_kind=DeliveryFailureKind.RETRYABLE,
+            )
+        attempt = OutboundSendAttempt(
+            group_id,
+            self.config.cooldown_message
+            if decision.permit is not None and decision.permit.append_cooldown_notice
+            else None,
+        )
+        token = self._active_send.set(attempt)
+        try:
+            try:
+                result = await send(attempt)
+            except BaseException:
+                if not attempt.started:
+                    self.rollback(decision.permit)
+                raise
+            self.settle_send(decision.permit, result, interrupted=attempt.interrupted)
+            return result
+        finally:
+            self._active_send.reset(token)
+
+    def settle_send(
+        self,
+        permit: OutboundPermit | None,
+        result: SendResult,
+        *,
+        interrupted: bool = False,
+    ) -> None:
+        if permit is None or not self._limiter.claim_settlement(permit):
+            return
+        if not result.delivered and (
+            not result.attempted
+            or result.failure_kind
+            in {
+                DeliveryFailureKind.PERMANENT,
+                DeliveryFailureKind.RETRYABLE,
+                DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
+            }
+        ):
+            self.rollback(permit)
+        if result.attempted and (
+            interrupted
+            or result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+        ):
+            self.discard_pending_pushes(permit.group_id)
 
     async def acquire_push(
         self,
@@ -303,10 +392,7 @@ class GroupOutboundRateLimitService:
         else:
             queue.push_waiters.append(waiter)
         if queue.worker is None or queue.worker.done():
-            queue.worker = self._spawn(
-                self._run_push_queue(group_id, queue),
-                name=f"ironsbot-push-rate-limit-{group_id}",
-            )
+            self._start_queue_worker(group_id, queue)
         queue.changed.set()
 
         try:
@@ -323,7 +409,7 @@ class GroupOutboundRateLimitService:
         """Drop waiting proactive pushes after a real group send failure.
 
         Superuser-triggered replies use a separate priority lane and remain
-        queued so a transient OneBot failure cannot silently lose them.
+        queued so a transient transport failure cannot silently lose them.
         """
 
         queue = self._push_queues.get(group_id)
@@ -349,7 +435,6 @@ class GroupOutboundRateLimitService:
 
     def reset(self) -> None:
         self._limiter.clear()
-        self._api_permits.clear()
         for queue in self._push_queues.values():
             if queue.worker is not None:
                 queue.worker.cancel()
@@ -389,163 +474,39 @@ class GroupOutboundRateLimitService:
                 queue.changed.clear()
                 with suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(queue.changed.wait(), timeout=delay)
-        except Exception:  # noqa: BLE001 - background workers must release waiters
-            logger.exception(
-                "outbound push queue worker failed: conversation_ref={}",
+        except Exception as error:  # noqa: BLE001 - background workers must release waiters
+            logger.error(  # noqa: TRY400 - do not expose message or credential details
+                "outbound push queue worker failed: conversation_ref=%s error_type=%s",
                 reference_digest(str(group_id)),
+                type(error).__name__,
             )
             self.discard_pending_pushes(group_id)
-        finally:
-            queue.worker = None
-            if not queue.has_waiters():
-                self._push_queues.pop(group_id, None)
-            else:
-                queue.worker = self._spawn(
-                    self._run_push_queue(group_id, queue),
-                    name=(
-                        f"ironsbot-push-rate-limit-{reference_digest(str(group_id))}"
-                    ),
-                )
+
+    def _start_queue_worker(self, group_id: int, queue: _GroupPushQueue) -> None:
+        queue.worker = self._spawn(
+            self._run_push_queue(group_id, queue),
+            name=f"ironsbot-push-rate-limit-{reference_digest(str(group_id))}",
+        )
+        queue.worker.add_done_callback(partial(self._worker_finished, group_id, queue))
+
+    def _worker_finished(
+        self, group_id: int, queue: _GroupPushQueue, task: asyncio.Task[None]
+    ) -> None:
+        if self._push_queues.get(group_id) is not queue or queue.worker is not task:
+            return
+        queue.worker = None
+        if task.cancelled():
+            for waiter in (*queue.superuser_waiters, *queue.push_waiters):
+                waiter.future.cancel()
+            queue.superuser_waiters.clear()
+            queue.push_waiters.clear()
+        if not queue.has_waiters():
+            self._push_queues.pop(group_id, None)
+        else:
+            self._start_queue_worker(group_id, queue)
 
     def _is_limited_group(self, group_id: int) -> bool:
         return self.config.enabled and not self.features.conversation_has_feature(
             ConversationRef(Platform.ONEBOT, "group", str(group_id)),
             ADMIN_NOTICE_FEATURE,
         )
-
-
-def _extract_group_id(api: str, data: dict[str, Any]) -> int | None:
-    if not (
-        api == "send_group_msg"
-        or (
-            api == "send_msg"
-            and (
-                data.get("message_type") == "group" or data.get("group_id") is not None
-            )
-        )
-    ):
-        return None
-    raw_group_id = data.get("group_id")
-    if raw_group_id is None:
-        return None
-    try:
-        group_id = int(raw_group_id)
-    except (TypeError, ValueError):
-        return None
-    return group_id if group_id > 0 else None
-
-
-def _is_superuser_reply(service: GroupOutboundRateLimitService) -> bool:
-    """Return whether the current matcher reply originates from a superuser."""
-
-    try:
-        event = current_event.get()
-    except LookupError:
-        return False
-    raw_user_id = getattr(event, "user_id", None)
-    if not isinstance(raw_user_id, int | str):
-        return False
-    return service.features.is_actor_superuser(onebot_actor_ref(str(raw_user_id)))
-
-
-def _append_cooldown_notice(data: dict[str, Any], notice: str) -> None:
-    message = Message(data.get("message", ""))
-    message += MessageSegment.text(f"\n\n{notice}")
-    data["message"] = message
-
-
-def _suppressed_result(
-    *,
-    group_id: int,
-    reason: str,
-) -> dict[str, object]:
-    return {
-        _SUPPRESSED_RESULT_KEY: True,
-        "group_id": group_id,
-        "reason": reason,
-    }
-
-
-def is_outbound_suppressed_result(result: object) -> bool:
-    return isinstance(result, dict) and result.get(_SUPPRESSED_RESULT_KEY) is True
-
-
-@contextmanager
-def use_preacquired_push_permit(
-    service: GroupOutboundRateLimitService,
-    permit: OutboundPermit | None,
-) -> Iterator[None]:
-    token = service._preacquired_push_permit.set(permit)
-    try:
-        yield
-    finally:
-        service._preacquired_push_permit.reset(token)
-
-
-async def _check_group_send_api(
-    service: GroupOutboundRateLimitService,
-    _bot: Bot,
-    api: str,
-    data: dict[str, Any],
-) -> None:
-    if api not in _SUPPORTED_GROUP_SEND_APIS:
-        return
-    group_id = _extract_group_id(api, data)
-    if group_id is None:
-        return
-
-    preacquired = service._preacquired_push_permit.get()
-    if preacquired is not None and preacquired.group_id == group_id:
-        permit = preacquired
-        decision = OutboundRateLimitDecision(allowed=True, permit=permit)
-    elif _is_superuser_reply(service):
-        decision = await service.acquire_superuser_reply(group_id)
-        permit = decision.permit
-    else:
-        decision = service.acquire_reply(group_id)
-        permit = decision.permit
-
-    if not decision.allowed:
-        logger.info(
-            "group message suppressed by outbound rate limit: "
-            "conversation_ref={}, api={}",
-            reference_digest(str(group_id)),
-            api,
-        )
-        raise MockApiException(
-            _suppressed_result(
-                group_id=group_id,
-                reason=decision.reason or "rate_limit",
-            )
-        )
-
-    if permit is None:
-        return
-    service._api_permits[id(data)] = permit
-    if permit.append_cooldown_notice:
-        notice = service.config.cooldown_message
-        _append_cooldown_notice(data, notice)
-
-
-async def _finalize_group_send_api(
-    service: GroupOutboundRateLimitService,
-    _bot: Bot,
-    exception: Exception | None,
-    api: str,
-    data: dict[str, Any],
-    _result: Any,
-) -> None:
-    if api not in _SUPPORTED_GROUP_SEND_APIS:
-        return
-    permit = service._api_permits.pop(id(data), None)
-    if exception is not None:
-        service.rollback(permit)
-        if permit is not None:
-            service.discard_pending_pushes(permit.group_id)
-
-
-def install_outbound_rate_limit_hooks(
-    service: GroupOutboundRateLimitService,
-) -> None:
-    Bot.on_calling_api(bind_async(_check_group_send_api, service))
-    Bot.on_called_api(bind_async(_finalize_group_send_api, service))

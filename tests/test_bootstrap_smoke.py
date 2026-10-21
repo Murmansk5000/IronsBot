@@ -22,6 +22,7 @@ import socket
 import traceback
 import nonebot.dependencies as dependencies
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import Bot
 from nonebot.matcher import Matcher
 from nonebot.log import logger
 
@@ -47,6 +48,7 @@ def checked_signature(call):
         name = source.__qualname__
         if name.endswith(("accepts", "handle")):
             assert signature.parameters["event"].annotation is Event, name
+            assert signature.parameters["bot"].annotation is Bot, name
             if name.endswith("handle"):
                 assert signature.parameters["matcher"].annotation is Matcher, name
             registered.add(name)

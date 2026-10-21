@@ -10,9 +10,12 @@ from nonebot.adapters.onebot.v11 import Adapter, Bot, Message, MessageSegment
 from nonebot.matcher import matchers
 from nonebot.message import handle_event
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
     CommandCooldownConfig,
     CommandCooldownWindowConfig,
+    OutboundRateLimitConfig,
+    OutboundRateLimitWindowConfig,
 )
 from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
@@ -23,12 +26,14 @@ from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.command_ingress import install_command_ingress
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.command_errors import COMMAND_FAILED_MESSAGE
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.messaging.outbound_limits import GroupOutboundRateLimitService
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
@@ -52,21 +57,24 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     saved = dict(matchers.items())
     matchers.clear()
     sends: list[dict[str, Any]] = []
-    transport = Mock(fails=False, error=None)
+    transport = Mock(fails=False, error=None, response=None)
     notices = Mock(send=AsyncMock())
 
     async def api(_adapter: Adapter, _bot: Bot, _api: str, **data: Any) -> object:
-        sends.append(data)
+        sends.append({"bot": _bot.self_id, **data})
         if transport.error is not None:
             raise transport.error
+        if transport.response is not None:
+            return transport.response
         return {} if transport.fails else {"message_id": len(sends) + 100}
 
     monkeypatch.setattr(Adapter, "_call_api", api)
     group = ConversationRef(Platform.ONEBOT, "group", "456")
     policies = {group: frozenset({"help"})}
+    user_policies = {}
     features = FeatureService(
         policies,
-        {},
+        user_policies,
         frozenset(),
     )
     catalog = CommandCatalog()
@@ -127,7 +135,11 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         admin_notices=notices,
     )
     factory = MatcherFactory(sessions.interactions.cooldown, SimpleNamespace())
-    install_command_ingress(factory, router)
+    limits = GroupOutboundRateLimitService(
+        OutboundRateLimitConfig(), features, TaskOwner().create
+    )
+    messenger = OneBotOutboundMessenger(Mock(), limits)
+    install_command_ingress(factory, router, messenger)
     try:
         yield SimpleNamespace(
             bot=Bot(Adapter(driver), "1"),
@@ -138,14 +150,130 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
             transport=transport,
             factory=factory,
             policies=policies,
+            user_policies=user_policies,
             group=group,
             ai=ai,
             notices=notices,
             errors=router.delivery.errors,
+            messenger=messenger,
+            limits=limits,
         )
     finally:
+        limits.reset()
         matchers.clear()
         matchers.update(saved)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("private", [False, True])
+async def test_production_entry_does_not_call_matcher_send(
+    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, *, private: bool
+) -> None:
+    from nonebot.matcher import Matcher
+
+    from ironsbot.core.platform import ActorRef
+    from tests.helpers.onebot_events import group_message_event, private_message_event
+
+    if private:
+        runtime.user_policies[ActorRef(Platform.ONEBOT, "101")] = frozenset({"help"})
+    send = AsyncMock(side_effect=AssertionError("legacy matcher send invoked"))
+    monkeypatch.setattr(Matcher, "send", send)
+    event = (
+        private_message_event("执行", user_id=101, message_id=1)
+        if private
+        else group_message_event("执行", user_id=101, message_id=1)
+    )
+    await handle_event(runtime.bot, event)
+    send.assert_not_awaited()
+    runtime.execute.assert_awaited_once()
+    assert len(runtime.sends) == 1
+    assert runtime.sends[0]["bot"] == "1"
+    assert "[CQ:reply,id=1]" in str(runtime.sends[0]["message"])
+    assert ("[CQ:at,qq=101]\n" in str(runtime.sends[0]["message"])) is not private
+
+
+@pytest.mark.asyncio
+async def test_source_account_mismatch_is_rejected_before_business(
+    runtime: SimpleNamespace,
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    other = Bot(runtime.bot.adapter, "2")
+    await handle_event(other, group_message_event("执行", self_id=1, user_id=101))
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+    assert runtime.sends == []
+    await handle_event(
+        other, group_message_event("执行", self_id=2, user_id=101, message_id=2)
+    )
+    runtime.execute.assert_awaited_once()
+    assert runtime.sends[0]["bot"] == "2"
+    runtime.messenger._router.for_conversation.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_command_reply_preserves_superuser_priority_through_explicit_port(
+    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from ironsbot.core.platform import ActorRef
+    from tests.helpers.onebot_events import group_message_event
+
+    runtime.limits.config = OutboundRateLimitConfig(
+        enabled=True,
+        windows=[OutboundRateLimitWindowConfig(window_seconds=60, max_messages=1)],
+    )
+    runtime.limits.features = FeatureService(
+        runtime.policies, {}, frozenset({ActorRef(Platform.ONEBOT, "101")})
+    )
+    reserved = runtime.limits.acquire_reply(456)
+    queued = asyncio.Event()
+    original = runtime.limits.acquire_superuser_reply
+
+    async def wait_for_capacity(group_id: int | None):
+        queued.set()
+        return await original(group_id)
+
+    monkeypatch.setattr(runtime.limits, "acquire_superuser_reply", wait_for_capacity)
+    task = asyncio.create_task(
+        handle_event(runtime.bot, group_message_event("执行", user_id=101))
+    )
+    try:
+        await asyncio.wait_for(queued.wait(), timeout=2)
+        assert not task.done()
+        assert runtime.sends == []
+        runtime.limits.rollback(reserved.permit)
+        await asyncio.wait_for(task, timeout=2)
+        assert len(runtime.sends) == 1
+        runtime.execute.assert_awaited_once()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_wrong_connection_cannot_feed_identity_observer(
+    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nonebot.message as message_runtime
+
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
+    from tests.helpers.onebot_events import group_message_event
+
+    monkeypatch.setattr(message_runtime, "_event_preprocessors", set())
+    observer = Mock(observe_onebot=AsyncMock())
+    OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=True, identity_observer=observer, errors=runtime.errors
+        )
+    ).install()
+    await handle_event(runtime.bot, group_message_event("执行", self_id=2, user_id=101))
+    observer.observe_onebot.assert_not_awaited()
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+    assert runtime.sends == []
 
 
 @pytest.mark.asyncio
@@ -167,6 +295,30 @@ async def test_actual_onebot_transport_exception_uses_shared_error_boundary(
     )
     assert runtime.execute.await_count == len(("failed", "recovered"))
     assert "result" in str(runtime.sends[-1]["message"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [True, False, [], {}, 1.5, "abc"])
+async def test_malformed_receipt_releases_request_without_retrying_original_delivery(
+    runtime: SimpleNamespace, value: object
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    runtime.transport.response = {"message_id": value}
+    await handle_event(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=1)
+    )
+    assert runtime.execute.await_count == 1
+    assert len(runtime.sends) == 1
+    runtime.transport.response = None
+    runtime.execute.reset_mock()
+    runtime.sends.clear()
+    await handle_event(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=2)
+    )
+    runtime.execute.assert_awaited_once()
+    assert len(runtime.sends) == 1
+    runtime.ai.chat_reply.assert_not_awaited()
 
 
 @pytest.mark.asyncio

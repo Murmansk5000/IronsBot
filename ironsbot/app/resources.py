@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyPort
+    from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.about import AboutService
@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
+    from ironsbot.services.messaging.poke_reply import PokeReplyService
+    from ironsbot.services.messaging.red_packet import RedPacketNoticeService
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.official_union_identity import OfficialUnionIdentityService
@@ -66,6 +68,7 @@ class ApplicationResources:
     server_status: ServerStatusService
     subscriptions: PushUnsubscribeStore
     outbound_messenger: PlatformOutboundMessenger
+    onebot_messenger: OneBotOutboundMessenger
     qq_official: QQOfficialRuntime | None
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
@@ -91,7 +94,8 @@ class ApplicationResources:
     scheduled_restart: ScheduledRestartService
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
-    poke_reply: OneBotPokeReplyPort
+    poke_reply: PokeReplyService
+    red_packet_notice: RedPacketNoticeService
     addressed_input_hints: AddressedInputHintService
     identity_links: IdentityLinkCommands
     identity_linking: IdentityLinkingService
