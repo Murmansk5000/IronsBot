@@ -8,6 +8,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.core.inbound_claims import InboundMessageKey
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.identity_link_store import IdentityLinkStore
+    from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 
 _SPACE_PATTERN = re.compile(r"\s+")
 _MIN_CONFIRMATIONS = 1
@@ -83,6 +85,7 @@ class _PendingOneBotMessage:
 class SilentIdentityObservationService:
     store: IdentityLinkStore
     accounts: Mapping[str, IdentityObservationAccount]
+    mutations: IdentityMutationCoordinator = field(kw_only=True, repr=False)
     confirmation_count: int = 1
     match_window_seconds: float = 10.0
     clock: Callable[[], float] = time.time
@@ -246,6 +249,14 @@ class SilentIdentityObservationService:
             return False
         account_id = incoming.actor.account_id
         assert account_id is not None
+        return await self.mutations.run(
+            partial(self._observe_official_message, pending, account_id)
+        )
+
+    async def _observe_official_message(
+        self, pending: _PendingOfficialMessage, account_id: str
+    ) -> bool:
+        incoming = pending.incoming
         async with self._lock:
             if not await self.claims.claim(
                 InboundMessageKey(
@@ -291,6 +302,9 @@ class SilentIdentityObservationService:
         self,
         observation: OneBotGroupMessageObservation,
     ) -> bool:
+        return await self.mutations.run(partial(self._observe_onebot, observation))
+
+    async def _observe_onebot(self, observation: OneBotGroupMessageObservation) -> bool:
         async with self._lock:
             if not await self.claims.claim(
                 InboundMessageKey(

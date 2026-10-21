@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -13,6 +14,7 @@ from ironsbot.core.platform import (
 )
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.services.identity_link_store import OfficialIdentity
+from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.official_union_identity import OfficialUnionIdentityService
 
@@ -51,7 +53,9 @@ def _incoming(app_id: str, openid: str) -> IncomingMessageRef:
 
 @pytest.mark.asyncio
 async def test_union_service_registers_propagated_links(tmp_path: Path) -> None:
-    store = SqliteIdentityLinkStore(tmp_path / "state.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "state.sqlite", spawn=asyncio.create_task
+    )
     await store.link_verified(
         onebot_qq_id="10001",
         official=OfficialIdentity("app-a", "user", "user-a"),
@@ -64,6 +68,7 @@ async def test_union_service_registers_propagated_links(tmp_path: Path) -> None:
         IdentityPrincipalService(),
         lambda _merge: None,
         linked.append,
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
         clock=lambda: 100.0,
     )
 
@@ -80,7 +85,9 @@ async def test_union_service_registers_propagated_links(tmp_path: Path) -> None:
 async def test_union_service_reports_conflict_without_exposing_ids(
     tmp_path: Path,
 ) -> None:
-    store = SqliteIdentityLinkStore(tmp_path / "state.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "state.sqlite", spawn=asyncio.create_task
+    )
     await store.link_verified(
         onebot_qq_id="10001",
         official=OfficialIdentity("app-a", "user", "user-a"),
@@ -98,6 +105,7 @@ async def test_union_service_reports_conflict_without_exposing_ids(
         IdentityPrincipalService(),
         lambda _merge: None,
         lambda _link: None,
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
         clock=lambda: 100.0,
     )
     assert await service.observe(_incoming("app-a", "user-a"))

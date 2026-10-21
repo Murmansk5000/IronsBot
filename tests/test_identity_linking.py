@@ -34,6 +34,7 @@ from ironsbot.services.identity_linking import (
     IdentityLinkingTokenError,
     OfficialAccount,
 )
+from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,7 +43,7 @@ _TEST_QQ_ID = "1" * 10
 
 
 def _store(path: Path) -> SqliteIdentityLinkStore:
-    return SqliteIdentityLinkStore(path)
+    return SqliteIdentityLinkStore(path, spawn=asyncio.create_task)
 
 
 def _service(
@@ -58,6 +59,7 @@ def _service(
     return IdentityLinkingService(
         _store(path),
         configured,
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
         challenge_ttl_seconds=60.0,
         clock=lambda: clock[0],
     )
