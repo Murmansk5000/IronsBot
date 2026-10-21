@@ -4,9 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
@@ -15,25 +13,9 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.portable_queries import (
-    make_portable_operation_handler,
-    portable_contract_rule,
-)
-from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.activity.command_contracts import activity_command_contracts
-from ironsbot.services.activity.commands import (
-    is_current_seer_activity_text,
-    is_new_seer_activity_text,
-    is_soon_ending_seer_activity_text,
-)
-from ironsbot.services.portable_activity_commands import (
-    build_portable_activity_operations,
-)
 
 if TYPE_CHECKING:
-    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.operations.scheduler import Scheduler
 
@@ -45,86 +27,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-async def _is_current_seer_activity_command(event: Event) -> bool:
-    return is_current_seer_activity_text(event.get_plaintext())
-
-
-async def _is_soon_ending_seer_activity_command(event: Event) -> bool:
-    return is_soon_ending_seer_activity_text(event.get_plaintext())
-
-
-async def _is_new_seer_activity_command(event: Event) -> bool:
-    return is_new_seer_activity_text(event.get_plaintext())
-
-
-def install(
-    registry: MatcherFactory,
-    service: ActivityService,
-    features: FeatureService,
-) -> None:
-    operations = build_portable_activity_operations(service)
-
-    current_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "seer_activity_current",
-            help_ids=("activity.current",),
-        ),
-        rule=Rule(_is_current_seer_activity_command)
-        & explicit_command()
-        & portable_contract_rule(
-            next(c for c in activity_command_contracts() if c.id == "activity.current"),
-            features,
-        ),
-        priority=registry.priority("activity"),
-        block=True,
-    )
-    current_matcher.append_handler(
-        make_portable_operation_handler(operations["activity.current"])
-    )
-
-    ending_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "seer_activity_ending",
-            help_ids=("activity.ending",),
-        ),
-        rule=(
-            Rule(
-                lambda event: event_is_feature_allowed(
-                    features, event, "seer_activity_query"
-                )
-            )
-            & Rule(_is_soon_ending_seer_activity_command)
-            & explicit_command()
-        ),
-        priority=registry.priority("activity"),
-        block=True,
-    )
-    ending_matcher.append_handler(
-        make_portable_operation_handler(operations["activity.ending"])
-    )
-
-    new_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "seer_activity_new",
-            help_ids=("activity.new",),
-        ),
-        rule=(
-            Rule(
-                lambda event: event_is_feature_allowed(
-                    features, event, "seer_activity_query"
-                )
-            )
-            & Rule(_is_new_seer_activity_command)
-            & explicit_command()
-        ),
-        priority=registry.priority("activity"),
-        block=True,
-    )
-    new_matcher.append_handler(
-        make_portable_operation_handler(operations["activity.new"])
-    )
 
 
 def plugin_contribution(

@@ -7,8 +7,9 @@ from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot import lucky_skin_window as lucky_plugin
-from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.seer.lucky_skin_commands import (
@@ -91,10 +92,13 @@ def test_subscription_commands_are_claimed_once_and_not_by_ai(
         for c in catalog.available_for_context(context, features)
         if c.matches_direct_input(context, text)
     ] == [expected]
-    assert not _capture_ai_prompt(
-        private_message_event(text, user_id=int(_ACTOR.id)),
-        {},
-        AiInputRoutingService(features, catalog),
+    assert (
+        not AiInputRoutingService(features, catalog)
+        .decide(
+            message_input_context(private_message_event(text, user_id=int(_ACTOR.id))),
+            command_context(private_message_event(text, user_id=int(_ACTOR.id))),
+        )
+        .try_chat
     )
 
 
