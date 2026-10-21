@@ -98,6 +98,13 @@ Native hook registration, mirror replay timing and outbound echo receipt
 handling remain transitional; this extraction does not complete their lifecycle
 audit or remove the framework host.
 
+Identity observation and command execution use the same normalized delivery-key
+and claim-store contract, with separate purpose-owned persistence. Observing a
+message must not consume its command execution claim. A claimed observation
+cannot refresh evidence or be reused for a later identity; its replay retention
+does not signify business success. Production uses persistent stores and fails
+closed on storage errors, never switching to volatile claims at runtime.
+
 ### Normative Reading Rules
 
 This document contains both a description of the running application and the
