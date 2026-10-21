@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.onebot.matchers import (
         MatcherFactory,
-        PromptSessionManager,
     )
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
 
@@ -38,7 +37,6 @@ class Application:
     file_logging: FileLogging
     http_clients: HttpClients
     databases: DatabaseManager
-    prompt_sessions: PromptSessionManager
     resources: ApplicationResources
     matcher_factory: MatcherFactory
     extension_contexts: Mapping[str, object]
@@ -71,6 +69,7 @@ class Application:
             self.contributions,
             known_features=self.known_features,
         )
+        self.resources.commands.validate_categories()
         self.lifecycle = ApplicationLifecycle.from_contributions(
             self.driver,
             self.contributions,
@@ -102,7 +101,6 @@ class Application:
                 self.resources.query_sessions,
                 self.resources.features,
             )
-            self.matcher_factory.install_queued_conversation_router()
             self.matcher_factory.validate_command_catalog(self.resources.commands)
             self.matcher_factory.install_postprocessor()
         self.lifecycle.install()

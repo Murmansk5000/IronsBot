@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""OneBot configuration adapter for team resource subscriptions."""
+"""Compile configured default mentions for team resource subscriptions."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from ironsbot.core.platform import ActorRef, Platform
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
-    from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.qq_references import QQReferenceResolver
 
 
-def build_onebot_team_resource_default_mentions(
+def build_team_resource_default_mentions(
     config: TeamResourceConfig,
-    references: OneBotReferenceResolver,
+    references: QQReferenceResolver,
 ) -> tuple[ActorRef, ...]:
     """Resolve OneBot-only TOML aliases before the service is composed."""
 

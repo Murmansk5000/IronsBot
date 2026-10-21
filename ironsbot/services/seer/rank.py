@@ -486,7 +486,7 @@ class RankService(RankCacheQueryMixin):
         game: HeadlessGame,
         *,
         user_id: int,
-        pet_kind_count: int,
+        pet_kind_count: int | None,
         search_limit: int | None,
         anchor_only: bool = False,
     ) -> RankLookupResult:
@@ -501,7 +501,7 @@ class RankService(RankCacheQueryMixin):
             search_limit=search_limit,
             anchor_only=anchor_only,
         )
-        if result.score is None and pet_kind_count > 0:
+        if result.score is None and pet_kind_count is not None and pet_kind_count > 0:
             result.score = pet_kind_count
         return result
 
@@ -649,7 +649,7 @@ class RankService(RankCacheQueryMixin):
         *,
         book_score: int | None = None,
         achieve_score: int | None = None,
-        pet_kind_count: int = 0,
+        pet_kind_count: int | None = 0,
         skin_score: int | None = None,
         progress: RankSummaryProgress | None = None,
         anchor_only: bool = False,

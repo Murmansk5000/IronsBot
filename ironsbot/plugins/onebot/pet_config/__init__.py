@@ -12,14 +12,17 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.feature_policy import feature_rule
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import affix_command, explicit_command
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.pet_config_commands import (
     pet_config_command_contracts,
     pet_config_input,
+)
+from ironsbot.services.portable_pet_config_commands import (
+    build_portable_pet_config_operation,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -36,6 +39,7 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.pet_config import PetConfigQueryService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 
 def plugin_contribution(
@@ -44,6 +48,7 @@ def plugin_contribution(
     features: FeatureService,
     config: PetConfigConfig,
     image_command_texts: frozenset[str] = frozenset(),
+    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     return PluginContribution(
         id="pet_config",
@@ -68,6 +73,7 @@ def plugin_contribution(
             features=features,
             enabled=config.enabled,
             image_command_texts=image_command_texts,
+            query_sessions=query_sessions,
         ),
     )
 
@@ -86,20 +92,17 @@ def _is_visible(
     )
 
 
-def install(
+def install(  # noqa: PLR0913 - transport composition
     registry: MatcherFactory,
     service: PetConfigQueryService,
     features: FeatureService,
     *,
     enabled: bool,
     image_command_texts: frozenset[str],
+    query_sessions: PortableQuerySessions,
 ) -> None:
     if not enabled:
         return
-
-    from ironsbot.plugins.onebot.seer.query.query_conversation import (
-        make_query_handler,
-    )
 
     matcher = registry.on_message(
         policy=CommandPolicy.command("pet_config", help_ids=("pet_config.query",)),
@@ -110,11 +113,11 @@ def install(
         block=True,
     )
     matcher.append_handler(
-        make_query_handler(
-            service.search,
-            service.select,
-            "请问你想查询哪只精灵的配置？",
-            ActionDefinition("pet_config", "精灵配置查询"),
+        make_portable_query_handler(
+            build_portable_pet_config_operation(
+                service, query_sessions, image_command_texts=image_command_texts
+            ),
+            query_sessions,
         )
     )
 
@@ -127,5 +130,6 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             config=context.settings.pet_config,
             image_command_texts=context.resources.sendpic.exact_command_texts,
+            query_sessions=context.resources.query_sessions,
         ),
     )

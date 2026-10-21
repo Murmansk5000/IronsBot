@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -41,6 +42,15 @@ class SeerMatcherGroup:
     image_command_texts: frozenset[str]
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset()
     new_content_preview_max_items: int = 5
+
+    def operation(self, command_id: str) -> PortableOperation:
+        from ironsbot.services.portable_seer_commands import (
+            build_portable_catalog_queries,
+        )
+
+        return build_portable_catalog_queries(self.resources, self.query_sessions)[
+            command_id
+        ]
 
     def on_message(
         self,

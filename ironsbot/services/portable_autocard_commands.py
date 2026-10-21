@@ -159,6 +159,7 @@ class _PortableAutocardOperations:
                 keep_open=True,
                 shareable=True,
                 exit_message="❌ 已退出群星场地选择",
+                child=True,
             ),
         )
 

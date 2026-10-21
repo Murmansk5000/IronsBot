@@ -7,22 +7,17 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.command_catalog import CommandAccess, command_context_from_input
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.player_detail_actions import PlayerDetailActionRequest
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.semantic_requests import ActionDefinition
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerDetailActionRequest:
-    """Validated player target and platform context for an extension action."""
-
-    player_id: int
-    actor: ActorRef
-    conversation: ConversationRef
-    can_manage: bool = False
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 
 PlayerDetailActionQuery = Callable[[PlayerDetailActionRequest], Awaitable[QueryReply]]
@@ -41,6 +36,16 @@ class PlayerDetailExtensionAction:
     query: PlayerDetailActionQuery
     action: ActionDefinition
     work_unit: str = "lineup"
+    access: tuple[CommandAccess, ...] = (CommandAccess(),)
+    show_in_player_menu: bool = True
+    numeric_target_only: bool = False
+    offer_binding: bool = True
+    present: (
+        Callable[
+            [QueryReply, MessageInputContext, PortableQuerySessions], OutboundMessage
+        ]
+        | None
+    ) = None
 
 
 class PlayerDetailExtensionRegistry:
@@ -56,10 +61,11 @@ class PlayerDetailExtensionRegistry:
             or not action.feature
             or not label
             or not action.command_help_id.strip()
+            or not action.access
         ):
             msg = (
                 "player detail extension action requires id, feature, label, "
-                "and command_help_id"
+                "command_help_id, and access"
             )
             raise ValueError(msg)
         if "【" in label or "】" in label:
@@ -103,6 +109,11 @@ class PlayerDetailExtensionRegistry:
             query=action.query,
             action=action.action,
             work_unit=action.work_unit,
+            access=action.access,
+            show_in_player_menu=action.show_in_player_menu,
+            numeric_target_only=action.numeric_target_only,
+            offer_binding=action.offer_binding,
+            present=action.present,
         )
 
     def actions(self) -> tuple[PlayerDetailExtensionAction, ...]:
@@ -148,4 +159,25 @@ class PlayerDetailExtensionRegistry:
         if not matches:
             return None
         alias, action = matches[0]
-        return action, normalized[len(alias) :]
+        reference = normalized[len(alias) :]
+        if action.numeric_target_only and not reference.isdecimal():
+            return None
+        return action, reference
+
+
+def extension_action_allowed(
+    action: PlayerDetailExtensionAction,
+    context: MessageInputContext,
+    features: FeatureService,
+) -> bool:
+    message = context.message
+    return (
+        not features.is_message_blocked(message.actor, message.conversation)
+        and features.is_feature_allowed(
+            message.actor, message.conversation, action.feature
+        )
+        and any(
+            access.is_executable(command_context_from_input(context), features)
+            for access in action.access
+        )
+    )

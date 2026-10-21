@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.config.models.messaging import BotRoutingConfig
-from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot import router as bot_router
 from ironsbot.integrations.onebot.router import BotRouter
@@ -45,7 +45,7 @@ def _patch_router(
     )
     return BotRouter(
         config,
-        OneBotReferenceResolver(
+        QQReferenceResolver(
             {"group_a": 987654321, "group_b": 876543210},
             {"owner": 1234567890, "user_a": 2345678901},
         ),

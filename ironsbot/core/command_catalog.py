@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
+from ironsbot.core.action_categories import RequestCategory, category_for_action
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.platform import Platform, is_supported_message_actor
@@ -266,6 +267,7 @@ class CommandContract:
     notes: tuple[str, ...] = ()
     show_in_poke: bool = False
     visible: CommandVisibility | None = None
+    category: RequestCategory | None = None
 
     def __post_init__(self) -> None:  # noqa: C901 - one flat contract validator
         if not self.id.strip():
@@ -550,6 +552,16 @@ class CommandCatalog:
     @property
     def command_ids(self) -> frozenset[str]:
         return frozenset(command.id for command in self._commands)
+
+    def get(self, command_id: str) -> CommandContract | None:
+        return next((item for item in self._commands if item.id == command_id), None)
+
+    def validate_categories(self) -> None:
+        for command in self._commands:
+            if command.category is None:
+                category_for_action(command.id)
+            else:
+                RequestCategory(command.category)
 
     @property
     def direct_command_ids(self) -> frozenset[str]:

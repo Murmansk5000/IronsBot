@@ -259,9 +259,9 @@
     </section>
     <footer class="footer">
       {% if focused_category %}
-        发送数字查看详情，发送 <kbd>0</kbd> 退出
+      发送数字查看详情，发送 <kbd>0</kbd> {{ navigation_label | default('退出') }}
       {% else %}
-        发送字母查看分类或完整池图片，发送编号查看详情，发送 <kbd>0</kbd> 退出
+      发送字母查看分类或完整池图片，发送编号查看详情，发送 <kbd>0</kbd> {{ navigation_label | default('退出') }}
       {% endif %}
     </footer>
   </main>

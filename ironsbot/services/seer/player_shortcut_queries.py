@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.core import time as clock
 from ironsbot.core.tasks import OperationDeadline
 from ironsbot.core.time import ObservationTime, remaining_observation_ttl
+from ironsbot.services.operations.headless_errors import SocketRecvError
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import (
+    PLAYER_NOT_FOUND_RESULT_CODES,
+    format_player_query_error,
+)
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES, PEAK_MODES
@@ -181,6 +186,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
     observation_ttl: float = 300,
 ) -> QueryReply:
     extra_errors: list[str] = []
+    terminal_errors: list[SocketRecvError] = []
     observation = ObservationTime()
     (nick, nick_error), more_info, unity_part_one = await asyncio.gather(
         _resolve_shortcut_nick(
@@ -191,6 +197,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
             observation=observation,
             observations=observations,
             observation_ttl=observation_ttl,
+            terminal_errors=terminal_errors,
         ),
         _resolve_collection_more_info(
             game,
@@ -211,27 +218,34 @@ async def _fetch_collection_message(  # noqa: PLR0913
                 observation=observation,
                 ttl=observation_ttl,
             ),
-            UnityPartOneInfo(),
+            None,
             extra_errors,
             on_error=_log_extra_error,
             timeout_seconds=deadline.remaining(timeout_seconds),
         ),
     )
+    if terminal_errors:
+        return QueryReply(
+            text=format_player_query_error(player_id, terminal_errors[0]),
+            complete=False,
+        )
+    pet_kind_count = None if unity_part_one is None else unity_part_one.pet_kind_num
+    skin_count = None if unity_part_one is None else unity_part_one.skin_num
     rank_progress = RankSummaryProgress()
     rank_summary = await fetch_partial_rank_summary(
         rank.fetch_player_summary(
             game,
             player_id,
             achieve_score=getattr(more_info, "total_achieve", None),
-            pet_kind_count=unity_part_one.pet_kind_num,
-            skin_score=unity_part_one.skin_num,
+            pet_kind_count=pet_kind_count,
+            skin_score=skin_count,
             progress=rank_progress,
             anchor_only=anchor_only,
         ),
         progress=rank_progress,
         build_partial=lambda results, failure: PlayerRankSummary.from_results(
             results,
-            pet_kind_count=unity_part_one.pet_kind_num,
+            pet_kind_count=pet_kind_count,
             failure=failure,
         ),
         timeout_seconds=deadline.remaining(rank_timeout_seconds),
@@ -573,6 +587,7 @@ async def _resolve_shortcut_nick(  # noqa: PLR0913
     observation: ObservationTime,
     observations: ObservationCache | None = None,
     observation_ttl: float = 300,
+    terminal_errors: list[SocketRecvError] | None = None,
 ) -> tuple[str, str | None]:
     if _fresh_base_snapshot(base_snapshot, player_id, observation_ttl):
         assert base_snapshot is not None
@@ -590,6 +605,12 @@ async def _resolve_shortcut_nick(  # noqa: PLR0913
             timeout=timeout_seconds,
         )
     except Exception as error:  # noqa: BLE001
+        if (
+            terminal_errors is not None
+            and isinstance(error, SocketRecvError)
+            and error.result_code in PLAYER_NOT_FOUND_RESULT_CODES
+        ):
+            terminal_errors.append(error)
         _log_extra_error("玩家昵称", error)
         return "", format_player_extra_error(error)
     return str(getattr(user_info, "nick", "")), None
@@ -622,7 +643,7 @@ async def _resolve_collection_more_info(  # noqa: PLR0913
             observation=observation,
             ttl=observation_ttl,
         ),
-        SimpleNamespace(total_achieve=0, pet_all_num=0),
+        None,
         extra_errors,
         on_error=_log_extra_error,
         timeout_seconds=timeout_seconds,

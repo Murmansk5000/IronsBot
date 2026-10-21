@@ -14,10 +14,19 @@ from ironsbot.core.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
     SemanticTarget,
+    current_semantic_request_trace,
 )
 from ironsbot.services.portable_interactions import (
     PortableInteractions,
     check_current_interaction,
+)
+from ironsbot.services.portable_menu_navigation import (
+    active_menu,
+    bind_navigation,
+    copy_shared_menu,
+    install_navigation,
+    return_or_exit,
+    selecting_menu,
 )
 from ironsbot.services.portable_query_types import (
     MenuSelect,  # noqa: F401 - public compatibility
@@ -152,7 +161,7 @@ class PortableQuerySessions(PortableSessionState):
             return spec.can_select is None or spec.can_select(cast("_T", value), ctx)
 
         key = self._key(context)
-        if not spec.choices:
+        if not spec.choices and not spec.child:
             self._pending.pop(key, None)
             return spec.prompt
         session = self._new_session(
@@ -180,7 +189,7 @@ class PortableQuerySessions(PortableSessionState):
                 for index in range(1, len(spec.choices) + 1)
             ),
         )
-        self._pending[key] = _PendingSelection(
+        pending = _PendingSelection(
             session=session,
             choices=tuple(spec.choices),
             choice_ids=tuple(
@@ -215,8 +224,39 @@ class PortableQuerySessions(PortableSessionState):
             owner_context=context,
             invalid_choice_message=spec.invalid_choice_message,
             claim_unknown_numeric=spec.claim_unknown_numeric,
+            refresh_on_return=spec.refresh_on_return,
+            exit_label=spec.exit_label,
         )
-        return replace(spec.prompt, prompt=session)
+        return install_navigation(
+            self,
+            context,
+            pending,
+            spec.prompt,
+            child=spec.child,
+        )
+
+    def offer_view(
+        self,
+        context: MessageInputContext,
+        message: OutboundMessage,
+    ) -> OutboundMessage:
+        """Present a navigable detail without reexecuting its parent operation."""
+
+        async def unreachable(
+            _value: object, _context: MessageInputContext
+        ) -> OutboundMessage:
+            return message
+
+        return self.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=(),
+                select=unreachable,
+                prompt=message,
+                child=True,
+                claim_unknown_numeric=False,
+            ),
+        )
 
     def offer_text_input(
         self,
@@ -231,6 +271,7 @@ class PortableQuerySessions(PortableSessionState):
             expires_at=self._now() + self._ttl_seconds,
             exit_message=spec.exit_message,
             session=session,
+            parent=active_menu() if spec.child else None,
         )
         return replace(spec.prompt, prompt=session)
 
@@ -268,12 +309,12 @@ class PortableQuerySessions(PortableSessionState):
             return None
         if text.strip() == "0":
             pending = self._pending.get(key)
-            if pending is not None or key in self._reservations:
+            if pending is not None:
+                return await return_or_exit(self, context, pending)
+            reserved = key in self._reservations
+            if reserved:
                 self.discard(context)
-                return OutboundMessage.from_text(
-                    pending.exit_message if pending else "已退出查询。"
-                )
-            return None
+            return OutboundMessage.from_text("已退出查询。") if reserved else None
         owner = self.quoted_owner(context)
         if owner is not None and self._key(owner) != key:
             return await self.select_shared(
@@ -302,8 +343,15 @@ class PortableQuerySessions(PortableSessionState):
         pending = self._pending.get(key)
         if isinstance(pending, _PendingTextInput):
             self._pending.pop(key, None)
-            return await self._select_text(text, pending, context)
-        if pending is None:
+            access_token = _MENU_ACCESS.set(
+                pending.parent.access if pending.parent else None
+            )
+            try:
+                with selecting_menu(pending.parent):
+                    return await self._select_text(text, pending, context)
+            finally:
+                _MENU_ACCESS.reset(access_token)
+        if not isinstance(pending, _PendingSelection):
             return None
         choice = pending.session.choice_from_action(text)
         if choice is None:
@@ -380,24 +428,33 @@ class PortableQuerySessions(PortableSessionState):
         ):
             return OutboundMessage.from_text("当前会话没有使用该选项的权限。")
         assert pending.shared_select is not None
+        shared_select = pending.shared_select
+        pending = copy_shared_menu(self, pending, responder)
+        self._pending[self._key(responder)] = pending
         access_token = _MENU_ACCESS.set(pending.access)
         try:
-            result = await pending.shared_select(value, responder)
+            with selecting_menu(pending):
+                result = await shared_select(value, responder)
         finally:
             _MENU_ACCESS.reset(access_token)
         if isinstance(result, PortableReply) and not allow_deferred:
             raise PortableQuerySessionError.deferred_result_not_enabled()
         if isinstance(result, (PortableReply, OutboundMessage)):
-            return result
-        return self._present(
-            responder,
-            result,
-            select=pending.shared_select,
-            prompt_title=pending.prompt_title,
-            not_found_message=pending.not_found_message,
-            keep_open=True,
-            action=pending.action,
-        )
+            return (
+                bind_navigation(result, pending)
+                if isinstance(result, PortableReply)
+                else result
+            )
+        with selecting_menu(pending):
+            return self._present(
+                responder,
+                result,
+                select=shared_select,
+                prompt_title=pending.prompt_title,
+                not_found_message=pending.not_found_message,
+                keep_open=True,
+                action=pending.action,
+            )
 
     def resolve_semantic_request(
         self,
@@ -447,8 +504,7 @@ class PortableQuerySessions(PortableSessionState):
         allow_deferred: bool,
     ) -> OutboundMessage | PortableReply | None:
         if choice.id == "0":
-            self._pending.pop(key, None)
-            return OutboundMessage.from_text(pending.exit_message)
+            return await return_or_exit(self, context, pending)
         value = pending.choices[_choice_index(pending, choice)]
         if (pending.access is not None and not pending.access(context)) or (
             pending.can_select is not None and not pending.can_select(value, context)
@@ -458,7 +514,8 @@ class PortableQuerySessions(PortableSessionState):
             self._pending.pop(key, None)
         access_token = _MENU_ACCESS.set(pending.access)
         try:
-            result = await pending.select(value, context)
+            with selecting_menu(pending):
+                result = await pending.select(value, context)
         finally:
             _MENU_ACCESS.reset(access_token)
         if isinstance(result, (OutboundMessage, PortableReply)):
@@ -471,16 +528,21 @@ class PortableQuerySessions(PortableSessionState):
                     session=replace(pending.session, expires_at=expires_at),
                     expires_at=expires_at,
                 )
-            return result
-        return self._present(
-            context,
-            result,
-            select=pending.select,
-            prompt_title=pending.prompt_title,
-            not_found_message=pending.not_found_message,
-            keep_open=pending.keep_open,
-            action=pending.action,
-        )
+            return (
+                bind_navigation(result, pending)
+                if isinstance(result, PortableReply)
+                else result
+            )
+        with selecting_menu(pending):
+            return self._present(
+                context,
+                result,
+                select=pending.select,
+                prompt_title=pending.prompt_title,
+                not_found_message=pending.not_found_message,
+                keep_open=pending.keep_open,
+                action=pending.action,
+            )
 
     @staticmethod
     async def _select_text(
@@ -505,6 +567,9 @@ class PortableQuerySessions(PortableSessionState):
     ) -> OutboundMessage | None:
         check_current_interaction()
         key = self._key(context)
+        trace = current_semantic_request_trace()
+        if action is None and trace is not None:
+            action = trace.request.action
         if result.message:
             if not keep_open:
                 self._pending.pop(key, None)
@@ -533,7 +598,7 @@ class PortableQuerySessions(PortableSessionState):
                 for index, choice in enumerate(result.choices, start=1)
             ),
         )
-        self._pending[key] = _PendingSelection(
+        pending = _PendingSelection(
             session=session,
             choices=tuple(choice.value for choice in result.choices),
             choice_ids=tuple(
@@ -562,25 +627,23 @@ class PortableQuerySessions(PortableSessionState):
             if action
             else None,
         )
-        return replace(
-            OutboundMessage.from_text(
-                format_selection_menu(
-                    title=prompt_title,
-                    items=tuple(
-                        SelectionMenuItem(
-                            label=(
-                                f"{choice.name}（{choice.description}）"
-                                if choice.description
-                                else choice.name
-                            ),
-                            is_sub_item=choice.is_sub_choice,
-                        )
-                        for choice in result.choices
-                    ),
-                )
-            ),
-            prompt=session,
+        message = OutboundMessage.from_text(
+            format_selection_menu(
+                title=prompt_title,
+                items=tuple(
+                    SelectionMenuItem(
+                        label=(
+                            f"{choice.name}（{choice.description}）"
+                            if choice.description
+                            else choice.name
+                        ),
+                        is_sub_item=choice.is_sub_choice,
+                    )
+                    for choice in result.choices
+                ),
+            )
         )
+        return install_navigation(self, context, pending, message, child=True)
 
 
 def _query_target(value: object, result: QueryResult[Any]) -> SemanticTarget:

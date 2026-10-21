@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -166,6 +167,21 @@ async def test_portable_operational_queries_use_shared_services() -> None:
     assert _text(meeting) == (
         "会议号：663-868-2008\nhttps://meeting.tencent.com/p/6638682008"
     )
+
+
+@pytest.mark.asyncio
+async def test_portable_status_preserves_business_failure() -> None:
+    operations = build_portable_server_status_operations(
+        Mock(
+            query_admin=AsyncMock(
+                return_value=ServerStatusResult("failed", succeeded=False)
+            )
+        )
+    )
+    result = await operations["server_status.admin_query"]("/开服查询", _context())
+    assert isinstance(result, OutboundMessage)
+    assert not result.request_succeeded
+    assert _text(result) == "failed"
 
 
 @pytest.mark.asyncio

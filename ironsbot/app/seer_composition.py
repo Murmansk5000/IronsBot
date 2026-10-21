@@ -8,7 +8,13 @@ from dataclasses import dataclass, replace
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.app.lucky_skin_window_accounts import (
+    build_lucky_skin_window_accounts,
+)
 from ironsbot.app.rendering_composition import build_seer_rendering_components
+from ironsbot.config.team_resource_mentions import (
+    build_team_resource_default_mentions,
+)
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.extensions.contracts import PlayerLineupRenderSession
 from ironsbot.extensions.player_lineup import PlayerLineupRenderServices
@@ -17,13 +23,7 @@ from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
 from ironsbot.integrations.onebot.execution_identity import resolve_execution_identity
-from ironsbot.integrations.onebot.lucky_skin_window import (
-    build_onebot_lucky_skin_window_accounts,
-)
 from ironsbot.integrations.onebot.notice_origin import resolve_notice_origin
-from ironsbot.integrations.onebot.team_resource import (
-    build_onebot_team_resource_default_mentions,
-)
 from ironsbot.integrations.seer_data.autocard_repository import (
     PublishedAutocardRepository,
 )
@@ -54,6 +54,9 @@ from ironsbot.integrations.seer_data.pet_flip_repository import (
     PublishedPetFlipRepository,
 )
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
+from ironsbot.integrations.seer_data.player_lineup_details import (
+    PublishedPlayerLineupDetailResolver,
+)
 from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
 )
@@ -260,9 +263,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         headless,
         features,
         TeamResourceOutboundSender(proactive_delivery),
-        build_onebot_team_resource_default_mentions(
+        build_team_resource_default_mentions(
             settings.seer.team_resource,
-            settings.onebot_references,
+            settings.qq_references,
         ),
     )
     rank = RankService(
@@ -374,6 +377,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                     cache=inputs.cache,
                     render=render_coordinator.render,
                 ),
+                details=PublishedPlayerLineupDetailResolver(inputs.data),
             )
 
     @contextmanager
@@ -393,6 +397,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         menu_title: str,
         expanded_categories: frozenset[NewContentCategory],
         auto_expand_max_items: int,
+        navigation_label: str = "退出",
     ) -> bytes:
         with render_sessions.open() as inputs:
             NewContentService(
@@ -410,6 +415,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 menu_title,
                 expanded_categories,
                 auto_expand_max_items,
+                navigation_label,
             )
 
     weekly_preview_images = CachedWeeklyPreviewImageSource(
@@ -435,9 +441,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
 
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
-        build_onebot_lucky_skin_window_accounts(
+        build_lucky_skin_window_accounts(
             settings.seer.lucky_skin_window,
-            settings.onebot_references,
+            settings.qq_references,
             player_accounts,
         ),
         features,
@@ -498,7 +504,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             ConversationRef(Platform.ONEBOT, "group", str(group_id)): limit
             for reference, limit in settings.seer.rank.display_limits.items()
             for group_id in (
-                settings.onebot_references.resolve_group(
+                settings.qq_references.resolve_group(
                     reference,
                     location=f"seer.rank.display_limits.{reference}",
                 ),

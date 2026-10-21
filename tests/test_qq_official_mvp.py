@@ -22,11 +22,12 @@ from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
 )
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import (
     PlatformReferenceResolver,
     build_platform_reference_resolver,
 )
+from ironsbot.config.qq_references import QQReferenceResolver
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.feature_policy import FeatureService
@@ -45,6 +46,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_detail_actions import PlayerDetailActionRequest
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
@@ -107,7 +109,6 @@ from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -337,6 +338,12 @@ class _FakePeakQuery(_UnusedQueryService):
 
 
 class _FakeTeamQuery:
+    @staticmethod
+    def subscription_reply(
+        message: OutboundMessage, _context: object, _sessions: object
+    ) -> OutboundMessage:
+        return message
+
     @staticmethod
     def parse_team_ids(text: str) -> tuple[int, ...]:
         return tuple(int(value) for value in text.split())
@@ -593,6 +600,7 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
         "SeerQueryResources",
         SimpleNamespace(
             data_queries=_FakeDataQueries(),
+            external_references=None,
             pet_flip=None,
             team_query=team_query or unused,
             pet_query=pet_query or unused,
@@ -627,6 +635,7 @@ def _identity_links() -> IdentityLinkCommands:
         "IdentityLinkCommands",
         SimpleNamespace(
             portable_confirm=_unused_identity_operation,
+            portable_begin=_unused_identity_operation,
             portable_status=_unused_identity_operation,
             portable_revoke=_unused_identity_operation,
         ),
@@ -850,7 +859,7 @@ def _official_references(
     identities = IdentityConfig.model_validate(
         {"groups": groups or {}, "users": users or {}}
     )
-    onebot = OneBotReferenceResolver(
+    onebot = QQReferenceResolver(
         {
             alias: target.qq
             for alias, target in identities.groups.items()
@@ -2267,6 +2276,8 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert detail is not None
     assert isinstance(detail.message.parts[0], TextPart)
     assert "关于" in detail.message.parts[0].text
+    assert router.recognizes(_portable_input("0", actor, conversation))
+    await _dispatch(router, _portable_input("0", actor, conversation))
     assert router.recognizes(_portable_input("1", actor, conversation))
 
     assert (
@@ -2549,6 +2560,12 @@ async def test_portable_router_enforces_operational_query_access() -> None:
     assert await dispatch("/无头状态", member) is None
     assert await dispatch("/开服查询", admin) == "admin status"
     assert await dispatch("/无头状态", admin) == "instance status"
+    assert "普通查询请发送" in (await dispatch("开服查询", member) or "")
+    group = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "group-a", account_id="example-app"
+    )
+    group_reply = await _dispatch(router, _portable_input("/无头状态", admin, group))
+    assert group_reply is None or "instance status" not in str(group_reply.message)
 
 
 @pytest.mark.asyncio
@@ -2841,9 +2858,8 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
     refresh = await _dispatch(router, _portable_input("/刷新样本", admin, conversation))
 
     assert refresh is not None
-    assert cast("TextPart", refresh.message.parts[0]).text == "sample refresh start"
-    refresh.delivery_failed()
-    await asyncio.sleep(0)
+    assert cast("TextPart", refresh.message.parts[0]).text == "sample refresh done"
+    assert refresh.follow_up is None
 
 
 @pytest.mark.asyncio
@@ -3066,7 +3082,9 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
             aliases=("战队",),
             command_help_id="seer.team.query",
             query=detail_query,
-            action=ActionDefinition("player_team", "玩家所属战队"),
+            action=ActionDefinition(
+                "player_team", "玩家所属战队", category=RequestCategory.OTHER_NETWORK
+            ),
         )
     )
     features = _official_feature_service(["seer_team"])
@@ -3120,11 +3138,14 @@ async def test_router_builds_extension_without_platform_handler() -> None:
             aliases=("档案",),
             command_help_id="sample.detail",
             query=query,
-            action=ActionDefinition("sample_detail", "档案"),
+            action=ActionDefinition(
+                "sample_detail", "档案", category=RequestCategory.OTHER_NETWORK
+            ),
         )
     )
     contract = CommandContract(
         id="sample.detail",
+        category=RequestCategory.OTHER_NETWORK,
         plugin_id="seer_query",
         section="玩家",
         examples=("档案700001",),

@@ -398,7 +398,13 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
         else player_shortcuts._SHORTCUT_COMMAND_KEY
     )
     resolved = state[key]
-    player_id = resolved.command.player_id if resolved.command is not None else None
+    # Both entry rules preserve the reference; public operations resolve it later.
+    resolved = group.player_id_resolver.resolve(
+        message_input_context(event),
+        resolved.player_reference,
+        allow_default_binding=prefix != "成就榜",
+    )
+    player_id = resolved.player_id
     if target in {"mixed", "multiple", "unbound"}:
         assert player_id is None
         assert resolved.error

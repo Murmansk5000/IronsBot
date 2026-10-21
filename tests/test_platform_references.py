@@ -7,11 +7,11 @@ import pytest
 
 from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.settings import QQOfficialAccountConfig, Settings
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import (
     PlatformReferenceResolver,
     build_platform_reference_resolver,
 )
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -43,7 +43,7 @@ def _resolver(
     identities = IdentityConfig.model_validate(
         {"groups": groups or {}, "users": users or {}}
     )
-    onebot = OneBotReferenceResolver(
+    onebot = QQReferenceResolver(
         {
             alias: target.qq
             for alias, target in identities.groups.items()

@@ -641,8 +641,12 @@ feature/组合；未注册功能引用只告警并忽略，组合因此变空时
 成功、失败、超时和异常都会在命令结束后计入相同窗口，超级管理员绕过。玩家基础查询、收集、巅峰、群星牌分别使用
 `seer_player`、`seer_player_collection`、`seer_player_peak`、`seer_player_autocard`
 四个独立额度，可在 `commands` 中单独覆盖。
-同一 QQ、同一真实语义目标的重复响应使用
-`[messaging.command_cooldown]` 的 `duplicate_*` 配置，但不受 `enabled` 影响。
+同一操作者、机器人、会话、动作和真实目标的重复限制由
+`[messaging.command_cooldown.duplicate_window_seconds]` 分别设置：
+`taomee = 120`、`local = 0`、`other_network = 120`，单位秒；0 只关闭完成后的重复限制。
+执行中仍防重复；失败或取消不新增成功记录，不受上方 `enabled` 影响。
+菜单独立等待 120 秒，新根菜单替换旧菜单，返回上级重新计时；
+详见[指令分类与菜单计时](docs/command-duplicate-categories.md)。
 未启用 AI 时，群内未知 @ 提示复用 `[features.help]` 的提示窗口，并按用户与会话
 分别限流；有效的 `@机器人 + 指令` 不受提示限流影响。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、

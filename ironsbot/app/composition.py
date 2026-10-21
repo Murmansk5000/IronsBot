@@ -238,7 +238,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         http_client=http_clients.origin,
         cache_root=settings.paths.cache_root,
     )
-    prompt_sessions = common.prompt_sessions
     features = common.features
     promotions = common.promotions
     subscriptions = common.subscriptions
@@ -575,7 +574,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         contribution_catalog=contribution_catalog,
         poke_reply=OneBotPokeReplyService(
             settings.features.help,
-            settings.onebot_references,
+            settings.qq_references,
             poke_reply_candidates,
         ),
         addressed_input_hints=AddressedInputHintService(
@@ -596,7 +595,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     matcher_factory = MatcherFactory(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
-        prompt_session_manager=prompt_sessions,
         in_flight_requests=InFlightRequestService(
             features,
             settings.messaging.command_cooldown,
@@ -652,7 +650,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         file_logging=file_logging,
         http_clients=http_clients,
         databases=databases,
-        prompt_sessions=prompt_sessions,
         resources=resources,
         contributions=(),
         matcher_factory=matcher_factory,

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -239,12 +239,13 @@ class _HeadlessLineupPacketClient:
         self,
         command_id: int,
         player_id: int,
-        *,
+        *body: int,
         timeout_seconds: float,
     ) -> bytes:
         _head, payload = await self.game.send_and_wait(
             command_id,
             player_id,
+            *body,
             timeout=timeout_seconds,
         )
         return bytes(payload)
@@ -259,7 +260,7 @@ class PlayerLineupQueryServices:
     quotas: PlayerQueryQuotaService | None = None
     requests: PlayerRequestProtectionService | None = None
 
-    async def query(  # noqa: C901, PLR0911 - each external failure has safe wording
+    async def query(  # noqa: C901, PLR0911, PLR0913 - guarded request boundary
         self,
         *,
         player_id: int,
@@ -267,6 +268,8 @@ class PlayerLineupQueryServices:
         conversation: ConversationRef,
         timeout_seconds: float,
         fetch_packet: PlayerLineupPacketFetcher,
+        defer_quota: bool = False,
+        label: str = "阵容",
     ) -> PlayerLineupQueryResult:
         from ironsbot.services.seer.ids import (
             PLAYER_ID_ERROR_MESSAGE,
@@ -292,7 +295,7 @@ class PlayerLineupQueryServices:
             game = self.headless.get_game()
             observation = ObservationTime()
             with game.operations.track(
-                "阵容数据查询",
+                f"{label}数据查询",
                 f"米米号 {player_id}",
                 source="私有阵容插件",
                 conversation=conversation,
@@ -321,7 +324,7 @@ class PlayerLineupQueryServices:
             )
             return PlayerLineupQueryResult(
                 leading_text=(
-                    "🐾【公开阵容】\n"
+                    f"🐾【{'公开阵容' if label == '阵容' else label}】\n"
                     f"{format_player_data_time(observation.fetched_at)}\n"
                     f"{format_player_identity(player_id, str(user_info.nick))}\n"
                 ),
@@ -333,7 +336,7 @@ class PlayerLineupQueryServices:
             result = (
                 await fetch()
                 if self.requests is None
-                else await self.requests.run(fetch, actor=actor, label="阵容查询")
+                else await self.requests.run(fetch, actor=actor, label=f"{label}查询")
             )
         except PlayerQueryQuotaExceededError as error:
             return PlayerLineupQueryResult(error=error.message)
@@ -367,11 +370,15 @@ class PlayerLineupQueryServices:
             logger.exception("private lineup query failed: player_id=%s", player_id)
             return PlayerLineupQueryResult(error="❌ 阵容查询失败，请稍后再试。")
 
-        if self.quotas is not None and actor is not None:
+        recorded = False
+
+        def record_success() -> None:
+            nonlocal recorded
+            if recorded or self.quotas is None:
+                return
+            recorded = True
             decision = self.quotas.consume(
-                actor=actor,
-                player_id=player_id,
-                action_key="lineup",
+                actor=actor, player_id=player_id, action_key="lineup"
             )
             if not decision.allowed:
                 logger.warning(
@@ -380,6 +387,10 @@ class PlayerLineupQueryServices:
                     reference_digest(actor.id),
                     player_id,
                 )
+
+        if defer_quota:
+            return replace(result, record_success=record_success)
+        record_success()
         return result
 
 
@@ -451,5 +462,9 @@ class PlayerLineupExtensionServices:
                 query=registration.query,
                 action=registration.action,
                 work_unit=registration.work_unit,
+                access=registration.access,
+                show_in_player_menu=registration.show_in_player_menu,
+                numeric_target_only=registration.numeric_target_only,
+                offer_binding=registration.offer_binding,
             )
         )

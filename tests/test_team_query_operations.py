@@ -78,6 +78,7 @@ async def test_team_operation_preserves_id_kind_and_selects_player_targets(
 ) -> None:
     service = Mock()
     service.query = AsyncMock(return_value="team")
+    service.subscription_reply = lambda message, _context, _sessions: message
     service.query_player_team = AsyncMock(return_value="player team")
     service.parse_team_ids = SeerTeamQueryService.parse_team_ids
     sessions = PortableQuerySessions()
