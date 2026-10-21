@@ -1,22 +1,29 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import OutboundMessage, SendResult
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot import lucky_skin_window as lucky_plugin
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.seer.lucky_skin_commands import (
-    LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
-    LUCKY_SKIN_WATCH_LIST_COMMANDS,
-    LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
-    LUCKY_SKIN_WATCH_RESET_COMMANDS,
     lucky_skin_window_command_contracts,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -136,26 +143,18 @@ def test_subscription_commands_do_not_claim_disabled_or_unrelated_input(
         assert not catalog.claims_direct_input(context, enabled, text)
 
 
-@pytest.mark.asyncio
-async def test_lucky_window_chat_with_member_mention_is_not_a_query() -> None:
+def test_lucky_window_chat_with_member_mention_is_not_a_query() -> None:
     resolver = PlayerIdResolver(
         lambda reference, _conversation: 700001 if reference == "测试玩家" else None,
         lambda _actor: None,
     )
-    features = FeatureService({_GROUP: _FEATURES}, {}, frozenset())
     event = group_message_event(
         message=Message([MessageSegment.at(456), MessageSegment.text(" 橱窗发了吗")]),
         group_id=int(_GROUP.id),
     )
-    assert not await lucky_plugin._matches_query(
-        event, {}, features=features, resolver=resolver
-    )
     contract = lucky_skin_window_command_contracts(resolver.has_known_reference)[0]
-    context = CommandContext(
-        _ACTOR,
-        _GROUP,
-        member_mentions=(ActorRef(Platform.ONEBOT, "456"),),
-    )
+    context = command_context(event)
+    assert context.member_mentions == (ActorRef(Platform.ONEBOT, "456"),)
     assert not contract.matches_direct_input(context, "橱窗发了吗")
     assert contract.matches_direct_input(context, "橱窗")
     assert contract.matches_direct_input(context, "橱窗测试玩家")
@@ -167,6 +166,8 @@ async def test_lucky_window_chat_with_member_mention_is_not_a_query() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("private", [False, True])
 @pytest.mark.parametrize(
     "command_id,text",
     [
@@ -176,34 +177,53 @@ async def test_lucky_window_chat_with_member_mention_is_not_a_query() -> None:
     ],
 )
 async def test_each_lucky_skin_example_matches_the_actual_entry(
-    catalog: CommandCatalog, command_id: str, text: str
+    catalog: CommandCatalog,
+    command_id: str,
+    text: str,
+    platform: Platform,
+    *,
+    private: bool,
 ) -> None:
-    features = FeatureService({}, {_ACTOR: _FEATURES}, frozenset())
-    event = private_message_event(text, user_id=int(_ACTOR.id))
-    context = CommandContext(_ACTOR, _PRIVATE)
-    actual = []
-    if await lucky_plugin._matches_query(event, {}, features=features):
-        actual.append("seer.lucky_skin_window.query")
-    for action, commands in (
-        ("list", LUCKY_SKIN_WATCH_LIST_COMMANDS),
-        ("clear", LUCKY_SKIN_WATCH_CLEAR_COMMANDS),
-        ("reset", LUCKY_SKIN_WATCH_RESET_COMMANDS),
-    ):
-        if await lucky_plugin._matches_watch_exact(
-            event, {}, commands=commands, features=features
-        ):
-            actual.append(f"seer.lucky_skin_window.watch.{action}")
-    for action, commands in (
-        ("add", LUCKY_SKIN_WATCH_LIST_COMMANDS),
-        ("remove", LUCKY_SKIN_WATCH_REMOVE_COMMANDS),
-    ):
-        if await lucky_plugin._matches_watch_change(
-            event, {}, commands=commands, features=features
-        ):
-            actual.append(f"seer.lucky_skin_window.watch.{action}")
-    assert actual == [command_id]
+    actor = ActorRef(platform, "100")
+    conversation = ConversationRef(
+        platform, "private" if private else "group", actor.id if private else "200"
+    )
+    context = MessageInputContext(
+        IncomingMessageRef(platform, actor, conversation, "event-1", text),
+        mentions_bot=False,
+    )
+    features = FeatureService(
+        {conversation: _FEATURES} if not private else {},
+        {actor: _FEATURES},
+        frozenset(),
+    )
+    operations = {
+        command_id: AsyncMock(return_value=OutboundMessage.from_text(command_id))
+        for command_id in catalog.direct_command_ids
+    }
+    router = PortableCommandRouter(
+        catalog,
+        operations,
+        features,
+        ai=Mock(),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+    )
+    assert router.recognizes(context)
+    reply = await router.dispatch(context)
+    assert reply is not None
+    await deliver_portable_reply(
+        reply,
+        AsyncMock(return_value=SendResult(delivered=True, message_id="receipt-1")),
+    )
+    assert [key for key, operation in operations.items() if operation.await_count] == [
+        command_id
+    ]
+    operations[command_id].assert_awaited_once_with(text, context)
     assert [
         command.id
-        for command in catalog.available_for_context(context, features)
-        if command.matches_direct_input(context, text)
-    ] == actual
+        for command in catalog.available_for_context(
+            CommandContext(actor, conversation), features
+        )
+        if command.matches_direct_input(CommandContext(actor, conversation), text)
+    ] == [command_id]

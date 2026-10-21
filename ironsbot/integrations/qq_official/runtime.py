@@ -531,22 +531,7 @@ class QQOfficialRuntime:
             )
         if not recognized:
             return
-        try:
-            reply = await router.dispatch(context)
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:  # noqa: BLE001 - platform boundary
-            logger.error(  # noqa: TRY400 - exception text may contain private data
-                "QQ Official command dispatch failed: account=%s event_type=%s "
-                "kind=%s error_type=%s",
-                self._connections[app_id].lifecycle.account,
-                event_type,
-                incoming.conversation.kind,
-                type(error).__name__,
-            )
-            reply = PortableReply(
-                OutboundMessage.from_text("❌ 命令执行失败，请稍后再试。")
-            )
+        reply = await router.dispatch(context)
         if reply is not None:
             await deliver_qq_official_reply(
                 messenger,
@@ -691,7 +676,7 @@ async def deliver_qq_official_reply(  # noqa: PLR0913 - platform delivery hooks
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
-    from ironsbot.core.outbound import COMMAND_REPLY_TEMPLATE, OutboundMessage
+    from ironsbot.core.outbound import COMMAND_REPLY_TEMPLATE
 
     def on_sent(stage: DeliveryStage, result: SendResult) -> None:
         if result.delivered:
@@ -703,15 +688,6 @@ async def deliver_qq_official_reply(  # noqa: PLR0913 - platform delivery hooks
                 stage=stage,
                 account_label=account_label,
             )
-
-    def on_follow_up_error(error: Exception) -> OutboundMessage:
-        logger.exception(
-            "QQ Official deferred operation failed: account=%s kind=%s ref=%s",
-            account_label,
-            incoming.conversation.kind,
-            reference_digest(incoming.conversation.id),
-        )
-        return OutboundMessage.from_text(f"❌ 操作执行失败：{type(error).__name__}")
 
     async def send(message: OutboundMessage) -> SendResult:
         observation = (
@@ -739,7 +715,6 @@ async def deliver_qq_official_reply(  # noqa: PLR0913 - platform delivery hooks
         reply,
         send,
         on_sent=on_sent,
-        on_follow_up_error=on_follow_up_error,
     )
 
 

@@ -53,6 +53,7 @@ def server_status_command_contracts() -> tuple[CommandContract, ...]:
                     "查询开服状态，并在无头未登录时尝试重连",
                     {
                         "features_any": ("server_status_query",),
+                        "management": True,
                         "access": (CommandAccess(audience="superuser"),),
                     },
                 ),
@@ -60,7 +61,10 @@ def server_status_command_contracts() -> tuple[CommandContract, ...]:
                     "server_status.headless_instances",
                     HEADLESS_INSTANCE_STATUS_COMMANDS,
                     "查看公共查询池与临时专用会话的当前在线实例数",
-                    {"access": (CommandAccess(scope="private", audience="superuser"),)},
+                    {
+                        "access": (CommandAccess(audience="superuser"),),
+                        "management": True,
+                    },
                 ),
             ),
         ),

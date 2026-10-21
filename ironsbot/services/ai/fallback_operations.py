@@ -26,9 +26,7 @@ async def resolve_intent(
     *,
     source_context: str,
 ) -> AiIntentAction | None:
-    if not routing.decide(
-        context, command_context_from_input(context), normalized_text=prompt
-    ).try_intent:
+    if not routing.decide(context, command_context_from_input(context)).try_intent:
         return None
     return await service.classify_intent(
         prompt,

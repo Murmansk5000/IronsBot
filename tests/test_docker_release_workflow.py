@@ -65,8 +65,12 @@ def test_docker_env_example_lists_all_deployment_credentials() -> None:
 def test_root_and_docker_readmes_describe_the_same_unified_image() -> None:
     root_readme = ROOT_README.read_text(encoding="utf-8")
     docker_readme = DOCKER_README.read_text(encoding="utf-8")
+    platform_guide = ROOT / "docs" / "qq-platform-guide.md"
 
-    assert "正式发布的 Docker 镜像已经同时包含" in root_readme
+    assert "(docs/qq-platform-guide.md)" in root_readme
+    assert "正式发布的 Docker 镜像已经同时包含" in platform_guide.read_text(
+        encoding="utf-8"
+    )
     assert "Published Docker images include the QQ Official runtime" in docker_readme
     assert "标准 OneBot 镜像不携带该 SDK" not in root_readme
     assert "Build an official-bot image" not in docker_readme

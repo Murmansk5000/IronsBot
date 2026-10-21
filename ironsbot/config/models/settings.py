@@ -359,6 +359,7 @@ class BotConfig(BaseModel):
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
+    admin_commands_in_groups: StrictBool = True
     plugin_manifest: Literal["full", "core"] = "full"
     use_default_for_unconfigured_targets: StrictBool = False
     superusers: QQReferenceList = Field(default_factory=list)

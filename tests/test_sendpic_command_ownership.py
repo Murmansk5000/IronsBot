@@ -1,44 +1,39 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, Mock
 
-import nonebot
 import pytest
-from nonebot.consts import CMD_ARG_KEY, PREFIX_KEY
-from nonebot.rule import Rule, TrieRule, command, fullmatch
 
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
-from ironsbot.core.messaging import (
-    PicConfig,
-    SendpicBehaviorConfig,
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
+from ironsbot.core.outbound import BinaryImagePart, SendResult, TextPart
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.sendpic import LocalBackend
+from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.sendpic import (
     IndexedImageRequest,
     SendpicService,
     sendpic_command_contracts,
 )
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-from tests.helpers.onebot_events import group_message_event, private_message_event
+from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_sendpic_operations,
+)
+from ironsbot.services.portable_reply import deliver_portable_reply
 
 ACTOR = ActorRef(Platform.ONEBOT, "100")
 PRIVATE = ConversationRef(Platform.ONEBOT, "private", "100")
-GROUP = ConversationRef(Platform.ONEBOT, "group", "200")
 SELECTED_INDEX = 2
 OUT_OF_RANGE_INDEX = 99
-FEATURES = FeatureService(
-    {GROUP: frozenset({"image", "ai_chat"})},
-    {ACTOR: frozenset({"image", "ai_chat"})},
-    frozenset(),
-)
 
 
 def _gallery(id_: str, name: str, aliases: set[str] | None = None) -> PicConfig:
@@ -81,69 +76,69 @@ def _service(starts: tuple[str, ...] = ("/", "")) -> tuple[SendpicService, Mock]
     ), backend
 
 
-def _catalog(service: SendpicService) -> CommandCatalog:
+def _catalog(service: SendpicService, *, include_ai: bool = False) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
         (
             PluginContribution(
                 id="sendpic", commands=sendpic_command_contracts(service)
             ),
+            PluginContribution(
+                id="ai_chat",
+                commands=ai_chat_command_contracts(enabled=True) if include_ai else (),
+            ),
         ),
-        known_features={"image"},
+        known_features={"image", "ai_chat"},
     )
     return catalog
 
 
-def _installed(
-    service: SendpicService,
-    monkeypatch: pytest.MonkeyPatch,
-    features: FeatureService = FEATURES,
-) -> tuple[dict[str, Rule], dict[str, Any]]:
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init()
-        driver = nonebot.get_driver()
-    monkeypatch.setattr(driver.config, "command_start", set(service.command_starts))
-    monkeypatch.setattr(TrieRule, "prefix", type(TrieRule.prefix)())
-    from ironsbot.plugins.onebot.sendpic import matchers
-
-    rules: dict[str, Rule] = {}
-    handlers: dict[str, Any] = {}
-
-    def register(names: str | tuple[str, ...], **options: Any) -> Mock:
-        matcher = Mock()
-        (id_,) = options["policy"].help_ids
-        if isinstance(names, str):
-            grammar = command(names, *options["aliases"])
-        else:
-            grammar = fullmatch(names)
-        rules[id_] = grammar & options["rule"]
-        matcher.append_handler.side_effect = lambda handler: handlers.__setitem__(
-            id_, handler
-        )
-        return matcher
-
-    registry = Mock(
-        on_command=Mock(side_effect=register), on_fullmatch=Mock(side_effect=register)
+def _context(
+    text: str, platform: Platform, *, private: bool = True
+) -> MessageInputContext:
+    actor = ActorRef(platform, "100")
+    conversation = ConversationRef(
+        platform, "private" if private else "group", "100" if private else "200"
     )
-    matchers.install(registry, service, features)
-    return rules, handlers
+    return MessageInputContext(
+        IncomingMessageRef(platform, actor, conversation, "1", text), mentions_bot=False
+    )
+
+
+def _router(
+    service: SendpicService,
+    context: MessageInputContext,
+    *,
+    enabled: bool = True,
+    include_ai: bool = False,
+) -> PortableCommandRouter:
+    allowed = frozenset({"image"} if enabled else {"ai_chat"})
+    features = FeatureService(
+        {context.message.conversation: allowed},
+        {context.message.actor: allowed},
+        frozenset(),
+    )
+    catalog = _catalog(service, include_ai=include_ai)
+    return PortableCommandRouter(
+        catalog,
+        build_portable_sendpic_operations(service),
+        features,
+        ai=Mock(chat_reply=AsyncMock(return_value="AI")),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+    )
 
 
 @pytest.mark.parametrize("starts", [("/", ""), ("!",), ("/", "//")])
 @pytest.mark.parametrize("private", [True, False])
-@pytest.mark.asyncio
-async def test_indexed_inputs_match_installed_rules_and_catalog(
+@pytest.mark.parametrize("platform", list(Platform))
+def test_indexed_inputs_share_public_catalog_grammar(
     starts: tuple[str, ...],
-    monkeypatch: pytest.MonkeyPatch,
+    platform: Platform,
     *,
     private: bool,
 ) -> None:
     service, backend = _service(starts)
-    catalog = _catalog(service)
-    rules, _ = _installed(service, monkeypatch)
-    context = CommandContext(ACTOR, PRIVATE if private else GROUP)
     prefix = "" if "" in starts else starts[0]
     for text, owner, index in (
         (prefix + "表情", "memes", None),
@@ -154,34 +149,17 @@ async def test_indexed_inputs_match_installed_rules_and_catalog(
         (prefix + "表情0", "memes", 0),
         (prefix + "表情99", "memes", 99),
     ):
-        event = (
-            private_message_event(text, user_id=100)
-            if private
-            else group_message_event(text, user_id=100, group_id=200)
+        context = _context(text, platform, private=private)
+        catalog_context = CommandContext(
+            context.message.actor, context.message.conversation
         )
-        matched = []
-        for id_, rule in rules.items():
-            state: dict[str, Any] = {}
-            TrieRule.get_value(cast("Bot", None), event, state)
-            if await rule(cast("Bot", None), event, state):
-                matched.append(id_)
-                assert state["_indexed_image_request"] == IndexedImageRequest(
-                    owner, index
-                )
-                original_arg = state[PREFIX_KEY][CMD_ARG_KEY].extract_plain_text()
-                assert (int(original_arg) if original_arg else None) == index
-        assert matched == [f"sendpic.{owner}"]
+        assert service.parse_indexed(text) == IndexedImageRequest(owner, index)
         assert [
-            c.id
-            for c in catalog.available_for_context(context, FEATURES)
-            if c.matches_direct_input(context, text)
-        ] == matched
-        if private:
-            assert (
-                not AiInputRoutingService(FEATURES, catalog)
-                .decide(message_input_context(event), command_context(event))
-                .try_chat
-            )
+            contract.id
+            for contract in sendpic_command_contracts(service)
+            if contract.matches_direct_input(catalog_context, text)
+        ] == [f"sendpic.{owner}"]
+        assert _router(service, context).recognizes(context)
     backend.count.assert_not_awaited()
     backend.get_file.assert_not_awaited()
 
@@ -203,21 +181,17 @@ async def test_indexed_inputs_match_installed_rules_and_catalog(
         pytest.param("表情" + "9" * 5000, id="oversized-integer"),
     ],
 )
+@pytest.mark.parametrize("platform", list(Platform))
 @pytest.mark.asyncio
 async def test_invalid_image_arguments_are_not_claimed_or_loaded(
     text: str,
-    monkeypatch: pytest.MonkeyPatch,
+    platform: Platform,
 ) -> None:
     service, backend = _service()
-    rules, _ = _installed(service, monkeypatch)
-    event = private_message_event(text, user_id=100)
-    for rule in rules.values():
-        state = {}
-        TrieRule.get_value(cast("Bot", None), event, state)
-        assert not await rule(cast("Bot", None), event, state)
-    assert not _catalog(service).claims_direct_input(
-        CommandContext(ACTOR, PRIVATE), FEATURES, text
-    )
+    context = _context(text, platform)
+    router = _router(service, context)
+    assert not router.recognizes(context)
+    assert await router.dispatch(context) is None
     backend.count.assert_not_awaited()
     backend.get_file.assert_not_awaited()
 
@@ -242,13 +216,9 @@ def test_prefix_only_help_and_disabled_prefixes() -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_single_images_keep_exact_fullmatch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, _ = _service(("!",))
-    rules, _ = _installed(service, monkeypatch)
-    catalog = _catalog(service)
+@pytest.mark.parametrize("platform", list(Platform))
+def test_single_images_keep_exact_fullmatch(platform: Platform) -> None:
+    service, backend = _service(("!",))
     for text, expected in (
         ("学习力", True),
         ("学习力表", True),
@@ -257,48 +227,23 @@ async def test_single_images_keep_exact_fullmatch(
         (" 学习力", False),
         ("学习力2", False),
     ):
-        event = private_message_event(text, user_id=100)
-        assert (
-            await rules["sendpic.study-table"](cast("Bot", None), event, {}) is expected
-        )
-        assert (
-            catalog.claims_direct_input(CommandContext(ACTOR, PRIVATE), FEATURES, text)
-            is expected
-        )
-
-
-def test_without_image_feature_known_image_command_does_not_fall_into_ai() -> None:
-    service, _ = _service()
-    disabled = FeatureService({}, {ACTOR: frozenset({"ai_chat"})}, frozenset())
-    catalog = _catalog(service)
-    assert not catalog.claims_direct_input(
-        CommandContext(ACTOR, PRIVATE), disabled, "表情2"
-    )
-    assert catalog.recognizes_direct_input(CommandContext(ACTOR, PRIVATE), "表情2")
-    assert (
-        not AiInputRoutingService(disabled, catalog)
-        .decide(
-            message_input_context(private_message_event("表情2", user_id=100)),
-            command_context(private_message_event("表情2", user_id=100)),
-        )
-        .try_chat
-    )
-
-
-@pytest.mark.asyncio
-async def test_disabled_image_feature_rejects_installed_rules(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service, backend = _service()
-    disabled = FeatureService({}, {ACTOR: frozenset({"ai_chat"})}, frozenset())
-    rules, _ = _installed(service, monkeypatch, disabled)
-    for text in ("表情2", "学习力"):
-        event = private_message_event(text, user_id=100)
-        for rule in rules.values():
-            state = {}
-            TrieRule.get_value(cast("Bot", None), event, state)
-            assert not await rule(cast("Bot", None), event, state)
+        context = _context(text, platform)
+        assert _router(service, context).recognizes(context) is expected
     backend.count.assert_not_awaited()
+    backend.get_file.assert_not_awaited()
+
+
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.asyncio
+async def test_disabled_images_do_not_load_or_fall_into_ai(platform: Platform) -> None:
+    service, backend = _service()
+    for text in ("表情2", "学习力"):
+        context = _context(text, platform)
+        router = _router(service, context, enabled=False, include_ai=True)
+        assert not router.recognizes(context)
+        assert await router.dispatch(context) is None
+    backend.count.assert_not_awaited()
+    backend.get_file.assert_not_awaited()
 
 
 def test_disabled_gallery_is_absent_from_runtime_and_help() -> None:
@@ -317,28 +262,26 @@ def test_disabled_gallery_is_absent_from_runtime_and_help() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
 @pytest.mark.parametrize("index", [None, SELECTED_INDEX, OUT_OF_RANGE_INDEX])
-async def test_handler_uses_parsed_index_once(
+async def test_public_execution_fetches_selected_image_once(
     index: int | None,
-    monkeypatch: pytest.MonkeyPatch,
+    platform: Platform,
 ) -> None:
     service, backend = _service()
-    rules, handlers = _installed(service, monkeypatch)
-    event = private_message_event(
-        "表情" + (str(index) if index is not None else ""), user_id=100
-    )
-    state = {}
-    TrieRule.get_value(cast("Bot", None), event, state)
-    assert await rules["sendpic.memes"](cast("Bot", None), event, state)
-    parser = Mock(wraps=service.parse_indexed)
-    monkeypatch.setattr(service, "parse_indexed", parser)
-    matcher = Mock(send=AsyncMock(return_value={"message_id": 900}))
-    await handlers["sendpic.memes"](matcher, state, event)
-    parser.assert_called_once_with(event.get_plaintext())
+    context = _context("表情" + (str(index) if index is not None else ""), platform)
+    router = _router(service, context)
+    assert router.recognizes(context)
+    reply = await router.dispatch(context)
+    assert reply is not None
+    send = AsyncMock(return_value=SendResult(delivered=True, message_id="receipt"))
+    await deliver_portable_reply(reply, send)
     backend.count.assert_awaited_once_with("memes")
     if index == OUT_OF_RANGE_INDEX:
         backend.get_file.assert_not_awaited()
-        assert "1到3" in str(matcher.send.call_args.args[0])
+        assert "1到3" in "".join(
+            part.text for part in reply.message.parts if isinstance(part, TextPart)
+        )
     else:
         backend.get_file.assert_awaited_once()
         path = backend.get_file.call_args.args[0]
@@ -347,29 +290,17 @@ async def test_handler_uses_parsed_index_once(
             if index == SELECTED_INDEX
             else path in {"memes/1.png", "memes/2.png", "memes/3.png"}
         )
-        message = matcher.send.await_args.args[0]
-        assert message["image"]
+        assert any(isinstance(part, BinaryImagePart) for part in reply.message.parts)
 
 
 def test_numbered_gallery_is_owned_by_its_contract() -> None:
-    gallery = PicConfig(
-        id="example-gallery",
-        backend="local",
-        command="表情",
-        aliases={"表情包"},
-        mode="indexed",
-        image_dir="memes",
-        image_filename_template="{index}.png",
-    )
+    gallery = _gallery("example-gallery", "表情", {"表情包"})
     service = SendpicService(
         SendpicBehaviorConfig(configs=[gallery]),
         lambda _kind: LocalBackend(Path()),
         command_starts=("/", ""),
     )
-    context = CommandContext(
-        ActorRef(Platform.ONEBOT, "100"),
-        ConversationRef(Platform.ONEBOT, "private", "100"),
-    )
+    context = CommandContext(ACTOR, PRIVATE)
     assert [
         c.id
         for c in sendpic_command_contracts(service)

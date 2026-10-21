@@ -1,26 +1,13 @@
-from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule
 
-from ironsbot.core.commands import command_text_matches
-from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.portable_queries import (
-    make_portable_operation_handler,
-)
-from ironsbot.integrations.onebot.rules import member_targets_command
 from ironsbot.services.messaging.meeting import (
     meeting_command_contracts,
-)
-from ironsbot.services.portable_operational_commands import (
-    build_portable_meeting_operations,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -31,29 +18,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def install(
-    registry: MatcherFactory,
-    commands: tuple[str, ...],
-    number: str,
-    template: str,
-    features: FeatureService,
-) -> None:
-    async def is_meeting_command(event: MessageEvent) -> bool:
-        return event_is_feature_allowed(
-            features, event, "meeting"
-        ) and command_text_matches(event.get_plaintext(), commands)
-
-    operation = build_portable_meeting_operations(number, template)["meeting"]
-
-    matcher = registry.on_message(
-        policy=CommandPolicy.command("meeting", help_ids=("meeting",)),
-        rule=Rule(is_meeting_command) & member_targets_command(),
-        priority=registry.priority("meeting"),
-        block=True,
-    )
-    matcher.append_handler(make_portable_operation_handler(operation))
 
 
 def plugin_contribution(*, commands: tuple[str, ...]) -> PluginContribution:

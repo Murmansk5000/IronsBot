@@ -34,6 +34,7 @@ from ironsbot.integrations.qq_official.identity import qq_official_incoming_mess
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_query_sessions import (
@@ -110,7 +111,7 @@ class _MentionReplies:
         return self.action
 
 
-def _catalog() -> CommandCatalog:
+def _catalog(config: MessageConfig | None = None) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -146,8 +147,18 @@ def _catalog() -> CommandCatalog:
                     ),
                 ),
             ),
+            PluginContribution(
+                id="messaging",
+                commands=tuple(
+                    command
+                    for command in messaging_command_contracts(
+                        config or MessageConfig()
+                    )
+                    if command.interaction == "automatic"
+                ),
+            ),
         ),
-        known_features={"ai_chat", "ai_intent", "example"},
+        known_features={"ai_chat", "ai_intent", "example", "seerinfo"},
     )
     return catalog
 
@@ -223,20 +234,21 @@ async def test_official_unaddressed_keyword_reply_precedes_ai(
     mode: str, text: str
 ) -> None:
     ai = _Ai(action=ACTION)
-    catalog = _catalog()
     features = _features()
+    config = MessageConfig(
+        keyword_replies=[
+            MessageKeywordReplyAction(
+                id="example-keyword",
+                keywords=["示例触发词"],
+                match_mode=cast("Any", mode),
+                messages=["固定回复"],
+                feature="example",
+            )
+        ]
+    )
+    catalog = _catalog(config)
     messaging = MessagingService(
-        MessageConfig(
-            keyword_replies=[
-                MessageKeywordReplyAction(
-                    id="example-keyword",
-                    keywords=["示例触发词"],
-                    match_mode=cast("Any", mode),
-                    messages=["固定回复"],
-                    feature="example",
-                )
-            ]
-        ),
+        config,
         ActivityConfig(),
         cast("Any", object()),
         features,
@@ -282,25 +294,26 @@ async def test_official_win_rate_contains_reply_requires_seerinfo(
         superuser_bypass=False,
     )
     url = f"https://seerinfo.yuyuqaq.cn/peak/pvprank/{slug}/monster"
+    config = MessageConfig(
+        keyword_replies=[
+            MessageKeywordReplyAction(
+                id="win-rate",
+                keywords=[f"{mode}胜率榜", f"{mode}精灵胜率榜"],
+                match_mode="contains",
+                feature="seerinfo",
+                messages=[url],
+            )
+        ]
+    )
     messaging = MessagingService(
-        MessageConfig(
-            keyword_replies=[
-                MessageKeywordReplyAction(
-                    id="win-rate",
-                    keywords=[f"{mode}胜率榜", f"{mode}精灵胜率榜"],
-                    match_mode="contains",
-                    feature="seerinfo",
-                    messages=[url],
-                )
-            ]
-        ),
+        config,
         ActivityConfig(),
         cast("Any", object()),
         features,
         cast("Any", object()),
         cast("Any", object()),
     )
-    catalog = _catalog()
+    catalog = _catalog(config)
     router = PortableCommandRouter(
         catalog,
         {"example.query": _run_query},

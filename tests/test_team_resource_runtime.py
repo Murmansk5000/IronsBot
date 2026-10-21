@@ -4,22 +4,37 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.models.features import FeatureConfig
+from ironsbot.config.models.messaging import (
+    CommandCooldownConfig,
+    CommandCooldownWindowConfig,
+)
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
+from ironsbot.core.outbound import SendResult
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
+from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import deliver_portable_reply
+from ironsbot.services.portable_team_resource_commands import (
+    build_portable_team_resource_operations,
+)
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.team.resource import (
     TeamResourceQueryError,
     TeamResourceResult,
@@ -35,10 +50,8 @@ from tests.helpers.onebot_events import group_message_event, private_message_eve
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-    from nonebot.matcher import Matcher
-
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.ai.service import AiService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.team import SeerTeamQueryService
 
@@ -50,8 +63,6 @@ try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
-
-from ironsbot.plugins.onebot import team_resource as resource
 
 TEAM_ID = 1234567
 SECOND_TEAM_ID = 1234568
@@ -111,31 +122,56 @@ def _service(
     )
 
 
-TEAM_RESOURCE_REGISTRY = TEST_RUNTIME.matcher_factory()
 TEAM_RESOURCE_SERVICE = _service(TeamResourceConfig())
 
 
-def _install(registry: Any, service: TeamResourceService) -> None:
-    resource.install(
-        registry,
-        service,
-        cast("PlayerIdResolver", object()),
-        cast("SeerTeamQueryService", object()),
-        PortableQuerySessions(),
+def _catalog(service: TeamResourceService) -> CommandCatalog:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="team_resource",
+                commands=team_resource_command_contracts(
+                    enabled=service.enabled, query_commands=service.query_commands
+                ),
+            ),
+        ),
+        known_features={"team_resource_subscription"},
     )
+    return catalog
 
 
-_install(TEAM_RESOURCE_REGISTRY, TEAM_RESOURCE_SERVICE)
-
-
-def _team_resource_matcher(command_id: str) -> type[Matcher]:
-    for matcher in TEAM_RESOURCE_REGISTRY.message_matchers:
-        if TEAM_RESOURCE_REGISTRY.cooldown_registration(matcher) == (
-            "command",
-            command_id,
-        ):
-            return matcher
-    raise AssertionError(command_id)
+def _router(
+    service: TeamResourceService,
+    features: FeatureService,
+    sessions: PortableQuerySessions | None = None,
+) -> PortableCommandRouter:
+    sessions = sessions or PortableQuerySessions()
+    catalog = _catalog(service)
+    operations = build_portable_team_resource_operations(
+        service,
+        cast(
+            "PlayerIdResolver",
+            Mock(
+                resolve=Mock(return_value=PlayerIdResolution(None, offer_binding=False))
+            ),
+        ),
+        cast("SeerTeamQueryService", object()),
+        sessions,
+    )
+    return PortableCommandRouter(
+        catalog,
+        {
+            key: operation
+            for key, operation in operations.items()
+            if key in catalog.command_ids
+        },
+        features,
+        ai=cast("AiService", object()),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
 
 
 class FakeScheduler:
@@ -203,27 +239,15 @@ def test_register_team_resource_jobs_skips_when_disabled() -> None:
 
 @pytest.mark.parametrize("enabled", [True, False])
 @pytest.mark.parametrize("commands", [[], ["资源查询", "本群资源"]])
-def test_team_config_keeps_catalog_and_matcher_registration_in_sync(
+@pytest.mark.asyncio
+async def test_team_config_keeps_catalog_and_shared_route_in_sync(
     tmp_path: Path, *, enabled: bool, commands: list[str]
 ) -> None:
     config = TeamResourceConfig(enabled=enabled, commands=commands)
     service = _service(config, state_path=tmp_path / "qq.sqlite")
-    registry = TEST_RUNTIME.matcher_factory()
-    _install(registry, service)
-    catalog = CommandCatalog()
-    catalog.load(
-        (
-            PluginContribution(
-                id="team_resource",
-                commands=team_resource_command_contracts(
-                    enabled=service.enabled, query_commands=service.query_commands
-                ),
-            ),
-        ),
-        known_features={"team_resource_subscription"},
-    )
-    registry.validate_command_catalog(catalog)
-    assert len(registry.message_matchers) == (1 + bool(commands) if enabled else 0)
+    catalog = _catalog(service)
+    router = _router(service, TEST_RUNTIME.features)
+    assert len(catalog.command_ids) == (3 + bool(commands) if enabled else 0)
     context = CommandContext(_actor(OWNER_ID), _group())
     target = TeamResourceSubscriptionTarget(_group())
     for text in ("资源查询", "本群资源", "战队"):
@@ -236,6 +260,13 @@ def test_team_config_keeps_catalog_and_matcher_registration_in_sync(
             service.matches_target_query(text, actor=context.actor, target=target)
             is expected
         )
+        reply = await router.dispatch(message_input_context(group_message_event(text)))
+        assert (reply is not None) is expected
+        if reply is not None:
+            await deliver_portable_reply(
+                reply,
+                AsyncMock(return_value=SendResult(delivered=True, message_id=text)),
+            )
 
 
 def test_parse_team_resource_manage_commands() -> None:
@@ -263,10 +294,37 @@ def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold() 
     assert command.has_manual_mention
 
 
-def test_team_resource_manage_uses_command_cooldown() -> None:
-    assert TEAM_RESOURCE_REGISTRY.cooldown_registration(
-        _team_resource_matcher("team_resource_manage"),
-    ) == ("command", "team_resource_manage")
+@pytest.mark.asyncio
+async def test_team_resource_manage_uses_shared_command_cooldown() -> None:
+    sessions = PortableQuerySessions()
+    cooldown = Mock(
+        wraps=CommandCooldownService(
+            CommandCooldownConfig(
+                enabled=True,
+                windows=[
+                    CommandCooldownWindowConfig(window_seconds=60, max_requests=1)
+                ],
+            ),
+            TEST_RUNTIME.features,
+        )
+    )
+    sessions.interactions.cooldown = cooldown
+    router = _router(TEAM_RESOURCE_SERVICE, TEST_RUNTIME.features, sessions)
+    for index in range(2):
+        reply = await router.dispatch(
+            message_input_context(group_message_event("战队订阅"))
+        )
+        assert reply is not None
+        text = str(reply.message.parts)
+        assert ("操作过于频繁" in text) is (index == 1)
+        await deliver_portable_reply(
+            reply,
+            AsyncMock(return_value=SendResult(delivered=True, message_id=str(index))),
+        )
+    assert [call.kwargs["command_id"] for call in cooldown.admit.call_args_list] == [
+        "team_resource.list",
+        "team_resource.list",
+    ]
 
 
 @pytest.mark.asyncio
@@ -285,9 +343,9 @@ async def test_team_resource_manage_rule_reads_direct_member_mentions() -> None:
     )
 
     assert message_input_context(event).member_mentions == (_actor(234),)
-    matcher = _team_resource_matcher("team_resource_manage")
-    assert await matcher.rule(cast("Bot", None), event, {})
-    assert await matcher.rule(cast("Bot", None), replied_event, {})
+    router = _router(TEAM_RESOURCE_SERVICE, TEST_RUNTIME.features)
+    assert router.recognizes(message_input_context(event))
+    assert router.recognizes(message_input_context(replied_event))
 
 
 @pytest.mark.asyncio
@@ -304,29 +362,12 @@ async def test_team_resource_private_rules_allow_enabled_user() -> None:
         runtime.features,
         FakeTeamResourceNoticeSender(),
     )
-    registry = runtime.matcher_factory()
-    _install(registry, service)
-    manage = next(
-        matcher
-        for matcher in registry.message_matchers
-        if registry.cooldown_registration(matcher)
-        == ("command", "team_resource_manage")
+    router = _router(service, runtime.features)
+    assert router.recognizes(
+        message_input_context(private_message_event(f"订阅战队{TEAM_ID}", user_id=123))
     )
-    query = next(
-        matcher
-        for matcher in registry.message_matchers
-        if registry.cooldown_registration(matcher) == ("command", "team_resource_query")
-    )
-
-    assert await manage.rule(
-        cast("Bot", None),
-        private_message_event(f"订阅战队{TEAM_ID}", user_id=123),
-        {},
-    )
-    assert await query.rule(
-        cast("Bot", None),
-        private_message_event("战队", user_id=123),
-        {},
+    assert router.recognizes(
+        message_input_context(private_message_event("战队", user_id=123))
     )
 
 
