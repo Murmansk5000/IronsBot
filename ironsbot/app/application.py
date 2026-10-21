@@ -75,6 +75,7 @@ class Application:
             self.driver,
             self.contributions,
             task_owner=self.task_owner,
+            scheduler=self.scheduler,
             resource_startup_hooks=self.resource_startup_hooks,
             resource_shutdown_hooks=self.resource_shutdown_hooks,
         )

@@ -220,22 +220,30 @@ OneBot 的原生规则只判断协议事件及自身消息，不再在安全错�
 
 第三十九步验证：两平台提交阻塞回放在旧实现下均失败；修复后账本、身份观察、公共异常、事务及组合根相关 212 项通过。最终公共全量 5859 passed / 7 skipped；Ruff、生产/测试类型、compileall、静态仓库及 diff 检查通过。私有 main 49 passed / 1 skipped、details 71 passed / 1 skipped，两套隔离类型检查通过，224 条既有第三方注解警告不变。测试临时文件在 E 盘，受保护刻印文件及私有并发内容未动；无生产连接或远端操作。整体仍约 82%，其他状态 I/O、回声持久边界、旧私有测试依赖及框架资源尚未完成；未推送、未部署。
 
+第四十步移除调度器的 NoneBot 生命周期依赖。应用组合根独立创建 APScheduler 后端，删除内部 scheduler 绑定插件、bind/未绑定分支、两份清单中的调度插件项目和 apscheduler_autostart 参数；依赖直接声明 APScheduler，锁文件保留原 3.11.2 及 SeerAPI SHA，仅移除 nonebot-plugin-apscheduler。ApplicationLifecycle 在资源和服务注册完成后启动调度器，关闭时先停止调度并等待回调，再停止服务、排空自有任务和逆序关闭资源，不再由贡献注册顺序隐式决定资源所有权。
+
+真实后端等待公开 shutdown 事件；运行中的同步/异步回调均登记到统一受管入口，停止后不接受新作业或执行迟到回调，并发 shutdown 串行等待。同步工作线程与 SQLite 复用 core.tasks.run_owned_blocking，移除原 SQLite 内重复等待算法，TaskOwner 显式持有不可提前取消的 worker；保留外部正常取消语义。真实测试覆盖启动前注册、同 ID 独立实例、运行中清理、关键字 func 注册、线程身份、关闭期间拒绝重启、新启动及应用完整启停顺序。禁用 NoneBot 导入的独立进程先复现必须绑定后端的失败，改造后能独立调度。
+
+契约为 target（平台无关资源所有权与共同取消机制）、baseline（已有 cron/interval/date、上海时区、任务内容与持久业务状态不变）、transition（HTML 渲染、OneBot 接收、其他状态 I/O 和旧私有测试尚待迁移）。保留主应用的 NoneBot 宿主，不宣称已完成接收服务重写。无 TOML/env、Docker/Unraid 字段迁移，无生产连接或部署；缓存与测试临时目录使用 E 盘，未推送。
+
+第四十步验证：禁用 NoneBot 的独立调度回放在旧实现下因未绑定失败，改造后通过。真实后端、应用顺序、同步线程、事务、账本、清单及启动相关 102 项通过；公共全量 5862 passed / 7 skipped。Ruff、生产/测试类型、compileall、静态仓库、锁文件离线一致性及 diff 检查通过。私有 main 49 passed / 1 skipped、details 71 passed / 1 skipped，两套隔离类型检查通过，224 条既有第三方 ForwardRef 警告未变。只移除调度插件依赖，现有 APScheduler/SeerAPI 版本不变；依赖缓存和测试目录在 E 盘，保护刻印文件及私有并发内容未动。整体约 84%，HTML 渲染、OneBot 接收宿主、其他状态 I/O、回声持久边界和旧测试仍待收口；未推送、未部署。
+
 ## NoneBot 移除评估
 
 结论：不把保留 NoneBot/matcher 作为设计条件。可以移除，但不能只替换 WebSocket 接收函数就宣称完成。
 
-基线 AST 检索发现 71 个生产模块直接导入 NoneBot：根入口 1、app 6、integrations 22、plugins 42。这是当时的依赖分布证据，不是当前文件数或运行时注册数量。还存在 htmlkit 和 scheduler 两个框架生命周期依赖，以及私有插件的 PluginMetadata 导入。
+基线 AST 检索发现 71 个生产模块直接导入 NoneBot：根入口 1、app 6、integrations 22、plugins 42。这是当时的依赖分布证据，不是当前文件数或运行时注册数量。基线中的 scheduler 生命周期依赖已于第四十步移除；htmlkit 及私有插件的 PluginMetadata 等框架依赖仍存在。
 
 替换必须覆盖：
 
 - 应用自己持有 ASGI、启动/关闭和资源顺序，官方单平台不再为启动而初始化 NoneBot。
 - OneBot 反向 WebSocket 的鉴权、多连接、echo 请求/回执关联、断线取消、消息/通知转换与重放保护；消息交给同一个公共路由，不另建一套命令分发器。
 - 显式组合根注册公共与私有贡献；删除依赖 NoneBot 的元数据/加载路径，不提供旧路径 re-export。
-- 直接持有 AsyncIOScheduler 的生命周期；保留已有任务语义与持久化行为。
+- 已完成：应用直接持有 AsyncIOScheduler 的生命周期，保留任务语义与业务持久状态；真实关闭会等待受管作业退出。
 - HTML 渲染资源的初始化、字体、浏览器和关闭不再借助 NoneBot 插件；业务展示和模板不因此重写。
 - 保留戳一戳、入群、审核、连接观察等非命令事件，分别按公共业务与协议边界归属迁移。
 
-以上为迁移要求，尚未实施，不得据此删除当前运行入口。只有同一公共执行链覆盖全量功能及三种部署模式后，才能切换并删除旧入口，不能长期保留双轨开关。
+调度器资源已独立，其余迁移要求尚未全部实施，不得据此删除当前运行入口。只有同一公共执行链覆盖全量功能及三种部署模式后，才能切换并删除旧入口，不能长期保留双轨开关。
 
 ## 验证门槛
 

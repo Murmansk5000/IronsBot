@@ -1,107 +1,150 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+import threading
 
 import pytest
 
-from ironsbot.integrations.scheduler.facade import (
-    SchedulerFacade,
-    SchedulerStateError,
-)
-
-if TYPE_CHECKING:
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.integrations.scheduler.facade import SchedulerFacade, SchedulerStateError
 
 
-@dataclass(frozen=True, slots=True)
-class FakeJob:
-    id: str
+@pytest.mark.asyncio
+async def test_scheduler_owns_backend_lifecycle_and_jobs() -> None:
+    facade = SchedulerFacade(timezone="Asia/Shanghai", spawn=asyncio.create_task)
 
+    async def work() -> None:
+        pass
 
-class FakeScheduler:
-    def __init__(self) -> None:
-        self.running = False
-        self.jobs: list[FakeJob] = []
-        self.start_calls = 0
-        self.shutdown_calls = 0
-        self.last_func: Any = None
-
-    def start(self) -> None:
-        self.running = True
-        self.start_calls += 1
-
-    def shutdown(self) -> None:
-        self.running = False
-        self.shutdown_calls += 1
-
-    def add_job(self, func: object, _trigger: str, **kwargs: Any) -> FakeJob:
-        self.last_func = func
-        job = FakeJob(str(kwargs["id"]))
-        self.jobs.append(job)
-        return job
-
-    def get_jobs(self) -> list[FakeJob]:
-        return list(self.jobs)
-
-    def remove_job(self, job_id: str) -> None:
-        self.jobs = [job for job in self.jobs if job.id != job_id]
-
-
-def test_scheduler_facade_requires_bound_backend() -> None:
-    facade = SchedulerFacade()
-
-    with pytest.raises(SchedulerStateError):
-        facade.start()
-
-
-def test_scheduler_facade_owns_backend_lifecycle_and_jobs() -> None:
-    backend = FakeScheduler()
-    facade = SchedulerFacade()
-    facade.bind(cast("AsyncIOScheduler", backend))
-
-    facade.start()
-    facade.start()
-    facade.add_job(object(), "interval", id="job")
-
-    assert backend.start_calls == 1
+    facade.add_job(work, "interval", hours=1, id="job")
     assert [job.id for job in facade.get_jobs()] == ["job"]
-
-    facade.remove_job("job")
-    facade.shutdown()
-    facade.shutdown()
-
-    assert facade.get_jobs() == []
-    assert backend.shutdown_calls == 1
-
-
-def test_scheduler_only_suppresses_job_cancellation_during_shutdown() -> None:
-    async def run() -> None:
-        started = asyncio.Event()
-
-        async def job() -> None:
-            started.set()
-            await asyncio.Event().wait()
-
-        backend = FakeScheduler()
-        facade = SchedulerFacade()
-        facade.bind(cast("AsyncIOScheduler", backend))
+    facade.start()
+    facade.start()
+    try:
+        facade.remove_job("job")
+        assert facade.get_jobs() == []
+        await facade.shutdown()
+        await facade.shutdown()
+        with pytest.raises(SchedulerStateError):
+            facade.add_job(work, "date", id="late")
         facade.start()
-        facade.add_job(job, "interval", id="job")
-        wrapped = cast("Any", backend.last_func)
+        facade.add_job(work, "interval", hours=1, id="restarted")
+        assert [job.id for job in facade.get_jobs()] == ["restarted"]
+    finally:
+        await facade.shutdown()
 
-        running = asyncio.create_task(wrapped())
-        await started.wait()
+
+@pytest.mark.asyncio
+async def test_external_cancel_and_late_callback_suppression() -> None:
+    facade = SchedulerFacade(timezone="Asia/Shanghai", spawn=asyncio.create_task)
+    entered = asyncio.Event()
+
+    async def work() -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    wrapped = facade.add_job(work, "date", id="job").func
+    running = asyncio.create_task(wrapped())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=3)
         running.cancel()
         with pytest.raises(asyncio.CancelledError):
             await running
+        entered.clear()
+        await facade.shutdown()
+        assert await wrapped() is None
+        assert not entered.is_set()
+    finally:
+        running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+        await facade.shutdown()
 
-        started.clear()
-        facade.shutdown()
-        stopping = asyncio.create_task(wrapped())
-        await started.wait()
-        stopping.cancel()
-        assert await stopping is None
 
-    asyncio.run(run())
+@pytest.mark.asyncio
+async def test_scheduler_shutdown_waits_for_running_async_job_cleanup() -> None:
+    facade = SchedulerFacade(timezone="Asia/Shanghai", spawn=asyncio.create_task)
+    entered = asyncio.Event()
+    cancelling = asyncio.Event()
+    release = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def work() -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelling.set()
+            await release.wait()
+            finished.set()
+
+    facade.add_job(work, "date", id="running")
+    facade.start()
+    stopping: asyncio.Task[None] | None = None
+    another: asyncio.Task[None] | None = None
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=3)
+        stopping = asyncio.create_task(facade.shutdown())
+        await asyncio.wait_for(cancelling.wait(), timeout=3)
+        assert not stopping.done()
+        assert not finished.is_set()
+        with pytest.raises(SchedulerStateError):
+            facade.start()
+        with pytest.raises(SchedulerStateError):
+            facade.add_job(work, "date", id="late")
+        another = asyncio.create_task(facade.shutdown())
+        await asyncio.sleep(0)
+        assert not another.done()
+        release.set()
+        await asyncio.wait_for(asyncio.gather(stopping, another), timeout=3)
+        assert finished.is_set()
+        assert facade.get_jobs() == []
+    finally:
+        release.set()
+        await facade.shutdown()
+        await asyncio.gather(
+            *[task for task in (stopping, another) if task is not None],
+            return_exceptions=True,
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("keyword", [False, True])
+async def test_sync_jobs_are_off_loop_and_drained_before_shutdown(
+    *, keyword: bool
+) -> None:
+    owner = TaskOwner()
+    facade = SchedulerFacade(timezone="Asia/Shanghai", spawn=owner.create_draining)
+    entered = asyncio.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    loop = asyncio.get_running_loop()
+    event_thread = threading.get_ident()
+
+    def work() -> None:
+        assert threading.get_ident() != event_thread
+        loop.call_soon_threadsafe(entered.set)
+        assert release.wait(timeout=5)
+        finished.set()
+
+    if keyword:
+        facade.add_job(func=work, trigger="date", id="sync")
+    else:
+        facade.add_job(work, "date", id="sync")
+    facade.start()
+    stopping: asyncio.Task[None] | None = None
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=3)
+        stopping = asyncio.create_task(facade.shutdown())
+        await asyncio.sleep(0)
+        await asyncio.wait_for(asyncio.sleep(0), timeout=1)
+        assert not stopping.done()
+        assert not finished.is_set()
+        release.set()
+        await asyncio.wait_for(stopping, timeout=3)
+        assert finished.is_set()
+        assert not owner.tasks
+    finally:
+        release.set()
+        await facade.shutdown()
+        if stopping is not None:
+            await asyncio.gather(stopping, return_exceptions=True)
