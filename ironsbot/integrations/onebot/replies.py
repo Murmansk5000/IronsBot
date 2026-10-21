@@ -12,7 +12,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.adapters.onebot.v11.exception import ActionFailed
-from nonebot.exception import FinishedException
 
 from ironsbot.core.outbound import (
     COMMAND_REPLY_TEMPLATE,
@@ -20,9 +19,6 @@ from ironsbot.core.outbound import (
     OutboundMessage,
     ReplyTemplate,
     SendResult,
-)
-from ironsbot.integrations.onebot.matcher_support import (
-    queued_conversation_is_cancelled,
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
@@ -99,8 +95,6 @@ async def send_matcher_message(
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
 ) -> None:
-    if queued_conversation_is_cancelled(matcher):
-        return
     rendered = build_message(
         message,
         at_user_ids=at_user_ids,
@@ -120,8 +114,6 @@ async def finish_matcher_message(
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
 ) -> None:
-    if queued_conversation_is_cancelled(matcher):
-        raise FinishedException
     rendered = build_message(
         message,
         at_user_ids=at_user_ids,
@@ -155,12 +147,6 @@ async def send_portable_event_reply(
     event: MessageEvent,
     message: OutboundMessage,
 ) -> SendResult:
-    if queued_conversation_is_cancelled(matcher):
-        return SendResult(
-            delivered=False,
-            error_code="conversation_cancelled",
-            failure_kind=DeliveryFailureKind.PERMANENT,
-        )
     incoming = message_input_context(event).message
     prepared = _event_reply_template(event).prepare(incoming, message)
     rendered = render_onebot_outbound_message(

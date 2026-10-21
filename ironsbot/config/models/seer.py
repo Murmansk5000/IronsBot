@@ -14,8 +14,8 @@ from pydantic import (
     model_validator,
 )
 
-from ironsbot.config.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
-    OneBotReferenceList,
+from ironsbot.config.qq_references import (  # noqa: TC001 - Pydantic resolves aliases
+    QQReferenceList,
 )
 from ironsbot.core.commands import NormalizedStringList, string_list
 from ironsbot.core.rank_exclusions import (
@@ -585,7 +585,7 @@ class TeamResourceConfig(BaseModel):
     times: list[str] = Field(default_factory=list)
     commands: NormalizedStringList = Field(default_factory=lambda: ["战队"])
     default_threshold: int = Field(default=1000, ge=0)
-    default_at_users: OneBotReferenceList = Field(default_factory=list)
+    default_at_users: QQReferenceList = Field(default_factory=list)
     query_timeout_seconds: int = Field(default=20, gt=0)
     resource_line: str = (
         "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"

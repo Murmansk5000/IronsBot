@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
+from ironsbot.services.portable_menu_navigation import menu_parent
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.seer.autocard import AutocardEntry
 from ironsbot.services.seer.data import (
@@ -145,6 +146,8 @@ class _PortableNewContentOperations:
         context: MessageInputContext,
         snapshot: NewContentSnapshot,
         layout: NewContentMenuLayout,
+        *,
+        child: bool = False,
     ) -> OutboundMessage:
         menu = build_new_content_menu(snapshot, layout)
         try:
@@ -155,6 +158,7 @@ class _PortableNewContentOperations:
                 "新增内容",
                 layout.expanded_categories,
                 layout.preview_max_items,
+                "返回上级" if menu_parent(child=child) is not None else "退出",
             )
         except (NewContentSnapshotChangedError, DataPublicationChangedError) as error:
             notice = (
@@ -173,46 +177,65 @@ class _PortableNewContentOperations:
                     context,
                     snapshot,
                     focus_new_content_category(layout, action.category),
+                    child=layout.focused_category is None,
                 )
             if action.item is None:
                 return OutboundMessage.from_text("当前新增内容没有可展示的详情。")
             return await self._detail(snapshot, action.item, context)
 
-        return self.sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=tuple(choice.action for choice in menu.choices),
-                labels=tuple(choice.name for choice in menu.choices),
-                choice_keys=tuple(
-                    str(index) if choice.is_visible else choice.key or ""
-                    for index, choice in enumerate(menu.choices, start=1)
-                ),
-                text_inputs=tuple(
-                    frozenset({choice.key}) if choice.key else frozenset()
-                    for choice in menu.choices
-                ),
-                hidden_choice_indexes=frozenset(
-                    index
-                    for index, choice in enumerate(menu.choices, start=1)
-                    if not choice.is_visible
-                ),
-                select=select,
-                prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),
-                keep_open=True,
-                shareable=True,
-                can_select=lambda action, responder: (
-                    action.category
-                    in available_new_content_categories(
-                        lambda feature: self.features.is_feature_allowed(
-                            responder.message.actor,
-                            responder.message.conversation,
-                            feature,
-                        )
-                    )
-                ),
-                exit_message="已退出新增内容查询。",
+        async def resume(responder: MessageInputContext) -> OutboundMessage:
+            try:
+                current = self.service.new_content_snapshot()
+            except (DataUnavailableError, NewContentIndexUnavailableError):
+                return OutboundMessage.from_text(new_content_unavailable_message())
+            if current != snapshot:
+                return OutboundMessage.from_text(
+                    "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
+                )
+            available = available_new_content_categories(
+                lambda feature: self.features.is_feature_allowed(
+                    responder.message.actor, responder.message.conversation, feature
+                )
+            )
+            if not set(layout.display_categories).issubset(available):
+                return OutboundMessage.from_text("当前会话没有使用上级菜单的权限。")
+            return self.sessions.offer_menu(responder, replace(spec, child=False))
+
+        spec = PortableMenuSpec(
+            choices=tuple(choice.action for choice in menu.choices),
+            labels=tuple(choice.name for choice in menu.choices),
+            choice_keys=tuple(
+                str(index) if choice.is_visible else choice.key or ""
+                for index, choice in enumerate(menu.choices, start=1)
             ),
+            text_inputs=tuple(
+                frozenset({choice.key}) if choice.key else frozenset()
+                for choice in menu.choices
+            ),
+            hidden_choice_indexes=frozenset(
+                index
+                for index, choice in enumerate(menu.choices, start=1)
+                if not choice.is_visible
+            ),
+            select=select,
+            prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),
+            keep_open=True,
+            child=child,
+            shareable=True,
+            can_select=lambda action, responder: (
+                action.category
+                in available_new_content_categories(
+                    lambda feature: self.features.is_feature_allowed(
+                        responder.message.actor,
+                        responder.message.conversation,
+                        feature,
+                    )
+                )
+            ),
+            exit_message="已退出新增内容查询。",
+            refresh_on_return=resume,
         )
+        return self.sessions.offer_menu(context, spec)
 
     async def _detail(
         self,

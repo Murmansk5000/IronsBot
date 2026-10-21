@@ -239,15 +239,18 @@ def build_portable_help_operation(  # noqa: PLR0913 - composition boundary
             entry: HelpMenuEntry,
             context: MessageInputContext,
         ) -> OutboundMessage:
-            return OutboundMessage.from_text(
-                format_plugin_detail(
-                    entry,
-                    command_context_from_input(context),
-                    features,
-                    commands,
-                    ignored_plugins=ignored_plugins,
-                    command_ids=command_ids,
-                )
+            return sessions.offer_view(
+                context,
+                OutboundMessage.from_text(
+                    format_plugin_detail(
+                        entry,
+                        command_context_from_input(context),
+                        features,
+                        commands,
+                        ignored_plugins=ignored_plugins,
+                        command_ids=command_ids,
+                    )
+                ),
             )
 
         prompt = OutboundMessage.from_text(format_plugin_list(entries))

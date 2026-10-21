@@ -13,7 +13,7 @@ from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
     from ironsbot.config.models.features import HelpConfig
-    from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.qq_references import QQReferenceResolver
 
 
 class CommandHintCandidate(Protocol):
@@ -67,7 +67,7 @@ def _configured_reply(
 @dataclass(slots=True)
 class OneBotPokeReplyService:
     config: HelpConfig
-    references: OneBotReferenceResolver
+    references: QQReferenceResolver
     candidates: CommandHintCandidates | None = None
     chooser: Callable[[Sequence[CommandHintCandidate]], CommandHintCandidate] = choice
     limiter: SlidingWindowRateLimiter = field(default_factory=SlidingWindowRateLimiter)

@@ -287,9 +287,9 @@ def test_build_countermark_message_renders_stat_combinations() -> None:
 def test_countermark_service_owns_query_and_formatting() -> None:
     service = CountermarkStatRankService(cast("SeerDataAccess", FakeRankData()))
 
-    assert "刻印数值榜需要指定属性" in service.query(
-        CountermarkStatRankCommand(stat=None, scope="all")
-    )
+    message = service.query(CountermarkStatRankCommand(stat=None, scope="all"))
+    assert isinstance(message, str)
+    assert "刻印数值榜需要指定属性" in message
 
 
 def test_countermark_service_reports_missing_published_quality_table() -> None:
@@ -299,7 +299,11 @@ def test_countermark_service_reports_missing_published_quality_table() -> None:
         CountermarkStatRankCommand(stat=StatSpec("atk", "物攻"), scope="all")
     )
 
-    assert message == "❌ 刻印角数数据不完整，暂时无法查询刻印数值榜。"
+    from ironsbot.core.outbound import OutboundMessage
+
+    assert message == OutboundMessage.from_text(
+        "❌ 刻印角数数据不完整，暂时无法查询刻印数值榜。", request_succeeded=False
+    )
 
 
 def test_countermark_repository_rejects_missing_published_quality_table() -> None:
@@ -336,4 +340,5 @@ def test_countermark_service_formats_snapshots_after_session_closes(
     )
 
     assert data.session_active is False
+    assert isinstance(message, str)
     assert "怒火刻印（1001）" in message

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-# ruff: noqa: TC002
 """OneBot handlers and manifest contribution for server-status commands."""
 
 from __future__ import annotations
@@ -7,9 +6,6 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.matcher import Matcher
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
@@ -18,25 +14,17 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.matchers import (
-    CommandPolicy,
-    MatcherFactory,
-    bind_async,
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.portable_queries import (
+    make_authorized_portable_handler,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.services.operations.command_text import (
-    ADMIN_SERVER_STATUS_COMMAND,
-    DISABLED_BARE_ADMIN_COMMAND,
-    HEADLESS_INSTANCE_STATUS_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMANDS,
-)
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
-
-from .status.commands import handle_admin_status, handle_normal_status
+from ironsbot.services.portable_operational_commands import (
+    build_portable_server_status_operations,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog
@@ -53,117 +41,32 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def _handle_disabled_bare_admin_status(
-    matcher: Matcher,
-    event: MessageEvent,
-    *,
-    commands: CommandCatalog,
-    features: FeatureService,
-) -> None:
-    command_help = commands.format_for_context(
-        command_context(event),
-        features,
-        plugin_id="server_status",
-    )
-    await finish_event_reply(
-        matcher,
-        event,
-        f"“开服查询”仅限超级管理员，且必须带 / 前缀。\n{command_help}",
-    )
-
-
 def _install(
     registry: MatcherFactory,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
 ) -> None:
-    async def handle_normal_server_status(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await handle_normal_status(
-            matcher,
-            event,
-            features,
-            server_status,
+    del commands
+    operations = build_portable_server_status_operations(server_status)
+    for contract in server_status_command_contracts():
+        matcher = registry.on_fullmatch(
+            contract.examples,
+            policy=CommandPolicy.command(contract.id, help_ids=(contract.id,)),
+            rule=explicit_command(),
+            priority=registry.priority(
+                "server_status_admin"
+                if contract.id
+                in {"server_status.admin_query", "server_status.headless_instances"}
+                else "server_status"
+            ),
+            block=True,
         )
-
-    async def handle_admin_server_status(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await handle_admin_status(
-            matcher,
-            event,
-            server_status,
+        matcher.append_handler(
+            make_authorized_portable_handler(
+                operations[contract.id], contract, features
+            )
         )
-
-    async def handle_headless_instance_status(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
-            matcher,
-            event,
-            (await server_status.query_headless_instances()).message,
-        )
-
-    normal_matcher = registry.on_fullmatch(
-        NORMAL_SERVER_STATUS_COMMANDS,
-        policy=CommandPolicy.command(
-            "server_status_query",
-            help_ids=("server_status.query",),
-        ),
-        rule=explicit_command(),
-        priority=registry.priority("server_status"),
-        block=True,
-    )
-    normal_matcher.append_handler(handle_normal_server_status)
-
-    disabled_matcher = registry.on_fullmatch(
-        DISABLED_BARE_ADMIN_COMMAND,
-        policy=CommandPolicy.command(
-            "server_status_query",
-            help_ids=("server_status.admin_query",),
-        ),
-        rule=explicit_command(),
-        priority=registry.priority("server_status"),
-        block=True,
-    )
-    disabled_matcher.append_handler(
-        bind_async(
-            _handle_disabled_bare_admin_status,
-            commands=commands,
-            features=features,
-        )
-    )
-
-    admin_matcher = registry.on_fullmatch(
-        ADMIN_SERVER_STATUS_COMMAND,
-        policy=CommandPolicy.command(
-            "server_status_admin",
-            help_ids=("server_status.admin_query",),
-        ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
-    )
-    admin_matcher.append_handler(handle_admin_server_status)
-
-    headless_status_matcher = registry.on_fullmatch(
-        HEADLESS_INSTANCE_STATUS_COMMANDS,
-        policy=CommandPolicy.command(
-            "headless_instance_status",
-            help_ids=("server_status.headless_instances",),
-        ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
-    )
-    headless_status_matcher.append_handler(handle_headless_instance_status)
 
 
 def plugin_contribution(

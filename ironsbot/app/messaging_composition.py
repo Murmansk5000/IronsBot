@@ -1,18 +1,17 @@
 # SPDX-License-Identifier: MIT
-"""Compose messaging services and OneBot delivery adapters."""
+"""Compose shared messaging services and platform delivery adapters."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
-from ironsbot.integrations.onebot.messaging_config import (
-    build_onebot_message_schedule_targets,
+from ironsbot.config.message_schedule_targets import (
+    build_message_schedule_targets,
 )
+from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
-    OneBotTeamAuditPolicy,
 )
 from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.push_topics import SqlitePushTopicStore
@@ -24,6 +23,7 @@ from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.messaging.topics import PushTopicService
 from ironsbot.services.team.audit import TeamAuditService
+from ironsbot.services.team.audit_policy import FeatureTeamAuditPolicy
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
@@ -63,8 +63,8 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     private_routes: PrivateConversationRoutes,
 ) -> MessagingComponents:
     """Build configuration-backed messaging, image, and team-audit services."""
-    from ironsbot.integrations.onebot.lucky_skin_window import (
-        OneBotLuckySkinWindowSubscriptionOptions,
+    from ironsbot.services.seer.lucky_skin_window_subscriptions import (
+        LuckySkinWindowSubscriptionOptions,
     )
 
     def resolve_topic_target(
@@ -107,13 +107,13 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                 proactive_delivery,
                 identity_principals.official_group_member_for_qq,
             ),
-            build_onebot_message_schedule_targets(
+            build_message_schedule_targets(
                 settings.messaging,
-                settings.onebot_references,
+                settings.qq_references,
             ),
             (
                 bili_targets.subscription_options,
-                OneBotLuckySkinWindowSubscriptionOptions(
+                LuckySkinWindowSubscriptionOptions(
                     lucky_skin_window,
                     subscriptions,
                     identity_principals,
@@ -140,7 +140,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             ),
             _command_mentions={
                 action.id: tuple(
-                    settings.onebot_references.actor_refs(
+                    settings.qq_references.actor_refs(
                         action.at_user_ids,
                         location=f"messaging.commands.{action.id}.at_user_ids",
                     )
@@ -167,7 +167,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
         team_audit=TeamAuditService(
             settings.messaging.team_audit_welcome,
             SqliteTeamAuditReminderStore(settings.paths.runtime_state),
-            OneBotTeamAuditPolicy(features),
+            FeatureTeamAuditPolicy(features),
             onebot_messenger,
             OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
         ),

@@ -8,8 +8,8 @@ from ironsbot.config.models.features import (
 )
 from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.settings import Settings
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import build_platform_reference_resolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.features import (
     FEATURE_KEYS,
     SEER_FEATURES,
@@ -56,7 +56,7 @@ def test_configured_groups_get_help_and_about_without_other_features() -> None:
         {"groups": {"known": {"qq": 123}, "blocked": {"qq": 456}}}
     )
     references = build_platform_reference_resolver(
-        OneBotReferenceResolver({"known": 123, "blocked": 456}, {}),
+        QQReferenceResolver({"known": 123, "blocked": 456}, {}),
         identities,
         {},
     )
@@ -90,7 +90,7 @@ def test_later_linked_official_group_inherits_default_commands() -> None:
         (),
         configured_groups=("known",),
         references=build_platform_reference_resolver(
-            OneBotReferenceResolver({"known": 123}, {}),
+            QQReferenceResolver({"known": 123}, {}),
             IdentityConfig.model_validate({"groups": {"known": {"qq": 123}}}),
             {},
         ),

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.core.response_admission import ResponseAdmissionDecision
 from ironsbot.core.semantic_requests import (
@@ -52,7 +53,12 @@ def _menu(
             shareable=True,
             keep_open=True,
             semantic_request=lambda value, _ctx: SemanticRequest(
-                ActionDefinition("test.query", "query", cooldown_key="test.query"),
+                ActionDefinition(
+                    "test.query",
+                    "query",
+                    cooldown_key="test.query",
+                    category=RequestCategory.OTHER_NETWORK,
+                ),
                 SemanticTarget(str(value), str(value)),
                 SemanticRequestSource.MENU,
             ),
@@ -124,7 +130,9 @@ async def test_clone_admission_belongs_to_responder_and_denial_preserves_menu() 
     sessions.interactions.cooldown = cooldown
     sessions.interactions.request_service = requests
     await _deliver(await sessions.interactions.select("1", responder))
-    assert sessions.active_prompt(responder) == own.prompt
+    active = sessions.active_prompt(responder)
+    assert active is not None and own.prompt is not None
+    assert active.id == own.prompt.id
     select.assert_not_awaited()
     requests.release.assert_called_with("request")
     cooldown.admit.assert_called_once_with(
@@ -135,7 +143,7 @@ async def test_clone_admission_belongs_to_responder_and_denial_preserves_menu() 
         allowed=True, token="cooldown"
     )
     await _deliver(await sessions.interactions.select("1", responder))
-    assert sessions.active_prompt(responder) == own.prompt
+    assert sessions.active_prompt(responder) != own.prompt
     select.assert_awaited_once_with(1, responder)
     assert requests.admit.call_args.kwargs["actor"] == responder.message.actor
     requests.finish.assert_called_once_with("request")
@@ -166,7 +174,12 @@ async def test_late_callback_cannot_resurrect_exited_or_replaced_menu(
     release.set()
     with pytest.raises(asyncio.CancelledError):
         await old
-    assert sessions.active_prompt(context) == (latest.prompt if latest else None)
+    active = sessions.active_prompt(context)
+    if latest is None:
+        assert active is None
+    else:
+        assert active is not None and latest.prompt is not None
+        assert active.id == latest.prompt.id
 
 
 @pytest.mark.asyncio

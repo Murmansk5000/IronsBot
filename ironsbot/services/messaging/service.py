@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.message_schedule_targets import MessageScheduleTargets
     from ironsbot.core.platform import ActorPrincipal
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.scheduled_delivery import (
@@ -49,7 +50,6 @@ if TYPE_CHECKING:
         PushSubscriptionRepository,
         PushTimePreferenceIdentity,
     )
-    from ironsbot.services.messaging.targets import MessageScheduleTargets
     from ironsbot.services.messaging.topics import PushTopicService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.private_conversation_routes import PrivateConversationRoutes

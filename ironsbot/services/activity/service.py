@@ -9,6 +9,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.commands import positive_int_list
+from ironsbot.core.outbound import OutboundMessage
 
 from .catalog import build_active_activity_infos
 from .delivery import (
@@ -168,11 +169,13 @@ class ActivityService:
         self,
         *,
         limit: int | None = None,
-    ) -> str:
+    ) -> str | OutboundMessage:
         now = self.now()
         activities = await self.active_activity_infos(now)
         if not self.cache.has_previous_week_snapshot:
-            return NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE
+            return OutboundMessage.from_text(
+                NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE, request_succeeded=False
+            )
 
         new_activities = [
             activity

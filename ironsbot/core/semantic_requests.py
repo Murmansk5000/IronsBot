@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from ironsbot.core.action_categories import RequestCategory, category_for_action
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -40,6 +42,7 @@ class ActionDefinition:
     id: str
     label: str
     cooldown_key: str | None = None
+    category: RequestCategory | None = None
 
     def __post_init__(self) -> None:
         action_id = self.id.strip()
@@ -48,6 +51,13 @@ class ActionDefinition:
             raise SemanticRequestError.missing_action()
         object.__setattr__(self, "id", action_id)
         object.__setattr__(self, "label", label)
+        object.__setattr__(
+            self,
+            "category",
+            category_for_action(action_id)
+            if self.category is None
+            else RequestCategory(self.category),
+        )
         cooldown_key = self.cooldown_key
         object.__setattr__(
             self,

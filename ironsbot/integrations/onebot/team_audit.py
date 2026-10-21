@@ -13,27 +13,12 @@ from ironsbot.core.platform import (
     Platform,
     reference_digest,
 )
-from ironsbot.services.team.audit import TEAM_AUDIT_FEATURE
 
 if TYPE_CHECKING:
-    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
     from ironsbot.integrations.onebot.router import BotRouter
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class OneBotTeamAuditPolicy:
-    """Adapt configured OneBot group features to the core audit policy."""
-
-    features: FeatureService
-
-    def enabled_for(self, conversation: ConversationRef) -> bool:
-        return self.features.conversation_has_feature(
-            conversation,
-            TEAM_AUDIT_FEATURE,
-        )
 
 
 @dataclass(frozen=True, slots=True)

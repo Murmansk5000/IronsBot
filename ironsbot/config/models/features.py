@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Final
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ironsbot.config.models.identities import IdentityConfig
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import (
     PlatformReferenceResolver,
     build_platform_reference_resolver,
 )
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.commands import (
     NormalizedStringList,
     csv_items,
@@ -444,7 +444,7 @@ def build_feature_service(  # noqa: PLR0913
         qq_official=qq_official,
     )
     references = references or build_platform_reference_resolver(
-        OneBotReferenceResolver({}, {}),
+        QQReferenceResolver({}, {}),
         IdentityConfig(),
         {},
     )

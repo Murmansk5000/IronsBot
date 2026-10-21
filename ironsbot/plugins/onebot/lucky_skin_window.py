@@ -26,11 +26,8 @@ from ironsbot.core.semantic_requests import (
 from ironsbot.core.time import scheduled_clock_time
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
-from ironsbot.integrations.onebot.matchers import (
-    CommandPolicy,
-    MatcherFactory,
-    bind_async,
-)
+from ironsbot.integrations.onebot.matcher_support import bind_async
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import (
@@ -105,9 +102,7 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
                 "发送“橱窗”查看；可用“关注橱窗”或“订阅橱窗”管理星标；可在“TD”中退订每日提醒。",
             ),
         ),
-        commands=lucky_skin_window_command_contracts(
-            resolver.has_reference_choices
-        ),
+        commands=lucky_skin_window_command_contracts(resolver.has_reference_choices),
         install=partial(
             _install,
             service=service,
@@ -155,9 +150,7 @@ async def _matches_query(
     _ = state
     context = message_input_context(event)
     if not lucky_skin_query_input_matcher(
-        resolver.has_reference_choices
-        if resolver is not None
-        else lambda *_: False
+        resolver.has_reference_choices if resolver is not None else lambda *_: False
     )(context.text, command_context_from_input(context)):
         return False
     return _watch_feature_allowed(event, features=features)

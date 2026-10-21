@@ -54,7 +54,7 @@ class DataQueryImageReply:
         return OutboundMessage(tuple(parts))
 
 
-DataQueryReply = str | DataQueryImageReply
+DataQueryReply = str | DataQueryImageReply | OutboundMessage
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,9 @@ class SeerDataQueryService:
                     ImageSourceError(str(error)),
                 )
         if not previews:
-            return IMAGE_UNAVAILABLE_MESSAGE
+            return OutboundMessage.from_text(
+                IMAGE_UNAVAILABLE_MESSAGE, request_succeeded=False
+            )
 
         notice = ""
         stale_previews = [preview for preview in previews if preview.stale]
@@ -120,10 +122,13 @@ class SeerDataQueryService:
             images[0], notice, tuple(images[1:]), links.source_url
         )
 
-    async def data_version(self) -> str:
+    async def data_version(self) -> str | OutboundMessage:
         generated_at = self._facts.generated_at()
         if generated_at is None:
-            return "❌暂无数据版本信息(这是一个bug，请反馈给开发者)"
+            return OutboundMessage.from_text(
+                "❌暂无数据版本信息(这是一个bug，请反馈给开发者)",
+                request_succeeded=False,
+            )
         if (
             generated_at.tzinfo is None
             or generated_at.tzinfo.utcoffset(generated_at) is None

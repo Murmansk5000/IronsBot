@@ -4,6 +4,13 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+
+from ironsbot.config.models.seer import PlayerRankLookupConfig
+from ironsbot.core.time import now
+from ironsbot.services.operations.headless_errors import SocketRecvError
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.local_rank_models import LocalRankSummary
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
@@ -12,16 +19,6 @@ from ironsbot.services.seer.player_shortcut_contracts import (
 from ironsbot.services.seer.player_shortcut_queries import (
     fetch_player_shortcut_reply,
 )
-from ironsbot.services.seer.rank_player_scheduler import (
-    current_player_rank_page_scheduler,
-    run_player_rank_lookup_jobs,
-)
-
-from ironsbot.config.models.seer import PlayerRankLookupConfig
-from ironsbot.core.time import now
-from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.local_rank_models import LocalRankSummary
-from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.rank_constants import (
     BOOK_RANK_KEY,
     STANDARD_PEAK_USER_RANK_KEY,
@@ -31,6 +28,10 @@ from ironsbot.services.seer.rank_models import (
     PlayerRankSummary,
     RankLookupCost,
     RankLookupResult,
+)
+from ironsbot.services.seer.rank_player_scheduler import (
+    current_player_rank_page_scheduler,
+    run_player_rank_lookup_jobs,
 )
 from ironsbot.services.seer.rank_summary import (
     fetch_peak_season_rank_summary,
@@ -46,6 +47,64 @@ PLAYER_ID = 813_824_069
 MASTER_FOUND_RANK = 8
 _TEST_STAGE_TIMEOUT_SECONDS = 0.01
 _CACHED_AT = 1234567890
+
+
+@pytest.mark.asyncio
+async def test_collection_unavailable_player_stops_before_rank_and_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
+        AsyncMock(return_value=UnityPartOneInfo()),
+    )
+    rank = Mock(fetch_player_summary=AsyncMock())
+    local = Mock(upsert_metrics=AsyncMock())
+    game = SimpleNamespace(
+        get_user_info=AsyncMock(side_effect=SocketRecvError(101105)),
+        get_more_user_info=AsyncMock(side_effect=SocketRecvError(101105)),
+    )
+    reply = await fetch_player_shortcut_reply(
+        _dependencies(rank, local),
+        game,
+        command=PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+    assert reply.text == f"❌ 米米号 {PLAYER_ID} 不存在或用户信息不可查询。"
+    assert not reply.complete
+    assert not reply.to_outbound().request_succeeded
+    rank.fetch_player_summary.assert_not_awaited()
+    local.upsert_metrics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_collection_failed_base_is_unknown_not_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
+        AsyncMock(side_effect=TimeoutError()),
+    )
+    rank = Mock(fetch_player_summary=AsyncMock(return_value=PlayerRankSummary.empty()))
+    local = SimpleNamespace(
+        config=SimpleNamespace(enabled=False), upsert_metrics=AsyncMock()
+    )
+    reply = await fetch_player_shortcut_reply(
+        _dependencies(rank, local),
+        SimpleNamespace(
+            get_user_info=AsyncMock(return_value=SimpleNamespace(nick="tester")),
+            get_more_user_info=AsyncMock(side_effect=TimeoutError()),
+        ),
+        command=PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+    for label in ("精灵数量", "成就点数", "精灵图鉴", "皮肤图鉴", "成就数量"):
+        assert f"{label}：0" not in reply.text
+        assert f"{label}：暂无数据" in reply.text
+    assert not reply.complete
+    assert rank.fetch_player_summary.await_args.kwargs["achieve_score"] is None
+    assert rank.fetch_player_summary.await_args.kwargs["pet_kind_count"] is None
+    assert rank.fetch_player_summary.await_args.kwargs["skin_score"] is None
+    local.upsert_metrics.assert_not_awaited()
 
 
 @pytest.mark.asyncio

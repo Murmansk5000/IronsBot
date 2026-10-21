@@ -52,6 +52,7 @@ async def lucky_skin_result_menu(  # noqa: PLR0913 - shared rendering dependenci
             labels=tuple(choice.name for choice in choices),
             shareable=True,
             keep_open=True,
+            child=True,
             access=lambda ctx: features.is_feature_allowed(
                 ctx.message.actor, ctx.message.conversation, "seer_pet"
             ),

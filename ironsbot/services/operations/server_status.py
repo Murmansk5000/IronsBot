@@ -45,6 +45,7 @@ class ServerNoticeSource(Protocol):
 @dataclass(frozen=True, slots=True)
 class ServerStatusResult:
     message: str
+    succeeded: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +116,7 @@ class ServerStatusService:
 
     async def query_admin(self) -> ServerStatusResult:
         now = datetime.now(LOCAL_TZ)
+        succeeded = True
         status = self._headless_status()
         lines = ["🛠【管理员开服查询】"]
         if status.connected:
@@ -126,6 +128,7 @@ class ServerStatusService:
             try:
                 user_id = await self._headless.login()
             except Exception as error:  # noqa: BLE001
+                succeeded = False
                 logger.warning("管理员开服查询触发无头重连失败", exc_info=True)
                 status = _HeadlessStatus(connected=False, reason=str(error))
                 await self._record_status(status, source="/开服查询重连")
@@ -139,7 +142,9 @@ class ServerStatusService:
                 lines.append(f"重连结果：已登录米米号 {user_id}。")
 
         lines.extend(("", await self._notice_reply(status, now)))
-        return ServerStatusResult(message=self._with_reference("\n".join(lines)))
+        return ServerStatusResult(
+            message=self._with_reference("\n".join(lines)), succeeded=succeeded
+        )
 
     def _with_reference(self, message: str) -> str:
         if self._external_references is None:
