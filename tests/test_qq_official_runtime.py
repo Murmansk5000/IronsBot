@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 from unittest.mock import AsyncMock
@@ -33,6 +34,9 @@ from ironsbot.integrations.qq_official.runtime import (
 )
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.integrations.storage.official_addresses import SqliteOfficialAddressStore
+from ironsbot.services.command_delivery import CommandReplyDelivery
+from ironsbot.services.command_errors import CommandErrorReporter
+from ironsbot.services.command_ingress import CommandIngress
 from ironsbot.services.identity_link_store import (
     CrossPlatformGroupLink,
     OfficialIdentity,
@@ -44,9 +48,11 @@ from ironsbot.services.identity_observation import (
 )
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.official_addresses import OfficialAddressService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     from pathlib import Path
 
     from qqbot_agent_sdk.websocket import WSCallbacks
@@ -54,6 +60,7 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.services.portable_commands import PortableCommandRouter
+    from ironsbot.services.portable_reply import DeliveryStage
 
 
 class _FakeApi:
@@ -105,13 +112,27 @@ class _CountingRouter:
     def __init__(self) -> None:
         self.dispatch_count = 0
         self.contexts: list[object] = []
+        self.delivery = CommandReplyDelivery(
+            PortableQuerySessions(), CommandErrorReporter()
+        )
+        self.ingress = CommandIngress(
+            cast("PortableCommandRouter", self), self.delivery
+        )
 
     def recognizes(self, context: object) -> bool:
         self.contexts.append(context)
         return True
 
-    async def dispatch(self, _context: object) -> None:
+    async def execute(
+        self,
+        _context: object,
+        _send: Callable[[OutboundMessage], Awaitable[SendResult]],
+        *,
+        on_sent: Callable[[DeliveryStage, SendResult], None] | None = None,
+    ) -> bool:
+        del on_sent
         self.dispatch_count += 1
+        return False
 
     def bare_mention_hint(self, _context: object) -> PortableReply | None:
         return None
@@ -156,10 +177,12 @@ def test_runtime_records_any_private_sender_before_command_routing(
                 session_root=tmp_path,
             )
             router = _RejectingRouter()
+            router.ingress = replace(
+                router.ingress, union_identity=cast("Any", _AddressObserver())
+            )
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                union_identity=cast("Any", _AddressObserver()),
             )
             await runtime.handle_event(
                 "app-id",
@@ -376,10 +399,12 @@ def test_runtime_claims_message_before_business_dispatch(
             )
             router = _CountingRouter()
             union_identity = _UnionIdentityObserver()
+            router.ingress = replace(
+                router.ingress, union_identity=cast("Any", union_identity)
+            )
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                union_identity=cast("Any", union_identity),
             )
             raw = {
                 "id": "message-id",
@@ -389,7 +414,7 @@ def test_runtime_claims_message_before_business_dispatch(
                 "author": {"member_openid": "member-openid"},
             }
 
-            caplog.set_level("INFO", logger=runtime_module.__name__)
+            caplog.set_level("INFO", logger="ironsbot.services.command_ingress")
             await runtime.handle_event(
                 "private-app-id",
                 "GROUP_AT_MESSAGE_CREATE",
@@ -573,10 +598,12 @@ def test_unmapped_group_mention_is_observed_but_not_dispatched(
             )
             observer = SimpleNamespace(observe_official_message=AsyncMock())
             router = _CountingRouter()
+            router.ingress = replace(
+                router.ingress, identity_observer=cast("Any", observer)
+            )
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                identity_observer=cast("Any", observer),
             )
 
             await runtime.handle_event(
@@ -675,10 +702,10 @@ def test_matched_mention_establishes_group_route_before_dispatch(
                 on_group_link=register_group_link,
             )
             router = _CountingRouter()
+            router.ingress = replace(router.ingress, identity_observer=observer)
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                identity_observer=observer,
             )
             assert not await observer.observe_onebot(
                 OneBotGroupMessageObservation(
@@ -743,10 +770,10 @@ def test_non_owner_group_mention_links_member_without_dispatch(
                 on_group_link=register_group_link,
             )
             router = _CountingRouter()
+            router.ingress = replace(router.ingress, identity_observer=observer)
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                identity_observer=observer,
             )
             assert not await observer.observe_onebot(
                 OneBotGroupMessageObservation(
@@ -845,10 +872,12 @@ def test_runtime_observes_claimed_group_message_for_identity_linking(
             router = _CountingRouter()
             observe = AsyncMock(return_value=False)
             observer = SimpleNamespace(observe_official_message=observe)
+            router.ingress = replace(
+                router.ingress, identity_observer=cast("Any", observer)
+            )
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                identity_observer=cast("Any", observer),
             )
             raw = {
                 "id": "message-id",
@@ -894,10 +923,12 @@ def test_runtime_ignores_unclaimed_member_mention_without_bot_mention(
             router = _RejectingRouter()
             observe = AsyncMock(return_value=False)
             observer = SimpleNamespace(observe_official_message=observe)
+            router.ingress = replace(
+                router.ingress, identity_observer=cast("Any", observer)
+            )
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                identity_observer=cast("Any", observer),
             )
 
             await runtime.handle_event(
@@ -932,10 +963,12 @@ def test_runtime_observes_unclaimed_bot_and_member_mentions(tmp_path: Path) -> N
             router = _RejectingRouter()
             observe = AsyncMock(return_value=False)
             observer = SimpleNamespace(observe_official_message=observe)
+            router.ingress = replace(
+                router.ingress, identity_observer=cast("Any", observer)
+            )
             runtime.bind(
                 cast("PortableCommandRouter", router),
                 cast("OutboundMessenger", object()),
-                identity_observer=cast("Any", observer),
             )
 
             await runtime.handle_event(

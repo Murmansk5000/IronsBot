@@ -15,7 +15,6 @@ from ironsbot.integrations.onebot.conversations import is_self_message_event
 from ironsbot.integrations.onebot.matchers import CommandPolicy
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
-from ironsbot.services.portable_reply import deliver_portable_reply
 
 if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage, SendResult
@@ -32,8 +31,6 @@ def install_command_ingress(
         if not isinstance(event, MessageEvent) or is_self_message_event(event):
             return False
         context = message_input_context(event)
-        if not router.recognizes(context):
-            return False
         state[_CONTEXT_KEY] = context
         return True
 
@@ -41,21 +38,17 @@ def install_command_ingress(
         if not isinstance(event, MessageEvent):
             return
         context = state.pop(_CONTEXT_KEY)
-        reply = await router.dispatch(context)
-        if reply is None:
-            return
 
         async def send(message: OutboundMessage) -> SendResult:
-            result = await send_portable_event_reply(matcher, event, message)
-            router.record_menu_delivery(context, message, result)
-            return result
+            return await send_portable_event_reply(matcher, event, message)
 
-        await deliver_portable_reply(reply, send)
+        if await router.ingress.handle(context, send):
+            matcher.stop_propagation()
 
     matcher = factory.on_message(
         policy=CommandPolicy.exempt("shared command runtime"),
         rule=Rule(accepts),
         priority=-31,
-        block=True,
+        block=False,
     )
     matcher.append_handler(handle)

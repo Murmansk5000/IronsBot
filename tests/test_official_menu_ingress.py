@@ -22,7 +22,7 @@ from ironsbot.integrations.qq_official.identity import qq_official_incoming_mess
 from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
-from ironsbot.integrations.qq_official.runtime import deliver_qq_official_reply
+from ironsbot.integrations.qq_official.reply_transport import QQOfficialReplyTransport
 from ironsbot.integrations.qq_official.sdk_client import QQOfficialSendReceipt
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -129,15 +129,11 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
     messenger = QQOfficialOutboundMessenger({"app": True}, lambda _app: bot)
 
     async def dispatch(context: MessageInputContext) -> None:
-        reply = await router.dispatch(context)
-        assert reply is not None
-        await deliver_qq_official_reply(
-            messenger,
-            context.message,
-            reply,
-            on_menu_sent=lambda message, result: router.record_menu_delivery(
-                context, message, result
-            ),
+        transport = QQOfficialReplyTransport(messenger, context.message)
+        assert await router.execute(
+            context,
+            transport.send,
+            on_sent=transport.record_receipt,
         )
 
     await dispatch(context)

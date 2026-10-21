@@ -32,6 +32,7 @@ from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+from ironsbot.services.onebot_routing import OneBotRoutingPolicy
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -89,8 +90,7 @@ def build_test_runtime(  # noqa: PLR0913
         tasks.create,
     )
     router = BotRouter(
-        OneBotRoutingConfig(),
-        qq_references,
+        OneBotRoutingPolicy(OneBotRoutingConfig(), qq_references),
     )
     subscriptions = PushUnsubscribeStore(isolated_state_path)
     proactive_delivery = ProactiveMessageDelivery(

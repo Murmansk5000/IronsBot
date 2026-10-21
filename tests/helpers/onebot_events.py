@@ -12,6 +12,11 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.adapters.onebot.v11.event import Reply, Sender
 
+from ironsbot.integrations.onebot.self_commands import (
+    SelfCommandAdapter,
+    SelfCommandEvent,
+)
+
 GroupMemberRole = Literal["owner", "admin", "member"]
 SenderInput = Sender | Mapping[str, Any] | None
 
@@ -70,6 +75,14 @@ def group_message_event(  # noqa: PLR0913
         )
     if original_message is not None:
         event.original_message = original_message
+    return event
+
+
+def self_command_event(text: str, message_id: int = -3) -> SelfCommandEvent:
+    data = group_message_event(text, user_id=1, message_id=message_id).model_dump()
+    data["post_type"] = "message_sent"
+    event = SelfCommandAdapter.json_to_event(data)
+    assert isinstance(event, SelfCommandEvent)
     return event
 
 

@@ -97,6 +97,7 @@ def bootstrap() -> Application:
             with application.resources.private_extensions.plugin_import_path():
                 nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
+    from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
     from ironsbot.services.portable_commands import build_portable_command_router
 
     router = build_portable_command_router(
@@ -109,11 +110,17 @@ def bootstrap() -> Application:
         player_id_resolver=application.resources.player_id_resolver,
         identity_links=application.resources.identity_links,
         identity_principals=application.resources.identity_principals,
+        identity_observer=application.resources.identity_observer,
+        union_identity=application.resources.union_identity,
+        inbound_claims=SqliteInboundMessageClaims(
+            settings.paths.cache_root / "qq_official" / "inbound.sqlite"
+        ),
         features=application.resources.features,
         ai=application.resources.ai,
         ai_intent_actions=application.resources.ai_intent_actions,
         addressed_input_hints=application.resources.addressed_input_hints,
         admin_notices=application.resources.admin_notices,
+        errors=application.resources.command_errors,
         team_resource=application.resources.team_resource,
         lucky_skin_window=application.resources.lucky_skin_window,
         activity=application.resources.activity,
@@ -142,8 +149,6 @@ def bootstrap() -> Application:
         application.resources.qq_official.bind(
             router,
             application.resources.outbound_messenger,
-            identity_observer=application.resources.identity_observer,
-            union_identity=application.resources.union_identity,
         )
     application.resources.onebot_ingress.install()
     application.install(router)

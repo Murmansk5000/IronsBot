@@ -20,7 +20,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
+from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.services.identity_link_store import (
     GroupLinkConflictError,
@@ -31,6 +31,7 @@ from ironsbot.services.identity_observation import (
     OneBotGroupMessageObservation,
     SilentIdentityObservationService,
 )
+from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.portable_commands import DIRECT_COMMAND_HELP_HINT_TEXT
 from tests.helpers.onebot_events import group_message_event
 
@@ -228,7 +229,7 @@ async def test_normal_command_reply_discovers_group_without_configured_openid(
     )
 
     assert (
-        service.record_official_reply(
+        service.record_reply(
             _incoming("normal-command"),
             OutboundMessage.from_text("正常指令结果"),
         )
@@ -266,7 +267,7 @@ async def test_addressed_hint_uses_the_same_reply_observation_path(
     )
     hint = OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
 
-    service.record_official_reply(_incoming("mention-1"), hint)
+    service.record_reply(_incoming("mention-1"), hint)
     assert await service.observe_onebot(
         _observation(text=DIRECT_COMMAND_HELP_HINT_TEXT)
     )
@@ -297,7 +298,7 @@ async def test_group_discovery_does_not_require_member_mention(tmp_path: Path) -
         },
         clock=lambda: clock[0],
     )
-    service.record_official_reply(
+    service.record_reply(
         _incoming("normal-command"),
         OutboundMessage.from_text("正文结果"),
     )
@@ -339,7 +340,7 @@ async def test_group_discovery_accepts_textual_official_reply_mention(
         },
         clock=lambda: clock[0],
     )
-    service.record_official_reply(
+    service.record_reply(
         _incoming("normal-command"),
         OutboundMessage.from_text("正文结果"),
     )
@@ -376,10 +377,8 @@ async def test_group_discovery_rejects_unconfigured_or_ambiguous_groups(
         clock=lambda: clock[0],
     )
     message = OutboundMessage.from_text("相同结果")
-    service.record_official_reply(_incoming("first", official_group="group-a"), message)
-    service.record_official_reply(
-        _incoming("second", official_group="group-b"), message
-    )
+    service.record_reply(_incoming("first", official_group="group-a"), message)
+    service.record_reply(_incoming("second", official_group="group-b"), message)
 
     assert not await service.observe_onebot(_observation(text="相同结果"))
     assert await store.all_group_links() == ()
@@ -433,7 +432,7 @@ async def test_one_exact_observation_links_group_member_silently(
     clock = [100.0]
     service, store = _service(tmp_path, clock)
 
-    service.record_official_reply(
+    service.record_reply(
         _incoming("official-1"),
         OutboundMessage.from_text("结果"),
     )
@@ -455,7 +454,7 @@ async def test_duplicate_napcat_observation_does_not_count_twice(
     service, store = _service(tmp_path, clock)
     observation = _observation()
 
-    service.record_official_reply(
+    service.record_reply(
         _incoming("official-1"),
         OutboundMessage.from_text("结果"),
     )
@@ -496,8 +495,8 @@ async def test_observations_are_isolated_by_trusted_bot_and_app_id(
         clock=lambda: clock[0],
     )
     message = OutboundMessage.from_text("相同结果")
-    service.record_official_reply(_incoming("app-a-1"), message)
-    service.record_official_reply(
+    service.record_reply(_incoming("app-a-1"), message)
+    service.record_reply(
         _incoming(
             "app-b-1",
             app_id=second_app_id,
@@ -1012,10 +1011,10 @@ async def test_untrusted_or_ambiguous_messages_never_link(tmp_path: Path) -> Non
     clock = [100.0]
     service, store = _service(tmp_path, clock)
     message = OutboundMessage.from_text("结果")
-    service.record_official_reply(_incoming("official-1"), message)
+    service.record_reply(_incoming("official-1"), message)
 
     assert not await service.observe_onebot(_observation(sender=99999))
-    service.record_official_reply(_incoming("official-2"), message)
+    service.record_reply(_incoming("official-2"), message)
     assert not await service.observe_onebot(_observation())
     assert (
         await store.for_official(
@@ -1032,10 +1031,12 @@ async def test_silent_ingress_observes_then_blocks_onebot_event(
     clock = [100.0]
     service, _store = _service(tmp_path, clock)
     incoming = _incoming("official-1")
-    service.record_official_reply(incoming, OutboundMessage.from_text("结果"))
-    policy = OneBotIngressPolicy(
-        messages_enabled=False,
-        identity_observer=service,
+    service.record_reply(incoming, OutboundMessage.from_text("结果"))
+    policy = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=False,
+            identity_observer=service,
+        )
     )
 
     with pytest.raises(IgnoredException):
@@ -1056,9 +1057,11 @@ async def test_silent_ingress_observes_napcat_message_sent_then_blocks(
             text="",
         )
     )
-    policy = OneBotIngressPolicy(
-        messages_enabled=False,
-        identity_observer=service,
+    policy = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=False,
+            identity_observer=service,
+        )
     )
 
     with pytest.raises(IgnoredException):
@@ -1092,7 +1095,9 @@ async def test_silent_ingress_links_napcat_command_without_bot_mention(
         }
     )
     assert event is not None
-    policy = OneBotIngressPolicy(messages_enabled=False, identity_observer=service)
+    policy = OneBotEventIngress(
+        OneBotAdmissionService(messages_enabled=False, identity_observer=service)
+    )
 
     with pytest.raises(IgnoredException):
         await policy.process(event)
@@ -1116,7 +1121,9 @@ async def test_interactive_ingress_allows_onebot_event(tmp_path: Path) -> None:
     service, _store = _service(tmp_path, clock)
     event = _observed_reply()
 
-    await OneBotIngressPolicy(
-        messages_enabled=True,
-        identity_observer=service,
+    await OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=True,
+            identity_observer=service,
+        )
     ).process(event)
