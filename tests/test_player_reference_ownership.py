@@ -1,32 +1,29 @@
 from __future__ import annotations
 
-import asyncio
 from functools import partial
 from types import SimpleNamespace
-from typing import Any, cast
 from unittest.mock import Mock
 
-import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import FEATURE_KEYS
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import SendResult
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot.seer.query.commands import (
-    player,
-    player_shortcuts,
-    rank_list,
-)
-from ironsbot.plugins.onebot.seer.query.commands.player import _is_binding_command
-from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity.player_accounts import (
@@ -35,15 +32,32 @@ from ironsbot.services.identity.player_accounts import (
 )
 from ironsbot.services.identity_link_store import CrossPlatformGroupLink
 from ironsbot.services.identity_principals import IdentityPrincipalService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_player_commands import build_portable_player_operations
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_rank_commands import build_portable_rank_operations
+from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-from ironsbot.services.seer.player_query import extract_player_query_arg
+from ironsbot.services.seer.player_query import (
+    extract_player_binding_arg,
+    extract_player_query_arg,
+)
+from ironsbot.services.seer.player_service import PlayerService
+from ironsbot.services.seer.player_shortcut_contracts import (
+    parse_player_shortcut_command,
+)
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
+from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
+from ironsbot.services.seer.rank_queries import RankQueryService
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.test_portable_player_commands import _PlayerService
+from tests.test_portable_rank_commands import _RankQueryService
 
 _ADMIN = ActorRef(Platform.ONEBOT, "100")
 _REGULAR = ActorRef(Platform.ONEBOT, "200")
@@ -51,8 +65,7 @@ _GROUP = ConversationRef(Platform.ONEBOT, "group", "300")
 _PLAYER_ID = 123456
 
 
-@pytest.mark.asyncio
-async def test_player_prefix_chat_is_not_claimed_with_member_mention() -> None:
+def test_player_prefix_chat_is_not_claimed_with_member_mention() -> None:
     resolver = PlayerIdResolver(
         lambda reference, _conversation: (
             _PLAYER_ID if reference == "示例玩家" else None
@@ -64,25 +77,97 @@ async def test_player_prefix_chat_is_not_claimed_with_member_mention() -> None:
             message=Message([MessageSegment.at(456), MessageSegment.text(f" {text}")]),
             group_id=int(_GROUP.id),
         )
-        matcher = (
-            player._is_binding_command
-            if text.startswith("绑定")
-            else player._is_player_query_command
+        assert not any(
+            command.matches_direct_input(command_context(event), text)
+            for command in seer_command_contracts(resolver)
+            if command.id in {"seer.player.bind", "seer.player.query"}
         )
-        assert not await matcher(event, resolver=resolver)
 
-    assert await player._is_player_query_command(
-        group_message_event("米米号示例玩家", group_id=int(_GROUP.id)),
-        resolver=resolver,
-    )
-    assert await player._is_player_query_command(
-        group_message_event("米米号发了吗", group_id=int(_GROUP.id)),
-        resolver=PlayerIdResolver(
-            lambda reference, _conversation: (
-                _PLAYER_ID if reference == "发了吗" else None
+    for text, current in (
+        ("米米号示例玩家", resolver),
+        (
+            "米米号发了吗",
+            PlayerIdResolver(
+                lambda reference, _conversation: (
+                    _PLAYER_ID if reference == "发了吗" else None
+                ),
+                lambda _actor: None,
             ),
-            lambda _actor: None,
         ),
+    ):
+        contract = next(
+            command
+            for command in seer_command_contracts(current)
+            if command.id == "seer.player.query"
+        )
+        event = group_message_event(text, group_id=int(_GROUP.id))
+        assert contract.matches_direct_input(command_context(event), text)
+
+
+def _runtime(
+    context: MessageInputContext, resolver: PlayerIdResolver, *, enabled: bool
+) -> SimpleNamespace:
+    granted = frozenset({"seer_player", "seer_rank"}) if enabled else frozenset()
+    features = FeatureService(
+        {context.message.conversation: granted},
+        {context.message.actor: granted},
+        frozenset(),
+    )
+    sessions = PortableQuerySessions()
+    config = CommandCooldownConfig(enabled=True)
+    requests = Mock(wraps=InFlightRequestService(features, config))
+    cooldown = Mock(wraps=CommandCooldownService(config, features))
+    sessions.interactions.request_service = requests
+    sessions.interactions.cooldown = cooldown
+    service = Mock(spec=PlayerService, wraps=_PlayerService())
+    rank = Mock(spec=RankQueryService, wraps=_RankQueryService())
+    operations = build_portable_player_operations(
+        service, resolver, sessions, features, PlayerDetailExtensionRegistry()
+    )
+    operations.update(
+        build_portable_rank_operations(
+            rank, resolver, sessions, operations["seer.player.query"], features
+        )
+    )
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="seer_query",
+                commands=tuple(
+                    command
+                    for command in seer_command_contracts(resolver)
+                    if command.id in operations
+                ),
+            ),
+            PluginContribution(
+                id="rank_help",
+                commands=tuple(
+                    command
+                    for command in rank_help_command_contracts(resolver)
+                    if command.id in operations
+                ),
+            ),
+        ),
+        known_features=FEATURE_KEYS,
+    )
+    router = PortableCommandRouter(
+        catalog,
+        operations,
+        features,
+        ai=Mock(),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+    return SimpleNamespace(
+        router=router,
+        catalog=catalog,
+        features=features,
+        requests=requests,
+        cooldown=cooldown,
+        service=service,
+        rank=rank,
     )
 
 
@@ -123,100 +208,64 @@ def test_group_alias_is_visible_to_linked_official_group_only() -> None:
 )
 @pytest.mark.parametrize("reference", ["123456", "示例玩家"])
 @pytest.mark.parametrize("enabled", [False, True])
-async def test_factory_registration_matches_catalog_and_runs_admission(
+@pytest.mark.parametrize("platform", list(Platform))
+async def test_public_player_route_matches_catalog_and_admits_once(
     prefix: str,
     reference: str,
+    platform: Platform,
     *,
     enabled: bool,
 ) -> None:
-    try:
-        nonebot.get_driver()
-    except ValueError:
-        nonebot.init()
-    features = FeatureService(
-        {_GROUP: frozenset({"seer_player", "seer_rank"})} if enabled else {},
-        {},
-        frozenset(),
-    )
     resolver = PlayerIdResolver(
         lambda value, _conversation: (
             _PLAYER_ID if value in {"123456", "示例玩家"} else None
         ),
         lambda _actor: None,
     )
-    catalog = CommandCatalog()
-    catalog.load(
-        (
-            PluginContribution(
-                id="seer_query",
-                commands=tuple(
-                    command
-                    for command in seer_command_contracts(resolver)
-                    if command.id.startswith("seer.player.")
-                ),
-            ),
-            PluginContribution(
-                id="rank_help",
-                commands=tuple(
-                    command
-                    for command in rank_help_command_contracts(resolver)
-                    if command.id != "rank.help"
-                ),
-            ),
+    text = prefix + reference
+    context = MessageInputContext(
+        IncomingMessageRef(
+            platform,
+            ActorRef(platform, "123"),
+            ConversationRef(platform, "group", "300"),
+            "1",
+            text,
         ),
-        known_features=FEATURE_KEYS,
+        mentions_bot=True,
     )
-    cooldown = Mock()
-    cooldown.admit.return_value = SimpleNamespace(allowed=True, token=None)
-    factory = MatcherFactory(cooldown=cooldown, priorities=MatcherPriorityConfig())
-    resources = Mock()
-    resources.player_detail_extensions = PlayerDetailExtensionRegistry()
-    group = SeerMatcherGroup(
-        registry=factory,
-        resources=resources,
-        features=features,
-        commands=catalog,
-        player_id_resolver=resolver,
-        query_sessions=PortableQuerySessions(),
-        identity_links=Mock(),
-        image_command_texts=frozenset(),
+    runtime = _runtime(context, resolver, enabled=enabled)
+    from ironsbot.core.command_catalog import command_context_from_input
+
+    claimed = runtime.catalog.claims_direct_input(
+        command_context_from_input(context), runtime.features, text
     )
-    try:
-        player.install(group)
-        basic = factory.message_matchers[-1]
-        binding = factory.message_matchers[3]
-        player_shortcuts.install(group)
-        shortcut = factory.message_matchers[-1]
-        rank_offset = len(factory.message_matchers)
-        rank_list.install(group)
-        rank_player = factory.message_matchers[rank_offset + 1]
-        factory.validate_command_catalog(catalog)
-        matcher = {
-            "米米号": basic,
-            "绑定米米号": binding,
-            "收集": shortcut,
-            "巅峰": shortcut,
-            "群星牌": shortcut,
-            "成就榜": rank_player,
+    assert claimed is enabled
+    reply = await runtime.router.dispatch(context)
+    assert (reply is not None) is enabled
+    if reply is not None:
+        from unittest.mock import AsyncMock
+
+        await deliver_portable_reply(
+            reply,
+            AsyncMock(return_value=SendResult(delivered=True, message_id="receipt")),
+        )
+        runtime.cooldown.admit.assert_called_once()
+        assert runtime.cooldown.admit.call_args.kwargs["actor"] == context.message.actor
+        expected = {
+            "米米号": runtime.service.query,
+            "绑定米米号": runtime.service.bind_player,
+            "收集": runtime.service.shortcut,
+            "巅峰": runtime.service.shortcut,
+            "群星牌": runtime.service.shortcut,
+            "成就榜": runtime.rank.prepare_player,
         }[prefix]
-        text = prefix + reference
-        event = group_message_event(text, group_id=int(_GROUP.id))
-        state: dict[str, Any] = {}
-        claimed = catalog.claims_direct_input(command_context(event), features, text)
-        admitted = await matcher.rule(cast("Any", None), event, state)
-        assert claimed is enabled
-        assert admitted is claimed
-        if admitted:
-            await matcher.handlers[0].call(matcher(), event, state)
-            cooldown.admit.assert_called_once()
-            assert cooldown.admit.call_args.kwargs["actor"] == ActorRef(
-                Platform.ONEBOT, str(event.user_id)
-            )
-        else:
-            cooldown.admit.assert_not_called()
-    finally:
-        for registered in factory.message_matchers:
-            registered.destroy()
+        expected.assert_awaited_once()
+    else:
+        runtime.cooldown.admit.assert_not_called()
+        runtime.service.query.assert_not_awaited()
+        runtime.service.bind_player.assert_not_awaited()
+        runtime.service.shortcut.assert_not_awaited()
+        runtime.rank.prepare_player.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -311,7 +360,7 @@ def test_player_ownership_preserves_literal_command_prefix(
     context = command_context(event)
     matcher = player_reference_input_matcher((prefix,), lambda *_: False)
     actual = (
-        asyncio.run(_is_binding_command(event))
+        extract_player_binding_arg(text) is not None
         if prefix == "绑定米米号"
         else extract_player_query_arg(text) is not None
     )
@@ -319,53 +368,27 @@ def test_player_ownership_preserves_literal_command_prefix(
     assert matcher(text, context) is actual
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "prefix,index",
-    [
-        ("绑定米米号", 1),
-        ("米米号", 2),
-        ("收集", 0),
-        ("巅峰", 0),
-        ("群星牌", 0),
-        ("成就榜", 1),
-    ],
+    "prefix",
+    ["绑定米米号", "米米号", "收集", "巅峰", "群星牌", "成就榜"],
 )
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize(
     "target",
     ["numeric", "alias", "member", "bot", "mixed", "multiple", "unbound", "reply"],
 )
-async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
+def test_public_player_contracts_preserve_member_targets_and_feature_policy(
     prefix: str,
-    index: int,
     target: str,
     *,
     enabled: bool,
 ) -> None:
-    features = FeatureService(
-        {_GROUP: frozenset({"seer_player", "seer_rank"})} if enabled else {},
-        {},
-        frozenset(),
-    )
     resolver = PlayerIdResolver(
         lambda reference, _conversation: (
             _PLAYER_ID if reference in {str(_PLAYER_ID), "示例玩家"} else None
         ),
         lambda actor: _PLAYER_ID if actor.id == "456" else None,
     )
-    group = Mock(spec=SeerMatcherGroup)
-    group.features = features
-    group.player_id_resolver = resolver
-    group.identity_links = Mock()
-    group.resources = Mock()
-    group.resources.player_detail_extensions = PlayerDetailExtensionRegistry()
-    if prefix == "成就榜":
-        rank_list.install(group)
-    elif prefix in {"收集", "巅峰", "群星牌"}:
-        player_shortcuts.install(group)
-    else:
-        player.install(group)
     message = Message(prefix)
     if target in {"numeric", "alias"}:
         message += str(_PLAYER_ID) if target == "numeric" else "示例玩家"
@@ -385,22 +408,29 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
     )
     if event.reply is not None:
         event.reply.message = Message([MessageSegment.at(789)])
-    rule = group.on_message.call_args_list[index].kwargs["rule"]
-    state: dict[str, Any] = {}
-    admitted = enabled and not (target == "bot" and prefix == "成就榜")
-    assert await rule(cast("Any", None), event, state) is admitted
-    if not admitted or prefix in {"绑定米米号", "米米号"}:
-        return
-    key = (
-        rank_list.RANK_PLAYER_COMMAND_KEY
-        if prefix == "成就榜"
-        else player_shortcuts._SHORTCUT_COMMAND_KEY
+    context = message_input_context(event)
+    runtime = _runtime(context, resolver, enabled=enabled)
+    assert (
+        runtime.catalog.claims_direct_input(
+            command_context(event), runtime.features, context.text
+        )
+        is enabled
     )
-    resolved = state[key]
-    # Both entry rules preserve the reference; public operations resolve it later.
-    resolved = group.player_id_resolver.resolve(
-        message_input_context(event),
-        resolved.player_reference,
+    if not enabled or prefix in {"绑定米米号", "米米号"}:
+        return
+    if target == "bot" and prefix == "成就榜":
+        # Mentioning the entry bot requests the list, not a member's rank.
+        assert not context.member_mentions
+        return
+    parsed = (
+        parse_rank_player_target_command(context.text)
+        if prefix == "成就榜"
+        else parse_player_shortcut_command(context.text)
+    )
+    assert parsed is not None
+    resolved = resolver.resolve(
+        context,
+        parsed.player_reference,
         allow_default_binding=prefix != "成就榜",
     )
     player_id = resolved.player_id

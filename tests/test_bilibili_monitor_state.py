@@ -23,11 +23,11 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.configured_targets.bilibili import (
     build_bili_configured_targets,
 )
+from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
 from ironsbot.services.bilibili import accounts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
@@ -247,19 +247,27 @@ def test_bili_push_mode_command_accepts_spaces_in_public_account_name() -> None:
     )
 
 
-def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
-    command = "B站推送模式 赛尔号官号 链接"
-
-    assert not matches_bilibili_command(
-        "bilibili.push_mode",
-        _features(),
-        group_message_event(command, group_id=987654321),
-    )
-    assert matches_bilibili_command(
-        "bilibili.private_push_mode",
-        _features(user_policy={"123": ["bili_push"]}),
-        private_message_event(command, user_id=123),
-    )
+def test_bili_push_mode_contract_requires_the_push_feature() -> None:
+    text = "B站推送模式 赛尔号官号 链接"
+    contracts = {item.id: item for item in bilibili_command_contracts()}
+    for id_, features, event, allowed in (
+        (
+            "bilibili.push_mode",
+            _features(),
+            group_message_event(text, group_id=987654321),
+            False,
+        ),
+        (
+            "bilibili.private_push_mode",
+            _features(user_policy={"123": ["bili_push"]}),
+            private_message_event(text, user_id=123),
+            True,
+        ),
+    ):
+        contract = contracts[id_]
+        context = command_context(event)
+        assert contract.matches_direct_input(context, text)
+        assert contract.is_executable(context, features) is allowed
 
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:
@@ -274,24 +282,31 @@ def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None
     assert command.access[0].audience == "regular"
 
 
-def test_bili_account_matcher_keeps_push_subscriptions_group_manager_only() -> None:
-    command = "B站账号"
-
-    assert not matches_bilibili_command(
-        "bilibili.accounts",
-        _features({"987654321": ["bili_push"]}),
-        group_message_event(command, group_id=987654321),
+def test_bili_account_contract_keeps_push_subscriptions_group_manager_only() -> None:
+    text = "B站账号"
+    contract = next(
+        item for item in bilibili_command_contracts() if item.id == "bilibili.accounts"
     )
-    assert matches_bilibili_command(
-        "bilibili.accounts",
-        _features({"987654321": ["bili_push"]}),
-        group_admin_message_event(command, group_id=987654321),
-    )
-    assert matches_bilibili_command(
-        "bilibili.accounts",
-        _features({"987654321": ["bili_query"]}),
-        group_message_event(command, group_id=987654321),
-    )
+    for features, event, allowed in (
+        (
+            _features({"987654321": ["bili_push"]}),
+            group_message_event(text, group_id=987654321),
+            False,
+        ),
+        (
+            _features({"987654321": ["bili_push"]}),
+            group_admin_message_event(text, group_id=987654321),
+            True,
+        ),
+        (
+            _features({"987654321": ["bili_query"]}),
+            group_message_event(text, group_id=987654321),
+            True,
+        ),
+    ):
+        context = command_context(event)
+        assert contract.matches_direct_input(context, text)
+        assert contract.is_executable(context, features) is allowed
 
 
 def test_group_query_falls_back_to_global_uids_when_feature_enabled() -> None:

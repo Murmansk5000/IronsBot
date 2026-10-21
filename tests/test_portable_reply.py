@@ -76,10 +76,11 @@ async def test_follow_up_error_policy_is_explicit(*, present_error: bool) -> Non
         on_delivery_failed=aborted,
         follow_up=AsyncMock(side_effect=error),
     )
-    display = Mock(return_value=OutboundMessage.from_text("unavailable"))
+    display = AsyncMock(return_value=OutboundMessage.from_text("unavailable"))
     if present_error:
-        assert await deliver_portable_reply(reply, send, on_follow_up_error=display)
-        display.assert_called_once_with(error)
+        reply = replace(reply, on_operation_error=display)
+        assert await deliver_portable_reply(reply, send)
+        display.assert_awaited_once_with(error)
         aborted.assert_not_called()
         assert send.await_count == len(("initial", "error"))
     else:

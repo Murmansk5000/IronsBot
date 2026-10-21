@@ -9,6 +9,7 @@ from datetime import date
 from struct import pack
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,8 +18,11 @@ from ironsbot.config.models.seer_lucky import (
     LuckySkinWindowAccountConfig,
     LuckySkinWindowConfig,
 )
+from ironsbot.core.command_catalog import CommandCatalog, CommandContext
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.seer_data.skin_price_repository import (
     load_active_skin_store_prices,
@@ -32,24 +36,29 @@ from ironsbot.integrations.storage.lucky_skin_window import (
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity.player_accounts import build_player_account_registry
 from ironsbot.services.identity_link_store import (
     CrossPlatformIdentityLink,
     OfficialIdentity,
 )
 from ironsbot.services.identity_principals import IdentityPrincipalService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
+from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
+from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
     LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
     LUCKY_SKIN_WATCH_RESET_COMMANDS,
+    lucky_skin_window_command_contracts,
 )
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -65,16 +74,16 @@ from ironsbot.services.seer.lucky_skin_window import (
 from ironsbot.services.seer.lucky_skin_window_subscriptions import (
     LuckySkinWindowSubscriptionOptions,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryReply, QueryResult
 from ironsbot.services.seer.skin_price import SkinStorePrice
 from tests.helpers.onebot_events import private_message_event
-from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
     from pathlib import Path
 
-    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.ai.service import AiService
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.pet_query import PetImageSelection
 
@@ -531,115 +540,123 @@ def test_empty_watch_preference_remains_initialized(tmp_path: Path) -> None:
     assert SqliteLuckySkinWatchPreferenceStore(path).get(_actor(1001)) == ()
 
 
-def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None:
-    _service_instance, _game, _delivery, _bindings, _headless = _service(tmp_path)
-    features = cast("FeatureService", _Features())
-
-    async def check() -> None:
-        list_state: dict[str, object] = {}
-        for commands in (
-            LUCKY_SKIN_WATCH_LIST_COMMANDS,
-            LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
-            LUCKY_SKIN_WATCH_RESET_COMMANDS,
-        ):
-            for command in commands:
-                assert await lucky_skin_window_plugin._matches_watch_exact(
-                    private_message_event(command, user_id=1001),
-                    cast("Any", list_state),
-                    commands=commands,
-                    features=features,
-                )
-
-        for commands in (
-            LUCKY_SKIN_WATCH_LIST_COMMANDS,
-            LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
-        ):
-            for command in commands:
-                change_state: dict[str, object] = {}
-                assert await lucky_skin_window_plugin._matches_watch_change(
-                    private_message_event(f"{command} 1400103", user_id=1001),
-                    cast("Any", change_state),
-                    commands=commands,
-                    features=features,
-                )
-
-        assert not await lucky_skin_window_plugin._matches_watch_change(
-            private_message_event("关注橱窗", user_id=1001),
-            cast("Any", {}),
-            commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
-            features=features,
+def _lucky_router(
+    service: LuckySkinWindowService, *, fuzzy_image: AsyncMock | None = None
+) -> PortableCommandRouter:
+    features = FeatureService(
+        {}, {_actor(1001): frozenset({"lucky_skin_window", "seer_pet"})}, frozenset()
+    )
+    resolver = PlayerIdResolver(lambda *_: None, lambda _actor: None)
+    sessions = PortableQuerySessions()
+    catalog = CommandCatalog()
+    contributions = [
+        PluginContribution(
+            id="lucky_skin_window",
+            commands=lucky_skin_window_command_contracts(
+                resolver.has_reference_choices
+            ),
         )
-        for legacy_command in ("关注皮肤", "订阅皮肤"):
-            assert not await lucky_skin_window_plugin._matches_watch_exact(
-                private_message_event(legacy_command, user_id=1001),
-                cast("Any", {}),
-                commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
-                features=features,
-            )
-
-    asyncio.run(check())
-
-
-def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
-    tmp_path: Path,
-) -> None:
-    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
-    runtime = build_test_runtime(state_path=tmp_path / "runtime_state.sqlite")
-    registry = runtime.matcher_factory()
-
-    lucky_skin_window_plugin._install(
-        registry,
-        service=service,
-        pet=cast("Any", _PluginPet()),
-        features=cast("FeatureService", _Features()),
-        sessions=PortableQuerySessions(),
-        resolver=cast("Any", object()),
-        identity_principals=IdentityPrincipalService(),
-    )
-
-    assert registry.message_matchers
-    assert all(
-        matcher.priority == runtime.matcher_priorities.lucky_skin_window
-        for matcher in registry.message_matchers
-    )
-    assert (
-        runtime.matcher_priorities.lucky_skin_window
-        < runtime.matcher_priorities.seer_pet
-    )
-
-
-def test_watch_list_matches_before_binding_and_replies_with_the_problem(
-    tmp_path: Path,
-) -> None:
-    service, _game, _delivery, bindings, _headless = _service(tmp_path)
-    bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
-    event = private_message_event("订阅橱窗", user_id=1001)
+    ]
     operations = build_portable_lucky_skin_operations(
         service,
         cast("Any", _PluginPet()),
-        cast("FeatureService", _Features()),
-        PortableQuerySessions(),
-        cast("Any", object()),
+        features,
+        sessions,
+        resolver,
         IdentityPrincipalService(),
     )
+    if fuzzy_image is not None:
+        contributions.append(
+            PluginContribution(
+                id="seer_query",
+                commands=tuple(
+                    contract
+                    for contract in seer_command_contracts(resolver)
+                    if contract.id == "seer.pet.image"
+                ),
+            )
+        )
+        operations["seer.pet.image"] = fuzzy_image
+    catalog.load(contributions, known_features={"lucky_skin_window", "seer_pet"})
+    return PortableCommandRouter(
+        catalog,
+        operations,
+        features,
+        ai=cast("AiService", object()),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
 
-    async def check() -> None:
-        assert await lucky_skin_window_plugin._matches_watch_exact(
-            event,
-            cast("Any", {}),
-            commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
-            features=cast("FeatureService", _Features()),
-        )
-        reply = await operations["seer.lucky_skin_window.watch.list"](
-            event.get_plaintext(),
-            message_input_context(event),
-        )
-        assert isinstance(reply, OutboundMessage)
-        assert reply.parts == (
-            TextPart("❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"),
-        )
 
-    asyncio.run(check())
+def test_watch_command_contracts_distinguish_list_and_change() -> None:
+    contracts = lucky_skin_window_command_contracts()
+    context = CommandContext(
+        _actor(1001), ConversationRef(Platform.ONEBOT, "private", "1001")
+    )
+
+    def matches(text: str) -> list[str]:
+        return [
+            contract.id
+            for contract in contracts
+            if contract.matches_direct_input(context, text)
+        ]
+
+    for action, commands in (
+        ("list", LUCKY_SKIN_WATCH_LIST_COMMANDS),
+        ("clear", LUCKY_SKIN_WATCH_CLEAR_COMMANDS),
+        ("reset", LUCKY_SKIN_WATCH_RESET_COMMANDS),
+    ):
+        for command in commands:
+            assert matches(command) == [f"seer.lucky_skin_window.watch.{action}"]
+    for action, commands in (
+        ("add", LUCKY_SKIN_WATCH_LIST_COMMANDS),
+        ("remove", LUCKY_SKIN_WATCH_REMOVE_COMMANDS),
+    ):
+        for command in commands:
+            assert matches(f"{command} 1400103") == [
+                f"seer.lucky_skin_window.watch.{action}"
+            ]
+    assert matches("关注橱窗") == ["seer.lucky_skin_window.watch.list"]
+    for legacy_command in ("关注皮肤", "订阅皮肤"):
+        assert matches(legacy_command) == []
+
+
+@pytest.mark.asyncio
+async def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
+    tmp_path: Path,
+) -> None:
+    service, game, _delivery, _bindings, _headless = _service(tmp_path)
+    fuzzy_image = AsyncMock(return_value=OutboundMessage.from_text("wrong image"))
+    router = _lucky_router(service, fuzzy_image=fuzzy_image)
+
+    reply = await router.dispatch(
+        message_input_context(private_message_event("关注橱窗", user_id=1001))
+    )
+
+    assert reply is not None
+    assert "皮肤ID：101" in str(reply.message.parts)
+    fuzzy_image.assert_not_awaited()
+    assert game.calls == []
+
+
+@pytest.mark.asyncio
+async def test_watch_list_matches_before_binding_and_replies_with_the_problem(
+    tmp_path: Path,
+) -> None:
+    service, game, _delivery, bindings, _headless = _service(tmp_path)
+    bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
+    router = _lucky_router(service)
+
+    reply = await router.dispatch(
+        message_input_context(private_message_event("订阅橱窗", user_id=1001))
+    )
+
+    assert reply is not None
+    assert reply.message.parts == (
+        TextPart("❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"),
+    )
+    assert game.calls == []
 
 
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:

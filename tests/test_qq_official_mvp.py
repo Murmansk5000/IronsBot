@@ -545,6 +545,39 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     event = _sdk_event(content="private command body")
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="test",
+                commands=(
+                    CommandContract(
+                        id="test.failure",
+                        plugin_id="test",
+                        section="test",
+                        examples=("private command body",),
+                        description="failure",
+                        category=RequestCategory.LOCAL,
+                    ),
+                ),
+            ),
+        ),
+        known_features=(),
+    )
+    features = FeatureService({}, {}, frozenset())
+
+    async def fail(text: str, context: MessageInputContext) -> PortableReply:
+        assert text == context.text
+        raise RuntimeError("sensitive-event-detail")
+
+    router = PortableCommandRouter(
+        catalog,
+        {"test.failure": fail},
+        features,
+        ai=cast("Any", None),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+    )
     monkeypatch.setattr(
         EventParser,
         "parse",
@@ -567,7 +600,7 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
             http_client=client,
             session_root=tmp_path,
         )
-        runtime.bind(cast("PortableCommandRouter", _FailingPortableRouter()), messenger)
+        runtime.bind(router, messenger)
         caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
 
         await runtime.handle_event("example-app", event.event_type, {})

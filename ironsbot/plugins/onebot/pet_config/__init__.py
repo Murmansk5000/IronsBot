@@ -12,17 +12,9 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.feature_policy import feature_rule
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
-from ironsbot.integrations.onebot.rules import affix_command, explicit_command
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.pet_config_commands import (
     pet_config_command_contracts,
-    pet_config_input,
-)
-from ironsbot.services.portable_pet_config_commands import (
-    build_portable_pet_config_operation,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -38,8 +30,6 @@ if TYPE_CHECKING:
     from ironsbot.config.models.pet_config import PetConfigConfig
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.services.pet_config import PetConfigQueryService
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 
 def plugin_contribution(
@@ -79,36 +69,6 @@ def _is_visible(
         features=features,
         feature=Feature.PET_CONFIG.value,
         enabled=enabled,
-    )
-
-
-def install(  # noqa: PLR0913 - transport composition
-    registry: MatcherFactory,
-    service: PetConfigQueryService,
-    features: FeatureService,
-    *,
-    enabled: bool,
-    image_command_texts: frozenset[str],
-    query_sessions: PortableQuerySessions,
-) -> None:
-    if not enabled:
-        return
-
-    matcher = registry.on_message(
-        policy=CommandPolicy.command("pet_config", help_ids=("pet_config.query",)),
-        rule=feature_rule(features, Feature.PET_CONFIG.value)
-        & affix_command(pet_config_input(image_command_texts))
-        & explicit_command(),
-        priority=registry.priority("pet_config"),
-        block=True,
-    )
-    matcher.append_handler(
-        make_portable_query_handler(
-            build_portable_pet_config_operation(
-                service, query_sessions, image_command_texts=image_command_texts
-            ),
-            query_sessions,
-        )
     )
 
 

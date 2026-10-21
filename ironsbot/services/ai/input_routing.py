@@ -48,8 +48,6 @@ class AiInputRoutingService:
         self,
         message: MessageInputContext,
         command_context: CommandContext,
-        *,
-        normalized_text: str | None = None,
     ) -> AiInputDecision:
         if (
             self._is_blocked(message)
@@ -66,7 +64,6 @@ class AiInputRoutingService:
         if self._is_claimed_command(
             message.text,
             command_context,
-            normalized_text=normalized_text,
         ):
             self._log(message, "owned_by_command")
             return AiInputDecision()
@@ -127,21 +124,14 @@ class AiInputRoutingService:
         self,
         raw_text: str,
         context: CommandContext,
-        *,
-        normalized_text: str | None,
     ) -> bool:
-        texts = (raw_text, normalized_text.strip()) if normalized_text else (raw_text,)
-        return any(
-            text
-            and (
-                is_query_input_syntax(text)
-                or self._commands.recognizes_direct_input(
-                    context,
-                    text,
-                    ignored_plugins=_AI_PLUGIN_IDS,
-                )
+        return bool(raw_text) and (
+            is_query_input_syntax(raw_text)
+            or self._commands.recognizes_direct_input(
+                context,
+                raw_text,
+                ignored_plugins=_AI_PLUGIN_IDS,
             )
-            for text in dict.fromkeys(texts)
         )
 
     def _available_ai_commands(self, context: CommandContext) -> frozenset[str]:

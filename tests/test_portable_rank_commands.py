@@ -401,8 +401,7 @@ async def test_rank_selected_alias_and_numeric_query_share_duplicate_identity(
     assert "重复" in _text(repeated.message)
     await deliver_portable_reply(repeated, send)
     silent = await operation("成就榜700002", context)
-    assert isinstance(silent, PortableReply)
-    assert not await deliver_portable_reply(silent, send)
+    assert silent is None
     assert send.await_count == len(("result", "duplicate warning"))
     assert spy.await_count == 1
 

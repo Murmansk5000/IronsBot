@@ -324,7 +324,7 @@ class _PortableRankOperations:
             )
         )
 
-    async def _player(  # noqa: C901 - target resolution and delivery-aware admission
+    async def _player(
         self,
         rank_key: str,
         reference: str | None,
@@ -332,57 +332,28 @@ class _PortableRankOperations:
     ) -> PortableReply | None:
         async def prepare(
             player_id: int, selected: MessageInputContext
-        ) -> PortableReply:
-            requests = self.sessions.interactions.request_service
-            decision = (
-                requests.admit(
-                    actor=selected.message.actor,
-                    conversation=selected.message.conversation,
-                    bot_id=selected.request_bot_id,
-                    request=SemanticRequest(
-                        ActionDefinition(
-                            f"seer.rank.player.{rank_key}", "榜单玩家查询"
-                        ),
-                        SemanticTarget(str(player_id), f"米米号 {player_id}"),
-                        SemanticRequestSource.DIRECT,
-                    ),
-                )
-                if requests is not None
-                else None
-            )
-            if decision is not None and not decision.allowed:
-                return PortableReply(
-                    OutboundMessage.from_text(decision.feedback or "重复查询"),
-                    is_current=lambda: decision.feedback is not None,
-                )
-            token = decision.token if decision is not None else None
-            try:
+        ) -> PortableReply | None:
+            async def execute() -> PortableReply:
                 result = await self.service.prepare_player(
                     RankPlayerCommand(rank_key, player_id),
                     actor=selected.message.actor,
                     conversation=selected.message.conversation,
                 )
-            except BaseException:
-                if requests is not None:
-                    requests.release(token)
-                raise
+                return PortableReply(
+                    OutboundMessage.from_text(
+                        result.message, request_succeeded=result.request_succeeded
+                    ),
+                    on_delivered=result.delivered,
+                )
 
-            def delivered() -> None:
-                result.delivered()
-                if requests is not None:
-                    if result.request_succeeded:
-                        requests.finish(token)
-                    else:
-                        requests.release(token)
-
-            return PortableReply(
-                OutboundMessage.from_text(
-                    result.message, request_succeeded=result.request_succeeded
+            return await self.sessions.interactions.execute_request(
+                SemanticRequest(
+                    ActionDefinition(f"seer.rank.player.{rank_key}", "榜单玩家查询"),
+                    SemanticTarget(str(player_id), f"米米号 {player_id}"),
+                    SemanticRequestSource.DIRECT,
                 ),
-                on_delivered=delivered,
-                on_finished=lambda: (
-                    requests.release(token) if requests is not None else None
-                ),
+                selected,
+                execute,
             )
 
         if reference and not context.has_member_mentions:
