@@ -783,7 +783,10 @@ async def test_replayed_delivery_does_not_repeat_side_effect_but_fresh_retry_run
     ingress = runtime.router.ingress
     if backend == "sqlite":
         ingress = replace(
-            ingress, claims=SqliteInboundMessageClaims(tmp_path / "claims.sqlite")
+            ingress,
+            claims=SqliteInboundMessageClaims(
+                tmp_path / "claims.sqlite", spawn=asyncio.create_task
+            ),
         )
     send = AsyncMock(return_value=SendResult(delivered=False, error_code="uncertain"))
     assert await ingress.handle(runtime.context, send)
@@ -796,7 +799,10 @@ async def test_replayed_delivery_does_not_repeat_side_effect_but_fresh_retry_run
     runtime.requests.release.assert_called_once()
     if backend == "sqlite":
         ingress = replace(
-            ingress, claims=SqliteInboundMessageClaims(tmp_path / "claims.sqlite")
+            ingress,
+            claims=SqliteInboundMessageClaims(
+                tmp_path / "claims.sqlite", spawn=asyncio.create_task
+            ),
         )
         assert await ingress.handle(runtime.context, send)
         assert send.await_count == sends_after_first

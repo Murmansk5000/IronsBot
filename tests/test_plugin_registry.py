@@ -82,6 +82,7 @@ def test_manifest_blacklist_owns_its_feature() -> None:
 
     assert contribution.features == frozenset({Feature.BLACKLIST})
     assert contribution.commands == ()
+    assert contribution.install is None
 
 
 def test_manifest_red_packet_owns_its_passive_matchers() -> None:
