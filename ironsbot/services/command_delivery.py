@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
+from ironsbot.core.outbound import DeliveryFailureKind
 from ironsbot.services.portable_reply import deliver_portable_reply
 
 if TYPE_CHECKING:
@@ -50,7 +51,21 @@ class CommandReplyDelivery:
             result: SendResult | None = None
             try:
                 result = await send(message)
-                return result  # noqa: RET504 - finally checks the actual send outcome
+                if (
+                    not result.delivered
+                    and result.attempted
+                    and result.failure_kind
+                    in {
+                        DeliveryFailureKind.UNCERTAIN,
+                        DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
+                    }
+                ):
+                    await self.errors.report(
+                        context,
+                        ConnectionError("Command delivery was not confirmed"),
+                        "send",
+                    )
+                return result
             finally:
                 if observer is not None and (result is None or not result.delivered):
                     observer.discard_reply(token)

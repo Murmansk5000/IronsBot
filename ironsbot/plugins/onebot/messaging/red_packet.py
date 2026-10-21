@@ -16,7 +16,7 @@ from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.platform import reference_digest
+from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
@@ -26,12 +26,7 @@ from ironsbot.integrations.onebot.identity import (
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.services.messaging.red_packet import (
-    RedPacketNoticeLimiter,
-    build_red_packet_notice_message,
-)
 
-RED_PACKET_NOTICE_SUBSCRIPTION_KEY = "red_packet_notice"
 RED_PACKET_SEGMENT_TYPES = frozenset(
     {"redbag", "redpacket", "red_packet", "hongbao", "lucky_money"}
 )
@@ -64,8 +59,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.messaging import RedPacketNoticeConfig
-    from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.messaging.red_packet import RedPacketNoticeService
 
 
 def _payload_contains_marker(value: Any, markers: tuple[str, ...]) -> bool:
@@ -129,89 +123,49 @@ async def _get_group_name(bot: Bot, group_id: int) -> str:
             group_id=group_id,
             no_cache=True,
         )
-    except Exception as e:  # noqa: BLE001
-        logger.debug(f"red packet notice failed to get group info: {e}")
+    except Exception as error:  # noqa: BLE001 - optional protocol metadata lookup
+        logger.debug(
+            "red packet group info lookup failed: error_type={}", type(error).__name__
+        )
         return ""
 
     return str(info.get("group_name") or "").strip()
 
 
-async def _send_red_packet_notice(  # noqa: PLR0913
-    *,
-    bot: Bot,
-    limiter: RedPacketNoticeLimiter,
-    group_id: int,
-    sender_id: int,
-    summary: str,
-    admin_notices: AdminNoticeService,
-) -> None:
-    conversation = onebot_conversation_ref(group_id, group_id=group_id)
-    sender = onebot_actor_ref(sender_id)
-    if not limiter.can_send(conversation):
-        logger.info(
-            "red packet notice suppressed by cooldown: conversation_ref={}",
-            reference_digest(conversation.id),
-        )
-        return
-
-    logger.info(
-        "red packet notice detected: conversation_ref={} actor_ref={}",
-        reference_digest(conversation.id),
-        reference_digest(sender.id),
-    )
-    group_name = await _get_group_name(bot, group_id)
-    notice = build_red_packet_notice_message(
-        conversation=conversation,
-        conversation_name=group_name,
-        sender=sender,
-        summary=summary,
-    )
-    await admin_notices.send(
-        notice,
-        action_name="red packet notice",
-        subscription_key=RED_PACKET_NOTICE_SUBSCRIPTION_KEY,
+def _context(group_id: int, sender_id: int) -> CommandContext:
+    return CommandContext(
+        actor=onebot_actor_ref(sender_id),
+        conversation=onebot_conversation_ref(sender_id, group_id=group_id),
     )
 
 
 def install(
     registry: MatcherFactory,
-    config: RedPacketNoticeConfig,
-    admin_notices: AdminNoticeService,
+    service: RedPacketNoticeService,
 ) -> None:
-    limiter = RedPacketNoticeLimiter(config.cooldown_seconds)
-
     async def is_message(event: MessageEvent) -> bool:
-        return (
-            config.enabled
-            and isinstance(event, GroupMessageEvent)
-            and is_red_packet_message(event.message)
+        return isinstance(event, GroupMessageEvent) and is_red_packet_message(
+            event.message
         )
 
     async def handle_message(bot: Bot, event: GroupMessageEvent) -> None:
-        await _send_red_packet_notice(
-            bot=bot,
-            limiter=limiter,
-            group_id=event.group_id,
-            sender_id=event.user_id,
+        await service.handle(
+            _context(event.group_id, event.user_id),
             summary=summarize_red_packet_message(event.message),
-            admin_notices=admin_notices,
+            conversation_name=partial(_get_group_name, bot, event.group_id),
         )
 
     async def is_payload(event: NoticeEvent) -> bool:
-        return (
-            config.enabled
-            and getattr(event, "group_id", None) is not None
-            and is_red_packet_payload(event.model_dump())
+        return getattr(event, "group_id", None) is not None and is_red_packet_payload(
+            event.model_dump()
         )
 
     async def handle_payload(bot: Bot, event: NoticeEvent) -> None:
-        await _send_red_packet_notice(
-            bot=bot,
-            limiter=limiter,
-            group_id=int(getattr(event, "group_id", 0)),
-            sender_id=int(getattr(event, "user_id", 0) or 0),
+        group_id = int(getattr(event, "group_id", 0))
+        await service.handle(
+            _context(group_id, int(getattr(event, "user_id", 0) or 0)),
             summary="红包通知",
-            admin_notices=admin_notices,
+            conversation_name=partial(_get_group_name, bot, group_id),
         )
 
     message_matcher = registry.on_message(
@@ -232,18 +186,13 @@ def install(
 
 def plugin_contribution(
     *,
-    config: RedPacketNoticeConfig,
-    admin_notices: AdminNoticeService,
+    service: RedPacketNoticeService,
 ) -> PluginContribution:
     """Declare passive red-packet detection and its admin delivery binding."""
 
     return PluginContribution(
         id="red_packet_notice",
-        install=partial(
-            install,
-            config=config,
-            admin_notices=admin_notices,
-        ),
+        install=partial(install, service=service),
     )
 
 
@@ -251,7 +200,6 @@ if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
         plugin_contribution(
-            config=context.settings.messaging.red_packet_notice,
-            admin_notices=context.resources.admin_notices,
+            service=context.resources.red_packet_notice,
         ),
     )

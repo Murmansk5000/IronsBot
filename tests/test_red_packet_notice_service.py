@@ -1,11 +1,13 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
+from unittest.mock import Mock
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.messaging import RedPacketNoticeConfig
+from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.messaging import red_packet as red_packet_notice_plugin
 from ironsbot.plugins.onebot.messaging.red_packet import (
     is_red_packet_message,
     is_red_packet_payload,
@@ -13,13 +15,10 @@ from ironsbot.plugins.onebot.messaging.red_packet import (
 )
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.red_packet import (
-    RedPacketNoticeLimiter,
+    RedPacketNoticeService,
     build_red_packet_notice_message,
 )
 from tests.helpers.runtime import build_test_runtime
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
 
 
 def test_red_packet_segment_is_detected() -> None:
@@ -90,36 +89,35 @@ def test_build_red_packet_notice_message_includes_group_and_sender() -> None:
 
 
 def test_red_packet_notice_limiter_uses_per_group_cooldown() -> None:
-    limiter = RedPacketNoticeLimiter(cooldown_seconds=60.0)
-    first = ConversationRef(Platform.ONEBOT, "group", "1")
-    second = ConversationRef(Platform.ONEBOT, "group", "2")
+    service = RedPacketNoticeService(RedPacketNoticeConfig(), Mock())
+    first = CommandContext(
+        ActorRef(Platform.ONEBOT, "123"),
+        ConversationRef(Platform.ONEBOT, "group", "1"),
+    )
+    second = CommandContext(first.actor, ConversationRef(Platform.ONEBOT, "group", "2"))
 
-    assert limiter.can_send(first, now=100.0)
-    assert not limiter.can_send(first, now=120.0)
-    assert limiter.can_send(second, now=120.0)
-    assert limiter.can_send(first, now=161.0)
+    assert service.admit(first, now=100.0)
+    assert not service.admit(first, now=120.0)
+    assert service.admit(second, now=120.0)
+    assert not service.admit(first, now=159.0)
+    assert service.admit(first, now=160.0)
 
 
 def test_red_packet_notice_limiter_keeps_platforms_separate() -> None:
-    limiter = RedPacketNoticeLimiter(cooldown_seconds=60.0)
-    onebot_group = ConversationRef(Platform.ONEBOT, "group", "1")
-    official_group = ConversationRef(Platform.QQ_OFFICIAL, "group", "1")
-
-    assert limiter.can_send(onebot_group, now=100.0)
-    assert limiter.can_send(official_group, now=101.0)
+    service = RedPacketNoticeService(RedPacketNoticeConfig(), Mock())
+    for platform in Platform:
+        context = CommandContext(
+            ActorRef(platform, "123"), ConversationRef(platform, "group", "1")
+        )
+        assert service.admit(context, now=100.0)
 
 
 def test_red_packet_notice_uses_admin_notice_delivery(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    bot = cast("Bot", object())
     calls: list[dict[str, Any]] = []
 
-    async def fake_resolve_group_name(
-        _bot: object,
-        _group_id: int,
-        **_kwargs: object,
-    ) -> str:
+    async def fake_resolve_group_name() -> str:
         return "示例群"
 
     async def fake_send_admin_notice(
@@ -143,24 +141,22 @@ def test_red_packet_notice_uses_admin_notice_delivery(
         return object()
 
     monkeypatch.setattr(
-        red_packet_notice_plugin,
-        "_get_group_name",
-        fake_resolve_group_name,
-    )
-    monkeypatch.setattr(
         AdminNoticeService,
         "send",
         fake_send_admin_notice,
     )
 
     asyncio.run(
-        red_packet_notice_plugin._send_red_packet_notice(
-            bot=bot,
-            limiter=RedPacketNoticeLimiter(cooldown_seconds=0.0),
-            group_id=987654321,
-            sender_id=1234567890,
+        RedPacketNoticeService(
+            RedPacketNoticeConfig(cooldown_seconds=0),
+            build_test_runtime().admin_notices,
+        ).handle(
+            CommandContext(
+                ActorRef(Platform.ONEBOT, "1234567890"),
+                ConversationRef(Platform.ONEBOT, "group", "987654321"),
+            ),
             summary="恭喜发财",
-            admin_notices=build_test_runtime().admin_notices,
+            conversation_name=fake_resolve_group_name,
         )
     )
 

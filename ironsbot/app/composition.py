@@ -45,12 +45,7 @@ from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-from ironsbot.integrations.onebot.identity import (
-    onebot_actor_ref,
-    onebot_conversation_ref,
-)
 from ironsbot.integrations.onebot.matchers import MatcherFactory
-from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyService
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
 )
@@ -85,6 +80,8 @@ from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.command_recommendations import (
     CommandRecommendationService,
 )
+from ironsbot.services.messaging.poke_reply import PokeReplyService
+from ironsbot.services.messaging.red_packet import RedPacketNoticeService
 from ironsbot.services.official_union_identity import OfficialUnionIdentityService
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
@@ -511,18 +508,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
 
     def poke_reply_candidates(
-        group_id: int | None,
-        user_id: int,
-        group_role: str | None,
-        ignored_plugins: tuple[str, ...],
+        context: CommandContext, ignored_plugins: tuple[str, ...]
     ):
-        actor = onebot_actor_ref(user_id)
         return command_catalog.poke_candidates_for_context(
-            CommandContext(
-                actor=actor,
-                conversation=onebot_conversation_ref(user_id, group_id=group_id),
-                group_role=group_role,
-            ),
+            context,
             features,
             ignored_plugins=ignored_plugins,
         )
@@ -547,6 +536,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         server_status=operations.server_status,
         subscriptions=subscriptions,
         outbound_messenger=common.outbound_messenger,
+        onebot_messenger=common.onebot_messenger,
         qq_official=common.qq_official,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
@@ -580,10 +570,25 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         scheduled_restart=operations.scheduled_restart,
         commands=command_catalog,
         contribution_catalog=contribution_catalog,
-        poke_reply=OneBotPokeReplyService(
-            settings.features.help,
-            settings.qq_references,
-            poke_reply_candidates,
+        poke_reply=PokeReplyService(
+            config=settings.features.help,
+            user_replies={
+                settings.qq_references.actor_ref(
+                    target, location=f"features.help.poke_user_replies.{target}"
+                ): message
+                for target, message in reversed(
+                    settings.features.help.poke_user_replies.items()
+                )
+            },
+            group_replies={
+                settings.qq_references.group_conversation_ref(
+                    target, location=f"features.help.poke_replies.{target}"
+                ): message
+                for target, message in reversed(
+                    settings.features.help.poke_replies.items()
+                )
+            },
+            candidates=poke_reply_candidates,
         ),
         addressed_input_hints=AddressedInputHintService(
             window_seconds=settings.features.help.hint_window_seconds,
@@ -591,6 +596,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             recommendations=CommandRecommendationService(
                 command_catalog, features, settings.features.help
             ),
+        ),
+        red_packet_notice=RedPacketNoticeService(
+            settings.messaging.red_packet_notice, admin_notices
         ),
         identity_links=identity_links,
         identity_linking=identity_linking,
