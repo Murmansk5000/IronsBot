@@ -128,12 +128,9 @@ def install(
 
 
 def plugin_contribution(
-    *,
-    service: ActivityService,
-    features: FeatureService,
-    scheduler: Scheduler,
+    *, service: ActivityService, scheduler: Scheduler
 ) -> PluginContribution:
-    """Declare activity commands, matchers, and reminder scheduling."""
+    """Declare activity commands and reminder scheduling."""
 
     return PluginContribution(
         id="activity",
@@ -146,7 +143,6 @@ def plugin_contribution(
             notes=("自动提醒时间由 activity.lead_hours 配置。",),
         ),
         commands=activity_command_contracts(),
-        install=partial(install, service=service, features=features),
         hooks=PluginHooks(
             startup=(
                 (
@@ -162,8 +158,6 @@ if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
         plugin_contribution(
-            service=context.resources.activity,
-            features=context.resources.features,
-            scheduler=context.scheduler,
+            service=context.resources.activity, scheduler=context.scheduler
         ),
     )

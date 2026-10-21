@@ -77,10 +77,12 @@ def test_maintenance_batch_does_not_expire_at_maintenance_end(status: str) -> No
                 config_version="20261009153137",
                 weekly_cycle="2026-10-09T10:00:00+08:00",
                 baseline_established=True,
-                items=(), category_states=(),
+                items=(),
+                category_states=(),
                 cycle_start="2026-10-09T02:00:00+00:00",
                 cycle_end="2026-10-09T15:00:00+08:00",
-                cycle_status=status, cycle_kind="maintenance",
+                cycle_status=status,
+                cycle_kind="maintenance",
             )
 
     snapshot = NewContentService(

@@ -206,8 +206,10 @@ def _load_soulmark_icons(
     for row in rows:
         raw_png = row["icon_png"]
         png = (
-            raw_png.tobytes() if isinstance(raw_png, memoryview) else bytes(raw_png)
-        ) if raw_png is not None else None
+            (raw_png.tobytes() if isinstance(raw_png, memoryview) else bytes(raw_png))
+            if raw_png is not None
+            else None
+        )
         result[int(row["soulmark_id"])] = SoulmarkIconAsset(
             icon_id=int(row["icon_id"]),
             png=png,

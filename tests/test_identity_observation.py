@@ -69,7 +69,8 @@ async def test_missing_rank_target_requires_linked_sender(
     await service.observe_official_message(incoming, explicitly_addressed=True)
     lookup = (
         asyncio.create_task(service.missing_member_target(incoming, timeout=0.05))
-        if mirror_later else None
+        if mirror_later
+        else None
     )
     if lookup is not None:
         await asyncio.sleep(0)
@@ -81,7 +82,8 @@ async def test_missing_rank_target_requires_linked_sender(
         )
     )
     target = (
-        await lookup if lookup is not None
+        await lookup
+        if lookup is not None
         else await service.missing_member_target(incoming, timeout=0.001)
     )
     if sender == MEMBER_QQ:

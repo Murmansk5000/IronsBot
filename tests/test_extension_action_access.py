@@ -78,11 +78,13 @@ async def test_extension_menu_access_and_cross_member_execution_are_independent(
         ),
     )
     rejected = await query_player_extension(action, 700002, other, features, sessions)
+    assert rejected is not None
     assert not rejected.message.request_succeeded
     query.assert_not_awaited()
     revoked = FeatureService(
         {conversation: frozenset({"seer_player"})}, {}, frozenset()
     )
     rejected = await query_player_extension(action, 700002, context, revoked, sessions)
+    assert rejected is not None
     assert not rejected.message.request_succeeded
     query.assert_not_awaited()

@@ -1,5 +1,3 @@
-from functools import partial
-
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -58,14 +56,8 @@ def install(
     matcher.append_handler(make_portable_operation_handler(operation))
 
 
-def plugin_contribution(
-    *,
-    commands: tuple[str, ...],
-    number: str,
-    template: str,
-    features: FeatureService,
-) -> PluginContribution:
-    """Declare the meeting command and its configured matcher installer."""
+def plugin_contribution(*, commands: tuple[str, ...]) -> PluginContribution:
+    """Declare the configured meeting command visibility."""
 
     return PluginContribution(
         id="meeting",
@@ -77,13 +69,6 @@ def plugin_contribution(
             order=40,
         ),
         commands=meeting_command_contracts(commands),
-        install=partial(
-            install,
-            commands=commands,
-            number=number,
-            template=template,
-            features=features,
-        ),
     )
 
 
@@ -91,10 +76,5 @@ if (context := active_plugin_install_context()) is not None:
     meeting = context.settings.messaging.meeting
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            commands=tuple(meeting.commands),
-            number=meeting.number,
-            template=meeting.template,
-            features=context.resources.features,
-        ),
+        plugin_contribution(commands=tuple(meeting.commands)),
     )

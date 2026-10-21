@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
@@ -44,12 +43,8 @@ def _install(
     install(registry, service, features)
 
 
-def plugin_contribution(
-    *,
-    service: SendpicService,
-    features: FeatureService,
-) -> PluginContribution:
-    """Declare the commands and matcher installer owned by this plugin."""
+def plugin_contribution(*, service: SendpicService) -> PluginContribution:
+    """Declare configured image commands."""
 
     return PluginContribution(
         id="sendpic",
@@ -61,15 +56,11 @@ def plugin_contribution(
             order=20,
         ),
         commands=sendpic_command_contracts(service),
-        install=partial(_install, service=service, features=features),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            service=context.resources.sendpic,
-            features=context.resources.features,
-        ),
+        plugin_contribution(service=context.resources.sendpic),
     )

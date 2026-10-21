@@ -717,14 +717,14 @@ class Settings(BaseModel):
                     configured_account.player_id
                 )
         self._validate_mapping_refs(
-            self.messaging.bot_routing.groups,
+            self.bot.onebot.routing.groups,
             resolve=references.resolve_group,
-            location="messaging.bot_routing.groups",
+            location="bot.onebot.routing.groups",
         )
         self._validate_mapping_refs(
-            self.messaging.bot_routing.users,
+            self.bot.onebot.routing.users,
             resolve=references.resolve_user,
-            location="messaging.bot_routing.users",
+            location="bot.onebot.routing.users",
         )
         self._validate_mapping_refs(
             self.seer.rank.display_limits,

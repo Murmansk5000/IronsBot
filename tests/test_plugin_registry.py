@@ -105,19 +105,20 @@ def test_manifest_poke_reply_owns_its_passive_matcher() -> None:
     assert contribution.commands == ()
 
 
-def test_manifest_addressed_hint_owns_its_fallback_matcher() -> None:
-    contribution = DEFINITIONS_BY_ID["addressed_input_hint"]
-
-    assert contribution.features == frozenset()
-    assert contribution.commands == ()
-
-
 def test_manifest_rank_help_owns_its_command_contracts() -> None:
     contribution = DEFINITIONS_BY_ID["rank_help"]
 
     assert contribution.features == frozenset({Feature.SEER_RANK})
     assert contribution.commands
     assert {command.plugin_id for command in contribution.commands} == {"rank_help"}
+
+
+def test_command_contributions_do_not_register_a_second_execution_path() -> None:
+    assert all(
+        contribution.install is None
+        for contribution in DEFINITIONS
+        if contribution.commands
+    )
 
 
 def test_manifest_pet_config_owns_its_command_descriptor() -> None:
@@ -409,7 +410,9 @@ def test_contributions_define_the_lifecycle_order() -> None:
 
 def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
     lifecycle = ApplicationLifecycle.from_contributions(
-        cast("Driver", object()), DEFINITIONS, task_owner=TaskOwner(),
+        cast("Driver", object()),
+        DEFINITIONS,
+        task_owner=TaskOwner(),
     )
     executed: list[str] = []
 
@@ -487,12 +490,6 @@ def test_internal_plugins_use_only_the_matcher_factory() -> None:
                     / "messaging"
                     / "red_packet.py",
                     ROOT / "ironsbot" / "plugins" / "onebot" / "messaging" / "poke.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "messaging"
-                    / "addressed_hint.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"

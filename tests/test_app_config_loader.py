@@ -16,7 +16,6 @@ from ironsbot.config.loader import (
 )
 from ironsbot.config.models.features import build_feature_service
 from ironsbot.config.models.messaging import (
-    BotRoutingConfig,
     CommandCooldownConfig,
     CommandCooldownWindowConfig,
     MessageCommandAction,
@@ -39,6 +38,7 @@ from ironsbot.config.models.seer import (
 )
 from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
+from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
@@ -172,7 +172,7 @@ def _assert_default_file_logging(config: Settings) -> None:
 
 
 def _assert_example_bot_routing(config: Settings) -> None:
-    routing = config.messaging.bot_routing
+    routing = config.bot.onebot.routing
     assert not routing.enabled
     assert routing.default_bot == "main_bot"
     assert routing.bot_aliases == {
@@ -494,7 +494,7 @@ def test_command_cooldown_requires_distinct_default_windows() -> None:
 
 
 def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
-    config = BotRoutingConfig(
+    config = OneBotRoutingConfig(
         enabled=True,
         default_bot="main_bot",
         bot_aliases={"main_bot": MAIN_BOT_ID},
@@ -509,9 +509,9 @@ def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
 def test_bot_routing_config_rejects_unknown_bot_alias() -> None:
     with pytest.raises(
         ValidationError,
-        match=r"messaging\.bot_routing\.groups\.group_a",
+        match=r"bot\.onebot\.routing\.groups\.group_a",
     ):
-        BotRoutingConfig(
+        OneBotRoutingConfig(
             enabled=True,
             bot_aliases={"main_bot": MAIN_BOT_ID},
             groups={"group_a": "missing_bot"},
@@ -585,6 +585,47 @@ unknown_command_field = true
     assert "value-that-must-not-be-logged" not in caplog.text
     assert "seer.player.old_player_setting" in caplog.text
     assert "messaging.commands[0].unknown_command_field" in caplog.text
+
+
+@pytest.mark.parametrize("with_new_route", [False, True])
+def test_onebot_routes_only_load_from_bot_namespace(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    *,
+    with_new_route: bool,
+) -> None:
+    config_path = tmp_path / "routing.toml"
+    new_route = (
+        """
+[bot.onebot.routing]
+enabled = true
+default_bot = "primary"
+bot_aliases = { primary = 111111111 }
+groups = { sample = "primary" }
+"""
+        if with_new_route
+        else ""
+    )
+    config_path.write_text(
+        new_route
+        + """
+[identities.groups]
+sample = 222222222
+
+[messaging.bot_routing]
+enabled = true
+default_bot = "retired-value-must-not-be-logged"
+""",
+        encoding="utf-8",
+    )
+    settings = load_settings(config_path, env={})
+    assert settings.bot.onebot.routing.enabled is with_new_route
+    assert settings.bot.onebot.routing.default_bot == (
+        "primary" if with_new_route else None
+    )
+    assert "bot_routing" not in MessageConfig.model_fields
+    assert "messaging.bot_routing" in caplog.text
+    assert "retired-value-must-not-be-logged" not in caplog.text
 
 
 def test_removed_pre_command_mention_settings_are_ignored_with_warning(
@@ -932,13 +973,13 @@ accounts = []
 [bilibili.push.users.owner]
 accounts = []
 
-[messaging.bot_routing]
+[bot.onebot.routing]
 bot_aliases = { primary = 400 }
 
-[messaging.bot_routing.groups]
+[bot.onebot.routing.groups]
 main_group = "primary"
 
-[messaging.bot_routing.users]
+[bot.onebot.routing.users]
 owner = "primary"
 
 [[messaging.commands]]

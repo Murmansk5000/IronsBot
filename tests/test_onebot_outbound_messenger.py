@@ -309,12 +309,8 @@ async def test_onebot_disconnect_after_send_started_is_uncertain() -> None:
     conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
     messenger = _messenger(bot)
 
-    result = await messenger.send(
-        conversation, OutboundMessage((TextPart("hello"),))
-    )
-    blocked = await messenger.send(
-        conversation, OutboundMessage((TextPart("hello"),))
-    )
+    result = await messenger.send(conversation, OutboundMessage((TextPart("hello"),)))
+    blocked = await messenger.send(conversation, OutboundMessage((TextPart("hello"),)))
 
     assert result.failure_kind is DeliveryFailureKind.UNCERTAIN
     assert blocked.error_code == "transport_circuit_open"

@@ -134,12 +134,12 @@ def _private_routes(settings: Settings) -> BiliPrivateRoutes:
         onebot_preferred_users=frozenset(
             str(
                 settings.qq_references.resolve_user(
-                    target, location=f"messaging.bot_routing.users.{target}"
+                    target, location=f"bot.onebot.routing.users.{target}"
                 )
             )
-            for target in settings.messaging.bot_routing.users
+            for target in settings.bot.onebot.routing.users
         )
-        if settings.messaging.bot_routing.enabled
+        if settings.bot.onebot.routing.enabled
         else frozenset(),
     )
 

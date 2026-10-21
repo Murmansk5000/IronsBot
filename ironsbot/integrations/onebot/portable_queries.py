@@ -17,7 +17,6 @@ from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.semantic_requests import semantic_request_scope
 from ironsbot.integrations.onebot.conversations import is_self_message_event
-from ironsbot.integrations.onebot.matcher_support import get_runtime_context
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import (
     finish_event_reply,
@@ -26,10 +25,11 @@ from ironsbot.integrations.onebot.replies import (
 from ironsbot.integrations.onebot.request_state import (
     COMMAND_COOLDOWN_TOKEN_STATE_KEY,
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
+    REQUEST_OUTCOME_STATE_KEY,
 )
 from ironsbot.services.portable_interactions import as_portable_reply
 from ironsbot.services.portable_operation_access import authorized_operation
-from ironsbot.services.portable_reply import deliver_portable_reply
+from ironsbot.services.portable_reply import RequestOutcome, deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_commands import is_query_input_syntax
@@ -86,29 +86,17 @@ def make_portable_operation_handler(
                     DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
                 )
         if result is None:
-            _release_request(state)
+            state[REQUEST_OUTCOME_STATE_KEY] = RequestOutcome(failed=True)
             return
         reply = as_portable_reply(result)
+        state[REQUEST_OUTCOME_STATE_KEY] = reply.outcome
 
         async def send(message: OutboundMessage) -> SendResult:
             return await send_portable_event_reply(matcher, event, message)
 
-        delivered = await deliver_portable_reply(reply, send)
-        if not delivered or reply.outcome.failed:
-            _release_request(state)
+        await deliver_portable_reply(reply, send)
 
     return handle
-
-
-def _release_request(state: T_State) -> None:
-    runtime = get_runtime_context(state)
-    token = state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
-    if (
-        runtime is not None
-        and runtime.in_flight_requests is not None
-        and token is not None
-    ):
-        runtime.in_flight_requests.release(token)
 
 
 def release_query_menu_admission(

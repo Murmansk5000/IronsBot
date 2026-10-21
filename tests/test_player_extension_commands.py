@@ -162,6 +162,7 @@ async def test_extension_policy_is_rechecked_when_action_is_executed() -> None:
         ),
     )
     reply = await query_player_extension(action, 700001, context, features)
+    assert reply is not None
     assert (
         reply.message
         == QueryReply(text="该操作当前未对你开放。", complete=False).to_outbound()

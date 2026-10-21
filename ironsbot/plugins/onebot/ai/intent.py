@@ -139,14 +139,9 @@ def install(
 
 
 def plugin_contribution(
-    *,
-    settings: Settings,
-    service: AiService,
-    features: FeatureService,
-    executor: AiIntentActionExecutor,
-    input_routing: AiInputRoutingService,
+    *, settings: Settings, features: FeatureService
 ) -> PluginContribution:
-    """Declare configured intent actions and their natural-language matcher."""
+    """Declare configured intent actions and their visibility."""
 
     enabled = settings.ai.enabled and settings.ai.intent_actions_enabled
     command_contracts = ai_intent_command_contracts(settings)
@@ -172,15 +167,6 @@ def plugin_contribution(
             ),
         ),
         commands=command_contracts,
-        install=partial(
-            install,
-            dependencies=AiIntentDependencies(
-                service=service,
-                executor=executor,
-                input_routing=input_routing,
-            ),
-            command_help_ids=tuple(command.id for command in command_contracts),
-        ),
     )
 
 
@@ -188,10 +174,6 @@ if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
         plugin_contribution(
-            settings=context.settings,
-            service=context.resources.ai,
-            features=context.resources.features,
-            executor=context.resources.ai_intent_actions,
-            input_routing=context.resources.ai_input_routing,
+            settings=context.settings, features=context.resources.features
         ),
     )

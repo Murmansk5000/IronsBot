@@ -269,9 +269,7 @@ async def test_sdk_keyboard_omits_hidden_prompt_choices() -> None:
     assert keyboard is not None
     rows = keyboard.to_dict()["content"]["rows"]
     labels = [
-        button["render_data"]["label"]
-        for row in rows
-        for button in row["buttons"]
+        button["render_data"]["label"] for row in rows for button in row["buttons"]
     ]
     assert labels == [
         "确认",

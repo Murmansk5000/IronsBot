@@ -12,7 +12,7 @@ from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.core.push_routing import PushRouteDecision
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.messaging import BotRoutingConfig
+    from ironsbot.config.models.transport import OneBotRoutingConfig
     from ironsbot.config.qq_references import QQReferenceResolver
 
 
@@ -27,7 +27,7 @@ def _connected_onebot_bots() -> dict[int, Bot]:
 
 @dataclass(frozen=True, slots=True)
 class BotRouter:
-    config: BotRoutingConfig
+    config: OneBotRoutingConfig
     references: QQReferenceResolver
     use_default_for_unconfigured_targets: bool = False
 
@@ -42,7 +42,7 @@ class BotRouter:
         for target_ref, bot_ref in routes.items():
             if resolve(
                 target_ref,
-                location=f"messaging.bot_routing.{conversation.kind}s.{target_ref}",
+                location=f"bot.onebot.routing.{conversation.kind}s.{target_ref}",
             ) == int(conversation.id):
                 return self.config.resolve_bot_reference(bot_ref)
         return None

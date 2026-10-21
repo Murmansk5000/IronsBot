@@ -89,9 +89,7 @@ def test_self_admin_binding_keeps_one_member_mention() -> None:
     assert event.get_plaintext() == "绑定米米号123456"
     assert [segment.type for segment in event.message] == ["at", "text"]
     targets = message_input_context(event).member_mentions
-    assert tuple(actor.id for actor in targets) == (
-        "42",
-    )
+    assert tuple(actor.id for actor in targets) == ("42",)
     assert not gate.accept(event)
 
 

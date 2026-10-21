@@ -145,17 +145,14 @@ def install(
     )
 
 
-def plugin_contribution(  # noqa: PLR0913 - explicit plugin composition boundary
+def plugin_contribution(
     *,
     config: TeamResourceConfig,
     features: FeatureService,
     scheduler: Scheduler,
     service: TeamResourceService,
-    player_id_resolver: PlayerIdResolver,
-    team_query: SeerTeamQueryService,
-    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
-    """Declare team resource commands, matchers, and scheduled scans."""
+    """Declare team resource commands and scheduled scans."""
 
     return PluginContribution(
         id="team_resource",
@@ -174,13 +171,6 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin composition boundary
         ),
         commands=team_resource_command_contracts(
             enabled=config.enabled, query_commands=service.query_commands
-        ),
-        install=partial(
-            install,
-            service=service,
-            player_id_resolver=player_id_resolver,
-            team_query=team_query,
-            query_sessions=query_sessions,
         ),
         hooks=PluginHooks(
             startup=(
@@ -215,8 +205,5 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             scheduler=context.scheduler,
             service=context.resources.team_resource,
-            player_id_resolver=context.resources.player_id_resolver,
-            team_query=context.resources.seer.team_query,
-            query_sessions=context.resources.query_sessions,
         ),
     )

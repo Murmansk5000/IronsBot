@@ -44,9 +44,6 @@ from ironsbot.plugins.onebot.lucky_skin_window import (
 from ironsbot.plugins.onebot.messaging import (
     plugin_contribution as messaging_plugin_contribution,
 )
-from ironsbot.plugins.onebot.messaging.addressed_hint import (
-    plugin_contribution as addressed_hint_plugin_contribution,
-)
 from ironsbot.plugins.onebot.messaging.blacklist import (
     plugin_contribution as blacklist_plugin_contribution,
 )
@@ -360,8 +357,10 @@ def build_test_plugin_registry(
             addressed_input_hints=AddressedInputHintService(),
             identity_principals=IdentityPrincipalService(),
             identity_links=SimpleNamespace(
-                service=object(), portable_begin=_noop_query,
-                portable_confirm=_noop_query, portable_status=_noop_query,
+                service=object(),
+                portable_begin=_noop_query,
+                portable_confirm=_noop_query,
+                portable_status=_noop_query,
                 portable_revoke=_noop_query,
             ),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
@@ -370,74 +369,32 @@ def build_test_plugin_registry(
     return (
         scheduler_plugin_contribution(scheduler=SchedulerFacade()),
         seer_query_plugin_contribution(
-            settings=config,
-            resources=resources,
-            scheduler=SchedulerFacade(),
+            resources=resources, scheduler=SchedulerFacade()
         ),
         bilibili_plugin_contribution(
-            service=resources.bilibili,
-            query_sessions=resources.query_sessions,
-            features=runtime.features,
-            monitor=resources.bilibili_monitor,
-            scheduler=SchedulerFacade(),
+            monitor=resources.bilibili_monitor, scheduler=SchedulerFacade()
         ),
         messaging_plugin_contribution(
-            query_sessions=resources.query_sessions,
             config=config.messaging,
             features=runtime.features,
-            references=config.qq_references,
             service=resources.messaging,
-            activity_service=resources.activity,
             scheduler=SchedulerFacade(),
         ),
         ai_chat_plugin_contribution(
             settings=config,
-            service=resources.ai,
             features=runtime.features,
-            input_routing=resources.ai_input_routing,
             startup_check=resources.ai_startup_check,
         ),
-        ai_intent_plugin_contribution(
-            settings=config,
-            service=resources.ai,
-            features=runtime.features,
-            executor=resources.ai_intent_actions,
-            input_routing=resources.ai_input_routing,
-        ),
-        server_status_plugin_contribution(
-            service=resources.server_status,
-            features=runtime.features,
-            commands=resources.commands,
-        ),
+        ai_intent_plugin_contribution(settings=config, features=runtime.features),
+        server_status_plugin_contribution(),
         docker_update_plugin_contribution(
-            query_sessions=resources.query_sessions,
-            service=resources.docker_update,
-            features=runtime.features,
-            startup_notice=resources.startup_notice,
+            features=runtime.features, startup_notice=resources.startup_notice
         ),
-        db_sync_plugin_contribution(
-            query_sessions=resources.query_sessions,
-            service=resources.data_sync,
-            features=runtime.features,
-        ),
-        about_plugin_contribution(resources.about, resources.features),
-        help_plugin_contribution(
-            contribution_catalog=resources.contribution_catalog,
-            features=runtime.features,
-            commands=resources.commands,
-            query_sessions=resources.query_sessions,
-            ignored_plugins=tuple(config.features.help.ignored_plugins),
-        ),
-        sendpic_plugin_contribution(
-            service=resources.sendpic,
-            features=runtime.features,
-        ),
-        meeting_plugin_contribution(
-            commands=tuple(config.messaging.meeting.commands),
-            number=config.messaging.meeting.number,
-            template=config.messaging.meeting.template,
-            features=runtime.features,
-        ),
+        db_sync_plugin_contribution(features=runtime.features),
+        about_plugin_contribution(),
+        help_plugin_contribution(),
+        sendpic_plugin_contribution(service=resources.sendpic),
+        meeting_plugin_contribution(commands=tuple(config.messaging.meeting.commands)),
         blacklist_plugin_contribution(features=runtime.features),
         red_packet_plugin_contribution(
             config=config.messaging.red_packet_notice,
@@ -447,29 +404,15 @@ def build_test_plugin_registry(
         poke_reply_plugin_contribution(
             service=resources.poke_reply,
         ),
-        addressed_hint_plugin_contribution(
-            input_routing=resources.ai_input_routing,
-            addressed_input_hints=resources.addressed_input_hints,
-        ),
-        rank_help_plugin_contribution(
-            features=runtime.features,
-            commands=resources.commands,
-            player_id_resolver=resources.player_id_resolver,
-        ),
+        rank_help_plugin_contribution(player_id_resolver=resources.player_id_resolver),
         pet_config_plugin_contribution(
-            service=resources.pet_config,
-            features=runtime.features,
-            config=config.pet_config,
-            query_sessions=resources.query_sessions,
+            features=runtime.features, config=config.pet_config
         ),
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,
-            resources.seer.pet_query,
             runtime.features,
             SchedulerFacade(),
-            resources.query_sessions,
             resources.player_id_resolver,
-            resources.identity_principals,
         ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),
@@ -480,14 +423,9 @@ def build_test_plugin_registry(
             features=runtime.features,
             scheduler=SchedulerFacade(),
             service=resources.team_resource,
-            player_id_resolver=resources.player_id_resolver,
-            team_query=resources.seer.team_query,
-            query_sessions=resources.query_sessions,
         ),
         activity_plugin_contribution(
-            service=resources.activity,
-            features=runtime.features,
-            scheduler=SchedulerFacade(),
+            service=resources.activity, scheduler=SchedulerFacade()
         ),
         startup_notice_plugin_contribution(
             service=resources.startup_notice,

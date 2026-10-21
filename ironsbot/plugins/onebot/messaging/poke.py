@@ -67,11 +67,14 @@ def install(registry: MatcherFactory, service: OneBotPokeReplyPort) -> None:
     ) -> None:
         if not service.can_send(event.group_id):
             await matcher.finish()
-        reply = service.get_reply(
-            group_id=event.group_id,
-            user_id=event.user_id,
-            group_role=await _group_role(bot, event),
-        ) or DIRECT_COMMAND_HELP_HINT_TEXT
+        reply = (
+            service.get_reply(
+                group_id=event.group_id,
+                user_id=event.user_id,
+                group_role=await _group_role(bot, event),
+            )
+            or DIRECT_COMMAND_HELP_HINT_TEXT
+        )
         if event.group_id is None:
             await matcher.finish(reply)
         await matcher.finish(

@@ -34,20 +34,23 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.matcher_support import EXPLICIT_COMMAND_STATE_KEY
-from ironsbot.integrations.storage.push_topics import SqlitePushTopicStore
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
-from ironsbot.plugins.onebot.messaging import matcher_rules, plugin_contribution
+from ironsbot.plugins.onebot.messaging import matcher_rules
 from ironsbot.plugins.onebot.messaging import matchers as messaging_matchers
 from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_link_store import CrossPlatformGroupLink
 from ironsbot.services.identity_principals import IdentityPrincipalService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
 )
-from ironsbot.services.messaging.topics import PushTopicService
+from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_messaging_operations,
+)
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 from ironsbot.config.models.activity import ActivityConfig
@@ -86,13 +89,11 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.scheduled_delivery import (
         ScheduledMessageDelivery,
     )
-    from nonebot.adapters.onebot.v11 import Bot
     from nonebot.matcher import Matcher
     from pytest import MonkeyPatch
 
-    from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.ai.service import AiService
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
@@ -166,17 +167,10 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         superuser_ids=superusers,
         state_path=data_path,
     )
-    subscriptions = store or PushUnsubscribeStore(data_path)
-    topics = PushTopicService(
-        SqlitePushTopicStore(data_path.with_suffix(".topics.sqlite")),
-        resources.proactive_delivery,
-        subscriptions,
-        resources.features,
-    )
     return MessagingService(
         config,
         ActivityConfig(),
-        subscriptions,
+        store or PushUnsubscribeStore(data_path),
         resources.features,
         ScheduledMessageOutboundSender(resources.proactive_delivery),
         build_message_schedule_targets(
@@ -184,7 +178,6 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
             resources.qq_references,
         ),
         (extra_push_options or (lambda _conversation: []),),
-        topics=topics,
         _mention_reply_targets=mention_reply_targets,
     )
 
@@ -485,20 +478,40 @@ def test_group_push_subscription_management_command_matches_regular_member(
     )
 
 
-def _messaging_catalog(
-    config: MessageConfig,
-    topics: PushTopicService | None = None,
-) -> CommandCatalog:
+def _messaging_catalog(config: MessageConfig) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
         (
             PluginContribution(
-                id="messaging", commands=messaging_command_contracts(config, topics)
+                id="messaging", commands=messaging_command_contracts(config)
             ),
         ),
-        known_features={"text", "ai_chat", "push_topics"},
+        known_features={"text", "ai_chat"},
     )
     return catalog
+
+
+def _messaging_router(
+    config: MessageConfig, messaging: MessagingService
+) -> PortableCommandRouter:
+    catalog = _messaging_catalog(config)
+    sessions = PortableQuerySessions()
+
+    async def refresh(_option: PushTimeOption) -> None:
+        pass
+
+    return PortableCommandRouter(
+        catalog,
+        build_portable_messaging_operations(
+            messaging, sessions, refresh_push_time_jobs=refresh
+        ),
+        messaging.feature_policy,
+        ai=cast("AiService", None),
+        ai_input_routing=AiInputRoutingService(messaging.feature_policy, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        messaging=messaging,
+        query_sessions=sessions,
+    )
 
 
 @pytest.mark.parametrize(
@@ -575,7 +588,7 @@ def test_push_menu_custom_commands_and_non_entry_inputs(tmp_path: Path) -> None:
 @pytest.mark.parametrize("keyword", [False, True])
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.asyncio
-async def test_configured_reply_and_menu_matchers_own_their_command_ids(
+async def test_shared_router_prefers_enabled_exact_reply_over_keyword(
     tmp_path: Path, *, configured: bool, keyword: bool, enabled: bool
 ) -> None:
     config = MessageConfig(
@@ -598,51 +611,24 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
         _messaging_resources(tmp_path / "qq.sqlite", user_policy={"1002": ["text"]}),
         _config=config,
     )
-    runtime = build_test_runtime()
-    registry = runtime.matcher_factory()
-
-    contribution = plugin_contribution(
-        query_sessions=PortableQuerySessions(),
-        config=config,
-        features=runtime.features,
-        references=runtime.qq_references,
-        service=messaging,
-        activity_service=cast("ActivityService", object()),
-        scheduler=cast("Scheduler", FakeScheduler()),
-    )
-    assert contribution.install is not None
-    contribution.install(registry)
-    registry.validate_command_catalog(_messaging_catalog(config, messaging.topics))
-    registrations = [
-        registry.cooldown_registration(m) for m in registry.message_matchers
-    ]
-    assert ("command", "messaging.push_subscription") in registrations
-    assert ("command", "messaging.push_time") in registrations
-    assert len(registrations) == 3 + enabled * (configured + keyword)
+    router = _messaging_router(config, messaging)
     for text in ("示例", "包含示例的文字", "无关"):
         event = private_message_event(text, user_id=SUPERUSER_ID)
-        matches = []
-        for matcher in registry.message_matchers:
-            state = dict(matcher._default_state)
-            if await matcher.rule(cast("Bot", None), event, state):
-                action = cast(
-                    "MessageReplyAction", state[matcher_rules.MESSAGE_ACTION_KEY]
-                )
-                matches.append(
-                    (action.messages, state.get(EXPLICIT_COMMAND_STATE_KEY, False))
-                )
+        reply = await router.dispatch(message_input_context(event))
         expected = (
-            [(["exact"], True)]
+            "exact"
             if enabled and configured and text == "示例"
-            else [(["keyword"], False)]
+            else "keyword"
             if enabled and keyword and text == "示例"
-            else []
+            else None
         )
-        assert matches == expected
+        assert (reply.message if reply is not None else None) == (
+            OutboundMessage.from_text(expected) if expected is not None else None
+        )
 
 
 @pytest.mark.asyncio
-async def test_enabled_mention_reply_registers_after_commands_before_ai(
+async def test_shared_router_executes_configured_mention_reply(
     tmp_path: Path,
 ) -> None:
     action = MessageMentionReplyAction(
@@ -656,43 +642,18 @@ async def test_enabled_mention_reply_registers_after_commands_before_ai(
         _config=config,
         _mention_reply_targets=((_actor(2002),),),
     )
-    runtime = build_test_runtime()
-    registry = runtime.matcher_factory()
-    contribution = plugin_contribution(
-        query_sessions=PortableQuerySessions(),
-        config=config,
-        features=runtime.features,
-        references=runtime.qq_references,
-        service=messaging,
-        activity_service=cast("ActivityService", object()),
-        scheduler=cast("Scheduler", FakeScheduler()),
-    )
-    assert contribution.install is not None
-
-    contribution.install(registry)
-
-    registrations = [
-        registry.cooldown_registration(matcher) for matcher in registry.message_matchers
-    ]
-    assert ("exempt", "configured mention reply") in registrations
-    matcher = next(
-        candidate
-        for candidate in registry.message_matchers
-        if registry.cooldown_registration(candidate)
-        == ("exempt", "configured mention reply")
-    )
-    assert matcher.priority == runtime.matcher_priorities.mention_reply
-    assert runtime.matcher_priorities.message_commands < matcher.priority
-    assert matcher.priority < runtime.matcher_priorities.ai_chat
-
+    router = _messaging_router(config, messaging)
     event = group_message_event(
         user_id=2002,
         group_id=1001,
         self_id=1,
         message=Message([MessageSegment.at(1)]),
     )
-    state = dict(matcher._default_state)
-    assert await matcher.rule(cast("Bot", None), event, state)
+    context = message_input_context(event)
+    assert router.recognizes(context)
+    reply = await router.dispatch(context)
+    assert reply is not None
+    assert reply.message == OutboundMessage.from_text("reply")
 
 
 def test_mention_reply_respects_conversation_blacklist(tmp_path: Path) -> None:

@@ -85,12 +85,7 @@ def _install(
     matcher.append_handler(make_portable_query_handler(execute, query_sessions))
 
 
-def plugin_contribution(
-    *,
-    service: DataSyncService,
-    features: FeatureService,
-    query_sessions: PortableQuerySessions,
-) -> PluginContribution:
+def plugin_contribution(*, features: FeatureService) -> PluginContribution:
     """Declare the OneBot administrator commands for application-owned sync."""
 
     return PluginContribution(
@@ -103,18 +98,11 @@ def plugin_contribution(
             visible=partial(superuser_help_visible, features=features),
         ),
         commands=data_sync_command_contracts(),
-        install=partial(
-            _install, service=service, query_sessions=query_sessions, features=features
-        ),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            service=context.resources.data_sync,
-            features=context.resources.features,
-            query_sessions=context.resources.query_sessions,
-        ),
+        plugin_contribution(features=context.resources.features),
     )

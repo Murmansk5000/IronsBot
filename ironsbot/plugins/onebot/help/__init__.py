@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
@@ -68,14 +67,7 @@ def install(  # noqa: PLR0913 - shared help dependencies are explicit
     )
 
 
-def plugin_contribution(
-    *,
-    contribution_catalog: PluginContributionCatalog,
-    features: FeatureService,
-    commands: CommandCatalog,
-    query_sessions: PortableQuerySessions,
-    ignored_plugins: tuple[str, ...],
-) -> PluginContribution:
+def plugin_contribution() -> PluginContribution:
     """Declare the help menu against the frozen application contribution view."""
 
     return PluginContribution(
@@ -89,25 +81,11 @@ def plugin_contribution(
             visible=always_help_visible,
         ),
         commands=help_command_contracts(),
-        install=partial(
-            install,
-            contribution_catalog=contribution_catalog,
-            features=features,
-            commands=commands,
-            query_sessions=query_sessions,
-            ignored_plugins=ignored_plugins,
-        ),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            contribution_catalog=context.resources.contribution_catalog,
-            features=context.resources.features,
-            commands=context.resources.commands,
-            query_sessions=context.resources.query_sessions,
-            ignored_plugins=tuple(context.settings.features.help.ignored_plugins),
-        ),
+        plugin_contribution(),
     )
