@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import closing
 from dataclasses import dataclass
@@ -335,7 +336,11 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
 
     ActivitySentStore(runtime_state).filter_unsent([])
     SqliteLuckySkinWindowCache(runtime_state).initialize()
-    SqliteTeamAuditReminderStore(runtime_state).list_all()
+    asyncio.run(
+        SqliteTeamAuditReminderStore(
+            runtime_state, spawn=asyncio.create_task
+        ).list_all()
+    )
 
 
 def _backup_legacy_sources(

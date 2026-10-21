@@ -15,7 +15,6 @@ from ironsbot.config.models.messaging import (
 )
 from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage, ReplyContext
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.outbound_hooks import OneBotOutboundRateLimitHooks
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
 from tests.helpers.onebot_events import group_message_event
@@ -58,15 +57,12 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             cooldown_message="limit reached",
         )
     )
-    hooks = OneBotOutboundRateLimitHooks(runtime.outbound)
-    hooks.install()
     bot = Bot(Adapter(driver), "1")
     messenger = OneBotOutboundMessenger(
         cast("Any", Mock(for_conversation=Mock(return_value=bot))), runtime.outbound
     )
     state.messenger = messenger
     state.service = runtime.outbound
-    state.hooks = hooks
     return state
 
 
@@ -79,7 +75,7 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         ActionFailed(retcode=1200, wording="private-detail"),
     ],
 )
-async def test_actual_sdk_hooks_do_not_override_shared_uncertain_settlement(
+async def test_actual_sdk_failures_use_shared_uncertain_settlement(
     transport: SimpleNamespace, error: Exception, *, proactive: bool
 ) -> None:
     transport.error = error
@@ -95,7 +91,6 @@ async def test_actual_sdk_hooks_do_not_override_shared_uncertain_settlement(
     assert not transport.service.acquire_reply(100).allowed
     assert len(transport.calls) == 1
     assert str(transport.calls[0]["message"]).count("limit reached") == 1
-    assert transport.hooks._permits == {}
     if isinstance(error, ActionFailed):
         passive = await send_portable_event_reply(
             Mock(send=AsyncMock(side_effect=error)),
@@ -107,7 +102,7 @@ async def test_actual_sdk_hooks_do_not_override_shared_uncertain_settlement(
 
 
 @pytest.mark.asyncio
-async def test_actual_sdk_cancellation_after_submit_has_no_hook_ledger_leak(
+async def test_actual_sdk_cancellation_after_submit_preserves_capacity(
     transport: SimpleNamespace,
 ) -> None:
     transport.block = True
@@ -122,6 +117,4 @@ async def test_actual_sdk_cancellation_after_submit_has_no_hook_ledger_leak(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert not transport.service.acquire_reply(100).allowed
-    assert not transport.service.owns_send(100)
-    assert transport.hooks._permits == {}
     assert len(transport.calls) == 1

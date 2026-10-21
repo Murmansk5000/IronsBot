@@ -19,7 +19,6 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.outbound_hooks import OneBotOutboundRateLimitHooks
 from ironsbot.plugins.onebot.messaging.poke import install
 from ironsbot.services.messaging.poke_reply import PokeReplyService
 
@@ -99,8 +98,6 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
 ) -> None:
     monkeypatch.setattr(Bot, "_calling_api_hook", set())
     monkeypatch.setattr(Bot, "_called_api_hook", set())
-    hooks = OneBotOutboundRateLimitHooks(runtime.limits)
-    hooks.install()
     legacy_send = AsyncMock(side_effect=AssertionError("matcher send used"))
     monkeypatch.setattr(Matcher, "send", legacy_send)
     calls: list[tuple[str, dict[str, Any]]] = []
@@ -140,7 +137,6 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
     )
     assert len(calls) == (1 if private else 2)
     initial_count = len(calls)
-    assert hooks._permits == {}
     legacy_send.assert_not_awaited()
     runtime.messenger._router.for_conversation.assert_not_called()
 

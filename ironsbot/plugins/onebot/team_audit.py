@@ -66,15 +66,15 @@ async def handle_team_audit_welcome(
     )
 
 
-async def start_team_audit_followups(
+async def restore_team_audit_followups(
     _bot: Bot,
     *,
     scheduler: Scheduler,
     service: TeamAuditService,
 ) -> None:
-    """Adapt NoneBot's connection hook to the core scheduler lifecycle."""
+    """Restore pending work when the OneBot connection becomes available."""
 
-    await service.start(scheduler=scheduler)
+    await service.schedule_pending(scheduler)
 
 
 def install(
@@ -108,11 +108,17 @@ def plugin_contribution(
         features=frozenset({Feature.TEAM_AUDIT}),
         install=partial(install, scheduler=scheduler, service=service),
         hooks=PluginHooks(
+            startup=(
+                ("team_audit_followups", partial(service.start, scheduler=scheduler)),
+            ),
+            shutdown=(
+                ("team_audit_followups", partial(service.stop, scheduler=scheduler)),
+            ),
             bot_connect=(
                 (
-                    "team_audit_followups",
+                    "team_audit_recovery",
                     partial(
-                        start_team_audit_followups,
+                        restore_team_audit_followups,
                         scheduler=scheduler,
                         service=service,
                     ),

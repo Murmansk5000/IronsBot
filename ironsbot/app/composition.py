@@ -84,7 +84,6 @@ from ironsbot.services.messaging.poke_reply import PokeReplyService
 from ironsbot.services.messaging.red_packet import RedPacketNoticeService
 from ironsbot.services.official_union_identity import OfficialUnionIdentityService
 from ironsbot.services.onebot_admission import OneBotAdmissionService
-from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
@@ -343,6 +342,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         lucky_skin_window,
         identity_principals,
         common.private_routes,
+        task_owner.create_draining,
     )
     messaging = messaging_components.messaging
     sendpic = messaging_components.sendpic
@@ -501,7 +501,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 settings.outbound_platform_selection.onebot_message_handling_enabled
             ),
             identity_observer=identity_observer,
-            self_commands=OwnAccountCommandPolicy(settings.bot.onebot.self_commands),
+            self_commands=common.own_commands,
             routing=common.bot_router.policy,
             errors=command_errors,
         )

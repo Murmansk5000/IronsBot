@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.integrations.onebot.router import BotRouter
@@ -61,6 +62,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     lucky_skin_window: LuckySkinWindowService,
     identity_principals: IdentityPrincipalService,
     private_routes: PrivateConversationRoutes,
+    transaction_spawn: TaskSpawner,
 ) -> MessagingComponents:
     """Build configuration-backed messaging, image, and team-audit services."""
     from ironsbot.services.seer.lucky_skin_window_subscriptions import (
@@ -166,7 +168,9 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
         ),
         team_audit=TeamAuditService(
             settings.messaging.team_audit_welcome,
-            SqliteTeamAuditReminderStore(settings.paths.runtime_state),
+            SqliteTeamAuditReminderStore(
+                settings.paths.runtime_state, spawn=transaction_spawn
+            ),
             FeatureTeamAuditPolicy(features),
             onebot_messenger,
             OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
