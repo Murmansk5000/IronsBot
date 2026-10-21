@@ -6,17 +6,17 @@ from nonebot.typing import T_State
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import PicConfig
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
+from ironsbot.integrations.onebot.matcher_support import bind
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.messaging.sendpic import (
-    ImageIndexOutOfRangeError,
-    ImageNotFoundError,
-    IndexedImageRequest,
     SendpicService,
+)
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_sendpic_operations,
 )
 
 IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
@@ -54,26 +54,11 @@ def create_single_image_command(
         block=True,
     )
 
-    async def _handle(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        try:
-            result = await service.fetch_single(config)
-        except ImageNotFoundError:
-            await finish_event_reply(
-                matcher,
-                event,
-                IMAGE_MISSING_MESSAGE,
-            )
-            return
-        await finish_event_reply(
-            matcher,
-            event,
-            render_onebot_outbound_message(result.to_outbound()),
+    matcher.append_handler(
+        make_portable_operation_handler(
+            build_portable_sendpic_operations(service)[f"sendpic.{config.id}"]
         )
-
-    matcher.append_handler(_handle)
+    )
 
 
 def create_image_command(
@@ -94,29 +79,11 @@ def create_image_command(
         & Rule(bind(_match_indexed, service, config.id))
         & explicit_command(),
     )
-    template = config.message_template
-
-    async def _handler(
-        m: Matcher,
-        state: T_State,
-        event: MessageEvent,
-    ) -> None:
-        request: IndexedImageRequest = state[INDEXED_IMAGE_REQUEST_KEY]
-        try:
-            result = await service.fetch_indexed(config, request.index)
-        except ImageIndexOutOfRangeError as e:
-            await finish_event_reply(m, event, str(e))
-            return
-
-        await finish_event_reply(
-            m,
-            event,
-            render_onebot_outbound_message(
-                result.to_outbound(template, command=config.command)
-            )
+    matcher.append_handler(
+        make_portable_operation_handler(
+            build_portable_sendpic_operations(service)[f"sendpic.{config.id}"]
         )
-
-    matcher.append_handler(_handler)
+    )
     return matcher
 
 

@@ -5,11 +5,6 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import (
-    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
-)
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
@@ -22,13 +17,19 @@ from ironsbot.core.plugin_install import (
 )
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
+    portable_contract_rule,
+)
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
     is_new_seer_activity_text,
     is_soon_ending_seer_activity_text,
+)
+from ironsbot.services.portable_activity_commands import (
+    build_portable_activity_operations,
 )
 
 if TYPE_CHECKING:
@@ -63,47 +64,25 @@ def install(
     service: ActivityService,
     features: FeatureService,
 ) -> None:
-    async def handle_current(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
-            matcher,
-            event,
-            await service.build_current_message(),
-        )
-
-    async def handle_soon_ending(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
-            matcher,
-            event,
-            await service.build_current_message(soon_only=True),
-        )
-
-    async def handle_new(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
-            matcher,
-            event,
-            await service.build_newly_added_message(),
-        )
+    operations = build_portable_activity_operations(service)
 
     current_matcher = registry.on_message(
         policy=CommandPolicy.command(
             "seer_activity_current",
             help_ids=("activity.current",),
         ),
-        rule=Rule(_is_current_seer_activity_command) & explicit_command(),
-        permission=SUPERUSER,
+        rule=Rule(_is_current_seer_activity_command)
+        & explicit_command()
+        & portable_contract_rule(
+            next(c for c in activity_command_contracts() if c.id == "activity.current"),
+            features,
+        ),
         priority=registry.priority("activity"),
         block=True,
     )
-    current_matcher.append_handler(handle_current)
+    current_matcher.append_handler(
+        make_portable_operation_handler(operations["activity.current"])
+    )
 
     ending_matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -122,7 +101,9 @@ def install(
         priority=registry.priority("activity"),
         block=True,
     )
-    ending_matcher.append_handler(handle_soon_ending)
+    ending_matcher.append_handler(
+        make_portable_operation_handler(operations["activity.ending"])
+    )
 
     new_matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -141,7 +122,9 @@ def install(
         priority=registry.priority("activity"),
         block=True,
     )
-    new_matcher.append_handler(handle_new)
+    new_matcher.append_handler(
+        make_portable_operation_handler(operations["activity.new"])
+    )
 
 
 def plugin_contribution(

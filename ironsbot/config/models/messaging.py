@@ -8,8 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
-from ironsbot.config.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
-    OneBotReferenceList,
+from ironsbot.config.qq_references import (  # noqa: TC001 - Pydantic resolves aliases
+    QQReferenceList,
 )
 from ironsbot.core.commands import (  # noqa: TC001 - Pydantic resolves aliases
     NormalizedStringList,
@@ -113,6 +113,14 @@ def _normalize_command_cooldown_windows(
     return sorted(windows, key=lambda item: item.window_seconds)
 
 
+class DuplicateWindowConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    taomee: float = Field(default=120.0, ge=0, allow_inf_nan=False, strict=True)
+    local: float = Field(default=0.0, ge=0, allow_inf_nan=False, strict=True)
+    other_network: float = Field(default=120.0, ge=0, allow_inf_nan=False, strict=True)
+
+
 class CommandCooldownConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -122,9 +130,18 @@ class CommandCooldownConfig(BaseModel):
     )
     cooldown_message: str = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
     in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
-    duplicate_window_seconds: float = Field(default=60.0, gt=0)
+    duplicate_window_seconds: DuplicateWindowConfig = Field(
+        default_factory=DuplicateWindowConfig
+    )
     duplicate_message: str = "该指令重复发送；后续重复不再提醒。"
     commands: dict[str, list[CommandCooldownWindowConfig]] = Field(default_factory=dict)
+
+    @field_validator("duplicate_window_seconds", mode="before")
+    @classmethod
+    def migrate_duplicate_window(cls, value: object) -> object:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return {"taomee": value, "other_network": value, "local": 0}
+        return value
 
     @field_validator("cooldown_message")
     @classmethod
@@ -278,7 +295,7 @@ class BaseMessageAction(BaseModel):
 
 
 class MessageReplyAction(BaseMessageAction):
-    at_user_ids: OneBotReferenceList = Field(default_factory=list)
+    at_user_ids: QQReferenceList = Field(default_factory=list)
 
 
 class MessageCommandAction(MessageReplyAction):
@@ -347,8 +364,8 @@ class MessageMentionReplyAction(BaseModel):
 
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
-    at_user_ids: OneBotReferenceList = Field(default_factory=list)
-    target_groups: OneBotReferenceList = Field(default_factory=list)
+    at_user_ids: QQReferenceList = Field(default_factory=list)
+    target_groups: QQReferenceList = Field(default_factory=list)
     time: str
     day_of_week: str | None = None
     renderer: str = ""

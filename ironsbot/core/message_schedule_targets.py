@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Typed delivery targets owned by the messaging domain."""
+"""Typed scheduled-message recipients shared by config and business services."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class MessageScheduleTargets:
-    """Typed recipients compiled from configured scheduled-message targets."""
+    """Recipients compiled from configured scheduled-message targets."""
 
     group_mentions: tuple[tuple[ActorRef, ...], ...]
     group_targets: tuple[tuple[ConversationRef, ...], ...] = ()

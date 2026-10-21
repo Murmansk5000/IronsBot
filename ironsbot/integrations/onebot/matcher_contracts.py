@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Platform-neutral contracts shared by matcher registration and prompts."""
+"""Admission contracts for OneBot command registration."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from ironsbot.core.semantic_requests import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.core.action_categories import RequestCategory
     from ironsbot.core.platform import ActorRef
     from ironsbot.core.response_admission import ResponseAdmissionDecision
     from ironsbot.core.semantic_requests import SemanticTarget
@@ -26,7 +27,6 @@ CommandIdSource: TypeAlias = str | CommandIdResolver
 SemanticRequestResolver: TypeAlias = Callable[
     [MessageEvent, T_State], SemanticRequest | None
 ]
-QueuedSemanticRequestResolver: TypeAlias = SemanticRequestResolver
 
 
 def static_command_id(command_id: str) -> CommandIdResolver:
@@ -49,6 +49,7 @@ def default_semantic_request(
     label: str,
     event: MessageEvent,
     state: T_State,
+    category: RequestCategory | None = None,
 ) -> SemanticRequest | None:
     """Build the default identity for commands without a custom resolver."""
 
@@ -60,6 +61,7 @@ def default_semantic_request(
             id=command_id,
             label=label,
             cooldown_key=command_id,
+            category=category,
         ),
         target=target,
         source=SemanticRequestSource.DIRECT,

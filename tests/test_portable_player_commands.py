@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.config.models.seer import PlayerBindingConfig
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -33,7 +34,6 @@ from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -49,6 +49,7 @@ from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_queries import RankPlayerPreparedReply
 
 if TYPE_CHECKING:
+    from ironsbot.core.player_detail_actions import PlayerDetailActionRequest
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_shortcut_contracts import (
@@ -200,7 +201,7 @@ async def test_beast_rank_choice_is_lazy_and_shared_query_uses_responder(
     assert rank.prepare_player.await_args.kwargs["actor"] == responder.message.actor
     assert rank.prepare_player.await_args.args[0].player_id == player_id
     assert sessions.has_active_session(owner)
-    assert not sessions.has_active_session(responder)
+    assert sessions.has_active_session(responder)
     assert charged == []
     selected.delivered()
     assert charged == ["responder"]
@@ -246,7 +247,7 @@ async def test_shared_player_menu_cannot_launder_numeric_superuser_target() -> N
     selected = await sessions.select_shared("1", owner, responder, allow_deferred=True)
     assert isinstance(selected, OutboundMessage)
     assert isinstance(selected.parts[0], TextPart)
-    assert "完整数字" in selected.parts[0].text
+    assert "权限" in selected.parts[0].text
 
 
 @pytest.mark.asyncio
@@ -948,13 +949,16 @@ async def test_player_query_menu_includes_available_shared_extension(
             aliases=("战队",),
             command_help_id="seer.team.query",
             query=query,
-            action=ActionDefinition("player_team", "玩家所属战队"),
+            action=ActionDefinition(
+                "player_team", "玩家所属战队", category=RequestCategory.OTHER_NETWORK
+            ),
         )
     )
     allowed = True
     features = cast(
         "Any",
         SimpleNamespace(
+            is_message_blocked=lambda *_args: False,
             is_feature_allowed=lambda *_args: allowed,
             is_actor_superuser=lambda _actor: False,
         ),
@@ -1019,7 +1023,9 @@ async def test_player_team_option_requires_membership_and_permission(
             aliases=("战队",),
             command_help_id="seer.team.query",
             query=query,
-            action=ActionDefinition("player_team", "玩家所属战队"),
+            action=ActionDefinition(
+                "player_team", "玩家所属战队", category=RequestCategory.OTHER_NETWORK
+            ),
         )
     )
     features = FeatureService(
@@ -1049,6 +1055,7 @@ async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
     features = cast(
         "Any",
         SimpleNamespace(
+            is_message_blocked=lambda *_args: False,
             is_feature_allowed=lambda *_args: allowed,
             is_actor_superuser=lambda _actor: False,
         ),

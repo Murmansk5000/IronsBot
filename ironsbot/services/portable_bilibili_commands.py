@@ -7,18 +7,21 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
 from ironsbot.services.bilibili.outbound_delivery import (
     iter_dynamic_image_messages,
     prepare_dynamic_content_messages,
     render_dynamic_text_message,
 )
+from ironsbot.services.portable_operation_access import authorized_operation
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, slow_operation_reply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
     from ironsbot.services.bilibili.service import BilibiliService
@@ -43,6 +46,7 @@ def build_portable_bilibili_operations(
     *,
     notify_auth_invalid: Callable[[str], Awaitable[None]],
     refresh_now: Callable[[], Awaitable[str]],
+    features: FeatureService | None = None,
 ) -> Mapping[str, PortableOperation]:
     """Bind the Bilibili history menu to shared portable query sessions."""
 
@@ -59,7 +63,9 @@ def build_portable_bilibili_operations(
             )
         except Exception:
             _LOGGER.exception("portable Bilibili dynamic menu failed")
-            return OutboundMessage.from_text("❌ 获取动态列表失败。")
+            return OutboundMessage.from_text(
+                "❌ 获取动态列表失败。", request_succeeded=False
+            )
 
         if result.auth_invalid or result.status == "auth_invalid":
             await notify_auth_invalid("用户查询动态时发现 B 站登录失效")
@@ -69,7 +75,10 @@ def build_portable_bilibili_operations(
             "no_history": "📭 没有可展示的历史动态。",
         }
         if notice := notices.get(result.status):
-            return OutboundMessage.from_text(notice)
+            return OutboundMessage.from_text(
+                notice,
+                request_succeeded=result.status not in {"auth_invalid", "no_accounts"},
+            )
 
         return sessions.offer_menu(
             context,
@@ -103,7 +112,9 @@ def build_portable_bilibili_operations(
     ) -> OutboundMessage:
         parsed = parse_bili_push_mode_command(text)
         if parsed is None:
-            return OutboundMessage.from_text("❌ B站推送模式指令格式错误。")
+            return OutboundMessage.from_text(
+                "❌ B站推送模式指令格式错误。", request_succeeded=False
+            )
         account_ref, raw_mode = parsed
         return OutboundMessage.from_text(
             await service.targets.update_push_mode(
@@ -116,17 +127,32 @@ def build_portable_bilibili_operations(
     async def refresh(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         del text, context
-        return OutboundMessage.from_text(await refresh_now())
+        return await slow_operation_reply(_refresh_result(refresh_now))
 
-    return {
+    operations: dict[str, PortableOperation] = {
         "bilibili.dynamic": dynamic,
         "bilibili.accounts": accounts,
         "bilibili.push_mode": push_mode,
         "bilibili.private_push_mode": push_mode,
         "bilibili.refresh": refresh,
     }
+    if features is None:
+        return operations
+
+    return {
+        contract.id: authorized_operation(operations[contract.id], contract, features)
+        for contract in bilibili_command_contracts()
+    }
+
+
+async def _refresh_result(refresh_now: Callable[[], Awaitable[str]]) -> OutboundMessage:
+    try:
+        return OutboundMessage.from_text(await refresh_now())
+    except Exception:
+        _LOGGER.exception("portable Bilibili refresh failed")
+        return OutboundMessage.from_text("❌ 动态刷新失败。", request_succeeded=False)
 
 
 async def _dynamic_detail(
@@ -137,7 +163,7 @@ async def _dynamic_detail(
         selection = service.select_dynamic([dynamic_id], "1")
         if selection.status != "ok" or selection.record is None:
             return OutboundMessage.from_text(
-                "❌ 没找到这条历史动态，请重新发送“动态”。"
+                "❌ 没找到这条历史动态，请重新发送“动态”。", request_succeeded=False
             )
         detail = await service.prepare_dynamic_detail(
             cast("DynamicHistoryRecord", selection.record)
@@ -159,8 +185,12 @@ async def _dynamic_detail(
             combine_images=service.config.push.combine_images,
         )
         if not messages:
-            return OutboundMessage.from_text("❌ 动态详情解析失败。")
+            return OutboundMessage.from_text(
+                "❌ 动态详情解析失败。", request_succeeded=False
+            )
         return PortableReply(messages[0], additional_messages=messages[1:])
     except Exception:
         _LOGGER.exception("portable Bilibili dynamic detail failed")
-        return OutboundMessage.from_text("❌ 动态详情解析失败。")
+        return OutboundMessage.from_text(
+            "❌ 动态详情解析失败。", request_succeeded=False
+        )

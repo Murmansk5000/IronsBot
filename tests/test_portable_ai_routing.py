@@ -11,6 +11,7 @@ from ironsbot.config.models.messaging import (
     MessageKeywordReplyAction,
     MessageMentionReplyAction,
 )
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.command_catalog import (
     CommandCatalog,
     CommandContract,
@@ -136,6 +137,7 @@ def _catalog() -> CommandCatalog:
                 commands=(
                     CommandContract(
                         id="example.query",
+                        category=RequestCategory.LOCAL,
                         plugin_id="example",
                         section="查询",
                         examples=("查询",),

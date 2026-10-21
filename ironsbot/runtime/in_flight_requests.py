@@ -28,13 +28,25 @@ class InFlightRequestToken:
     conversation: ConversationRef
     request: SemanticRequest
     token_id: str
+    bot_id: str = ""
 
 
 InFlightRequestDecision = ResponseAdmissionDecision
 
 
+class DuplicateWindows(Protocol):
+    @property
+    def taomee(self) -> float: ...
+    @property
+    def local(self) -> float: ...
+    @property
+    def other_network(self) -> float: ...
+
+
 class DuplicateResponseConfig(Protocol):
-    duplicate_window_seconds: float
+    @property
+    def duplicate_window_seconds(self) -> DuplicateWindows: ...
+
     duplicate_message: str
 
 
@@ -46,7 +58,7 @@ class _InFlightRequestEntry:
 
 @dataclass(slots=True)
 class _RecentCompletion:
-    completed_at: float
+    expires_at: float
     feedback: FeedbackOnce = field(default_factory=FeedbackOnce)
 
 
@@ -55,21 +67,18 @@ class InFlightRequestService:
     """Reserve a user action within its conversation and suppress duplicates.
 
     A request stays reserved while it is executing or waiting in a menu FIFO.
-    After the handler finishes normally, its semantic identity remains silent
-    for one minute. This is deliberately separate from configurable command
-    cooldowns: it compares the real business action and target.
+    Successful completion uses the action category's configured window. Active
+    reservations never expire merely because that window is zero or elapsed.
     """
 
     features: SuperuserLookup
     config: DuplicateResponseConfig
     _entries: dict[
-        tuple[ActorRef, ConversationRef, str, str], _InFlightRequestEntry
+        tuple[ActorRef, ConversationRef, str, str, str], _InFlightRequestEntry
     ] = field(default_factory=dict)
     _recent_completions: dict[
-        tuple[ActorRef, ConversationRef, str, str], _RecentCompletion
-    ] = field(
-        default_factory=dict
-    )
+        tuple[ActorRef, ConversationRef, str, str, str], _RecentCompletion
+    ] = field(default_factory=dict)
 
     def admit(
         self,
@@ -77,6 +86,7 @@ class InFlightRequestService:
         actor: ActorRef,
         conversation: ConversationRef,
         request: SemanticRequest,
+        bot_id: str = "",
         now: float | None = None,
     ) -> InFlightRequestDecision:
         if self.features.is_actor_superuser(actor):
@@ -84,7 +94,7 @@ class InFlightRequestService:
 
         current_time = monotonic() if now is None else now
         self._prune_recent_completions(current_time)
-        key = (actor, conversation, request.action.id, request.target.key)
+        key = (actor, conversation, bot_id, request.action.id, request.target.key)
         if entry := self._entries.get(key):
             return self._reject_duplicate(entry)
         if completion := self._recent_completions.get(key):
@@ -99,6 +109,7 @@ class InFlightRequestService:
                 conversation=conversation,
                 request=request,
                 token_id=token_id,
+                bot_id=bot_id,
             ),
         )
 
@@ -108,8 +119,14 @@ class InFlightRequestService:
         released = self._release(token)
         if released is not None:
             key, entry = released
+            assert isinstance(token, InFlightRequestToken)
+            category = token.request.action.category
+            assert category is not None
+            window = getattr(self.config.duplicate_window_seconds, category.value)
+            if window == 0:
+                return
             self._recent_completions[key] = _RecentCompletion(
-                completed_at=monotonic() if now is None else now,
+                expires_at=(monotonic() if now is None else now) + window,
                 feedback=entry.feedback,
             )
 
@@ -121,14 +138,16 @@ class InFlightRequestService:
     def _release(
         self,
         token: object,
-    ) -> tuple[
-        tuple[ActorRef, ConversationRef, str, str], _InFlightRequestEntry
-    ] | None:
+    ) -> (
+        tuple[tuple[ActorRef, ConversationRef, str, str, str], _InFlightRequestEntry]
+        | None
+    ):
         if not isinstance(token, InFlightRequestToken):
             return None
         key = (
             token.actor,
             token.conversation,
+            token.bot_id,
             token.request.action.id,
             token.request.target.key,
         )
@@ -142,7 +161,7 @@ class InFlightRequestService:
         self._recent_completions = {
             key: completion
             for key, completion in self._recent_completions.items()
-            if now - completion.completed_at < self.config.duplicate_window_seconds
+            if now < completion.expires_at
         }
 
     def _reject_duplicate(

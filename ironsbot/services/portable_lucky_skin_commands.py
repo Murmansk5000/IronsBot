@@ -10,9 +10,16 @@ from typing import TYPE_CHECKING, Literal
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.core.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.services.player_reference_selection import select_player_target
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.lucky_skin_commands import (
+    LUCKY_SKIN_QUERY_ACTION,
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
     LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
     parse_lucky_skin_query,
@@ -29,14 +36,14 @@ from ironsbot.services.seer.lucky_skin_window import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation, PortableReply
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.player_id_resolver import (
@@ -105,7 +112,7 @@ class PortableLuckySkinCommands:
             async def execute(
                 player_id: int,
                 context: MessageInputContext,
-            ) -> OutboundMessage:
+            ) -> OutboundMessage | PortableReply:
                 return await self.query_target(context, player_id, source=source)
 
             reply = await select_player_target(
@@ -117,7 +124,13 @@ class PortableLuckySkinCommands:
                 title="请选择要查询橱窗的玩家：",
                 nickname_lookup=self.service.lookup_player_nicks,
             )
-            return reply.message if reply is not None else None
+            if reply is None:
+                return None
+            return (
+                reply
+                if self.sessions.interactions.request_service is not None
+                else reply.message
+            )
         return await self.query_target(context, None, source="default")
 
     async def query_target(  # noqa: PLR0911 - each access failure has a direct reply
@@ -126,7 +139,7 @@ class PortableLuckySkinCommands:
         player_id: int | None,
         *,
         source: PlayerTargetSource,
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | PortableReply:
         actor = self._account_actor(context)
         if actor is None and player_id is None:
             resolution = self.resolver.resolve(context, None)
@@ -152,8 +165,38 @@ class PortableLuckySkinCommands:
         ) as error:
             return OutboundMessage.from_text(_access_error(error, query=True))
         if cached is not None:
-            return await self._result_menu(context, actor, cached)
+            return await self._admit_query(
+                context, request, lambda: self._result_menu(context, actor, cached)
+            )
         return self._confirmation_menu(context, request, source=source)
+
+    async def _admit_query(
+        self,
+        context: MessageInputContext,
+        request: LuckySkinQuery,
+        operation: Callable[[], Awaitable[OutboundMessage]],
+    ) -> OutboundMessage | PortableReply:
+        if self.sessions.interactions.request_service is None:
+            return await operation()
+        account = (
+            self.service.account_for_actor(request.owner) if request.owner else None
+        )
+        player_id = request.player_id or (account.player_id if account else None)
+        if player_id is None:
+            return await operation()
+
+        async def execute() -> PortableReply:
+            return PortableReply(await operation())
+
+        return await self.sessions.interactions.execute_request(
+            SemanticRequest(
+                LUCKY_SKIN_QUERY_ACTION,
+                SemanticTarget(str(player_id), f"米米号 {player_id}"),
+                SemanticRequestSource.DIRECT,
+            ),
+            context,
+            execute,
+        )
 
     async def watch_list(
         self, text: str, context: MessageInputContext
@@ -208,7 +251,7 @@ class PortableLuckySkinCommands:
         async def select(
             choice: _Confirmation,
             context: MessageInputContext,
-        ) -> OutboundMessage:
+        ) -> OutboundMessage | PortableReply:
             if choice == "cancel":
                 return OutboundMessage.from_text("已取消幸运橱窗查询。")
             if request.player_id is not None:
@@ -217,7 +260,9 @@ class PortableLuckySkinCommands:
                 )
                 if error is not None:
                     return OutboundMessage.from_text(error)
-            return await self._query_now(context, request)
+            return await self._admit_query(
+                context, request, lambda: self._query_now(context, request)
+            )
 
         return self.sessions.offer_menu(
             context,
@@ -226,7 +271,8 @@ class PortableLuckySkinCommands:
                 select=select,
                 prompt=OutboundMessage.from_text(
                     f"今日幸运橱窗{target_label}尚未获取，需要登录查询。\n"
-                    "1. 是，继续查询\n2. 否，取消查询\n0. 退出"
+                    "1. 是，继续查询\n2. 否，取消查询\n0. 退出",
+                    request_succeeded=False,
                 ),
                 labels=("确认查询", "取消查询"),
                 exit_message="已取消幸运橱窗查询。",
@@ -248,7 +294,9 @@ class PortableLuckySkinCommands:
         ) as error:
             return OutboundMessage.from_text(_access_error(error, query=True))
         except TimeoutError:
-            return OutboundMessage.from_text("❌ 幸运橱窗查询超时，请稍后再试。")
+            return OutboundMessage.from_text(
+                "❌ 幸运橱窗查询超时，请稍后再试。", request_succeeded=False
+            )
         except LuckySkinWindowError as error:
             logger.warning(
                 "lucky skin window query unavailable: platform=%s actor=%s error=%s",
@@ -256,14 +304,18 @@ class PortableLuckySkinCommands:
                 reference_digest(request.requester.id),
                 error,
             )
-            return OutboundMessage.from_text("❌ 幸运橱窗数据暂时不可用，请稍后再试。")
+            return OutboundMessage.from_text(
+                "❌ 幸运橱窗数据暂时不可用，请稍后再试。", request_succeeded=False
+            )
         except Exception:
             logger.exception(
                 "lucky skin window query failed: platform=%s actor=%s",
                 request.requester.platform.value,
                 reference_digest(request.requester.id),
             )
-            return OutboundMessage.from_text("❌ 幸运橱窗查询失败，请稍后再试。")
+            return OutboundMessage.from_text(
+                "❌ 幸运橱窗查询失败，请稍后再试。", request_succeeded=False
+            )
         return await self._result_menu(context, request.owner, result)
 
     async def _watch_direct(

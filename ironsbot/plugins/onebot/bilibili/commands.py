@@ -2,34 +2,33 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.rule import Rule
 
-from ironsbot.integrations.onebot.matchers import (
-    CommandPolicy,
-    MatcherFactory,
-    bind,
-    bind_async,
-)
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
+from ironsbot.services.portable_bilibili_commands import (
+    build_portable_bilibili_operations,
+)
 
-from .account_commands import (
-    handle_bili_accounts_action,
-    handle_bili_push_mode_action,
-)
-from .command_rules import (
-    is_bili_account_command,
-    is_bili_push_mode_command,
-    is_dynamic_menu_command,
-    is_update_dynamic_command,
-)
-from .update_actions import handle_update_dynamic_action
+from .command_rules import matches_bilibili_command
 
 if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
+
+
+def _rule(contract: CommandContract, features: FeatureService) -> Rule:
+    def matches(event: MessageEvent) -> bool:
+        return matches_bilibili_command(contract.id, features, event)
+
+    return Rule(matches) & explicit_command()
 
 
 def install(  # noqa: PLR0913 - transport composition
@@ -40,66 +39,21 @@ def install(  # noqa: PLR0913 - transport composition
     targets: BiliTargetService,
     query_sessions: PortableQuerySessions,
 ) -> None:
-    from ironsbot.integrations.onebot.portable_queries import (
-        make_portable_query_handler,
-    )
-    from ironsbot.services.portable_bilibili_commands import (
-        build_portable_bilibili_operations,
-    )
-
+    del targets
     operations = build_portable_bilibili_operations(
         service,
         query_sessions,
         notify_auth_invalid=monitor.notify_auth_invalid,
         refresh_now=monitor.manual_refresh,
+        features=features,
     )
-    dynamic_menu = registry.on_message(
-        policy=CommandPolicy.command("bili_query", help_ids=("bilibili.dynamic",)),
-        rule=Rule(bind(is_dynamic_menu_command, features)) & explicit_command(),
-        priority=registry.priority("bilibili"),
-        block=True,
-    )
-    dynamic_menu.append_handler(
-        make_portable_query_handler(operations["bilibili.dynamic"], query_sessions)
-    )
-
-    update_dynamic = registry.on_message(
-        policy=CommandPolicy.command("bili_refresh", help_ids=("bilibili.refresh",)),
-        rule=Rule(bind(is_update_dynamic_command, features)) & explicit_command(),
-        priority=registry.priority("bilibili"),
-        block=True,
-    )
-    update_dynamic.append_handler(
-        bind_async(
-            handle_update_dynamic_action,
-            features=features,
-            monitor=monitor,
+    for contract in bilibili_command_contracts():
+        matcher = registry.on_message(
+            policy=CommandPolicy.command(contract.id, help_ids=(contract.id,)),
+            rule=_rule(contract, features),
+            priority=registry.priority("bilibili"),
+            block=True,
         )
-    )
-
-    bili_account = registry.on_message(
-        policy=CommandPolicy.command("bili_accounts", help_ids=("bilibili.accounts",)),
-        rule=Rule(bind(is_bili_account_command, features)) & explicit_command(),
-        priority=registry.priority("bilibili"),
-        block=True,
-    )
-    bili_account.append_handler(
-        bind_async(handle_bili_accounts_action, targets=targets)
-    )
-
-    push_mode = registry.on_message(
-        policy=CommandPolicy.command(
-            "bili_push_mode",
-            help_ids=("bilibili.push_mode", "bilibili.private_push_mode"),
-        ),
-        rule=Rule(bind(is_bili_push_mode_command, features)) & explicit_command(),
-        priority=registry.priority("bilibili"),
-        block=True,
-    )
-    push_mode.append_handler(
-        bind_async(
-            handle_bili_push_mode_action,
-            features=features,
-            targets=targets,
+        matcher.append_handler(
+            make_portable_query_handler(operations[contract.id], query_sessions)
         )
-    )

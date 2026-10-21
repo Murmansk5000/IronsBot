@@ -53,6 +53,9 @@ plugin_manifest = "core"
 superusers = [{USER_ID}]
 use_default_for_unconfigured_targets = true
 
+[identities.groups]
+smoke_group = {{ qq = {GROUP_ID} }}
+
 [messaging.bot_routing]
 enabled = false
 default_bot = "smoke_bot"

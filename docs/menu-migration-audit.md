@@ -10,16 +10,16 @@
 | `runtime/conversations.py` 的预备输入 | `services/portable_interactions.py`、`portable_session_state.py` | 查询前预约，发送回执后释放 FIFO |
 | `runtime/prompts.py` 的引用菜单和语义请求 | `services/portable_query_sessions.py` | 引用者复制选项快照，独立会话、操作者、超时与请求令牌 |
 | `plugins/help` 的共享帮助 | `services/help_menu.py` | 按回复者权限筛选帮助，不继承原菜单权限 |
-| `plugins/seer/query/query_conversation.py` 通用多选 | 当前同名 OneBot 模块 + 公共 QueryOperationSpec | 不注册临时选择 matcher，提前接收数字，包括 7 |
+| `plugins/seer/query/query_conversation.py` 通用多选 | `services/portable_seer_commands.py` 的公共查询定义 | 两端共用菜单及选择回调，删除 OneBot 同名模块；提前接收数字，包括 7 |
 | 玩家详情、群星牌、场地、动态历史 | `services/portable_*_commands.py` | 公共只读菜单，共用两种平台入口 |
 | 新增内容的自定义图片菜单 | `portable_new_content_commands.py` | 图片编号与快照共用，支持字母及 a1/b3，不把结果图登记为菜单 |
 | 战队列表、橱窗四皮肤详情 | `portable_team_resource_commands.py`、`portable_lucky_skin_result.py` | 只读共享；每日橱窗也使用相同图片与菜单 |
-| 旧 Prompt 和排队路由 | `integrations/onebot/{prompts,prompt_sessions,queued_conversation_router}.py` | 保留兼容；会话键增加机器人账号，统一解析引用 |
-| TD、维护、绑定、登录等确认 | 原专用处理器或非共享 PortableMenuSpec | 特意不开放跨成员复制；权限和确认不能借用 |
+| 旧 Prompt 和排队路由 | `services/portable_interactions.py`、`portable_query_sessions.py` | 旧接口与兼容路由已删除；共享会话隔离机器人账号并统一解析引用 |
+| TD、维护、绑定、登录等确认 | 公共操作及非共享 PortableMenuSpec | 特意不开放跨成员复制；权限和确认不能借用 |
 | 自回复防护、自定义 @ 回复、OneBot 戳一戳 | 原入口 | 保留防循环规则，不借本次迁移扩大自动回复权限 |
 
-旧 `bilibili/dynamic_actions.py` 和新增内容模块中的 Prompt 辅助函数仍保留兼容测试，
-但对应生产命令已经只注册公共菜单处理器，不构成第二个输入入口。
+旧 `bilibili/dynamic_actions.py`、新增内容 Prompt 辅助函数及其兼容测试已移除。
+当前入口、平台边界和最终验证见 [公共操作核对](onebot-menu-parity.md)。
 
 ## 会话与权限边界
 

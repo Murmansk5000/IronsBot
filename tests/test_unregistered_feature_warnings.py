@@ -15,8 +15,8 @@ from ironsbot.config.models.features import (
     resolve_feature_bundles,
 )
 from ironsbot.config.models.settings import Settings
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import PlatformReferenceResolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +32,7 @@ USERS = (ActorRef(Platform.ONEBOT, USER_ID), OFFICIAL_USER)
 
 def references() -> PlatformReferenceResolver:
     return PlatformReferenceResolver(
-        OneBotReferenceResolver({"room": int(GROUP_ID)}, {"alice": int(USER_ID)}),
+        QQReferenceResolver({"room": int(GROUP_ID)}, {"alice": int(USER_ID)}),
         {"room": (OFFICIAL_GROUP,)},
         {"alice": (OFFICIAL_USER,)},
         {"example": "10001"},

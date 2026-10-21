@@ -38,6 +38,7 @@ def build_portable_identity_link_operations(
     commands: IdentityLinkCommands,
 ) -> dict[str, PortableOperation]:
     return {
+        "seer.player.identity.begin": commands.portable_begin,
         "seer.player.identity.confirm": commands.portable_confirm,
         "seer.player.identity.status": commands.portable_status,
         "seer.player.identity.revoke": commands.portable_revoke,
@@ -47,6 +48,11 @@ def build_portable_identity_link_operations(
 @dataclass(frozen=True, slots=True)
 class IdentityLinkCommands:
     service: IdentityLinkingService
+
+    async def portable_begin(
+        self, text: str, context: MessageInputContext
+    ) -> OutboundMessage:
+        return OutboundMessage.from_text(await self.begin_text(text, context))
 
     async def begin_text(self, text: str, context: MessageInputContext) -> str:
         parsed = IDENTITY_LINK_BEGIN(text)

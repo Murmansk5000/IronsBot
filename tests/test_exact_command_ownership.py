@@ -18,10 +18,7 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.plugins.onebot.ai import AI_CHAT_PROMPT_KEY, _capture_ai_prompt
-from ironsbot.plugins.onebot.bilibili.command_rules import (
-    is_bili_account_command,
-    is_dynamic_menu_command,
-)
+from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -120,7 +117,7 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
         ),
         known_features={"help", "about", "ai_chat"},
     )
-    about.install(registry, AboutService("test"))
+    about.install(registry, AboutService("test"), FEATURES)
     help_plugin.install(
         registry,
         Mock(),
@@ -194,9 +191,9 @@ def test_explicit_normalization_keeps_existing_domain_language(
     assert not contract.matches_direct_input(CONTEXT, "/" + text)
     event = private_message_event(text, user_id=100)
     if id_ == "bilibili.dynamic":
-        assert is_dynamic_menu_command(FEATURES, event)
+        assert matches_bilibili_command("bilibili.dynamic", FEATURES, event)
     if id_ == "bilibili.accounts":
-        assert is_bili_account_command(FEATURES, event)
+        assert matches_bilibili_command("bilibili.accounts", FEATURES, event)
     if id_ == "messaging.example":
         config = MessageConfig.model_validate(
             {

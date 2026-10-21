@@ -13,29 +13,102 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves annotation
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves annotations
 
+from ironsbot.core.command_catalog import command_context_from_input
+from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.semantic_requests import semantic_request_scope
 from ironsbot.integrations.onebot.conversations import is_self_message_event
+from ironsbot.integrations.onebot.matcher_support import get_runtime_context
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.prompt_sessions import (
-    COMMAND_COOLDOWN_TOKEN_STATE_KEY,
-    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
-)
 from ironsbot.integrations.onebot.replies import (
     finish_event_reply,
     send_portable_event_reply,
 )
+from ironsbot.integrations.onebot.request_state import (
+    COMMAND_COOLDOWN_TOKEN_STATE_KEY,
+    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
+)
+from ironsbot.services.portable_interactions import as_portable_reply
+from ironsbot.services.portable_operation_access import authorized_operation
 from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_commands import is_query_input_syntax
 
 if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandContract
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.outbound import OutboundMessage, SendResult
+    from ironsbot.core.outbound import SendResult
     from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, PortableReply
 
 PortableQueryHandler = Callable[["Matcher", "T_State", "Event"], Awaitable[None]]
+
+
+def portable_contract_rule(contract: CommandContract, features: FeatureService) -> Rule:
+    def allowed(event: MessageEvent) -> bool:
+        context = message_input_context(event)
+        return not features.is_message_blocked(
+            context.message.actor, context.message.conversation
+        ) and contract.is_executable(command_context_from_input(context), features)
+
+    return Rule(allowed)
+
+
+def make_authorized_portable_handler(
+    operation: PortableOperation,
+    contract: CommandContract,
+    features: FeatureService,
+) -> PortableQueryHandler:
+    return make_portable_operation_handler(
+        authorized_operation(operation, contract, features)
+    )
+
+
+def make_portable_operation_handler(
+    operation: PortableOperation,
+) -> PortableQueryHandler:
+    """Adapt stateless public operations without introducing a menu session."""
+
+    async def handle(matcher: Matcher, state: T_State, event: Event) -> None:
+        from ironsbot.integrations.onebot.matchers import SEMANTIC_REQUEST_STATE_KEY
+
+        if not isinstance(event, MessageEvent) or is_self_message_event(event):
+            raise FinishedException
+        context = message_input_context(event)
+        with semantic_request_scope(
+            state.get(SEMANTIC_REQUEST_STATE_KEY), actor=context.message.actor
+        ):
+            try:
+                result = await operation(context.text, context)
+            except DataUnavailableError:
+                result = OutboundMessage.from_text(
+                    DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
+                )
+        if result is None:
+            _release_request(state)
+            return
+        reply = as_portable_reply(result)
+
+        async def send(message: OutboundMessage) -> SendResult:
+            return await send_portable_event_reply(matcher, event, message)
+
+        delivered = await deliver_portable_reply(reply, send)
+        if not delivered or reply.outcome.failed:
+            _release_request(state)
+
+    return handle
+
+
+def _release_request(state: T_State) -> None:
+    runtime = get_runtime_context(state)
+    token = state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
+    if (
+        runtime is not None
+        and runtime.in_flight_requests is not None
+        and token is not None
+    ):
+        runtime.in_flight_requests.release(token)
 
 
 def release_query_menu_admission(
@@ -56,18 +129,28 @@ def make_portable_query_handler(
     sessions: PortableQuerySessions,
 ) -> PortableQueryHandler:
     async def handle(matcher: Matcher, _state: T_State, event: Event) -> None:
+        from ironsbot.integrations.onebot.matchers import SEMANTIC_REQUEST_STATE_KEY
+
         if not isinstance(event, MessageEvent) or is_self_message_event(event):
             raise FinishedException
         context = message_input_context(event)
         try:
-            reply = await sessions.interactions.execute(
-                operation, context.text, context
-            )
+            with semantic_request_scope(
+                _state.get(SEMANTIC_REQUEST_STATE_KEY), actor=context.message.actor
+            ):
+                reply = await sessions.interactions.execute(
+                    operation, context.text, context
+                )
         except DataUnavailableError:
+            release_query_menu_admission(matcher, sessions)
             await finish_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
             return
         if reply is not None:
             await _deliver(matcher, event, reply, sessions)
+            if reply.outcome.failed:
+                release_query_menu_admission(matcher, sessions)
+        else:
+            release_query_menu_admission(matcher, sessions)
 
     return handle
 

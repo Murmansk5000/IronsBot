@@ -74,9 +74,11 @@ class _MenuRenderer:
         menu_title: str,
         expanded_categories: frozenset[NewContentCategory],
         auto_expand_max_items: int,
+        navigation_label: str = "退出",
     ) -> bytes:
         del snapshot, expanded_categories, auto_expand_max_items
         assert menu_title == "新增内容"
+        assert navigation_label in {"退出", "返回上级"}
         self.calls.append((display_categories, focused_category))
         if self.expired:
             raise NewContentWeekExpiredError
@@ -228,6 +230,8 @@ async def test_focused_menu_accepts_hidden_root_letters() -> None:
     ]
     assert _text(await sessions.select("1", context)) == "成就详情:6171016"
     assert isinstance(await sessions.select("a", context), OutboundMessage)
+    restored = await sessions.select("0", context)
+    assert isinstance(restored, OutboundMessage) and restored.prompt is not None
     assert _text(await sessions.select("0", context)) == "已退出新增内容查询。"
 
 
@@ -249,9 +253,7 @@ async def test_hidden_category_rechecks_current_feature_permission() -> None:
         ),
     )
     grants = {
-        context.message.actor: frozenset(
-            {"seer_data", "seer_pet", "seer_mintmark"}
-        )
+        context.message.actor: frozenset({"seer_data", "seer_pet", "seer_mintmark"})
     }
     features = FeatureService(
         group_features={},

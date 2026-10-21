@@ -4,6 +4,7 @@ import asyncio
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import nonebot
@@ -18,10 +19,14 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.config.message_schedule_targets import (
+    build_message_schedule_targets,
+)
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
-from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import MentionPart, OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -29,21 +34,12 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.conversations import event_conversation_session_id
 from ironsbot.integrations.onebot.matcher_support import EXPLICIT_COMMAND_STATE_KEY
-from ironsbot.integrations.onebot.messaging_config import (
-    build_onebot_message_schedule_targets,
-)
 from ironsbot.integrations.storage.push_topics import SqlitePushTopicStore
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.messaging import matcher_rules, plugin_contribution
 from ironsbot.plugins.onebot.messaging import matchers as messaging_matchers
 from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
-from ironsbot.plugins.onebot.messaging.push_management_runtime import (
-    PUSH_SUBSCRIPTION_FLOW,
-    PUSH_TIME_FLOW,
-    PromptFlow,
-)
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_link_store import CrossPlatformGroupLink
 from ironsbot.services.identity_principals import IdentityPrincipalService
@@ -52,6 +48,7 @@ from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
 )
 from ironsbot.services.messaging.topics import PushTopicService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
@@ -62,6 +59,7 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
+from ironsbot.integrations.onebot import portable_queries
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
@@ -181,9 +179,9 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         subscriptions,
         resources.features,
         ScheduledMessageOutboundSender(resources.proactive_delivery),
-        build_onebot_message_schedule_targets(
+        build_message_schedule_targets(
             config,
-            resources.onebot_references,
+            resources.qq_references,
         ),
         (extra_push_options or (lambda _conversation: []),),
         topics=topics,
@@ -604,9 +602,10 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
     registry = runtime.matcher_factory()
 
     contribution = plugin_contribution(
+        query_sessions=PortableQuerySessions(),
         config=config,
         features=runtime.features,
-        references=runtime.onebot_references,
+        references=runtime.qq_references,
         service=messaging,
         activity_service=cast("ActivityService", object()),
         scheduler=cast("Scheduler", FakeScheduler()),
@@ -660,9 +659,10 @@ async def test_enabled_mention_reply_registers_after_commands_before_ai(
     runtime = build_test_runtime()
     registry = runtime.matcher_factory()
     contribution = plugin_contribution(
+        query_sessions=PortableQuerySessions(),
         config=config,
         features=runtime.features,
-        references=runtime.onebot_references,
+        references=runtime.qq_references,
         service=messaging,
         activity_service=cast("ActivityService", object()),
         scheduler=cast("Scheduler", FakeScheduler()),
@@ -713,29 +713,6 @@ def test_mention_reply_respects_conversation_blacklist(tmp_path: Path) -> None:
     assert (
         messaging.match_mention_reply(_mention_context(configured, _group(1001)))
         is None
-    )
-
-
-@pytest.mark.parametrize("flow", [PUSH_SUBSCRIPTION_FLOW, PUSH_TIME_FLOW])
-def test_push_menu_reply_ownership_stays_local_to_its_session(flow: PromptFlow) -> None:
-    event = group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002)
-    session_id = event_conversation_session_id(flow.namespace, event)
-    check = flow.reply_check(session_id, "group")
-    for text in ("0", "1", "2"):
-        assert check(group_message_event(text, user_id=SUPERUSER_ID, group_id=2002))
-    assert not check(group_message_event("1", user_id=1003, group_id=2002))
-    assert not check(group_message_event("1", user_id=SUPERUSER_ID, group_id=2003))
-    assert not check(private_message_event("1", user_id=SUPERUSER_ID))
-    assert not check(group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002))
-    assert not check(group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002))
-    assert not check(
-        group_message_event(
-            "1", user_id=SUPERUSER_ID, group_id=2002, reply_sender_user_id=1
-        )
-    )
-    value_check = flow.reply_check(session_id, "group", selection=False)
-    assert value_check(
-        group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002)
     )
 
 
@@ -826,21 +803,24 @@ async def test_onebot_configured_reply_sends_messages_in_order(
 ) -> None:
     sent: list[str] = []
 
-    async def record(_matcher: object, message: str, **_kwargs: object) -> None:
-        sent.append(message)
+    async def record(
+        _matcher: object, _event: object, message: OutboundMessage
+    ) -> SendResult:
+        sent.append("".join(p.text for p in message.parts if isinstance(p, TextPart)))
+        return SendResult(delivered=True, message_id=str(len(sent)))
 
-    monkeypatch.setattr(messaging_matchers, "send_matcher_message", record)
-    monkeypatch.setattr(messaging_matchers, "finish_matcher_message", record)
+    monkeypatch.setattr(portable_queries, "send_portable_event_reply", record)
     action = MessageCommandAction(
         id="sequence",
         commands=["连续回复"],
         messages=["第一条", "第二条", "第三条"],
     )
     await messaging_matchers.handle_message_command(
-        cast("Matcher", object()),
+        cast("Matcher", SimpleNamespace(state={})),
         private_message_event("连续回复", user_id=SUPERUSER_ID),
         {matcher_rules.MESSAGE_ACTION_KEY: action},
-        references=OneBotReferenceResolver(group_aliases={}, user_aliases={}),
+        references=QQReferenceResolver(group_aliases={}, user_aliases={}),
+        sessions=PortableQuerySessions(),
     )
     assert sent == action.messages
 
@@ -853,14 +833,15 @@ async def test_onebot_configured_reply_addresses_explicit_member_targets(
 
     async def record(
         _matcher: object,
-        _message: str,
-        *,
-        at_user_ids: tuple[int, ...] | list[int],
-        **_kwargs: object,
-    ) -> None:
-        sent_targets.append(tuple(at_user_ids))
+        _event: object,
+        message: OutboundMessage,
+    ) -> SendResult:
+        sent_targets.append(
+            tuple(int(p.actor.id) for p in message.parts if isinstance(p, MentionPart))
+        )
+        return SendResult(delivered=True, message_id="targeted")
 
-    monkeypatch.setattr(messaging_matchers, "finish_matcher_message", record)
+    monkeypatch.setattr(portable_queries, "send_portable_event_reply", record)
     action = MessageCommandAction(
         id="targeted",
         commands=["加群"],
@@ -872,13 +853,14 @@ async def test_onebot_configured_reply_addresses_explicit_member_targets(
     )
 
     await messaging_matchers.handle_message_command(
-        cast("Matcher", object()),
+        cast("Matcher", SimpleNamespace(state={})),
         event,
         {matcher_rules.MESSAGE_ACTION_KEY: action},
-        references=OneBotReferenceResolver(group_aliases={}, user_aliases={}),
+        references=QQReferenceResolver(group_aliases={}, user_aliases={}),
+        sessions=PortableQuerySessions(),
     )
 
-    assert sent_targets == [(789, 790)]
+    assert sent_targets == [(789,)]
 
 
 def test_unified_command_action_uses_feature_policy_for_each_message_scope(

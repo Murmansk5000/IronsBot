@@ -220,6 +220,7 @@ def build_test_plugin_registry(
                 account_for_actor=lambda _actor: None,
             ),
             messaging=SimpleNamespace(
+                portable_command_actions=(),
                 topics=SimpleNamespace(known_keys=set(), features=runtime.features),
                 stop_topics=_noop_query,
                 has_enabled_mention_replies=False,
@@ -358,7 +359,11 @@ def build_test_plugin_registry(
             poke_reply=object(),
             addressed_input_hints=AddressedInputHintService(),
             identity_principals=IdentityPrincipalService(),
-            identity_links=SimpleNamespace(service=object()),
+            identity_links=SimpleNamespace(
+                service=object(), portable_begin=_noop_query,
+                portable_confirm=_noop_query, portable_status=_noop_query,
+                portable_revoke=_noop_query,
+            ),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
@@ -377,9 +382,10 @@ def build_test_plugin_registry(
             scheduler=SchedulerFacade(),
         ),
         messaging_plugin_contribution(
+            query_sessions=resources.query_sessions,
             config=config.messaging,
             features=runtime.features,
-            references=config.onebot_references,
+            references=config.qq_references,
             service=resources.messaging,
             activity_service=resources.activity,
             scheduler=SchedulerFacade(),
@@ -404,15 +410,17 @@ def build_test_plugin_registry(
             commands=resources.commands,
         ),
         docker_update_plugin_contribution(
+            query_sessions=resources.query_sessions,
             service=resources.docker_update,
             features=runtime.features,
             startup_notice=resources.startup_notice,
         ),
         db_sync_plugin_contribution(
+            query_sessions=resources.query_sessions,
             service=resources.data_sync,
             features=runtime.features,
         ),
-        about_plugin_contribution(resources.about),
+        about_plugin_contribution(resources.about, resources.features),
         help_plugin_contribution(
             contribution_catalog=resources.contribution_catalog,
             features=runtime.features,
@@ -452,6 +460,7 @@ def build_test_plugin_registry(
             service=resources.pet_config,
             features=runtime.features,
             config=config.pet_config,
+            query_sessions=resources.query_sessions,
         ),
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,

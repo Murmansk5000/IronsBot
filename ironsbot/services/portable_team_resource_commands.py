@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import GROUP_MANAGER_ROLES
@@ -56,10 +57,14 @@ def build_portable_team_resource_operations(
             item: TeamOverviewItem,
             context: MessageInputContext,
         ) -> OutboundMessage:
-            return OutboundMessage.from_text(
-                await team_query.query(
-                    (item.team_id,), _team_query_actor(context, service)
-                )
+            return team_query.subscription_reply(
+                OutboundMessage.from_text(
+                    await team_query.query(
+                        (item.team_id,), _team_query_actor(context, service)
+                    )
+                ),
+                context,
+                sessions,
             )
 
         return sessions.offer_menu(
@@ -75,43 +80,7 @@ def build_portable_team_resource_operations(
             ),
         )
 
-    async def manage(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        command = service.parse_manage(text)
-        if command is None:
-            msg = (
-                "catalog accepted input that its team resource parser rejected: "
-                f"{text!r}"
-            )
-            raise ValueError(msg)
-        target = _target(context)
-        if command.action == "list":
-            result = service.subscriptions_message(target)
-        elif command.team_id is None:
-            msg = f"team resource command has no team id: {text!r}"
-            raise ValueError(msg)
-        elif command.action == "remove":
-            result = service.remove_target_subscription(
-                target=target,
-                team_id=command.team_id,
-            )
-        elif (
-            command.has_manual_mention and target.is_group and not target.mention_actors
-        ):
-            result = (
-                "提醒对象要使用平台的 @ 选人功能添加；"
-                "手动输入 @账号 不会保存为提醒对象。"
-            )
-        else:
-            result = await service.add_target_subscription(
-                target=target,
-                team_id=command.team_id,
-                threshold=command.threshold,
-                operator=context.message.actor,
-            )
-        return OutboundMessage.from_text(result)
+    manage = partial(_manage, service)
 
     return {
         "team_resource.query": query,
@@ -162,3 +131,63 @@ def _target(context: MessageInputContext) -> TeamResourceSubscriptionTarget:
             context.member_mentions,
         )
     return TeamResourceSubscriptionTarget(message.actor)
+
+
+def _management_denial(
+    service: TeamResourceService,
+    context: MessageInputContext,
+    target: TeamResourceSubscriptionTarget,
+    *,
+    modifying: bool,
+) -> str | None:
+    if not service.allows_target(context.message.actor, target):
+        return "当前会话未开放战队资源订阅。"
+    if (
+        modifying
+        and target.is_group
+        and not (
+            context.message.group_role in GROUP_MANAGER_ROLES
+            or service.is_superuser(context.message.actor)
+        )
+    ):
+        return "只有群主、管理员或超级管理员可以修改战队订阅。"
+    return None
+
+
+async def _manage(
+    service: TeamResourceService,
+    text: str,
+    context: MessageInputContext,
+) -> OutboundMessage:
+    command = service.parse_manage(text)
+    if command is None:
+        msg = f"catalog accepted input that its team resource parser rejected: {text!r}"
+        raise ValueError(msg)
+    target = _target(context)
+    denied = _management_denial(
+        service, context, target, modifying=command.action != "list"
+    )
+    if denied is not None:
+        return OutboundMessage.from_text(denied, request_succeeded=False)
+    if command.action == "list":
+        result = service.subscriptions_message(target)
+    elif command.team_id is None:
+        msg = f"team resource command has no team id: {text!r}"
+        raise ValueError(msg)
+    elif command.action == "remove":
+        result = service.remove_target_subscription(
+            target=target,
+            team_id=command.team_id,
+        )
+    elif command.has_manual_mention and target.is_group and not target.mention_actors:
+        result = (
+            "提醒对象要使用平台的 @ 选人功能添加；手动输入 @账号 不会保存为提醒对象。"
+        )
+    else:
+        result = await service.add_target_subscription(
+            target=target,
+            team_id=command.team_id,
+            threshold=command.threshold,
+            operator=context.message.actor,
+        )
+    return OutboundMessage.from_text(result)

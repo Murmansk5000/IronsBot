@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from ironsbot.core.outbound import OutboundMessage, SendResult
@@ -24,6 +25,11 @@ ProgressOperation = Callable[
 DeliveryStage = Literal["initial", "additional", "follow_up"]
 
 
+@dataclass(slots=True)
+class RequestOutcome:
+    failed: bool = False
+
+
 @dataclass(frozen=True, slots=True)
 class PortableReply:
     """One prepared reply with work committed only after transport success."""
@@ -37,6 +43,8 @@ class PortableReply:
     on_finished: Callable[[], None] | None = None
     is_current: Callable[[], bool] | None = None
     continuation: Callable[[], Awaitable[PortableReply | None]] | None = None
+    initial_is_advisory: bool = False
+    outcome: RequestOutcome = field(default_factory=RequestOutcome, compare=False)
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -61,9 +69,11 @@ async def deliver_portable_reply(
 
     completed = False
     try:
-        if not await transmit(reply.message, "initial"):
+        initial_sent = await transmit(reply.message, "initial")
+        if not initial_sent and not reply.initial_is_advisory:
             return False
-        reply.delivered()
+        if initial_sent:
+            reply.delivered()
         if not await _transmit_additional(reply, transmit):
             return False
         if reply.continuation is not None:
@@ -74,7 +84,8 @@ async def deliver_portable_reply(
                 on_sent=on_sent,
                 on_follow_up_error=on_follow_up_error,
             )
-            return completed  # noqa: RET504 - finally uses the completion state
+            reply.outcome.failed |= next_reply is not None and next_reply.outcome.failed
+            return completed
         if reply.follow_up is not None:
             if reply.is_current is not None and not reply.is_current():
                 return False
@@ -113,9 +124,17 @@ async def _transmit_reply(
     stage: DeliveryStage,
     on_sent: Callable[[DeliveryStage, SendResult], None] | None,
 ) -> bool:
+    if not message.request_succeeded:
+        reply.outcome.failed = True
     if reply.is_current is not None and not reply.is_current():
         return False
-    receipt = await send(message)
+    try:
+        receipt = await send(message)
+    except Exception:
+        if stage != "initial" or not reply.initial_is_advisory:
+            raise
+        logging.getLogger(__name__).exception("Slow-query notice delivery failed")
+        return False
     if on_sent is not None:
         on_sent(stage, receipt)
     return receipt.delivered
@@ -130,7 +149,7 @@ async def _follow_up_message(
     except Exception as error:
         if on_error is None:
             raise
-        return on_error(error)
+        return replace(on_error(error), request_succeeded=False)
 
 
 async def progress_operation_reply(
@@ -179,6 +198,45 @@ async def progress_operation_reply(
         on_delivered=release,
         on_delivery_failed=cancel,
         follow_up=finish,
+    )
+
+
+async def slow_operation_reply(
+    operation: Awaitable[OutboundMessage | str],
+    *,
+    delay_seconds: float = 3.0,
+) -> PortableReply:
+    """Send at most one advisory notice while keeping the actual query alive."""
+    from ironsbot.services.operations.request_feedback import request_is_acknowledged
+
+    task = asyncio.ensure_future(operation)
+    if request_is_acknowledged():
+        return PortableReply(_outbound(await task))
+    try:
+        done, _ = await asyncio.wait((task,), timeout=delay_seconds)
+    except BaseException:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    if done:
+        return PortableReply(_outbound(await task))
+    if request_is_acknowledged():
+        return PortableReply(_outbound(await task))
+
+    async def finish() -> OutboundMessage:
+        return _outbound(await task)
+
+    def cleanup() -> None:
+        if not task.done():
+            task.cancel()
+        elif not task.cancelled():
+            task.exception()
+
+    return PortableReply(
+        OutboundMessage.from_text("正在查询，完成后发送结果。"),
+        follow_up=finish,
+        on_finished=cleanup,
+        initial_is_advisory=True,
     )
 
 

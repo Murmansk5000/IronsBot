@@ -32,6 +32,11 @@ def build_portable_countermark_operations(
         if command is None:
             msg = f"catalog accepted invalid countermark rank command: {text!r}"
             raise ValueError(msg)
-        return OutboundMessage.from_text(service.query(command))
+        result = service.query(command)
+        return (
+            result
+            if isinstance(result, OutboundMessage)
+            else OutboundMessage.from_text(result)
+        )
 
     return {"seer.mintmark.rank": query}

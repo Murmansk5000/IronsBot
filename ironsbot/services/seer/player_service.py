@@ -284,7 +284,7 @@ class PlayerService(PlayerAccountPolicyMixin):
     ) -> QueryReply:
         player_id = command.player_id
         if not is_valid_player_id(player_id):
-            return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
+            return QueryReply(text=PLAYER_ID_ERROR_MESSAGE, complete=False)
         if command.base_snapshot is not None:
             cached = await self._details.cached_or_inflight_reply(
                 player_id,
@@ -324,18 +324,24 @@ class PlayerService(PlayerAccountPolicyMixin):
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
-            return QueryReply(text=error.message)
+            return QueryReply(text=error.message, complete=False)
         except PLAYER_REQUEST_ERRORS as error:
-            return QueryReply(text=player_request_protection_message(error))
+            return QueryReply(
+                text=player_request_protection_message(error), complete=False
+            )
         except (TimeoutError, asyncio.TimeoutError):
-            return QueryReply(text=player_query_timeout_message(player_id))
+            return QueryReply(
+                text=player_query_timeout_message(player_id), complete=False
+            )
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
-            return QueryReply(text=self.format_error(player_id, error))
+            return QueryReply(text=self.format_error(player_id, error), complete=False)
         except Exception as error:  # noqa: BLE001
-            return QueryReply(text=player_query_failure_message(player_id, error))
+            return QueryReply(
+                text=player_query_failure_message(player_id, error), complete=False
+            )
         if quota_message:
             if not message.rank_lookup_is_lightweight:
-                return QueryReply(text=quota_message)
+                return QueryReply(text=quota_message, complete=False)
             return message
         if message.rank_lookup_should_charge_quota:
             self._record_successful_quota(

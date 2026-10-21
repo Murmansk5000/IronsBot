@@ -41,7 +41,12 @@ def build_portable_activity_operations(
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text, context
-        return OutboundMessage.from_text(await service.build_newly_added_message())
+        result = await service.build_newly_added_message()
+        return (
+            result
+            if isinstance(result, OutboundMessage)
+            else OutboundMessage.from_text(result)
+        )
 
     return {
         "activity.current": current,

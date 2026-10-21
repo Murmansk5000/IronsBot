@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from time import monotonic
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
@@ -11,6 +13,7 @@ from nonebot.adapters.onebot.v11 import (
     Event,
     GroupMessageEvent,
     Message,
+    MessageEvent,
     MessageSegment,
 )
 from nonebot.exception import IgnoredException
@@ -31,6 +34,8 @@ _SILENT_REASON = "OneBot is running in silent verifier mode"
 _EVERYONE_REASON = "Messages mentioning everyone are not commands"
 _SELF_REASON = "Own-account message is not an accepted self command"
 _ROUTING_REASON = "OneBot account does not own this group"
+_DUPLICATE_REASON = "Duplicate OneBot message event"
+_MAX_MESSAGE_CLAIMS = 100000
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +44,9 @@ class OneBotIngressPolicy:
     identity_observer: SilentIdentityObservationService | None = None
     self_commands: SelfCommandGate | None = None
     router: BotRouter | None = None
+    _message_claims: OrderedDict[tuple[int, str, int, int], float] = field(
+        default_factory=OrderedDict, init=False, repr=False, compare=False
+    )
 
     async def process(self, event: Event) -> None:
         observation = _group_message_observation(event)
@@ -66,10 +74,30 @@ class OneBotIngressPolicy:
                 isinstance(event, SelfCommandEvent) and event.admin_binding
             ) and not self.router.allows_incoming(event.self_id, conversation):
                 raise IgnoredException(_ROUTING_REASON)
-        if isinstance(event, GroupMessageEvent) and message_input_context(
-            event
-        ).mentions_everyone:
+        if (
+            isinstance(event, GroupMessageEvent)
+            and message_input_context(event).mentions_everyone
+        ):
             raise IgnoredException(_EVERYONE_REASON)
+        if isinstance(event, MessageEvent):
+            self._claim_message(event)
+
+    def _claim_message(self, event: MessageEvent) -> None:
+        now = monotonic()
+        claims = self._message_claims
+        while claims and next(iter(claims.values())) <= now:
+            claims.popitem(last=False)
+        key = (
+            event.self_id,
+            event.message_type,
+            event.group_id if isinstance(event, GroupMessageEvent) else event.user_id,
+            event.message_id,
+        )
+        if key in claims:
+            raise IgnoredException(_DUPLICATE_REASON)
+        claims[key] = now + 86400
+        if len(claims) > _MAX_MESSAGE_CLAIMS:
+            claims.popitem(last=False)
 
     def install(self) -> None:
         policy = self

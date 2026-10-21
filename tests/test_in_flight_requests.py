@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.config.models.messaging import (
+    CommandCooldownConfig,
+    DuplicateWindowConfig,
+)
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -54,7 +58,9 @@ def test_reservation_completion_and_release_are_conversation_scoped(
 
 def _request(action_id: str, target_key: str) -> SemanticRequest:
     return SemanticRequest(
-        action=ActionDefinition(action_id, action_id),
+        action=ActionDefinition(
+            action_id, action_id, category=RequestCategory.OTHER_NETWORK
+        ),
         target=SemanticTarget(target_key, target_key),
         source=SemanticRequestSource.DIRECT,
     )
@@ -64,7 +70,7 @@ def _service(features: _Features | None = None) -> InFlightRequestService:
     return InFlightRequestService(
         features or _Features(),
         CommandCooldownConfig(
-            duplicate_window_seconds=60,
+            duplicate_window_seconds=DuplicateWindowConfig(other_network=60),
             duplicate_message=DUPLICATE_MESSAGE,
         ),
     )

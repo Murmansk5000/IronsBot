@@ -19,6 +19,7 @@ from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     ImageNotFoundError,
 )
+from ironsbot.services.portable_menu_navigation import selecting_menu
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableTextInputSpec,
@@ -44,6 +45,18 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_reply import PortableOperation
 
 IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
+
+
+def build_portable_mention_operation(messaging: MessagingService) -> PortableOperation:
+    async def execute(text: str, context: MessageInputContext) -> PortableReply | None:
+        del text
+        action = messaging.match_mention_reply(context)
+        if action is None or not action.messages:
+            return None
+        messages = tuple(OutboundMessage.from_text(text) for text in action.messages)
+        return PortableReply(messages[0], additional_messages=messages[1:])
+
+    return execute
 
 
 def build_portable_messaging_operations(
@@ -146,18 +159,18 @@ class _PortableSubscriptionMenus:
             context: MessageInputContext,
         ) -> OutboundMessage:
             menu = replace(self, context=context)
+            submenu = self.messaging.subscription_submenu(
+                self.conversation,
+                option,
+                read_only=_push_read_only(self.messaging, context),
+            )
+            if submenu is not None:
+                submenu_options, submenu_prompt = submenu
+                return menu.submenu(option, submenu_options, submenu_prompt, child=True)
             if _push_read_only(self.messaging, context):
                 return await menu.root(
                     notice="普通群成员只能查看本群推送订阅，不能修改。",
                 )
-            submenu = self.messaging.subscription_submenu(
-                self.conversation,
-                option,
-                read_only=False,
-            )
-            if submenu is not None:
-                submenu_options, submenu_prompt = submenu
-                return menu.submenu(option, submenu_options, submenu_prompt)
             result = await asyncio.to_thread(
                 self.messaging.toggle_subscription,
                 self.conversation,
@@ -166,7 +179,13 @@ class _PortableSubscriptionMenus:
             )
             return await menu.root(notice=result)
 
-        return self._install(options, select, prompt, notice)
+        async def refresh(context: MessageInputContext) -> OutboundMessage:
+            return await replace(self, context=context).root()
+
+        with selecting_menu(None):
+            return self._install(
+                options, select, prompt, notice, refresh_on_return=refresh
+            )
 
     def submenu(
         self,
@@ -174,6 +193,8 @@ class _PortableSubscriptionMenus:
         options: list[PushSubscriptionOption],
         prompt: str,
         notice: str | None = None,
+        *,
+        child: bool = False,
     ) -> OutboundMessage:
         async def select(
             option: PushSubscriptionOption,
@@ -205,14 +226,18 @@ class _PortableSubscriptionMenus:
                 result,
             )
 
-        return self._install(options, select, prompt, notice)
+        return self._install(options, select, prompt, notice, child=child)
 
-    def _install(
+    def _install(  # noqa: PLR0913 - install a menu with its navigation callbacks
         self,
         options: list[PushSubscriptionOption],
         select: MenuSelect[PushSubscriptionOption],
         prompt: str,
         notice: str | None,
+        *,
+        child: bool = False,
+        refresh_on_return: Callable[[MessageInputContext], Awaitable[OutboundMessage]]
+        | None = None,
     ) -> OutboundMessage:
         return self.sessions.offer_menu(
             self.context,
@@ -220,6 +245,8 @@ class _PortableSubscriptionMenus:
                 choices=tuple(options),
                 select=select,
                 prompt=OutboundMessage.from_text(_menu_with_notice(prompt, notice)),
+                child=child,
+                refresh_on_return=refresh_on_return,
             ),
         )
 
@@ -265,7 +292,9 @@ class _PortablePushTimeMenus:
     ) -> OutboundMessage:
         if _push_read_only(self.messaging, self.context):
             return OutboundMessage.from_text("普通群成员不能修改推送时间。")
-        prompt = push_time_value_prompt(option)
+        prompt = push_time_value_prompt(option).replace(
+            "输入 0 退出", "输入 0 取消并返回上级"
+        )
 
         async def submit(text: str, context: MessageInputContext) -> OutboundMessage:
             menu = replace(self, context=context)
@@ -286,6 +315,7 @@ class _PortablePushTimeMenus:
         return self.sessions.offer_text_input(
             self.context,
             PortableTextInputSpec(
+                child=True,
                 submit=submit,
                 prompt=OutboundMessage.from_text(_menu_with_notice(prompt, error)),
             ),
@@ -328,7 +358,11 @@ def build_portable_text_operation(
         mentions = context.member_mentions
         if context.message.conversation.kind == "group":
             conversation = context.message.conversation
-            if conversation.platform is Platform.QQ_OFFICIAL and configured_mentions:
+            if (
+                not mentions
+                and conversation.platform is Platform.QQ_OFFICIAL
+                and configured_mentions
+            ):
                 if identity_principals is None:
                     return PortableReply(
                         OutboundMessage.from_text(
@@ -351,8 +385,8 @@ def build_portable_text_operation(
                     *mentions,
                     *(actor for actor in resolved if actor is not None),
                 )
-            elif conversation.platform is Platform.ONEBOT:
-                mentions = (*mentions, *configured_mentions)
+            elif not mentions and conversation.platform is Platform.ONEBOT:
+                mentions = configured_mentions
         messages = tuple(
             address_message_to(
                 OutboundMessage.from_text(message),
@@ -378,7 +412,9 @@ def _image_operation(
             try:
                 result = await service.fetch_single(config)
             except ImageNotFoundError:
-                return OutboundMessage.from_text(IMAGE_MISSING_MESSAGE)
+                return OutboundMessage.from_text(
+                    IMAGE_MISSING_MESSAGE, request_succeeded=False
+                )
             return result.to_outbound()
 
         request = service.parse_indexed(context.text)
@@ -388,7 +424,7 @@ def _image_operation(
         try:
             result = await service.fetch_indexed(config, request.index)
         except ImageIndexOutOfRangeError as exc:
-            return OutboundMessage.from_text(str(exc))
+            return OutboundMessage.from_text(str(exc), request_succeeded=False)
         return result.to_outbound(config.message_template, command=config.command)
 
     return execute

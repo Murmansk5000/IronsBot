@@ -24,6 +24,7 @@ from ironsbot.services.team.resource_subscriptions import (
     TeamResourcePrivateSubscriptionUpdate,
     TeamResourceStore,
     TeamResourceSubscription,
+    TeamResourceSubscriptionPrompt,
     TeamResourceSubscriptionTarget,
     TeamResourceSubscriptionUpdate,
     format_subscription_actors,
@@ -137,6 +138,11 @@ class TeamResourceService:
 
     def has_pending_prompt(self, conversation: ConversationRef) -> bool:
         return self._store.get_pending_prompt(conversation) is not None
+
+    def pending_prompt(
+        self, conversation: ConversationRef
+    ) -> TeamResourceSubscriptionPrompt | None:
+        return self._store.get_pending_prompt(conversation)
 
     def offer_subscription(
         self,
@@ -253,7 +259,7 @@ class TeamResourceService:
         accepted: bool,
     ) -> str | None:
         prompt = self._store.get_pending_prompt(conversation)
-        if prompt is None:
+        if prompt is None or prompt.prompted_by != actor:
             return None
         self._store.mark_prompt_handled(
             conversation=conversation,
@@ -271,6 +277,11 @@ class TeamResourceService:
             conversation,
             self._default_mentions_for(TeamResourceSubscriptionTarget(conversation)),
         )
+        if any(
+            item.team_id == prompt.team_id
+            for item in self._subscriptions_for_target(target)
+        ):
+            return f"本群已订阅战队 {prompt.team_id}，保留现有订阅设置。"
         self._save_target_subscription(
             target=target,
             result=result,
