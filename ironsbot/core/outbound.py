@@ -348,6 +348,7 @@ class SendResult:
     execution_identity: ExecutionIdentity | None = None
     attempted: bool = True
     reply_anchor_ids: tuple[str, ...] = ()
+    attempt_count: int = 1
 
     def __post_init__(self) -> None:
         if self.delivered and not (self.message_id or "").strip():

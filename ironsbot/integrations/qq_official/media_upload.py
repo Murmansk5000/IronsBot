@@ -6,11 +6,15 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from qqbot_agent_sdk.constants import MEDIA_TYPE_IMAGE
+
+from ironsbot.core.delivery_attempt import controlled_delivery
+from ironsbot.integrations.qq_official.delivery_diagnostics import delivery_phase
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -37,6 +41,19 @@ class QQOfficialMediaUpload:
     temporary_root: Path
 
     async def upload_image(
+        self,
+        scope: Literal["c2c", "group"],
+        target_id: str,
+        payload: QQOfficialImagePayload,
+    ) -> str:
+        async with (
+            delivery_phase("upload_prepare")
+            if controlled_delivery.get()
+            else nullcontext()
+        ):
+            return await self._upload_image(scope, target_id, payload)
+
+    async def _upload_image(
         self,
         scope: Literal["c2c", "group"],
         target_id: str,

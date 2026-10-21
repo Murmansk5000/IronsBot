@@ -115,9 +115,7 @@ async def test_dynamic_fast_group_reaches_image_while_other_link_waits(
     )
     item = _item()
     targets = BiliPushTargets([slow, fast], [], [], [])
-    task = asyncio.create_task(
-        sender.send(item, int(time.time()), 1310714247, targets)
-    )
+    task = asyncio.create_task(sender.send(item, int(time.time()), 1310714247, targets))
     try:
         await asyncio.wait_for(slow_started.wait(), 1)
         await asyncio.wait_for(fast_image_sent.wait(), 1)
@@ -237,7 +235,7 @@ def test_offline_does_not_consume_unsent_stage(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_complete_dynamic_does_not_retry_failed_image_or_repeat_notice(
+async def test_complete_dynamic_retries_failed_image_without_repeating_success(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -270,12 +268,9 @@ async def test_complete_dynamic_does_not_retry_failed_image_or_repeat_notice(
     targets = BiliPushTargets([TARGET], [], [], [])
     await sender.send(item, int(time.time()), 1310714247, targets, ("preview",))
     count = len(messenger.calls)
-    assert count == len(("link", "text", "image"))
+    assert count == len(("link", "text", "image", "image_retry"))
     await sender.send(item, int(time.time()), 1310714247, targets)
     ledger.recover()
     await sender.send(item, int(time.time()), 1310714247, targets, resume=True)
     assert len(messenger.calls) == count
-    notices.send_private_to_superusers.assert_awaited_once()
-    text = notices.send_private_to_superusers.await_args.args[0]
-    assert "任务机器人（QQ：200）" in text
-    assert "赛尔号（UID：1310714247）" in text
+    notices.send_private_to_superusers.assert_not_awaited()

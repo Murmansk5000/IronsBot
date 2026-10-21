@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Resume only original target stages never attempted before this process."""
+"""Resume original targets' safe unfinished units without resetting retry budgets."""
 
 from __future__ import annotations
 

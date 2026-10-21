@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.core.delivery_attempt import execution_account
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
@@ -266,20 +267,21 @@ class QQOfficialOutboundMessenger:
             payloads, reply_context if message_id is not None else None
         )
         try:
-            if conversation.kind == "group":
-                result = await bot.send_to_group(
-                    conversation.id,
-                    payloads,
-                    msg_id=message_id,
-                    msg_seq=message_sequence,
-                )
-            else:
-                result = await bot.send_to_c2c(
-                    conversation.id,
-                    payloads,
-                    msg_id=message_id,
-                    msg_seq=message_sequence,
-                )
+            with execution_account(account_id):
+                if conversation.kind == "group":
+                    result = await bot.send_to_group(
+                        conversation.id,
+                        payloads,
+                        msg_id=message_id,
+                        msg_seq=message_sequence,
+                    )
+                else:
+                    result = await bot.send_to_c2c(
+                        conversation.id,
+                        payloads,
+                        msg_id=message_id,
+                        msg_seq=message_sequence,
+                    )
         except Exception as error:  # noqa: BLE001 - transport boundary
             return replace(
                 qq_official_exception_result(error), execution_identity=identity

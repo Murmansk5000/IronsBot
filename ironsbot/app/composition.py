@@ -385,6 +385,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         proactive_delivery=proactive_delivery,
         ai_service=ai,
         config=settings.bilibili,
+        cache_paths=cache_paths,
     )
 
     def feature_visible_for_extension(context: CommandContext, feature: str) -> bool:

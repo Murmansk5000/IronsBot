@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from ironsbot.core.outbound import DeliveryFailureKind, SendResult
+from ironsbot.integrations.qq_official.delivery_diagnostics import QQDeliveryPhaseError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -80,6 +81,51 @@ class QQOfficialHttpClient:
 
 
 def qq_official_exception_result(error: Exception) -> SendResult:
+    if isinstance(error, QQDeliveryPhaseError):
+        api_error = _find_api_error(error)
+        kind = (
+            _api_failure_kind(api_error)
+            if api_error is not None
+            else DeliveryFailureKind.RETRYABLE
+            if error.original_type in {"ConnectError", "ConnectTimeout", "PoolTimeout"}
+            else DeliveryFailureKind.UNCERTAIN
+            if error.phase == "message_submit"
+            else DeliveryFailureKind.RETRYABLE
+            if error.transport_failure
+            else DeliveryFailureKind.PERMANENT
+        )
+        if (
+            error.http_status is not None
+            and _HTTP_CLIENT_ERROR_STATUS
+            <= error.http_status
+            < _HTTP_SERVER_ERROR_STATUS
+            and error.http_status != _HTTP_TOO_MANY_REQUESTS_STATUS
+            and error.api_code not in _RETRYABLE_API_CODES
+        ):
+            kind = DeliveryFailureKind.PERMANENT
+        elif (
+            error.http_status is not None
+            and error.http_status >= _HTTP_SERVER_ERROR_STATUS
+        ):
+            kind = (
+                DeliveryFailureKind.UNCERTAIN
+                if error.phase == "message_submit"
+                else DeliveryFailureKind.RETRYABLE
+            )
+        if error.phase != "message_submit" and error.original_type in {
+            "UploadDailyLimitExceededError",
+            "UploadFileTooLargeError",
+            "ValueError",
+            "FileNotFoundError",
+        }:
+            kind = DeliveryFailureKind.PERMANENT
+        return SendResult(
+            delivered=False,
+            error_code=f"{error.phase}:{error.api_code or error.original_type}",
+            error_message=str(error),
+            trace_id=error.trace_id,
+            failure_kind=kind,
+        )
     if isinstance(error, QQOfficialPartialDeliveryError):
         api_error = _find_api_error(error)
         return SendResult(

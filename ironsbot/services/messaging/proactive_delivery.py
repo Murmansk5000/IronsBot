@@ -60,7 +60,7 @@ class ProactiveDeliverySummary:
 class ProactiveDeliveryPolicy:
     max_attempts: int = 3
     max_parallel_targets: int = -1
-    retry_batch_divisor: int = 3
+    retry_batch_divisor: int = 2
     retry_delay_seconds: float = 2.0
 
 
@@ -97,6 +97,8 @@ class ProactiveMessageDelivery:
         subscription_key: str | None = None,
         include_promotions: bool = False,
         max_attempts: int | None = None,
+        retry_delays_seconds: tuple[float, ...] | None = None,
+        split_failed_targets: bool = False,
     ) -> ProactiveDeliverySummary:
         """Deliver one message to many conversations with shared push policy."""
 
@@ -110,6 +112,8 @@ class ProactiveMessageDelivery:
             subscription_key=subscription_key,
             include_promotions=include_promotions,
             max_attempts=max_attempts,
+            retry_delays_seconds=retry_delays_seconds,
+            split_failed_targets=split_failed_targets,
         )
 
     async def send_many(  # noqa: PLR0913 - per-call delivery policy
@@ -121,6 +125,8 @@ class ProactiveMessageDelivery:
         subscription_key: str | None = None,
         include_promotions: bool = False,
         max_attempts: int | None = None,
+        retry_delays_seconds: tuple[float, ...] | None = None,
+        split_failed_targets: bool = False,
     ) -> ProactiveDeliverySummary:
         """Deliver per-conversation messages without exposing adapter targets."""
 
@@ -146,12 +152,21 @@ class ProactiveMessageDelivery:
                 for conversation in blocked
             },
         )
-        attempts = max(1, max_attempts or self.policy.max_attempts)
+        attempts = (
+            len(retry_delays_seconds) + 1
+            if retry_delays_seconds is not None
+            else max(1, max_attempts or self.policy.max_attempts)
+        )
         for attempt in range(1, attempts + 1):
             if not pending:
                 break
-            if attempt > 1 and self.policy.retry_delay_seconds > 0:
-                await asyncio.sleep(self.policy.retry_delay_seconds)
+            delay = (
+                retry_delays_seconds[attempt - 2]
+                if retry_delays_seconds is not None and attempt > 1
+                else self.policy.retry_delay_seconds
+            )
+            if attempt > 1 and delay > 0:
+                await asyncio.sleep(delay)
             batch_size = (
                 len(pending)
                 if self.policy.max_parallel_targets == -1
@@ -163,6 +178,15 @@ class ProactiveMessageDelivery:
                     ),
                 )
             )
+            if split_failed_targets:
+                from ironsbot.services.messaging.retry_batches import retry_batch_size
+
+                batch_size = retry_batch_size(
+                    len(pending),
+                    self.policy.max_parallel_targets,
+                    self.policy.retry_batch_divisor,
+                    retry=attempt > 1,
+                )
             next_pending = await self._run_attempt(
                 pending,
                 state,

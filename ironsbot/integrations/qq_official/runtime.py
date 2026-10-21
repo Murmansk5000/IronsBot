@@ -12,7 +12,6 @@ from threading import Lock
 from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.api_client import QQApiClient
-from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
@@ -20,6 +19,7 @@ from ironsbot.core.message_input import MessageInputContext, MessageInputKind
 from ironsbot.core.outbound import ExecutionIdentity, OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
+from ironsbot.integrations.qq_official.controlled_upload import ControlledMediaUploader
 from ironsbot.integrations.qq_official.group_message_events import (
     GROUP_MESSAGE_CREATE,
     enable_qq_event_dispatch,
@@ -303,7 +303,7 @@ class QQOfficialRuntime:
                 sender=TencentQQClient(
                     api,
                     QQOfficialMediaUpload(
-                        MediaUploader(
+                        ControlledMediaUploader(
                             api,
                             http_client,
                             log_tag=f"IronsBot:{label}",
