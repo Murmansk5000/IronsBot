@@ -487,8 +487,11 @@ def test_seer_database_rejects_release_without_schema_contract(
 @pytest.mark.parametrize(
     "missing", ["table", "diamonds_per_ticket", "source", "source_text"]
 )
-def test_seer_release_requires_ticket_rule_schema(tmp_path: Path, missing: str) -> None:
+def test_seer_release_accepts_optional_ticket_rule_schema(
+    tmp_path: Path, missing: str
+) -> None:
     from ironsbot.integrations.seer_data.release_contract import (
+        _schema_fingerprint,
         validate_published_seerapi_release,
     )
 
@@ -502,8 +505,27 @@ def test_seer_release_requires_ticket_rule_schema(tmp_path: Path, missing: str) 
                 connection.execute(
                     text(f"ALTER TABLE skin_ticket_rule DROP COLUMN {missing}")
                 )
-        with pytest.raises(SeerApiReleaseContractError, match="skin_ticket_rule"):
-            validate_published_seerapi_release(engine)
+            tables = tuple(
+                str(name)
+                for name in connection.execute(
+                    text(
+                        "SELECT name FROM sqlite_master WHERE type='table' "
+                        "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                    )
+                ).scalars()
+            )
+            connection.execute(
+                text("UPDATE seerapi_metadata SET value=:value WHERE key=:key"),
+                {"key": "seerapi_schema_tables", "value": json.dumps(tables)},
+            )
+            connection.execute(
+                text("UPDATE seerapi_metadata SET value=:value WHERE key=:key"),
+                {
+                    "key": "seerapi_schema_fingerprint",
+                    "value": _schema_fingerprint(connection, tables),
+                },
+            )
+        validate_published_seerapi_release(engine)
     finally:
         engine.dispose()
 

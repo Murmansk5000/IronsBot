@@ -34,6 +34,7 @@ COUPON_DISCOUNT = 20
 FIRST_COUPON_RATE = 10
 SECOND_COUPON_RATE = 7
 SMALL_PRICE = 15
+PRICE_QUERY_COUNT = 2
 
 
 @pytest.mark.parametrize(
@@ -319,7 +320,7 @@ def test_format_skin_price_lines_omits_duplicate_card_price() -> None:
     )
 
 
-def test_active_lucky_window_prices_are_loaded_in_one_query() -> None:
+def test_active_lucky_window_prices_are_batch_loaded_with_optional_rules() -> None:
     engine = create_engine("sqlite://")
     with Session(engine) as session:
         session.execute(text("CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT)"))
@@ -375,7 +376,7 @@ def test_active_lucky_window_prices_are_loaded_in_one_query() -> None:
             skin_ids=(1, 2, 3, 1),
             now=100,
         )
-        assert len(statements) == 1
+        assert len(statements) == PRICE_QUERY_COUNT
         assert prices[1].ticket_name == "星辉券"
         assert prices[1].ticket_diamonds == SECOND_COUPON_RATE
         assert "最低93钻" in format_lucky_window_price_lines(prices[1])[-1]
@@ -391,6 +392,16 @@ def test_active_lucky_window_prices_are_loaded_in_one_query() -> None:
         unknown = load_active_skin_store_prices(session, skin_ids=(1,), now=100)[1]
         assert unknown.ticket_name is None
         assert "券道具9" in format_lucky_window_price_lines(unknown)[-1]
+        session.execute(text("DROP TABLE skin_ticket_rule"))
+        missing = load_active_skin_store_prices(session, skin_ids=(1,), now=100)[1]
+        assert missing.price == ACTIVE_PRICE
+        assert missing.ticket_diamonds is None
+        assert "最低" not in format_lucky_window_price_lines(missing)[-1]
+        assert _load_store_prices(session, 1)[0].ticket_diamonds is None
+        session.execute(text("CREATE TABLE skin_ticket_rule (ticket_id INTEGER)"))
+        incomplete = load_active_skin_store_prices(session, skin_ids=(1,), now=100)[1]
+        assert incomplete.ticket_diamonds is None
+        assert "最低" not in format_lucky_window_price_lines(incomplete)[-1]
 
     assert prices[1].pool_id == 1
     assert prices[1].price == ACTIVE_PRICE
