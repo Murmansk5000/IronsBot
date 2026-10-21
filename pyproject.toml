@@ -19,7 +19,7 @@ dependencies = [
     "nonebot-plugin-htmlkit>=0.1.0rc5",
     "pillow>=13.0.0",
     "hishel[httpx]>=1.2.1",
-    "nonebot-plugin-apscheduler>=0.5.0",
+    "apscheduler>=3.11.2,<4.0.0",
     "python-dotenv>=1.2.2",
     "qrcode[pil]>=8.2",
 ]
