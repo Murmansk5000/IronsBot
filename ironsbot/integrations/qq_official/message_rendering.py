@@ -52,7 +52,7 @@ QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
 _MARKDOWN_MENU_NUMBER = re.compile(
     r"(?m)^(?P<prefix>[ \t]*(?:↳[ \t]*)?)(?P<number>\d+)\.(?=[ \t])"
 )
-_UNESCAPED_MARKDOWN_HASH = re.compile(r"(?<!\\)#")
+_MARKDOWN_URL_OR_HASH = re.compile(r"https?://[^\s<>]+|(?<!\\)#")
 
 
 def render_qq_official_outbound_message(
@@ -126,8 +126,8 @@ def _escape_markdown_menu_numbers(text: str) -> str:
 def _escape_mention_markdown_text(text: str) -> str:
     """Keep plain message text literal when a member mention requires Markdown."""
 
-    return _UNESCAPED_MARKDOWN_HASH.sub(
-        r"\\#",
+    return _MARKDOWN_URL_OR_HASH.sub(
+        lambda match: r"\#" if match.group() == "#" else match.group(),
         _escape_markdown_menu_numbers(text),
     )
 
