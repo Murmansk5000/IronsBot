@@ -86,16 +86,17 @@ def _load_shop_price(session: Session, skin_id: int) -> SkinShopPrice | None:
 
 def _load_store_prices(session: Session, skin_id: int) -> list[SkinStorePrice]:
     now = int(time.time())
+    rule_value, rule_join = _ticket_rule_sql(session)
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT offer.skin_id, pool_id, price, original_price, discount_rate,
                    selected_price, offer.ticket_id, ticket_num, start_time, end_time,
                    item.name AS ticket_name,
-                   rule.diamonds_per_ticket AS ticket_diamonds
+                   {rule_value} AS ticket_diamonds
             FROM skin_store_price AS offer
             LEFT JOIN item ON item.id = offer.ticket_id
-            LEFT JOIN skin_ticket_rule AS rule ON rule.ticket_id = offer.ticket_id
+            {rule_join}
             WHERE offer.skin_id = :skin_id
               AND (start_time <= 0 OR start_time <= :now)
               AND (end_time <= 0 OR :now <= end_time)
@@ -107,13 +108,27 @@ def _load_store_prices(session: Session, skin_id: int) -> list[SkinStorePrice]:
     return [_store_price(row) for row in rows]
 
 
+def _ticket_rule_sql(session: Session) -> tuple[str, str]:
+    """Optional pricing evidence must not block unrelated published data."""
+    columns = {
+        str(row[1])
+        for row in session.execute(text("PRAGMA table_info(skin_ticket_rule)"))
+    }
+    if not {"ticket_id", "diamonds_per_ticket", "source", "source_text"} <= columns:
+        return "NULL", ""
+    return (
+        "rule.diamonds_per_ticket",
+        "LEFT JOIN skin_ticket_rule AS rule ON rule.ticket_id = offer.ticket_id",
+    )
+
+
 def load_active_skin_store_prices(
     session: Session,
     *,
     skin_ids: tuple[int, ...],
     now: int | None = None,
 ) -> dict[int, SkinStorePrice]:
-    """Load the first active lucky-window price for each skin in one query."""
+    """Batch-load prices after one optional-rule schema check."""
 
     unique_ids = tuple(dict.fromkeys(skin_id for skin_id in skin_ids if skin_id > 0))
     if not unique_ids:
@@ -122,6 +137,7 @@ def load_active_skin_store_prices(
     params = {f"skin_id_{index}": skin_id for index, skin_id in enumerate(unique_ids)}
     params["now"] = int(time.time()) if now is None else now
     try:
+        rule_value, rule_join = _ticket_rule_sql(session)
         rows = session.execute(
             text(
                 f"""
@@ -129,10 +145,10 @@ def load_active_skin_store_prices(
                        selected_price, offer.ticket_id, ticket_num,
                        start_time, end_time,
                        item.name AS ticket_name,
-                       rule.diamonds_per_ticket AS ticket_diamonds
+                       {rule_value} AS ticket_diamonds
                 FROM skin_store_price AS offer
                 LEFT JOIN item ON item.id = offer.ticket_id
-                LEFT JOIN skin_ticket_rule AS rule ON rule.ticket_id = offer.ticket_id
+                {rule_join}
                 WHERE offer.skin_id IN ({placeholders})
                   AND (start_time <= 0 OR start_time <= :now)
                   AND (end_time <= 0 OR :now <= end_time)
