@@ -142,7 +142,7 @@ class RankSummaryProgress:
 
 @dataclass(slots=True)
 class BookBreakdownSummary:
-    pet_kind_count: int = 0
+    pet_kind_count: int | None = 0
     pet_kind: RankLookupResult | None = None
     skin: RankLookupResult | None = None
     countermark: RankLookupResult | None = None
@@ -200,7 +200,7 @@ class PlayerRankSummary:
         cls,
         results: Mapping[str, RankLookupResult],
         *,
-        pet_kind_count: int = 0,
+        pet_kind_count: int | None = 0,
         errors: tuple[str, ...] = (),
         failure: str | None = None,
     ) -> "PlayerRankSummary":

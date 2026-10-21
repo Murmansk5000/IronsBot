@@ -1,8 +1,6 @@
 from functools import partial
 
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.log import logger
-from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
@@ -16,16 +14,15 @@ from ironsbot.core.plugin_install import (
 )
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.replies import (
-    event_sender_at_user_ids,
-    finish_event_reply,
-    finish_matcher_message,
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
 )
 from ironsbot.integrations.onebot.rules import member_targets_command
 from ironsbot.services.messaging.meeting import (
-    build_meeting_reply,
     meeting_command_contracts,
+)
+from ironsbot.services.portable_operational_commands import (
+    build_portable_meeting_operations,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -50,31 +47,7 @@ def install(
             features, event, "meeting"
         ) and command_text_matches(event.get_plaintext(), commands)
 
-    async def handle_meeting_reply(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        reply = build_meeting_reply(number, template)
-        if not reply:
-            logger.warning(
-                "meeting command matched but messaging.meeting.number is empty"
-            )
-            await finish_event_reply(
-                matcher,
-                event,
-                "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。",
-            )
-            return
-
-        target_ids = tuple(
-            int(actor.id) for actor in message_input_context(event).member_mentions
-        )
-        await finish_matcher_message(
-            matcher,
-            reply,
-            at_user_ids=target_ids or event_sender_at_user_ids(event),
-            event=event,
-        )
+    operation = build_portable_meeting_operations(number, template)["meeting"]
 
     matcher = registry.on_message(
         policy=CommandPolicy.command("meeting", help_ids=("meeting",)),
@@ -82,7 +55,7 @@ def install(
         priority=registry.priority("meeting"),
         block=True,
     )
-    matcher.append_handler(handle_meeting_reply)
+    matcher.append_handler(make_portable_operation_handler(operation))
 
 
 def plugin_contribution(

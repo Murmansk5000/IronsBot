@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -124,6 +125,21 @@ async def test_admin_status_reconnects_before_querying_notice() -> None:
     result = await service(headless, FakeNotices()).query_admin()
     assert "重连结果：已登录米米号 456" in result.message
     assert headless.available[-1] == ("/开服查询重连", 456)
+    assert result.succeeded
+
+
+@pytest.mark.asyncio
+async def test_admin_reconnect_failure_is_not_a_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headless = FakeHeadless(connected=False)
+    login = AsyncMock(side_effect=ConnectionError("offline"))
+    monkeypatch.setattr(headless, "login", login)
+    result = await service(headless, FakeNotices("维护公告")).query_admin()
+    assert not result.succeeded
+    assert "重连结果：失败" in result.message
+    assert "维护公告" in result.message
+    login.assert_awaited_once()
 
 
 @pytest.mark.asyncio

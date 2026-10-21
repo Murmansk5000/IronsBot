@@ -19,9 +19,6 @@ from ironsbot.config.models.seer_lucky import (
 )
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.lucky_skin_window import (
-    OneBotLuckySkinWindowSubscriptionOptions,
-)
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.seer_data.skin_price_repository import (
     load_active_skin_store_prices,
@@ -64,6 +61,9 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowResult,
     LuckySkinWindowService,
     _parse_skin_ids,
+)
+from ironsbot.services.seer.lucky_skin_window_subscriptions import (
+    LuckySkinWindowSubscriptionOptions,
 )
 from ironsbot.services.seer.query_result import QueryReply, QueryResult
 from ironsbot.services.seer.skin_price import SkinStorePrice
@@ -679,7 +679,7 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
 def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
 
-    options = OneBotLuckySkinWindowSubscriptionOptions(
+    options = LuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
     ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
@@ -691,7 +691,7 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
         )
     ]
     assert (
-        OneBotLuckySkinWindowSubscriptionOptions(
+        LuckySkinWindowSubscriptionOptions(
             service,
             PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
         ).subscription_options(ConversationRef(Platform.ONEBOT, "group", "1001"))
@@ -700,7 +700,7 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
 
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     assert (
-        OneBotLuckySkinWindowSubscriptionOptions(
+        LuckySkinWindowSubscriptionOptions(
             service,
             PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
         ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
@@ -716,7 +716,7 @@ def test_subscription_option_displays_configured_time_and_timezone(
         time="06:20",
         timezone="UTC",
     )
-    option = OneBotLuckySkinWindowSubscriptionOptions(
+    option = LuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
     ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
@@ -729,7 +729,7 @@ def test_official_private_subscription_uses_verified_qq_identity(
 ) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
     principals = IdentityPrincipalService()
-    options = OneBotLuckySkinWindowSubscriptionOptions(
+    options = LuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
         principals,
@@ -780,7 +780,7 @@ def test_lucky_subscription_only_appears_on_selected_bot(tmp_path: Path) -> None
             onebot_qq_id=link.onebot_qq_id, official=link.official
         )
         routes.register(link)
-    options = OneBotLuckySkinWindowSubscriptionOptions(
+    options = LuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
         principals,

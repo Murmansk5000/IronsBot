@@ -448,12 +448,6 @@ max_tokens = 800
 # Example: 0.5
 temperature = 0.7
 
-# Default: false
-# EN: Send a processing notice before AI replies.
-# ZH: AI 回复前是否发送“处理中”提示。
-# Example: true
-waiting_notice = false
-
 # Default: 1500
 # EN: Maximum AI reply characters.
 # ZH: AI 回复最大字符数。
@@ -1048,11 +1042,17 @@ windows = [
 ]
 cooldown_message = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
 in_progress_message = "该命令正在处理中，请等待当前操作完成。"
-# EN: Same semantic target responses are suppressed for this period even when
-# command cooldown windows are disabled.
-# ZH: 同一语义动作和真实目标在此期间重复发送会被抑制；不受 enabled 开关影响。
-duplicate_window_seconds = 60.0
 duplicate_message = "该指令重复发送；后续重复不再提醒。"
+
+[messaging.command_cooldown.duplicate_window_seconds]
+# EN: Post-success duplicate windows in seconds, scoped to actor, bot, conversation,
+# action and real target. Zero disables completed-request suppression only.
+# ZH: 成功完成后，同一操作者、机器人、会话、动作及真实目标的重复限制秒数。
+# ZH: 0 表示不限制完成后重复；执行中防重复仍生效，不受上方 enabled 影响。
+# ZH: 菜单等待独立使用 120 秒；本配置不改变滑动窗口额度或网络请求超时。
+taomee = 120.0 # 淘米协议查询：玩家、联网榜单、阵容、橱窗。
+local = 0.0 # 本地：TD、帮助、绑定设置、本地资料、固定回复。
+other_network = 120.0 # 其他联网：B站在线查询、AI、更新检查。
 
 [messaging.command_cooldown.commands]
 # EN: Optional per-command window overrides. An empty list disables limits for that command.

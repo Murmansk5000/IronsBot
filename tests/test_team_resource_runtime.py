@@ -16,6 +16,7 @@ from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.headless_seer.client import ClientManager
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -222,7 +223,7 @@ def test_team_config_keeps_catalog_and_matcher_registration_in_sync(
         known_features={"team_resource_subscription"},
     )
     registry.validate_command_catalog(catalog)
-    assert len(registry.message_matchers) == (2 + bool(commands) if enabled else 0)
+    assert len(registry.message_matchers) == (1 + bool(commands) if enabled else 0)
     context = CommandContext(_actor(OWNER_ID), _group())
     target = TeamResourceSubscriptionTarget(_group())
     for text in ("资源查询", "本群资源", "战队"):
@@ -283,7 +284,7 @@ async def test_team_resource_manage_rule_reads_direct_member_mentions() -> None:
         reply_sender_user_id=345,
     )
 
-    assert resource._mention_actors_from_event(event) == (_actor(234),)
+    assert message_input_context(event).member_mentions == (_actor(234),)
     matcher = _team_resource_matcher("team_resource_manage")
     assert await matcher.rule(cast("Bot", None), event, {})
     assert await matcher.rule(cast("Bot", None), replied_event, {})

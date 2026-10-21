@@ -97,6 +97,7 @@ class RankPlayerPreparedReply:
     message: str
     on_delivered: Callable[[], None] | None = None
     lookup: RankLookupResult | None = None
+    request_succeeded: bool = True
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -160,9 +161,11 @@ class RankQueryService:
                 label="榜单查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return RankListPreparedReply(player_request_protection_message(error))
+            return RankListPreparedReply(
+                player_request_protection_message(error), request_succeeded=False
+            )
         except (RankPageConflictError, DataUnavailableError) as error:
-            return RankListPreparedReply(str(error))
+            return RankListPreparedReply(str(error), request_succeeded=False)
 
     async def score(
         self,
@@ -198,9 +201,11 @@ class RankQueryService:
                 label="榜单分数查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return RankListPreparedReply(player_request_protection_message(error))
+            return RankListPreparedReply(
+                player_request_protection_message(error), request_succeeded=False
+            )
         except (RankPageConflictError, DataUnavailableError) as error:
-            return RankListPreparedReply(str(error))
+            return RankListPreparedReply(str(error), request_succeeded=False)
 
     async def player(
         self,
@@ -228,7 +233,9 @@ class RankQueryService:
 
         spec = GLOBAL_RANKS[command.rank_key]
         if not is_valid_player_id(command.player_id):
-            return RankPlayerPreparedReply(PLAYER_ID_ERROR_MESSAGE)
+            return RankPlayerPreparedReply(
+                PLAYER_ID_ERROR_MESSAGE, request_succeeded=False
+            )
         quota_message = self._check_player_quota(command, actor)
         if quota_message:
             cached = fetch_cached_rank_player_result(
@@ -239,7 +246,7 @@ class RankQueryService:
                 return RankPlayerPreparedReply(
                     f"{cached.message}\n\n⚠️ 今日查询额度已用完，以上为缓存数据。"
                 )
-            return RankPlayerPreparedReply(quota_message)
+            return RankPlayerPreparedReply(quota_message, request_succeeded=False)
         anchor_only = bool(quota_message)
         try:
             result = await self._run_headless_request(
@@ -264,17 +271,24 @@ class RankQueryService:
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
-            return RankPlayerPreparedReply(error.message)
+            return RankPlayerPreparedReply(error.message, request_succeeded=False)
         except _PLAYER_REQUEST_ERRORS as error:
-            return RankPlayerPreparedReply(player_request_protection_message(error))
+            return RankPlayerPreparedReply(
+                player_request_protection_message(error), request_succeeded=False
+            )
         except TimeoutError:
-            return RankPlayerPreparedReply(f"❌ {spec.title}玩家查询超时，请稍后再试。")
+            return RankPlayerPreparedReply(
+                f"❌ {spec.title}玩家查询超时，请稍后再试。", request_succeeded=False
+            )
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             return RankPlayerPreparedReply(
-                self._policy.player_error(command.player_id, error)
+                self._policy.player_error(command.player_id, error),
+                request_succeeded=False,
             )
         except Exception as error:  # noqa: BLE001
-            return RankPlayerPreparedReply(f"❌ {spec.title}玩家查询失败：{error}")
+            return RankPlayerPreparedReply(
+                f"❌ {spec.title}玩家查询失败：{error}", request_succeeded=False
+            )
         if quota_message:
             return RankPlayerPreparedReply(
                 result.message
@@ -293,6 +307,7 @@ class RankQueryService:
                 else None
             ),
             lookup=result.lookup,
+            request_succeeded=result.lookup.failure is None,
         )
 
     async def _fetch_player_message(

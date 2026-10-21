@@ -447,6 +447,7 @@ class QQOfficialRuntime:
             app_id=app_id,
             event_type=message_event_family(event_type),
             message_id=incoming.message_id,
+            conversation_id=incoming.conversation.id,
         ):
             logger.info(
                 "QQ Official duplicate inbound message ignored: "

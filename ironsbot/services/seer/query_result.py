@@ -46,7 +46,7 @@ class QueryReply:
             parts.append(TextPart(image_error))
         if self.text:
             parts.append(TextPart(self.text))
-        return OutboundMessage(tuple(parts))
+        return OutboundMessage(tuple(parts), request_succeeded=self.complete)
 
     @property
     def rank_lookup_complete(self) -> bool:

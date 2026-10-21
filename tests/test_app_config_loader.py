@@ -967,11 +967,11 @@ default_at_users = ["at_user", "202"]
     config = load_settings(config_path)
 
     assert config.superuser_ids == frozenset({200, 300})
-    assert config.onebot_references.resolve_groups(
+    assert config.qq_references.resolve_groups(
         ["main_group", "100"],
         location="test.groups",
     ) == [100]
-    assert config.onebot_references.resolve_users(
+    assert config.qq_references.resolve_users(
         ["at_user", 202],
         location="test.users",
     ) == [201, 202]
@@ -1231,7 +1231,7 @@ watched_skin_ids = [1400538]
         ).hexdigest()
     )
     assert (
-        config.onebot_references.resolve_user(
+        config.qq_references.resolve_user(
             config.seer.lucky_skin_window.accounts[0].user,
             location="test",
         )

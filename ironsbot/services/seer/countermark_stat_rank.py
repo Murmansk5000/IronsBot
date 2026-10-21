@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.integrations.seer_data.countermark_stat_rank_repository import (
     load_countermark_rank_data,
 )
@@ -29,12 +30,14 @@ class CountermarkStatRankService:
     def __init__(self, data: SeerDataAccess) -> None:
         self._data = data
 
-    def query(self, command: CountermarkStatRankCommand) -> str:
+    def query(self, command: CountermarkStatRankCommand) -> str | OutboundMessage:
         try:
             with self._data.query(load_countermark_rank_data) as rank_data:
                 quality_map, mintmarks = rank_data
                 if command.angle_count is not None and not quality_map:
-                    return MISSING_MINTMARK_QUALITY_MESSAGE
+                    return OutboundMessage.from_text(
+                        MISSING_MINTMARK_QUALITY_MESSAGE, request_succeeded=False
+                    )
                 items = collect_countermark_rank_items(
                     mintmarks,
                     command,
@@ -42,7 +45,9 @@ class CountermarkStatRankService:
                 )
         except PublishedDataIncompleteError:
             logger.exception("published mintmark quality data is unavailable")
-            return MISSING_MINTMARK_QUALITY_MESSAGE
+            return OutboundMessage.from_text(
+                MISSING_MINTMARK_QUALITY_MESSAGE, request_succeeded=False
+            )
         return build_countermark_stat_rank_message(
             command,
             items,

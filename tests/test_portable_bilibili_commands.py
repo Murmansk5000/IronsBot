@@ -240,5 +240,6 @@ async def test_portable_bilibili_refresh_uses_shared_monitor_action() -> None:
         await operations["bilibili.refresh"]("动态刷新", _context("动态刷新")),
     )
 
-    assert cast("TextPart", result.parts[0]).text == "✅ 动态刷新完成。"
+    assert isinstance(result, PortableReply)
+    assert cast("TextPart", result.message.parts[0]).text == "✅ 动态刷新完成。"
     assert calls == 1

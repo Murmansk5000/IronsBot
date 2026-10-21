@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Strict resolution for configured OneBot user and group references."""
+"""Strict resolution for configured QQ user and group references."""
 
 from __future__ import annotations
 
@@ -18,15 +18,15 @@ from ironsbot.core.platform import (
 )
 
 
-class OneBotReferenceError(ValueError):
-    """Raised when a configured OneBot target cannot be resolved."""
+class QQReferenceError(ValueError):
+    """Raised when a configured QQ target cannot be resolved."""
 
     @classmethod
-    def empty_alias(cls, location: str) -> OneBotReferenceError:
+    def empty_alias(cls, location: str) -> QQReferenceError:
         return cls(f"{location} contains an empty alias")
 
     @classmethod
-    def numeric_alias(cls, location: str, alias: str) -> OneBotReferenceError:
+    def numeric_alias(cls, location: str, alias: str) -> QQReferenceError:
         return cls(f"{location}.{alias} must not use a numeric alias")
 
     @classmethod
@@ -34,7 +34,7 @@ class OneBotReferenceError(ValueError):
         cls,
         location: str,
         alias: str,
-    ) -> OneBotReferenceError:
+    ) -> QQReferenceError:
         return cls(f"{location}.{alias} must map to a positive integer ID")
 
     @classmethod
@@ -43,7 +43,7 @@ class OneBotReferenceError(ValueError):
         location: str,
         first_alias: str,
         second_alias: str,
-    ) -> OneBotReferenceError:
+    ) -> QQReferenceError:
         return cls(
             f"{location} aliases {first_alias} and {second_alias} "
             "must not map to the same target"
@@ -54,7 +54,7 @@ class OneBotReferenceError(ValueError):
         cls,
         location: str,
         kind: str,
-    ) -> OneBotReferenceError:
+    ) -> QQReferenceError:
         return cls(f"{location} contains an empty {kind} ref")
 
     @classmethod
@@ -63,7 +63,7 @@ class OneBotReferenceError(ValueError):
         location: str,
         kind: str,
         value: str,
-    ) -> OneBotReferenceError:
+    ) -> QQReferenceError:
         return cls(f"{location} references unknown {kind} alias: {value}")
 
     @classmethod
@@ -71,11 +71,11 @@ class OneBotReferenceError(ValueError):
         cls,
         location: str,
         kind: str,
-    ) -> OneBotReferenceError:
+    ) -> QQReferenceError:
         return cls(f"{location} must be a positive {kind} ID or known alias")
 
 
-def onebot_reference_list(value: object) -> list[str | int]:
+def qq_reference_list(value: object) -> list[str | int]:
     """Preserve numeric IDs while normalizing aliases for later resolution."""
 
     if value is None:
@@ -83,7 +83,7 @@ def onebot_reference_list(value: object) -> list[str | int]:
     if isinstance(value, str):
         text = value.strip()
         raw_items = (
-            json_array(text, name="OneBot reference list")
+            json_array(text, name="QQ reference list")
             if text.startswith("[")
             else csv_items(text)
         )
@@ -108,7 +108,7 @@ def onebot_reference_list(value: object) -> list[str | int]:
     return result
 
 
-OneBotReferenceList = Annotated[list[str | int], BeforeValidator(onebot_reference_list)]
+QQReferenceList = Annotated[list[str | int], BeforeValidator(qq_reference_list)]
 
 
 def normalize_alias_mapping(
@@ -123,21 +123,21 @@ def normalize_alias_mapping(
     for raw_alias, raw_target_id in value.items():
         alias = str(raw_alias).strip()
         if not alias:
-            raise OneBotReferenceError.empty_alias(location)
+            raise QQReferenceError.empty_alias(location)
         if alias.isdecimal():
-            raise OneBotReferenceError.numeric_alias(location, alias)
+            raise QQReferenceError.numeric_alias(location, alias)
         try:
             target_id = int(str(raw_target_id).strip())
         except (TypeError, ValueError) as exc:
-            raise OneBotReferenceError.invalid_alias_target(
+            raise QQReferenceError.invalid_alias_target(
                 location,
                 alias,
             ) from exc
         if target_id <= 0:
-            raise OneBotReferenceError.invalid_alias_target(location, alias)
+            raise QQReferenceError.invalid_alias_target(location, alias)
         existing_alias = target_aliases.get(target_id)
         if existing_alias is not None and existing_alias != alias:
-            raise OneBotReferenceError.duplicate_alias_target(
+            raise QQReferenceError.duplicate_alias_target(
                 location,
                 existing_alias,
                 alias,
@@ -148,8 +148,8 @@ def normalize_alias_mapping(
 
 
 @dataclass(frozen=True, slots=True)
-class OneBotReferenceResolver:
-    """Resolve configured user/group aliases and numeric OneBot IDs."""
+class QQReferenceResolver:
+    """Resolve configured user/group aliases and numeric QQ IDs."""
 
     group_aliases: Mapping[str, int]
     user_aliases: Mapping[str, int]
@@ -200,7 +200,7 @@ class OneBotReferenceResolver:
         *,
         location: str,
     ) -> list[ActorRef]:
-        """Compile configured OneBot users into platform-neutral actors."""
+        """Compile configured QQ users into platform-neutral actors."""
 
         return [
             ActorRef(Platform.ONEBOT, str(user_id))
@@ -208,7 +208,7 @@ class OneBotReferenceResolver:
         ]
 
     def actor_ref(self, reference: object, *, location: str) -> ActorRef:
-        """Compile one configured OneBot user into a platform-neutral actor."""
+        """Compile one configured QQ user into a platform-neutral actor."""
 
         return ActorRef(
             Platform.ONEBOT,
@@ -221,7 +221,7 @@ class OneBotReferenceResolver:
         *,
         location: str,
     ) -> list[ConversationRef]:
-        """Compile configured OneBot groups into typed conversations."""
+        """Compile configured QQ groups into typed conversations."""
 
         return [
             ConversationRef(Platform.ONEBOT, "group", str(group_id))
@@ -234,7 +234,7 @@ class OneBotReferenceResolver:
         *,
         location: str,
     ) -> ConversationRef:
-        """Compile one configured OneBot group into a typed conversation."""
+        """Compile one configured QQ group into a typed conversation."""
 
         return ConversationRef(
             Platform.ONEBOT,
@@ -248,7 +248,7 @@ class OneBotReferenceResolver:
         *,
         location: str,
     ) -> list[ConversationRef]:
-        """Compile configured OneBot users into their private conversations."""
+        """Compile configured QQ users into their private conversations."""
 
         return [
             private_conversation_for_actor(actor)
@@ -279,12 +279,12 @@ class OneBotReferenceResolver:
     ) -> int:
         value = str(reference).strip()
         if not value:
-            raise OneBotReferenceError.empty_reference(location, kind)
+            raise QQReferenceError.empty_reference(location, kind)
         if value in aliases:
             return aliases[value]
         if not value.isdecimal():
-            raise OneBotReferenceError.unknown_alias(location, kind, value)
+            raise QQReferenceError.unknown_alias(location, kind, value)
         target_id = int(value)
         if target_id <= 0:
-            raise OneBotReferenceError.invalid_reference(location, kind)
+            raise QQReferenceError.invalid_reference(location, kind)
         return target_id

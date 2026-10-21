@@ -4,18 +4,24 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, overload
 from weakref import WeakValueDictionary
 
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.semantic_requests import semantic_request_scope
+from ironsbot.core.semantic_requests import (
+    current_semantic_request_trace,
+    semantic_request_scope,
+)
 from ironsbot.services.operations.request_feedback import acknowledged_request_scope
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Iterator
+
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.core.response_admission import ResponseAdmissionDecision
@@ -32,6 +38,7 @@ class MenuRequestAdmission(Protocol):
         actor: ActorRef,
         conversation: ConversationRef,
         request: SemanticRequest,
+        bot_id: str = "",
     ) -> ResponseAdmissionDecision: ...
     def finish(self, token: object) -> None: ...
     def release(self, token: object) -> None: ...
@@ -49,6 +56,7 @@ class MenuCooldown(Protocol):
 class _Generation:
     expires_at: float
     active: bool = True
+    running: int = 0
 
 
 _CURRENT: ContextVar[_Generation | None] = ContextVar("menu_generation", default=None)
@@ -83,7 +91,11 @@ class _SelectionRun:
             None,
         )
         value = denied.feedback if denied else None
-        return as_portable_reply(value) if value else None
+        return (
+            PortableReply(OutboundMessage.from_text(value, request_succeeded=False))
+            if value
+            else None
+        )
 
     def release(self) -> None:
         if self.service is not None and self.admission is not None:
@@ -104,6 +116,7 @@ class _SelectionRun:
                 if reply.on_finished is not None:
                     reply.on_finished()
             finally:
+                self.failed = self.failed or reply.outcome.failed
                 self.complete()
                 self.release()
 
@@ -165,6 +178,67 @@ class PortableInteractions:
     def invalidate(self, context: MessageInputContext) -> None:
         self.invalidate_key(self.sessions._key(context))
 
+    @overload
+    async def execute_request(
+        self,
+        request: SemanticRequest,
+        context: MessageInputContext,
+        operation: Callable[[], Awaitable[PortableReply]],
+    ) -> PortableReply: ...
+
+    @overload
+    async def execute_request(
+        self,
+        request: SemanticRequest,
+        context: MessageInputContext,
+        operation: Callable[[], Awaitable[PortableReply | None]],
+    ) -> PortableReply | None: ...
+
+    async def execute_request(
+        self,
+        request: SemanticRequest,
+        context: MessageInputContext,
+        operation: Callable[[], Awaitable[PortableReply | None]],
+    ) -> PortableReply | None:
+        """Admit a resolved target once, sharing the menu/direct action identity."""
+        trace = current_semantic_request_trace()
+        if trace is not None and (
+            trace.actor == context.message.actor
+            and trace.request.action.id == request.action.id
+            and trace.request.target.key == request.target.key
+        ):
+            return await operation()
+        decision = (
+            self.request_service.admit(
+                actor=context.message.actor,
+                conversation=context.message.conversation,
+                request=request,
+                bot_id=context.request_bot_id,
+            )
+            if self.request_service is not None
+            else None
+        )
+        run = _SelectionRun(asyncio.Lock(), self.request_service, decision)
+        if run.denied:
+            return run.feedback() or PortableReply(
+                OutboundMessage.from_text("重复请求"), is_current=lambda: False
+            )
+        try:
+            with semantic_request_scope(request, actor=context.message.actor):
+                result = await operation()
+                return run.wrap(result) if result is not None else None
+        finally:
+            if not run.handed_off:
+                run.release()
+
+    @contextmanager
+    def navigation_scope(self, context: MessageInputContext) -> Iterator[None]:
+        token = _CURRENT.set(self._generation(self.sessions._key(context)))
+        try:
+            yield
+        finally:
+            _CURRENT.reset(token)
+
     def invalidate_key(self, key: _SessionKey) -> None:
         generation = self._generations.pop(key, None)
         if generation is not None:
@@ -173,7 +247,7 @@ class PortableInteractions:
     def _generation(self, key: _SessionKey) -> _Generation:
         now = self.sessions._now()
         for existing, generation in tuple(self._generations.items()):
-            if generation.expires_at <= now:
+            if generation.expires_at <= now and generation.running == 0:
                 self.invalidate_key(existing)
         return self._generations.setdefault(
             key, _Generation(now + self.sessions._ttl_seconds)
@@ -191,6 +265,7 @@ class PortableInteractions:
                 actor=context.message.actor,
                 conversation=context.message.conversation,
                 request=request,
+                bot_id=context.request_bot_id,
             )
             if request is not None
             else None
@@ -213,10 +288,24 @@ class PortableInteractions:
     ) -> PortableReply | None:
         if not self.sessions.recognizes_response(text, context):
             return None
+        prompt = self.sessions.active_prompt(context)
+        action = prompt.choice_from_action(text) if prompt is not None else None
         # Exit must not wait behind a slow query. Its generation is invalidated now.
-        if text.strip() == "0":
-            result = await self.sessions.select(text, context, allow_deferred=True)
-            return as_portable_reply(result) if result is not None else None
+        if text.strip() == "0" or (action is not None and action.id == "0"):
+            result = await self.sessions.select("0", context, allow_deferred=True)
+            if result is None:
+                return None
+            reply = as_portable_reply(result)
+            prompt = reply.message.prompt
+            if prompt is not None:
+                return replace(
+                    reply,
+                    is_current=lambda: (
+                        (active := self.sessions.active_prompt(context)) is not None
+                        and active.id == prompt.id
+                    ),
+                )
+            return reply
         lock = self._locks.get(self.sessions._key(context))
         if lock is not None and lock.locked():
             return self._queued_selection(text, context)
@@ -272,6 +361,7 @@ class PortableInteractions:
         )
         if run.denied:
             return run.feedback()
+        generation.running += 1
         try:
             await run.lock.acquire()
             run.acquired = True
@@ -308,6 +398,7 @@ class PortableInteractions:
                 self.sessions.discard(context)
             raise
         finally:
+            generation.running -= 1
             if not run.handed_off:
                 run.release()
 
@@ -317,6 +408,7 @@ class PortableInteractions:
         self.invalidate(context)
         reservation = self.sessions.reserve_responses(context, accepts_menu_input)
         generation = self._generation(self.sessions._key(context))
+        generation.running += 1
         generation_token = _CURRENT.set(generation)
         try:
             result = await operation(text, context)
@@ -327,6 +419,7 @@ class PortableInteractions:
             raise
         finally:
             _CURRENT.reset(generation_token)
+            generation.running -= 1
         if result is None:
             reservation.cancel()
             return None
@@ -340,6 +433,18 @@ class PortableInteractions:
         request: SemanticRequest | None = None,
         actor: ActorRef | None = None,
     ) -> PortableReply:
+        generation.running += 1
+        released = False
+
+        def finished() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            generation.running -= 1
+            if reply.on_finished is not None:
+                reply.on_finished()
+
         async def follow_up() -> OutboundMessage:
             assert reply.follow_up is not None
             token = _CURRENT.set(generation)
@@ -353,11 +458,10 @@ class PortableInteractions:
         return replace(
             reply,
             is_current=lambda: (
-                generation.active
-                and generation.expires_at > self.sessions._now()
-                and (reply.is_current is None or reply.is_current())
+                generation.active and (reply.is_current is None or reply.is_current())
             ),
             follow_up=follow_up if reply.follow_up is not None else None,
+            on_finished=finished,
         )
 
 

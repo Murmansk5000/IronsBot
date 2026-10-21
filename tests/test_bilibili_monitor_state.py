@@ -9,8 +9,8 @@ from ironsbot.config.models.features import (
     build_feature_service,
 )
 from ironsbot.config.models.identities import IdentityConfig
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import build_platform_reference_resolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
@@ -27,10 +27,7 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.onebot.bilibili.command_rules import (
-    is_bili_account_command,
-    is_bili_push_mode_command,
-)
+from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
 from ironsbot.services.bilibili import accounts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
@@ -120,7 +117,7 @@ def _target_service(
         build_bili_configured_targets(
             config,
             build_platform_reference_resolver(
-                OneBotReferenceResolver({}, {}),
+                QQReferenceResolver({}, {}),
                 IdentityConfig(),
                 {},
             ),
@@ -253,18 +250,16 @@ def test_bili_push_mode_command_accepts_spaces_in_public_account_name() -> None:
 def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
     command = "B站推送模式 赛尔号官号 链接"
 
-    assert not is_bili_push_mode_command(
+    assert not matches_bilibili_command(
+        "bilibili.push_mode",
         _features(),
         group_message_event(command, group_id=987654321),
-        {},
     )
-    state: dict[str, object] = {}
-    assert is_bili_push_mode_command(
+    assert matches_bilibili_command(
+        "bilibili.private_push_mode",
         _features(user_policy={"123": ["bili_push"]}),
         private_message_event(command, user_id=123),
-        state,
     )
-    assert state
 
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:
@@ -282,15 +277,18 @@ def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None
 def test_bili_account_matcher_keeps_push_subscriptions_group_manager_only() -> None:
     command = "B站账号"
 
-    assert not is_bili_account_command(
+    assert not matches_bilibili_command(
+        "bilibili.accounts",
         _features({"987654321": ["bili_push"]}),
         group_message_event(command, group_id=987654321),
     )
-    assert is_bili_account_command(
+    assert matches_bilibili_command(
+        "bilibili.accounts",
         _features({"987654321": ["bili_push"]}),
         group_admin_message_event(command, group_id=987654321),
     )
-    assert is_bili_account_command(
+    assert matches_bilibili_command(
+        "bilibili.accounts",
         _features({"987654321": ["bili_query"]}),
         group_message_event(command, group_id=987654321),
     )

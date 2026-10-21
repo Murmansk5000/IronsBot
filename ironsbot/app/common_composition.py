@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Compose cross-feature runtime dependencies for the current OneBot host."""
+"""Compose shared runtime dependencies and platform delivery adapters."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.core.push_routing import PushRouteDecision
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
-from ironsbot.integrations.onebot.matchers import PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     install_outbound_rate_limit_hooks,
@@ -53,7 +52,6 @@ _LOGGER = logging.getLogger(__name__)
 class CommonComponents:
     """Shared runtime dependencies constructed once per application process."""
 
-    prompt_sessions: PromptSessionManager
     features: FeatureService
     promotions: PromotionCatalog
     subscriptions: PushUnsubscribeStore
@@ -100,12 +98,12 @@ def build_common_components(
     )
     bot_router = BotRouter(
         settings.messaging.bot_routing,
-        settings.onebot_references,
+        settings.qq_references,
         settings.bot.use_default_for_unconfigured_targets,
     )
     routed_onebot_groups = (
         {
-            settings.onebot_references.resolve_group(
+            settings.qq_references.resolve_group(
                 target_ref,
                 location=f"messaging.bot_routing.groups.{target_ref}",
             )
@@ -214,7 +212,7 @@ def build_common_components(
         use_default_for_unconfigured_targets=settings.bot.use_default_for_unconfigured_targets,
         onebot_preferred_users=frozenset(
             str(
-                settings.onebot_references.resolve_user(
+                settings.qq_references.resolve_user(
                     target, location=f"messaging.bot_routing.users.{target}"
                 )
             )
@@ -262,7 +260,6 @@ def build_common_components(
         ),
     )
     return CommonComponents(
-        prompt_sessions=PromptSessionManager(),
         features=features,
         promotions=promotions,
         subscriptions=subscriptions,

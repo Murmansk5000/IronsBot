@@ -1,5 +1,9 @@
 # IronsBot 多平台架构重构工作分解
 
+本文包含阶段性历史记录。2026-10-21 后的实际入口及旧接口清理状态以
+[公共操作核对](onebot-menu-parity.md) 为准；下文历史 `resolve_player_target`
+适配器已移除，目标解析直接进入公共操作和 `PlayerIdResolver`。
+
 本文把长期架构目标拆成可独立验证的阶段工作项。它的职责是记录迁移顺序、依赖、
 完成证据和回滚边界；长期所有权、目标契约和 transition 准入规则以
 [ARCHITECTURE.md](../ARCHITECTURE.md) 为准，工作方式以

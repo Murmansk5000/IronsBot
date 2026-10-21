@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,  # noqa: TC002 - NoneBot resolves handler annotations
 )
-from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
@@ -20,10 +19,14 @@ from ironsbot.core.plugin_install import (
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.matchers import CommandPolicy
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
+)
 from ironsbot.integrations.onebot.rules import bot_mention
+from ironsbot.services.ai.fallback_operations import addressed_hint
 
 if TYPE_CHECKING:
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -53,12 +56,9 @@ def install(
     input_routing: AiInputRoutingService,
     addressed_input_hints: AddressedInputHintService,
 ) -> None:
-    async def handle_hint(matcher: Matcher, event: GroupMessageEvent) -> None:
-        if not addressed_input_hints.admit(message_input_context(event)):
-            await matcher.finish()
-        await finish_event_reply(
-            matcher, event, addressed_input_hints.reply(command_context(event))
-        )
+    async def operation(text: str, context: MessageInputContext):
+        del text
+        return addressed_hint(addressed_input_hints, input_routing, context)
 
     matcher = registry.on_message(
         policy=CommandPolicy.exempt("unclaimed direct mention hint"),
@@ -67,7 +67,7 @@ def install(
         priority=registry.priority("ai_chat"),
         block=True,
     )
-    matcher.append_handler(handle_hint)
+    matcher.append_handler(make_portable_operation_handler(operation))
 
 
 def plugin_contribution(

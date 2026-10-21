@@ -12,6 +12,7 @@ from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
+    SemanticTarget,
 )
 from ironsbot.services.player_binding_confirmation import confirm_shortcut_binding
 from ironsbot.services.player_extension_commands import query_player_extension
@@ -23,6 +24,7 @@ from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
+    extension_action_allowed,
 )
 from ironsbot.services.seer.player_query import (
     available_player_detail_requests,
@@ -132,7 +134,7 @@ class _PortablePlayerOperations:
             else "default"
         )
 
-        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+        async def fetch(player_id: int, context: MessageInputContext) -> PortableReply:
             reservation = self.sessions.reserve_responses(
                 context,
                 lambda value: value.strip().isdigit(),
@@ -165,6 +167,17 @@ class _PortablePlayerOperations:
                 reservation.cancel()
                 return reply
             return reservation.guard(reply)
+
+        async def query(player_id: int, selected: MessageInputContext) -> PortableReply:
+            return await self.sessions.interactions.execute_request(
+                SemanticRequest(
+                    ActionDefinition("seer.player.info", "米米号基础资料"),
+                    SemanticTarget(str(player_id), f"米米号 {player_id}"),
+                    SemanticRequestSource.DIRECT,
+                ),
+                selected,
+                lambda: fetch(player_id, selected),
+            )
 
         return await select_player_target(
             reference,
@@ -271,7 +284,7 @@ class _PortablePlayerOperations:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
             raise ValueError(msg)
 
-        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+        async def fetch(player_id: int, context: MessageInputContext) -> PortableReply:
             if parsed.kind == "beast_rank":
                 if self.rank_queries is None or not self.features.is_feature_allowed(
                     context.message.actor, context.message.conversation, "seer_rank"
@@ -282,6 +295,17 @@ class _PortablePlayerOperations:
                 self.service,
                 PlayerShortcutCommand(parsed.kind, player_id),
                 context,
+            )
+
+        async def query(player_id: int, selected: MessageInputContext) -> PortableReply:
+            return await self.sessions.interactions.execute_request(
+                player_shortcut_semantic_request(
+                    kind=parsed.kind,
+                    player_id=player_id,
+                    source=SemanticRequestSource.DIRECT,
+                ),
+                selected,
+                lambda: fetch(player_id, selected),
             )
 
         async def confirmed_query(
@@ -433,7 +457,9 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     menu_actions: tuple[PlayerDetailMenuAction, ...] = (),
 ) -> PortableReply:
     if result.message:
-        return _text_reply(result.message)
+        return PortableReply(
+            OutboundMessage.from_text(result.message, request_succeeded=False)
+        )
     pending = result.pending
     if pending is None:
         msg = "player query returned neither a message nor pending data"
@@ -466,6 +492,11 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
     extension_actions = tuple(
         action
         for action in (*extensions.actions(), *menu_actions)
+        if not isinstance(action, PlayerDetailExtensionAction)
+        or (
+            action.show_in_player_menu
+            and extension_action_allowed(action, context, features)
+        )
         if action.id != "player_team" or team_id > 0
         if features.is_feature_allowed(
             context.message.actor,
@@ -516,6 +547,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 pending.player_id,
                 context,
                 features,
+                sessions,
             )
         return await _player_shortcut_reply(service, command, context)
 
@@ -592,19 +624,35 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 *(frozenset(action.aliases) for action in extension_actions),
             ),
             shared_select=shared_select,
-            access=lambda responder: features.is_feature_allowed(
-                responder.message.actor, responder.message.conversation, "seer_player"
-            ),
-            can_select=lambda command, responder: features.is_feature_allowed(
-                responder.message.actor,
-                responder.message.conversation,
-                command.feature
-                if isinstance(
-                    command, (PlayerDetailExtensionAction, PlayerDetailMenuAction)
+            access=lambda responder: (
+                features.is_feature_allowed(
+                    responder.message.actor,
+                    responder.message.conversation,
+                    "seer_player",
                 )
-                else "seer_rank"
-                if command == "beast_rank"
-                else "seer_player",
+                and resolver.query_access_error(
+                    responder.message.actor,
+                    pending.player_id,
+                    target_source
+                    if responder.message.actor == context.message.actor
+                    else "shared_menu",
+                )
+                is None
+            ),
+            can_select=lambda command, responder: (
+                extension_action_allowed(command, responder, features)
+                if isinstance(command, PlayerDetailExtensionAction)
+                else features.is_feature_allowed(
+                    responder.message.actor,
+                    responder.message.conversation,
+                    command.feature
+                    if isinstance(
+                        command, (PlayerDetailExtensionAction, PlayerDetailMenuAction)
+                    )
+                    else "seer_rank"
+                    if command == "beast_rank"
+                    else "seer_player",
+                )
             ),
             semantic_request=semantic_request,
             shared_choice_indexes=frozenset(
@@ -615,6 +663,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             ),
             keep_open=True,
             exit_message="已退出米米号详情查询。",
+            child=True,
             prompt=OutboundMessage.from_text(
                 format_selection_menu(
                     title=f"{player_message}\n回复数字或栏目名称查看详情：",

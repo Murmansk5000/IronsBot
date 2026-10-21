@@ -22,15 +22,18 @@ from ironsbot.services.seer.external_references import (
 )
 from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
 )
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamQueryConfig
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.player_detail_actions import PlayerDetailActionRequest
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.team.resource import TeamResourceService
 
@@ -74,6 +77,20 @@ class SeerTeamQueryService:
         self._error_message = error_message
         self._team_resource = team_resource
         self._external_references = external_references
+
+    def subscription_reply(
+        self,
+        message: OutboundMessage,
+        context: MessageInputContext,
+        sessions: PortableQuerySessions,
+    ) -> OutboundMessage:
+        from ironsbot.services.team.subscription_confirmation import (
+            subscription_confirmation,
+        )
+
+        return subscription_confirmation(
+            self._team_resource, message, context, sessions
+        )
 
     @staticmethod
     def parse_team_ids(text: str) -> tuple[int, ...]:
@@ -243,6 +260,9 @@ def player_team_detail_action(
         query=query,
         action=ActionDefinition("player_team", "玩家所属战队"),
         work_unit="team",
+        present=lambda result, context, sessions: service.subscription_reply(
+            result.to_outbound(), context, sessions
+        ),
     )
 
 

@@ -34,6 +34,32 @@ _MIGRATIONS = (
             """,
         ),
     ),
+    SqliteMigration(
+        2,
+        statements=(
+            "ALTER TABLE qq_official_inbound_claims "
+            "RENAME TO qq_official_inbound_claims_v1",
+            "DROP INDEX qq_official_inbound_claims_claimed_at",
+            """
+            CREATE TABLE qq_official_inbound_claims (
+                app_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                claimed_at REAL NOT NULL,
+                PRIMARY KEY (app_id, event_type, conversation_id, message_id)
+            )
+            """,
+            """
+            INSERT INTO qq_official_inbound_claims
+            SELECT app_id, event_type, '', message_id, claimed_at
+            FROM qq_official_inbound_claims_v1
+            """,
+            "DROP TABLE qq_official_inbound_claims_v1",
+            "CREATE INDEX qq_official_inbound_claims_claimed_at "
+            "ON qq_official_inbound_claims (claimed_at)",
+        ),
+    ),
 )
 
 
@@ -60,6 +86,7 @@ class QQOfficialInboundDeduplicator:
         app_id: str,
         event_type: str,
         message_id: str,
+        conversation_id: str = "",
     ) -> bool:
         async with self._claim_lock:
             return await asyncio.to_thread(
@@ -67,9 +94,12 @@ class QQOfficialInboundDeduplicator:
                 app_id,
                 event_type,
                 message_id,
+                conversation_id,
             )
 
-    def _claim_sync(self, app_id: str, event_type: str, message_id: str) -> bool:
+    def _claim_sync(
+        self, app_id: str, event_type: str, message_id: str, conversation_id: str
+    ) -> bool:
         now = self.clock()
         with self._database.connect() as connection:
             connection.execute(
@@ -79,9 +109,23 @@ class QQOfficialInboundDeduplicator:
             cursor = connection.execute(
                 """
                 INSERT OR IGNORE INTO qq_official_inbound_claims (
-                    app_id, event_type, message_id, claimed_at
-                ) VALUES (?, ?, ?, ?)
+                    app_id, event_type, conversation_id, message_id, claimed_at
+                ) SELECT ?, ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM qq_official_inbound_claims
+                    WHERE app_id = ? AND event_type = ? AND message_id = ?
+                    AND conversation_id = ''
+                )
                 """,
-                (app_id, event_type, message_id, now),
+                (
+                    app_id,
+                    event_type,
+                    conversation_id,
+                    message_id,
+                    now,
+                    app_id,
+                    event_type,
+                    message_id,
+                ),
             )
             return cursor.rowcount == 1

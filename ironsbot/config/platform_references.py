@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ironsbot.config.models.identities import IdentityConfig
-    from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.qq_references import QQReferenceResolver
 
 
 class PlatformReferenceError(ValueError):
@@ -43,7 +43,7 @@ class QQOfficialReferenceAccount(Protocol):
 class PlatformReferenceResolver:
     """Resolve logical aliases into platform-scoped delivery endpoints."""
 
-    onebot: OneBotReferenceResolver
+    onebot: QQReferenceResolver
     qq_groups: Mapping[str, tuple[ConversationRef, ...]]
     qq_users: Mapping[str, tuple[ActorRef, ...]]
     account_app_ids: Mapping[str, str]
@@ -149,7 +149,7 @@ class PlatformReferenceResolver:
 
 
 def build_platform_reference_resolver(
-    onebot: OneBotReferenceResolver,
+    onebot: QQReferenceResolver,
     identities: IdentityConfig,
     qq_accounts: Mapping[str, QQOfficialReferenceAccount],
 ) -> PlatformReferenceResolver:

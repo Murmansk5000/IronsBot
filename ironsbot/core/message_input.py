@@ -39,6 +39,14 @@ class MessageInputContext:
         return self.message.text
 
     @property
+    def request_bot_id(self) -> str:
+        return (
+            self.execution_identity.account_id
+            if self.execution_identity is not None
+            else self.message.conversation.account_id or ""
+        )
+
+    @property
     def is_reply(self) -> bool:
         return bool(self.reply_reference_ids)
 

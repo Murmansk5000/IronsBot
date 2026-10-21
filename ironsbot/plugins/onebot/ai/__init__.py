@@ -8,7 +8,6 @@ from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves call
     Bot,
     MessageEvent,
 )
-from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -25,9 +24,13 @@ from ironsbot.integrations.onebot.context import (
     build_notice_source,
     command_context,
 )
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.matcher_support import bind
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
+)
+from ironsbot.services.ai.chat_operation import execute_chat
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.help_visibility import feature_help_visible
 
@@ -36,6 +39,7 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.ai.service import AiService
 
@@ -82,30 +86,15 @@ def install(
         state: T_State,
     ) -> None:
         prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
-        if not prompt:
-            await finish_event_reply(
-                matcher,
-                event,
-                "你想聊什么？可以 @我 后面直接写问题。",
+        source_context = await build_notice_source(event, prompt, bot=bot)
+
+        async def operation(text: str, context: MessageInputContext):
+            del text
+            return await execute_chat(
+                service, context, prompt, source_context=source_context
             )
 
-        if service.waiting_notice:
-            await send_event_reply(matcher, event, "处理中...")
-
-        message = message_input_context(event).message
-        reply = await service.chat_reply(
-            actor=message.actor,
-            conversation=message.conversation,
-            prompt=prompt,
-            source_context=await build_notice_source(
-                event,
-                prompt,
-                bot=bot,
-            ),
-        )
-        if reply is None:
-            raise FinishedException
-        await finish_event_reply(matcher, event, reply)
+        await make_portable_operation_handler(operation)(matcher, state, event)
 
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command(

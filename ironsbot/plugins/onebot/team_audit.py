@@ -20,7 +20,7 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.matchers import bind_async
+from ironsbot.integrations.onebot.matcher_support import bind_async
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory

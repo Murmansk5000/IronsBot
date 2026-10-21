@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.platform import (
     ActorRef,
@@ -13,6 +14,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_detail_actions import PlayerDetailActionRequest
 from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
@@ -23,7 +25,6 @@ from ironsbot.services.player_extension_commands import (
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -74,13 +75,16 @@ async def test_extensions_use_one_typed_request_and_delivery_template(
         aliases=("档案",),
         command_help_id="sample.detail",
         query=query_mock,
-        action=ActionDefinition("sample_detail", "档案"),
+        action=ActionDefinition(
+            "sample_detail", "档案", category=RequestCategory.OTHER_NETWORK
+        ),
     )
     extensions = PlayerDetailExtensionRegistry()
     extensions.register(action)
     features = cast(
         "FeatureService",
         SimpleNamespace(
+            is_message_blocked=lambda *_: False,
             is_feature_allowed=lambda *_: True,
             is_actor_superuser=lambda _: False,
         ),
@@ -147,11 +151,19 @@ async def test_extension_policy_is_rechecked_when_action_is_executed() -> None:
         aliases=("档案",),
         command_help_id="sample.detail",
         query=query,
-        action=ActionDefinition("sample_detail", "档案"),
+        action=ActionDefinition(
+            "sample_detail", "档案", category=RequestCategory.OTHER_NETWORK
+        ),
     )
     features = cast(
-        "FeatureService", SimpleNamespace(is_feature_allowed=lambda *_: False)
+        "FeatureService",
+        SimpleNamespace(
+            is_message_blocked=lambda *_: False, is_feature_allowed=lambda *_: False
+        ),
     )
     reply = await query_player_extension(action, 700001, context, features)
-    assert reply.message == QueryReply(text="该功能当前未对你开放。").to_outbound()
+    assert (
+        reply.message
+        == QueryReply(text="该操作当前未对你开放。", complete=False).to_outbound()
+    )
     query.assert_not_awaited()

@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: MIT
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     HelpEntry,
@@ -10,14 +9,16 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
+from ironsbot.integrations.onebot.portable_queries import (
+    make_authorized_portable_handler,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.official_identity_info import (
     official_identity_info_command_contracts,
+)
+from ironsbot.services.portable_operational_commands import (
+    build_portable_about_operation,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -30,14 +31,9 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def install(registry: MatcherFactory, service: AboutService) -> None:
-    async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
-        await finish_event_reply(
-            matcher,
-            event=event,
-            message=render_onebot_outbound_message(service.message()),
-        )
-
+def install(
+    registry: MatcherFactory, service: AboutService, features: FeatureService
+) -> None:
     matcher = registry.on_fullmatch(
         "关于",
         policy=CommandPolicy.command("about", help_ids=("about",)),
@@ -45,10 +41,18 @@ def install(registry: MatcherFactory, service: AboutService) -> None:
         priority=registry.priority("about"),
         block=True,
     )
-    matcher.append_handler(handle_about)
+    matcher.append_handler(
+        make_authorized_portable_handler(
+            build_portable_about_operation(service),
+            about_command_contracts()[0],
+            features,
+        )
+    )
 
 
-def plugin_contribution(service: AboutService) -> PluginContribution:
+def plugin_contribution(
+    service: AboutService, features: FeatureService
+) -> PluginContribution:
     """Declare the complete runtime contribution owned by this top-level plugin."""
 
     return PluginContribution(
@@ -64,9 +68,12 @@ def plugin_contribution(service: AboutService) -> PluginContribution:
             *about_command_contracts(),
             *official_identity_info_command_contracts(),
         ),
-        install=lambda registry: install(registry, service),
+        install=lambda registry: install(registry, service, features),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
-    context.contribute(__plugin_meta__, plugin_contribution(context.resources.about))
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(context.resources.about, context.resources.features),
+    )

@@ -107,6 +107,7 @@ class RankListSelection:
 class RankListPreparedReply:
     message: str
     selections: tuple[RankListSelection, ...] = ()
+    request_succeeded: bool = True
 
 
 @dataclass(frozen=True, slots=True)

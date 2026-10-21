@@ -22,16 +22,17 @@ from ironsbot.core.plugin_install import (
 from ironsbot.integrations.onebot.context import build_notice_source, command_context
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
 )
-from ironsbot.integrations.onebot.replies import finish_message_sequence
 from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
+from ironsbot.services.ai.fallback_operations import execute_intent, resolve_intent
 from ironsbot.services.help_visibility import feature_help_visible
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.ai.actions import AiIntentActionExecutor
     from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.ai.service import AiService
@@ -87,16 +88,16 @@ def install(
             command_context(event),
         ).try_intent:
             return False
-        message = input_context.message
         source_context = await build_notice_source(
             event,
             text,
             bot=bot,
         )
-        action = await dependencies.service.classify_intent(
+        action = await resolve_intent(
+            dependencies.service,
+            dependencies.input_routing,
+            input_context,
             text,
-            actor=message.actor,
-            conversation=message.conversation,
             source_context=source_context,
         )
         if action is None:
@@ -110,19 +111,20 @@ def install(
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        action = state[ACTION_KEY]
-        messages = await dependencies.executor.execute(
-            action,
-            event.get_plaintext(),
-            source_context=str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "") or None,
-        )
-        if not messages:
-            return
-        await finish_message_sequence(
-            matcher,
-            tuple(render_onebot_outbound_message(message) for message in messages),
-            event=event,
-        )
+        async def operation(text: str, context: MessageInputContext):
+            del context
+            reply = await execute_intent(
+                dependencies.executor,
+                state[ACTION_KEY],
+                text,
+                source_context=str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "")
+                or None,
+            )
+            if reply is None:
+                matcher.block = False
+            return reply
+
+        await make_portable_operation_handler(operation)(matcher, state, event)
 
     matcher = registry.on_message(
         policy=CommandPolicy.command(

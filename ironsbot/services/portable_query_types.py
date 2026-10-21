@@ -35,6 +35,7 @@ MenuSelect = Callable[
 ]
 MenuSemanticRequest = Callable[[_T, "MessageInputContext"], "SemanticRequest | None"]
 TextSubmit = Callable[[str, "MessageInputContext"], Awaitable[OutboundMessage]]
+MenuResume = Callable[["MessageInputContext"], Awaitable[OutboundMessage]]
 PendingResponseCheck = Callable[[str], bool]
 _SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
 
@@ -110,6 +111,9 @@ class PortableMenuSpec(Generic[_T]):
     exit_message: str = "已退出查询。"
     invalid_choice_message: str | None = None
     claim_unknown_numeric: bool = True
+    child: bool = False
+    refresh_on_return: MenuResume | None = None
+    exit_label: str | None = None
 
     def __post_init__(self) -> None:
         if self.labels and len(self.labels) != len(self.choices):
@@ -150,6 +154,7 @@ class PortableTextInputSpec:
     submit: TextSubmit
     prompt: OutboundMessage
     exit_message: str = "已退出查询。"
+    child: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +181,10 @@ class _PendingSelection:
     action: ActionDefinition | None = None
     invalid_choice_message: str | None = None
     claim_unknown_numeric: bool = True
+    parent: _PendingSelection | None = None
+    message: OutboundMessage | None = None
+    refresh_on_return: MenuResume | None = None
+    exit_label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +194,7 @@ class _PendingTextInput:
     exit_message: str
     session: PromptSession
     anchor_ids: frozenset[str] = frozenset()
+    parent: _PendingSelection | None = None
 
 
 @dataclass(slots=True)

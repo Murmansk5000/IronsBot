@@ -45,6 +45,7 @@ class NewContentMenuRenderer(Protocol):
         menu_title: str,
         expanded_categories: frozenset[NewContentCategory],
         auto_expand_max_items: int,
+        navigation_label: str = "退出",
     ) -> bytes: ...
 
 

@@ -40,6 +40,12 @@ if TYPE_CHECKING:
 
 @dataclass
 class _Service:
+    @staticmethod
+    def allows_target(
+        _actor: ActorRef, _target: TeamResourceSubscriptionTarget
+    ) -> bool:
+        return True
+
     targets: list[TeamResourceSubscriptionTarget] = field(default_factory=list)
     additions: list[
         tuple[TeamResourceSubscriptionTarget, int, int | None, ActorRef]
@@ -112,6 +118,12 @@ class _PlayerResolver:
 
 @dataclass
 class _TeamQuery:
+    @staticmethod
+    def subscription_reply(
+        message: OutboundMessage, _context: object, _sessions: object
+    ) -> OutboundMessage:
+        return message
+
     team_id: int | None = None
     detail_queries: list[tuple[int, ...]] = field(default_factory=list)
 
@@ -220,6 +232,7 @@ async def test_group_subscription_keeps_typed_platform_mentions() -> None:
     context = _context(
         "订阅战队1234567 2000",
         mentions=(MENTIONED,),
+        group_role="admin",
     )
 
     result = await operations["team_resource.subscribe"](context.text, context)
@@ -239,7 +252,7 @@ async def test_group_subscription_keeps_typed_platform_mentions() -> None:
 async def test_manual_at_text_is_not_treated_as_a_structured_identity() -> None:
     service = _Service()
     operations = _operations(service)
-    context = _context("订阅战队1234567 @123456")
+    context = _context("订阅战队1234567 @123456", group_role="admin")
 
     result = await operations["team_resource.subscribe"](context.text, context)
 
@@ -264,7 +277,7 @@ async def test_private_subscription_is_owned_by_the_actor() -> None:
 async def test_remove_and_empty_query_reuse_subscription_state() -> None:
     service = _Service(query_items=())
     operations = _operations(service)
-    context = _context("取消订阅战队1234567")
+    context = _context("取消订阅战队1234567", group_role="admin")
 
     removed = await operations["team_resource.unsubscribe"](context.text, context)
     queried = await operations["team_resource.query"]("战队", _context("战队"))

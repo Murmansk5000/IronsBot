@@ -5,7 +5,7 @@ import pytest
 from ironsbot.core.command_catalog import CommandContext, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.bilibili.command_rules import is_update_dynamic_command
+from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
 from ironsbot.services.about import about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
@@ -256,6 +256,6 @@ def test_bilibili_update_ownership_matches_actual_onebot_rule(
     contract = _by_id(bilibili_command_contracts())["bilibili.refresh"]
     text = prefix + command
     event = private_message_event(text, user_id=int(actor.id))
-    assert contract.matches_direct_input(context, text) is is_update_dynamic_command(
-        features, event
+    assert contract.matches_direct_input(context, text) is matches_bilibili_command(
+        "bilibili.refresh", features, event
     )

@@ -19,7 +19,8 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.matcher_support import bind
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 
 if TYPE_CHECKING:

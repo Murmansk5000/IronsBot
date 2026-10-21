@@ -50,8 +50,12 @@ def build_team_query_operation(
         if not context.has_member_mentions and re.fullmatch(
             r"\d+(?:\s+\d+)*", reference
         ):
-            return OutboundMessage.from_text(
-                await service.query(service.parse_team_ids(reference), actor),
+            return service.subscription_reply(
+                OutboundMessage.from_text(
+                    await service.query(service.parse_team_ids(reference), actor)
+                ),
+                context,
+                sessions,
             )
         reference = reference.removeprefix("米米号").strip()
 
@@ -66,8 +70,12 @@ def build_team_query_operation(
                 message.group_role in GROUP_MANAGER_ROLES
                 or features.is_actor_superuser(message.actor),
             )
-            return OutboundMessage.from_text(
-                await service.query_player_team(player_id, actor)
+            return service.subscription_reply(
+                OutboundMessage.from_text(
+                    await service.query_player_team(player_id, actor)
+                ),
+                context,
+                sessions,
             )
 
         if reference and not context.has_member_mentions:

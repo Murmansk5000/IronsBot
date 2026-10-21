@@ -75,6 +75,12 @@ class PortableSessionState:
         if not result.delivered:
             self.discard(context)
             return
+        expires_at = self._now() + self._ttl_seconds
+        pending = replace(
+            pending,
+            expires_at=expires_at,
+            session=replace(pending.session, expires_at=expires_at),
+        )
         anchor_ids = (
             frozenset((str(result.message_id), *result.reply_anchor_ids))
             if result.message_id

@@ -56,6 +56,7 @@ class NewContentMenuDocument:
     items: tuple[NewContentMenuItem, ...]
     skill_type_icons: tuple[tuple[int | str, str], ...]
     menu_title: str = "新增内容"
+    navigation_label: str = "退出"
 
     @property
     def templates(self) -> Mapping[str, object]:
@@ -65,6 +66,7 @@ class NewContentMenuDocument:
                 "menu_title": self.menu_title,
                 "items": self.items,
                 "skill_type_icons": MappingProxyType(dict(self.skill_type_icons)),
+                "navigation_label": self.navigation_label,
             }
         )
 
@@ -74,6 +76,8 @@ def present_new_content_menu(
     items: Sequence[NewContentMenuItem],
     skill_type_icons: Mapping[int | str, str],
     menu_title: str = "新增内容",
+    *,
+    navigation_label: str = "退出",
 ) -> NewContentMenuDocument:
     """Freeze prepared menu values into a render-ready document."""
     return NewContentMenuDocument(
@@ -81,6 +85,7 @@ def present_new_content_menu(
         items=tuple(items),
         skill_type_icons=tuple(skill_type_icons.items()),
         menu_title=menu_title,
+        navigation_label=navigation_label,
     )
 
 

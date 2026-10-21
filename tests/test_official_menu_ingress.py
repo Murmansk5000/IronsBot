@@ -8,7 +8,11 @@ import pytest
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser
 
-from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.config.models.messaging import (
+    CommandCooldownConfig,
+    DuplicateWindowConfig,
+)
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -86,6 +90,7 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
                         examples=("菜单",),
                         description="menu",
                         features_all=("help",),
+                        category=RequestCategory.LOCAL,
                     ),
                 ),
             ),
@@ -161,8 +166,7 @@ async def test_parsed_official_quote_uses_actual_receipt_and_independent_session
 def test_official_quote_content_recovers_missing_platform_anchor() -> None:
     sessions = PortableQuerySessions()
     prompt = (
-        "📖 可用功能：\n1. 帮助 — 按当前群权限显示功能\n"
-        "2. 关于 — 项目信息\n0. 【退出】"
+        "📖 可用功能：\n1. 帮助 — 按当前群权限显示功能\n2. 关于 — 项目信息\n0. 【退出】"
     )
     owner = _event("A", "帮助")
     menu = sessions.offer_menu(
@@ -221,6 +225,7 @@ async def test_bare_shortcut_does_not_select_previous_players_menu() -> None:
                         examples=("菜单",),
                         description="menu",
                         features_all=("help",),
+                        category=RequestCategory.LOCAL,
                     ),
                     CommandContract(
                         id="test.shortcut",
@@ -229,6 +234,7 @@ async def test_bare_shortcut_does_not_select_previous_players_menu() -> None:
                         examples=("收集",),
                         description="shortcut",
                         features_all=("help",),
+                        category=RequestCategory.LOCAL,
                     ),
                 ),
             ),
@@ -288,7 +294,7 @@ async def test_official_direct_pet_aliases_warn_once_while_rendering() -> None:
     sessions.interactions.request_service = InFlightRequestService(
         features,
         CommandCooldownConfig(
-            duplicate_window_seconds=60.0,
+            duplicate_window_seconds=DuplicateWindowConfig(local=60),
             duplicate_message="该指令重复发送；后续重复不再提醒。",
         ),
     )

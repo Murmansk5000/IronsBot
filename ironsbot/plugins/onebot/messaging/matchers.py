@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from nonebot.adapters.onebot.v11 import (
+from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves annotations
     GroupMessageEvent,
     MessageEvent,
     PrivateMessageEvent,
@@ -11,28 +11,24 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
-from ironsbot.core.outbound import OutboundMessage
-from ironsbot.integrations.onebot.matchers import (
-    CommandPolicy,
-    MatcherFactory,
-    bind,
-    bind_async,
-)
+from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.integrations.onebot.matcher_support import bind, bind_async
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
-)
-from ironsbot.integrations.onebot.replies import (
-    event_sender_at_user_ids,
-    finish_matcher_message,
-    finish_message_sequence,
-    send_matcher_message,
+from ironsbot.integrations.onebot.portable_queries import (
+    make_portable_operation_handler,
+    make_portable_query_handler,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
 from ironsbot.services.messaging.topic_commands import (
     build_topic_operations,
     parse_topic_command,
     topic_command_contracts,
+)
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_mention_operation,
+    build_portable_messaging_operations,
+    build_portable_text_operation,
 )
 
 from .matcher_rules import (
@@ -42,18 +38,20 @@ from .matcher_rules import (
     match_push_subscription_command,
     match_push_time_command,
 )
-from .push_subscription_handlers import handle_push_subscription_menu
-from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.config.models.messaging import (
-        MessageMentionReplyAction,
         MessageReplyAction,
     )
-    from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.qq_references import QQReferenceResolver
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.service import MessagingService, ReplyInteraction
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
-    from .push_time_handlers import RefreshPushTimeJobs
+    RefreshPushTimeJobs = Callable[[PushTimeOption], Awaitable[None]]
 
 
 def _message_subscription_priority(registry: MatcherFactory) -> int:
@@ -65,39 +63,22 @@ async def handle_message_command(
     event: PrivateMessageEvent | GroupMessageEvent,
     state: T_State,
     *,
-    references: OneBotReferenceResolver,
+    references: QQReferenceResolver,
+    sessions: PortableQuerySessions,
 ) -> None:
     action = state[MESSAGE_ACTION_KEY]
-    at_user_ids = (
-        [
-            *(
-                tuple(
-                    int(actor.id)
-                    for actor in message_input_context(event).member_mentions
-                )
-                or event_sender_at_user_ids(event)
-            ),
-            *references.resolve_users(
+    operation = build_portable_text_operation(
+        action,
+        tuple(
+            ActorRef(Platform.ONEBOT, str(user_id))
+            for user_id in references.resolve_users(
                 action.at_user_ids,
                 location=f"messaging.commands.{action.id}.at_user_ids",
-            ),
-        ]
-        if isinstance(event, GroupMessageEvent)
-        else []
+            )
+        ),
+        None,
     )
-    for message in action.messages[:-1]:
-        await send_matcher_message(
-            matcher,
-            message,
-            at_user_ids=at_user_ids,
-            event=event,
-        )
-    await finish_matcher_message(
-        matcher,
-        action.messages[-1],
-        at_user_ids=at_user_ids,
-        event=event,
-    )
+    await make_portable_query_handler(operation, sessions)(matcher, state, event)
 
 
 def _action_command_id(
@@ -114,20 +95,13 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
     registry: MatcherFactory,
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
-    references: OneBotReferenceResolver,
+    references: QQReferenceResolver,
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
+    query_sessions: PortableQuerySessions,
 ) -> None:
     if messaging.topics is not None:
         _install_topics(registry, messaging)
-
-    async def handle_mention_reply(
-        matcher: Matcher,
-        event: GroupMessageEvent,
-        state: T_State,
-    ) -> None:
-        action = cast("MessageMentionReplyAction", state[MESSAGE_ACTION_KEY])
-        await finish_message_sequence(matcher, tuple(action.messages), event=event)
 
     routes: tuple[tuple[ReplyInteraction, str, tuple[str, ...]], ...] = (
         ("direct", "message", command_help_ids),
@@ -158,6 +132,7 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
             bind_async(
                 handle_message_command,
                 references=references,
+                sessions=query_sessions,
             )
         )
 
@@ -168,7 +143,9 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
             priority=registry.priority("mention_reply"),
             block=True,
         )
-        mention_matcher.append_handler(handle_mention_reply)
+        mention_matcher.append_handler(
+            make_portable_operation_handler(build_portable_mention_operation(messaging))
+        )
 
     subscription_matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -190,18 +167,16 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
         priority=_message_subscription_priority(registry),
         block=True,
     )
-    subscription_matcher.handle()(
-        bind_async(
-            handle_push_subscription_menu,
-            messaging=messaging,
-        )
+    operations = build_portable_messaging_operations(
+        messaging, query_sessions, refresh_push_time_jobs=refresh_push_time_jobs
     )
-    push_time_matcher.handle()(
-        build_push_time_menu_handler(
-            refresh_push_time_jobs,
-            messaging,
+    for matcher, command in (
+        (subscription_matcher, "messaging.push_subscription"),
+        (push_time_matcher, "messaging.push_time"),
+    ):
+        matcher.append_handler(
+            make_portable_query_handler(operations[command], query_sessions)
         )
-    )
 
 
 def _install_topics(registry: MatcherFactory, messaging: MessagingService) -> None:
@@ -222,17 +197,11 @@ def _install_topics(registry: MatcherFactory, messaging: MessagingService) -> No
         assert parsed is not None
         return f"messaging.topic.{parsed.action}"
 
-    async def handle(
-        matcher: Matcher, event: PrivateMessageEvent | GroupMessageEvent
-    ) -> None:
-        context = message_input_context(event)
-        result = await operations[command_id(event, {})](context.text, context)
-        assert isinstance(result, OutboundMessage)
-        await finish_matcher_message(
-            matcher,
-            render_onebot_outbound_message(result),
-            event=event,
-        )
+    async def operation(text: str, context: MessageInputContext):
+        parsed = parse_topic_command(text, topics.known_keys)
+        if parsed is None:
+            return None
+        return await operations[f"messaging.topic.{parsed.action}"](text, context)
 
     matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -243,4 +212,4 @@ def _install_topics(registry: MatcherFactory, messaging: MessagingService) -> No
         priority=_message_subscription_priority(registry),
         block=True,
     )
-    matcher.append_handler(handle)
+    matcher.append_handler(make_portable_operation_handler(operation))

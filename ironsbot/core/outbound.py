@@ -103,16 +103,17 @@ MessagePart: TypeAlias = TextPart | BinaryImagePart | RemoteImagePart | MentionP
 class OutboundMessage:
     parts: tuple[MessagePart, ...]
     prompt: PromptSession | None = None
+    request_succeeded: bool = True
 
     def __post_init__(self) -> None:
         if not self.parts:
             raise OutboundMessageError.empty_message()
 
     @classmethod
-    def from_text(cls, text: str) -> OutboundMessage:
+    def from_text(cls, text: str, *, request_succeeded: bool = True) -> OutboundMessage:
         """Build the canonical one-part text message."""
 
-        return cls((TextPart(text),))
+        return cls((TextPart(text),), request_succeeded=request_succeeded)
 
 
 def address_message_to(
@@ -127,7 +128,7 @@ def address_message_to(
     prefix: list[MessagePart] = []
     for actor in targets:
         prefix.extend((MentionPart(actor), TextPart(" ")))
-    return OutboundMessage((*prefix, *message.parts), prompt=message.prompt)
+    return replace(message, parts=(*prefix, *message.parts))
 
 
 def format_outbound_message(

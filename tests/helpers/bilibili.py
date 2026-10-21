@@ -79,7 +79,7 @@ def build_test_bilibili_service(
             build_bili_configured_targets(
                 resolved,
                 build_platform_reference_resolver(
-                    runtime.onebot_references,
+                    runtime.qq_references,
                     IdentityConfig(),
                     {},
                 ),

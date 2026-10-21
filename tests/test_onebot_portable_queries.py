@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot import portable_queries
@@ -121,10 +122,21 @@ async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_men
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("text", ["收集", "巅峰", "群星牌", "档案"])
+@pytest.mark.parametrize(
+    ("text", "blocked"),
+    [
+        ("收集", False),
+        ("巅峰", False),
+        ("群星牌", False),
+        ("档案", False),
+        ("档案", True),
+    ],
+)
 async def test_registered_onebot_player_shortcut_runs_shared_delivery(
     monkeypatch: pytest.MonkeyPatch,
     text: str,
+    *,
+    blocked: bool,
 ) -> None:
     async def query(*_args: object, **_kwargs: object) -> QueryReply:
         await send_request_feedback(queued=False)
@@ -140,7 +152,9 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
             aliases=("档案",),
             command_help_id="sample.detail",
             query=service.shortcut,
-            action=ActionDefinition("sample_detail", "档案"),
+            action=ActionDefinition(
+                "sample_detail", "档案", category=RequestCategory.OTHER_NETWORK
+            ),
         )
     )
     matcher = Mock()
@@ -152,7 +166,11 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
             player_nickname_lookup=None,
             rank_queries=None,
         ),
-        features=Mock(),
+        features=Mock(
+            is_message_blocked=Mock(return_value=blocked),
+            is_feature_allowed=Mock(return_value=True),
+            is_actor_superuser=Mock(return_value=False),
+        ),
         player_id_resolver=PlayerIdResolver(lambda *_: None, lambda _: 700001),
         query_sessions=PortableQuerySessions(),
         on_message=Mock(return_value=matcher),
@@ -163,6 +181,11 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
     send = AsyncMock(return_value=SendResult(delivered=True, message_id="sent-1"))
     monkeypatch.setattr(portable_queries, "send_portable_event_reply", send)
     await handler(Mock(), {}, group_message_event(text))
+    if blocked and text == "档案":
+        service.shortcut.assert_not_awaited()
+        assert send.await_args is not None
+        assert send.await_args.args[2].request_succeeded is False
+        return
     service.shortcut.assert_awaited_once()
     expected_sends = ("progress", "result")
     assert send.await_count == len(expected_sends)

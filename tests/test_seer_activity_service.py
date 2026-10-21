@@ -124,11 +124,14 @@ def test_build_current_message_handles_empty_soon_ending_list() -> None:
 
 
 def test_newly_added_activity_message_requires_previous_week_snapshot() -> None:
+    from ironsbot.core.outbound import OutboundMessage
+
     service = _service([_row(1, "银河斗技场", end_day=12)], now=dt(11))
 
-    assert (
-        asyncio.run(service.build_newly_added_message())
-        == NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE
+    assert asyncio.run(
+        service.build_newly_added_message()
+    ) == OutboundMessage.from_text(
+        NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE, request_succeeded=False
     )
 
 
@@ -144,6 +147,7 @@ def test_newly_added_activity_message_lists_only_new_weekly_members() -> None:
 
     message = asyncio.run(service.build_newly_added_message())
 
+    assert isinstance(message, str)
     assert "📅【新增活动】" in message
     assert "审判天使" in message
     assert "银河斗技场" not in message

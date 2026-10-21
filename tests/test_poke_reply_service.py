@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from ironsbot.config.models.features import HelpConfig
-from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandCatalog,
@@ -222,7 +222,7 @@ def _service(
 
     return OneBotPokeReplyService(
         config=config or HelpConfig(),
-        references=OneBotReferenceResolver(
+        references=QQReferenceResolver(
             group_aliases=group_aliases or {},
             user_aliases=user_aliases or {},
         ),

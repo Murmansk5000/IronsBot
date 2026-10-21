@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, Mock
 import nonebot
 import pytest
 from nonebot.consts import CMD_ARG_KEY, PREFIX_KEY
-from nonebot.exception import FinishedException
 from nonebot.rule import Rule, TrieRule, command, fullmatch
 
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
@@ -327,16 +326,15 @@ async def test_handler_uses_parsed_index_once(
     state = {}
     TrieRule.get_value(cast("Bot", None), event, state)
     assert await rules["sendpic.memes"](cast("Bot", None), event, state)
-    parser = Mock(side_effect=AssertionError("handler must not parse again"))
+    parser = Mock(wraps=service.parse_indexed)
     monkeypatch.setattr(service, "parse_indexed", parser)
-    matcher = Mock(finish=AsyncMock(side_effect=FinishedException))
-    with pytest.raises(FinishedException):
-        await handlers["sendpic.memes"](matcher, state, event)
-    parser.assert_not_called()
+    matcher = Mock(send=AsyncMock(return_value={"message_id": 900}))
+    await handlers["sendpic.memes"](matcher, state, event)
+    parser.assert_called_once_with(event.get_plaintext())
     backend.count.assert_awaited_once_with("memes")
     if index == OUT_OF_RANGE_INDEX:
         backend.get_file.assert_not_awaited()
-        assert "1到3" in str(matcher.finish.call_args.args[0])
+        assert "1到3" in str(matcher.send.call_args.args[0])
     else:
         backend.get_file.assert_awaited_once()
         path = backend.get_file.call_args.args[0]
@@ -345,7 +343,7 @@ async def test_handler_uses_parsed_index_once(
             if index == SELECTED_INDEX
             else path in {"memes/1.png", "memes/2.png", "memes/3.png"}
         )
-        message = matcher.finish.await_args.args[0]
+        message = matcher.send.await_args.args[0]
         assert message["image"]
 
 

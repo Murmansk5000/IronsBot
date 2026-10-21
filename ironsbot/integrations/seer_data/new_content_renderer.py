@@ -61,6 +61,7 @@ async def render_new_content_menu(  # noqa: PLR0913
     menu_title: str = "新增内容",
     expanded_categories: frozenset[NewContentCategory] = frozenset(),
     auto_expand_max_items: int = 5,
+    navigation_label: str = "退出",
 ) -> bytes:
     """Render a release menu after all database state is frozen in a snapshot."""
 
@@ -72,6 +73,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         expanded_categories,
         auto_expand_max_items,
     )
+    request_key += f":navigation={navigation_label}"
     cache_entry = cache.entry("new_content", request_key)
     if cached := cache_entry.get():
         return cached
@@ -180,6 +182,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         f"{snapshot.update_label} · {menu_title}"
         if snapshot.update_label
         else menu_title,
+        navigation_label=navigation_label,
     )
     result = await render_new_content_document(render_html, document)
     if cacheable:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.config.models.seer import SeasonCountdownConfig
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.messaging.image_collage import (
     ImageCollageError,
     ImageCollageService,
@@ -203,7 +204,9 @@ async def test_weekly_preview_reports_source_failure() -> None:
         fail=True,
     )
 
-    assert await service.weekly_preview() == "图片素材获取失败，暂时无法显示。"
+    assert await service.weekly_preview() == OutboundMessage.from_text(
+        "图片素材获取失败，暂时无法显示。", request_succeeded=False
+    )
 
 
 @pytest.mark.asyncio

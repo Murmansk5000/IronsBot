@@ -18,9 +18,9 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig
-from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.promotions import PromotionCatalog
-from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
+from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
 )
@@ -40,21 +40,19 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class TestRuntime:
     features: FeatureService
-    onebot_references: OneBotReferenceResolver
+    qq_references: QQReferenceResolver
     outbound: GroupOutboundRateLimitService
     proactive_delivery: ProactiveMessageDelivery
     admin_notices: AdminNoticeService
     cooldown: CommandCooldownService
     in_flight_requests: InFlightRequestService
     matcher_priorities: MatcherPriorityConfig
-    prompt_sessions: PromptSessionManager
     tasks: TaskOwner
 
     def matcher_factory(self) -> MatcherFactory:
         return MatcherFactory(
             self.cooldown,
             self.matcher_priorities,
-            prompt_session_manager=self.prompt_sessions,
             in_flight_requests=self.in_flight_requests,
         )
 
@@ -81,7 +79,7 @@ def build_test_runtime(  # noqa: PLR0913
     )
     push_config = push_unsubscribe or PushUnsubscribeConfig()
     tasks = TaskOwner()
-    onebot_references = OneBotReferenceResolver(
+    qq_references = QQReferenceResolver(
         {},
         {},
     )
@@ -92,7 +90,7 @@ def build_test_runtime(  # noqa: PLR0913
     )
     router = BotRouter(
         BotRoutingConfig(),
-        onebot_references,
+        qq_references,
     )
     subscriptions = PushUnsubscribeStore(isolated_state_path)
     proactive_delivery = ProactiveMessageDelivery(
@@ -104,7 +102,7 @@ def build_test_runtime(  # noqa: PLR0913
     )
     return TestRuntime(
         features=features,
-        onebot_references=onebot_references,
+        qq_references=qq_references,
         outbound=outbound,
         proactive_delivery=proactive_delivery,
         admin_notices=AdminNoticeService(
@@ -120,7 +118,6 @@ def build_test_runtime(  # noqa: PLR0913
             cooldown_config or CommandCooldownConfig(),
         ),
         matcher_priorities=matcher_priority_config or MatcherPriorityConfig(),
-        prompt_sessions=PromptSessionManager(),
         tasks=tasks,
     )
 

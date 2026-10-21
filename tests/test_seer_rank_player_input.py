@@ -11,6 +11,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccountRegistry,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from ironsbot.services.seer.rank_list_models import RankPlayerTargetCommand
 from tests.helpers.onebot_events import group_message_event
 
 PLAYER_ID = 712_345_678
@@ -59,12 +60,10 @@ def test_rank_player_input_resolves_a_scoped_player_alias() -> None:
     )
 
     resolved = state[rank_list.RANK_PLAYER_COMMAND_KEY]
-    assert isinstance(resolved, rank_list._ResolvedRankPlayerCommand)
-    assert resolved.error is None
-    assert resolved.command is not None
-    assert (resolved.command.rank_key, resolved.command.player_id) == (
+    assert isinstance(resolved, RankPlayerTargetCommand)
+    assert (resolved.rank_key, resolved.player_reference) == (
         "成就点数",
-        PLAYER_ID,
+        "示例玩家",
     )
 
 
@@ -78,12 +77,10 @@ def test_rank_player_input_resolves_one_direct_member_mention() -> None:
     assert rank_list._is_rank_player_command(cast("Any", _group()), event, state)
 
     resolved = state[rank_list.RANK_PLAYER_COMMAND_KEY]
-    assert isinstance(resolved, rank_list._ResolvedRankPlayerCommand)
-    assert resolved.error is None
-    assert resolved.command is not None
-    assert (resolved.command.rank_key, resolved.command.player_id) == (
+    assert isinstance(resolved, RankPlayerTargetCommand)
+    assert (resolved.rank_key, resolved.player_reference) == (
         "群星牌",
-        PLAYER_ID,
+        None,
     )
 
 
@@ -99,6 +96,5 @@ def test_rank_player_input_rejects_a_mixed_alias_and_member_mention() -> None:
     assert rank_list._is_rank_player_command(cast("Any", _group()), event, state)
 
     resolved = state[rank_list.RANK_PLAYER_COMMAND_KEY]
-    assert isinstance(resolved, rank_list._ResolvedRankPlayerCommand)
-    assert resolved.command is None
-    assert resolved.error == "米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。"
+    assert isinstance(resolved, RankPlayerTargetCommand)
+    assert resolved.player_reference == "示例玩家"

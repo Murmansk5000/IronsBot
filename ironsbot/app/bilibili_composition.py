@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""OneBot Bilibili monitor assembly owned by application composition."""
+"""Shared Bilibili monitor assembly owned by application composition."""
 
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ def _private_routes(settings: Settings) -> BiliPrivateRoutes:
         use_default_for_unconfigured_targets=settings.bot.use_default_for_unconfigured_targets,
         onebot_preferred_users=frozenset(
             str(
-                settings.onebot_references.resolve_user(
+                settings.qq_references.resolve_user(
                     target, location=f"messaging.bot_routing.users.{target}"
                 )
             )

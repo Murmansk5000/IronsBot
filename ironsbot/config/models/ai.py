@@ -119,7 +119,6 @@ class AiConfig(BaseModel):
     timeout: float = Field(default=45.0, gt=0)
     max_tokens: int = Field(default=800, gt=0)
     temperature: float = Field(default=0.7, ge=0, le=2)
-    waiting_notice: bool = False
     max_reply_chars: int = Field(default=1500, gt=0)
     admin_notice_cooldown_seconds: float = Field(
         default=DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,

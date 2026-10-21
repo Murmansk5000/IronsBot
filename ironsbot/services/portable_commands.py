@@ -11,11 +11,12 @@ from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputKind
 from ironsbot.core.message_origin import message_origin
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.semantic_requests import (
-    ActionDefinition,
-    SemanticRequest,
-    SemanticRequestSource,
-    normalized_text_target,
+from ironsbot.core.semantic_requests import semantic_request_scope
+from ironsbot.services.ai.chat_operation import execute_chat
+from ironsbot.services.ai.fallback_operations import (
+    addressed_hint,
+    execute_intent,
+    resolve_intent,
 )
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.source_context import format_ai_source_context
@@ -44,6 +45,7 @@ from ironsbot.services.portable_lucky_skin_commands import (
 )
 from ironsbot.services.portable_menu_access import menu_access_resolver
 from ironsbot.services.portable_messaging_commands import (
+    build_portable_mention_operation,
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
     build_portable_text_operation,
@@ -51,7 +53,9 @@ from ironsbot.services.portable_messaging_commands import (
 from ironsbot.services.portable_new_content_commands import (
     build_portable_new_content_operations,
 )
+from ironsbot.services.portable_operation_access import authorized_operation
 from ironsbot.services.portable_operational_commands import (
+    build_portable_about_operation,
     build_portable_data_sync_operations,
     build_portable_docker_operations,
     build_portable_meeting_operations,
@@ -71,6 +75,10 @@ from ironsbot.services.portable_rank_commands import (
     build_portable_rank_operations,
 )
 from ironsbot.services.portable_reply import PortableOperation, PortableReply
+from ironsbot.services.portable_request_identity import (
+    direct_command_request,
+    execute_ai_fallback,
+)
 from ironsbot.services.portable_seer_commands import build_portable_seer_operations
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
@@ -78,7 +86,7 @@ from ironsbot.services.portable_team_resource_commands import (
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
-from ironsbot.services.seer.query_commands import is_query_input_syntax, pet_query_input
+from ironsbot.services.seer.query_commands import is_query_input_syntax
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -148,6 +156,7 @@ class PortableCommandRouter:
         messaging: MessagingService | None = None,
         identity_principals: IdentityPrincipalService | None = None,
         query_sessions: PortableQuerySessions | None = None,
+        resolved_target_commands: frozenset[str] = frozenset(),
     ) -> None:
         unknown = set(operations) - catalog.command_ids
         if unknown:
@@ -163,6 +172,7 @@ class PortableCommandRouter:
             raise PortableCommandRouterError.missing_operations(missing)
         self._catalog = catalog
         self._operations = dict(operations)
+        self._resolved_target_commands = resolved_target_commands
         self._features = features
         self._ai = ai
         if ai_intent_actions is None and any(
@@ -281,16 +291,11 @@ class PortableCommandRouter:
                 self._query_sessions.discard(context)
                 return None
             if self._messaging is not None:
-                mention_reply = self._messaging.match_mention_reply(context)
+                mention_reply = await build_portable_mention_operation(self._messaging)(
+                    command, context
+                )
                 if mention_reply is not None:
-                    messages = tuple(
-                        OutboundMessage.from_text(message)
-                        for message in mention_reply.messages
-                    )
-                    return PortableReply(
-                        messages[0],
-                        additional_messages=messages[1:],
-                    )
+                    return cast("PortableReply", mention_reply)
                 keyword_action = self._keyword_action(context)
                 if keyword_action is not None:
                     return cast(
@@ -301,19 +306,33 @@ class PortableCommandRouter:
                             self._identity_principals,
                         )(command, context),
                     )
-            return await self._fallback_reply(context, command_context, command)
+            return await execute_ai_fallback(
+                self._query_sessions,
+                context,
+                command,
+                lambda: self._fallback_reply(context, command_context, command),
+            )
         return await self._dispatch_contract(contract.id, command, context)
 
     async def _dispatch_contract(  # noqa: C901 - admission and delivery cleanup
         self, command_id: str, command: str, context: MessageInputContext
     ) -> PortableReply | None:
         request_service = self._query_sessions.interactions.request_service
-        request = self._direct_request(command_id, command)
+        contract = self._catalog.get(command_id)
+        assert contract is not None
+        request = (
+            None
+            if command_id in self._resolved_target_commands
+            else direct_command_request(
+                command_id, command, context, category=contract.category
+            )
+        )
         admission = (
             request_service.admit(
                 actor=context.message.actor,
                 conversation=context.message.conversation,
                 request=request,
+                bot_id=context.request_bot_id,
             )
             if request_service is not None and request is not None
             else None
@@ -326,14 +345,21 @@ class PortableCommandRouter:
             )
         token = admission.token if admission is not None else None
         try:
-            result = await self._query_sessions.interactions.execute(
-                self._operations[command_id], command, context
-            )
+            with semantic_request_scope(request, actor=context.message.actor):
+                result = await self._query_sessions.interactions.execute(
+                    authorized_operation(
+                        self._operations[command_id], contract, self._features
+                    ),
+                    command,
+                    context,
+                )
         except DataUnavailableError:
             if request_service is not None:
                 request_service.release(token)
             return PortableReply(
-                OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+                OutboundMessage.from_text(
+                    DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
+                )
             )
         except BaseException:
             if request_service is not None:
@@ -366,28 +392,12 @@ class PortableCommandRouter:
                 if reply.on_finished is not None:
                     reply.on_finished()
             finally:
-                if failed:
+                if failed or reply.outcome.failed:
                     request_service.release(token)
                 else:
                     request_service.finish(token)
 
         return replace(reply, on_delivery_failed=delivery_failed, on_finished=finished)
-
-    @staticmethod
-    def _direct_request(command_id: str, command: str) -> SemanticRequest | None:
-        target_text = (
-            pet_query_input().parse_argument(command)
-            if command_id == "seer.pet.query"
-            else command
-        )
-        target = normalized_text_target(target_text or "")
-        if target is None:
-            return None
-        return SemanticRequest(
-            action=ActionDefinition(id=command_id, label=command_id),
-            target=target,
-            source=SemanticRequestSource.DIRECT,
-        )
 
     def _matching_contract(
         self,
@@ -443,32 +453,29 @@ class PortableCommandRouter:
             command_context,
             normalized_text=prompt,
         )
-        message = context.message
         if decision.try_intent and self._ai_intent_actions is not None:
             source_context = format_ai_source_context(context)
-            action = await self._ai.classify_intent(
+            action = await resolve_intent(
+                self._ai,
+                self._ai_input_routing,
+                context,
                 prompt,
-                actor=message.actor,
-                conversation=message.conversation,
                 source_context=source_context,
             )
             if action is not None:
-                messages = await self._ai_intent_actions.execute(
+                reply = await execute_intent(
+                    self._ai_intent_actions,
                     action,
                     prompt,
                     source_context=source_context,
                 )
-                if messages:
-                    return PortableReply(messages[0], additional_messages=messages[1:])
+                if reply is not None:
+                    return reply
         if decision.try_chat:
-            if not prompt:
-                return PortableReply(
-                    OutboundMessage.from_text("你想聊什么？可以直接写问题。")
-                )
-            reply = await self._ai.chat_reply(
-                actor=message.actor,
-                conversation=message.conversation,
-                prompt=prompt,
+            reply = await execute_chat(
+                self._ai,
+                context,
+                prompt,
                 source_context=format_ai_source_context(context),
             )
             return (
@@ -476,13 +483,9 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if decision.offer_addressed_hint and self._addressed_input_hints.admit(context):
-            return PortableReply(
-                OutboundMessage.from_text(
-                    self._addressed_input_hints.reply(command_context)
-                )
-            )
-        return None
+        return addressed_hint(
+            self._addressed_input_hints, self._ai_input_routing, context
+        )
 
     def _message_is_blocked(self, context: MessageInputContext) -> bool:
         message = context.message
@@ -538,13 +541,6 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
     new_content_preview_max_items: int = 5,
 ) -> PortableCommandRouter:
-    async def about_message(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        del text, context
-        return about.message()
-
     sessions = query_sessions or PortableQuerySessions()
     seer_operations = build_portable_seer_operations(
         catalog,
@@ -663,6 +659,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
                 sessions,
                 notify_auth_invalid=bilibili_monitor.notify_auth_invalid,
                 refresh_now=bilibili_monitor.manual_refresh,
+                features=features,
             )
         ),
     )
@@ -707,7 +704,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
 
     operations: dict[str, PortableOperation] = {
-        "about": about_message,
+        "about": build_portable_about_operation(about),
         **seer_operations,
         **team_resource_operations,
         **activity_operations,
@@ -764,6 +761,11 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         messaging=messaging,
         identity_principals=identity_principals,
         query_sessions=sessions,
+        resolved_target_commands=frozenset(
+            key
+            for key, operation in operations.items()
+            if operation is extension_operation
+        ),
     )
 
 
