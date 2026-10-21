@@ -121,7 +121,14 @@ def semantic_request_scope(
     if request is None:
         yield
         return
-    token = _CURRENT_TRACE.set(SemanticRequestTrace(request, actor))
+    with semantic_request_trace_scope(SemanticRequestTrace(request, actor)):
+        yield
+
+
+@contextmanager
+def semantic_request_trace_scope(trace: SemanticRequestTrace | None) -> Iterator[None]:
+    """Restore a saved execution trace, including an explicitly empty scope."""
+    token = _CURRENT_TRACE.set(trace)
     try:
         yield
     finally:
