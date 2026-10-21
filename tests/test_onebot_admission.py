@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.config.models.transport import SelfCommandsConfig
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.core.own_commands import OwnAccountInput
@@ -25,6 +26,8 @@ from ironsbot.services.onebot_admission import (
     OneBotAdmissionService,
 )
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
+
+_FEATURES = FeatureService({}, {}, frozenset())
 
 
 def _input(source: str = "group") -> OneBotAdmissionInput:
@@ -96,7 +99,10 @@ async def test_observation_precedes_silence_and_only_group_messages_check_routes
     observer = Mock(observe_onebot=AsyncMock(side_effect=observe))
     routing = Mock(allows_incoming=Mock(side_effect=route))
     decision = await OneBotAdmissionService(
-        messages_enabled=enabled, identity_observer=observer, routing=routing
+        messages_enabled=enabled,
+        features=_FEATURES,
+        identity_observer=observer,
+        routing=routing,
     ).decide(_input(source))
     expected = ["observe"] if source in {"group", "sent"} else []
     if enabled and source == "group":
@@ -128,6 +134,7 @@ async def test_own_command_is_decided_before_routing_without_changing_authorizat
     routing = Mock(allows_incoming=Mock(return_value=False))
     decision = await OneBotAdmissionService(
         messages_enabled=True,
+        features=_FEATURES,
         routing=routing,
         self_commands=OwnAccountCommandPolicy(
             SelfCommandsConfig(enabled=not binding, prefixes=["demo "])
@@ -165,6 +172,7 @@ async def test_admission_faults_are_reported_and_never_granted(stage: str) -> No
         )
     result = await OneBotAdmissionService(
         messages_enabled=True,
+        features=_FEATURES,
         identity_observer=observer,
         routing=routing,
         self_commands=own_policy,
@@ -180,6 +188,7 @@ async def test_admission_cancellation_does_not_report_or_continue() -> None:
     routing = Mock()
     service = OneBotAdmissionService(
         messages_enabled=False,
+        features=_FEATURES,
         errors=errors,
         routing=routing,
         identity_observer=Mock(
@@ -207,11 +216,14 @@ def test_admission_runs_without_nonebot_imports() -> None:
             """
 import sys, asyncio
 sys.modules['nonebot'] = None
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.services.onebot_admission import (
     OneBotAdmissionService, OneBotAdmissionInput,
 )
 result = asyncio.run(
-    OneBotAdmissionService(messages_enabled=True).decide(OneBotAdmissionInput())
+    OneBotAdmissionService(
+        messages_enabled=True, features=FeatureService({}, {}, frozenset())
+    ).decide(OneBotAdmissionInput())
 )
 assert result.rejection is None
 """,

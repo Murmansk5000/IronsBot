@@ -15,6 +15,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.exception import IgnoredException
 
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import (
     ActorRef,
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 APP_ID = "official-app"
+_FEATURES = FeatureService({}, {}, frozenset())
 OFFICIAL_GROUP = "official-group"
 ONEBOT_GROUP = 10001
 OFFICIAL_BOT_QQ = 20002
@@ -481,7 +483,7 @@ async def test_consumed_mirror_cannot_be_reused_for_a_later_identity(
     service, store = _service(tmp_path, [100.0])
     path = tmp_path / "observations.sqlite"
     if restart:
-        service.claims = SqliteInboundMessageClaims(path)
+        service.claims = SqliteInboundMessageClaims(path, spawn=asyncio.create_task)
     first = _incoming("first", member_openid="first-member")
     second = _incoming("second", member_openid="second-member")
     mirror = _observation(
@@ -499,7 +501,9 @@ async def test_consumed_mirror_cannot_be_reused_for_a_later_identity(
     await remember(first)
     assert await service.observe_onebot(mirror)
     if restart:
-        service = replace(service, claims=SqliteInboundMessageClaims(path))
+        service = replace(
+            service, claims=SqliteInboundMessageClaims(path, spawn=asyncio.create_task)
+        )
     await remember(second)
     assert not await service.observe_onebot(mirror)
     assert (
@@ -576,11 +580,14 @@ async def test_real_observation_storage_failure_is_admin_only_without_fallback(
     tmp_path: Path,
 ) -> None:
     service, store = _service(tmp_path, [100.0])
-    service.claims = SqliteInboundMessageClaims(tmp_path)
+    service.claims = SqliteInboundMessageClaims(tmp_path, spawn=asyncio.create_task)
     errors = Mock(report=AsyncMock())
     ingress = OneBotEventIngress(
         OneBotAdmissionService(
-            messages_enabled=False, identity_observer=service, errors=errors
+            messages_enabled=False,
+            features=_FEATURES,
+            identity_observer=service,
+            errors=errors,
         )
     )
     with pytest.raises(IgnoredException, match="admission_failed"):
@@ -1212,6 +1219,7 @@ async def test_silent_ingress_observes_then_blocks_onebot_event(
     policy = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=False,
+            features=_FEATURES,
             identity_observer=service,
         )
     )
@@ -1237,6 +1245,7 @@ async def test_silent_ingress_observes_napcat_message_sent_then_blocks(
     policy = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=False,
+            features=_FEATURES,
             identity_observer=service,
         )
     )
@@ -1273,7 +1282,9 @@ async def test_silent_ingress_links_napcat_command_without_bot_mention(
     )
     assert event is not None
     policy = OneBotEventIngress(
-        OneBotAdmissionService(messages_enabled=False, identity_observer=service)
+        OneBotAdmissionService(
+            messages_enabled=False, features=_FEATURES, identity_observer=service
+        )
     )
 
     with pytest.raises(IgnoredException):
@@ -1301,6 +1312,7 @@ async def test_interactive_ingress_allows_onebot_event(tmp_path: Path) -> None:
     await OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
+            features=_FEATURES,
             identity_observer=service,
         )
     ).process(event)

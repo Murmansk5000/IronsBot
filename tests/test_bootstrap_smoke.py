@@ -57,6 +57,8 @@ dependencies.get_typed_signature = checked_signature
 from ironsbot.app.application import Application
 original_install = Application.install
 def checked_install(self, router):
+    assert router.ingress.claims.spawn == self.task_owner.create_draining
+    assert self.resources.onebot_ingress.admission.features is self.resources.features
     assert self.resources.onebot_messenger._self_commands is (
         self.resources.onebot_ingress.admission.self_commands
     )
@@ -218,6 +220,9 @@ assert state.resources.onebot_ingress.admission.errors is state.resources.comman
 from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
 assert state.resources.identity_observer is not None
 assert isinstance(state.resources.identity_observer.claims, SqliteInboundMessageClaims)
+assert state.resources.identity_observer.claims.spawn == (
+    state.task_owner.create_draining
+)
 assert state.resources.identity_observer.claims.path == (
     state.settings.paths.cache_root / "identity" / "observations.sqlite"
 )

@@ -91,6 +91,7 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.plugin_install import NamedLifecycleHook
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.identity_link_store import (
@@ -492,11 +493,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         merge_actor_principal,
         merge_conversation_principal,
         common.qq_official,
+        transaction_spawn=task_owner.create_draining,
         addresses=addresses,
     )
     command_errors = CommandErrorReporter(common.admin_notices)
     onebot_ingress = OneBotEventIngress(
         OneBotAdmissionService(
+            features=features,
             messages_enabled=(
                 settings.outbound_platform_selection.onebot_message_handling_enabled
             ),
@@ -699,6 +702,8 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
     on_principal_merge: Callable[[ActorPrincipalMerge], None],
     on_conversation_merge: Callable[[ConversationPrincipalMerge], None],
     qq_official: QQOfficialRuntime | None,
+    *,
+    transaction_spawn: TaskSpawner,
     addresses: OfficialAddressService | None = None,
 ) -> SilentIdentityObservationService | None:
     if not settings.bot.onebot.identity_verification:
@@ -750,6 +755,7 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
         on_link=register_link,
         on_group_link=register_group_link,
         claims=SqliteInboundMessageClaims(
-            settings.paths.cache_root / "identity" / "observations.sqlite"
+            settings.paths.cache_root / "identity" / "observations.sqlite",
+            spawn=transaction_spawn,
         ),
     )

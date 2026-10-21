@@ -24,7 +24,7 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.command_ingress import install_command_ingress
-from ironsbot.integrations.onebot.matchers import MatcherFactory
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
@@ -193,6 +193,52 @@ async def test_production_entry_does_not_call_matcher_send(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "private,source", [(False, "user"), (True, "user"), (False, "group")]
+)
+async def test_blacklist_precedes_all_native_matcher_priorities(
+    runtime: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    private: bool,
+    source: str,
+) -> None:
+    import nonebot.message as message_runtime
+
+    from ironsbot.core.platform import ActorRef
+    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
+    from tests.helpers.onebot_events import group_message_event, private_message_event
+
+    monkeypatch.setattr(message_runtime, "_event_preprocessors", set())
+    blocked = frozenset({"blacklist"})
+    if source == "user":
+        runtime.user_policies[ActorRef(Platform.ONEBOT, "101")] = blocked
+    else:
+        runtime.policies[runtime.group] = blocked
+    OneBotEventIngress(
+        OneBotAdmissionService(messages_enabled=True, features=runtime.limits.features)
+    ).install()
+    called = AsyncMock()
+    earlier = runtime.factory.on_message(
+        policy=CommandPolicy.exempt("test native propagation"),
+        priority=-2000,
+        block=False,
+    )
+
+    async def handle() -> None:
+        await called()
+
+    earlier.append_handler(handle)
+    event = private_message_event if private else group_message_event
+    await handle_event(runtime.bot, event("执行", user_id=101))
+    called.assert_not_awaited()
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+    assert runtime.sends == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("private", [False, True])
 async def test_actual_command_sends_enforce_windows_without_global_quota_hooks(
     runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, *, private: bool
@@ -292,7 +338,10 @@ async def test_wrong_connection_cannot_feed_identity_observer(
     observer = Mock(observe_onebot=AsyncMock())
     OneBotEventIngress(
         OneBotAdmissionService(
-            messages_enabled=True, identity_observer=observer, errors=runtime.errors
+            messages_enabled=True,
+            features=runtime.limits.features,
+            identity_observer=observer,
+            errors=runtime.errors,
         )
     ).install()
     await handle_event(runtime.bot, group_message_event("执行", self_id=2, user_id=101))
@@ -369,6 +418,7 @@ async def test_actual_preprocessor_fault_is_admin_only_and_stops_all_business(
     ingress = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=enabled,
+            features=runtime.limits.features,
             identity_observer=observer,
             errors=runtime.errors,
         )
@@ -396,6 +446,7 @@ async def test_own_account_menu_uses_public_replay_and_navigation(
     admission = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
+            features=runtime.limits.features,
             self_commands=OwnAccountCommandPolicy(
                 SelfCommandsConfig(enabled=True, prefixes=["demo "])
             ),
@@ -433,6 +484,7 @@ async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs
     admission = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
+            features=runtime.limits.features,
             self_commands=OwnAccountCommandPolicy(
                 SelfCommandsConfig(enabled=True, prefixes=["demo "])
             ),
@@ -468,15 +520,23 @@ async def test_own_account_transport_admission_does_not_bypass_business_policy(
     admission = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
+            features=runtime.limits.features,
             self_commands=OwnAccountCommandPolicy(
                 SelfCommandsConfig(enabled=True, prefixes=["demo "])
             ),
         )
     )
     event = self_command_event("demo 执行")
-    await admission.process(event)
-    assert event.accepted
-    await handle_event(runtime.bot, event)
+    if "blacklist" in features:
+        from nonebot.exception import IgnoredException
+
+        with pytest.raises(IgnoredException, match="conversation_blacklisted"):
+            await admission.process(event)
+        assert not event.accepted
+    else:
+        await admission.process(event)
+        assert event.accepted
+        await handle_event(runtime.bot, event)
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
 

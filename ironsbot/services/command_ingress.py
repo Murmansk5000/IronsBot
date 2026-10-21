@@ -47,10 +47,14 @@ class CommandIngress:
         """Return whether input was claimed, independently of delivery success."""
         if context.mentions_everyone:
             return False
-        if not await self._claim_delivery(context):
-            return True
         try:
+            if self.router.is_blocked(context) or not await self._claim_delivery(
+                context
+            ):
+                return True
             context = await self._prepare(context)
+            if self.router.is_blocked(context):
+                return True
             if allows is not None and not allows(context):
                 hint = self.router.bare_mention_hint(context)
                 if hint is not None:
@@ -82,8 +86,8 @@ class CommandIngress:
         except Exception as error:  # noqa: BLE001 - shared input failure boundary
             reply = PortableReply(await self.delivery.errors.reply(context, error))
             await self.delivery.deliver(context, reply, send, on_sent=on_sent)
-            return True
-        await self.router.execute(context, send, on_sent=on_sent)
+        else:
+            await self.router.execute(context, send, on_sent=on_sent)
         return True
 
     async def _claim_delivery(self, context: MessageInputContext) -> bool:

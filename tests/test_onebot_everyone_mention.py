@@ -5,6 +5,7 @@ import pytest
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.exception import IgnoredException
 
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.rules import (
@@ -15,6 +16,8 @@ from ironsbot.integrations.onebot.rules import (
 )
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from tests.helpers.onebot_events import group_message_event
+
+_FEATURES = FeatureService({}, {}, frozenset())
 
 if TYPE_CHECKING:
     from ironsbot.services.onebot_routing import OneBotRoutingPolicy
@@ -45,9 +48,9 @@ async def test_everyone_mention_is_silent_even_when_addressing_bot(
     assert context.has_any_mention
     assert context.member_mentions == ()
     with pytest.raises(IgnoredException):
-        await OneBotEventIngress(OneBotAdmissionService(messages_enabled=True)).process(
-            event
-        )
+        await OneBotEventIngress(
+            OneBotAdmissionService(messages_enabled=True, features=_FEATURES)
+        ).process(event)
     for rule in (
         explicit_command(),
         member_target_command(),
@@ -63,9 +66,9 @@ async def test_quoted_everyone_mention_does_not_block_current_command() -> None:
     assert event.reply is not None
     event.reply.message = Message(MessageSegment.at("all"))
     assert not message_input_context(event).mentions_everyone
-    await OneBotEventIngress(OneBotAdmissionService(messages_enabled=True)).process(
-        event
-    )
+    await OneBotEventIngress(
+        OneBotAdmissionService(messages_enabled=True, features=_FEATURES)
+    ).process(event)
     assert await explicit_command()(cast("Bot", None), event, {})
 
 
@@ -79,9 +82,9 @@ async def test_raw_everyone_mention_is_silent_when_adapter_removed_segment() -> 
 
     assert message_input_context(event).mentions_everyone
     with pytest.raises(IgnoredException):
-        await OneBotEventIngress(OneBotAdmissionService(messages_enabled=True)).process(
-            event
-        )
+        await OneBotEventIngress(
+            OneBotAdmissionService(messages_enabled=True, features=_FEATURES)
+        ).process(event)
 
 
 @pytest.mark.asyncio
@@ -95,6 +98,7 @@ async def test_unconfigured_group_is_ignored_even_when_bot_is_mentioned() -> Non
         await OneBotEventIngress(
             OneBotAdmissionService(
                 messages_enabled=True,
+                features=_FEATURES,
                 routing=cast("OneBotRoutingPolicy", router),
             )
         ).process(event)

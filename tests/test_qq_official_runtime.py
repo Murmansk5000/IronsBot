@@ -109,6 +109,9 @@ class _FakeWebSocket:
 
 
 class _CountingRouter:
+    def is_blocked(self, _context: object) -> bool:
+        return False
+
     def __init__(self) -> None:
         self.dispatch_count = 0
         self.contexts: list[object] = []
