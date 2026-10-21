@@ -56,11 +56,11 @@ use_default_for_unconfigured_targets = true
 [identities.groups]
 smoke_group = {{ qq = {GROUP_ID} }}
 
-[messaging.bot_routing]
+[bot.onebot.routing]
 enabled = false
 default_bot = "smoke_bot"
 
-[messaging.bot_routing.bot_aliases]
+[bot.onebot.routing.bot_aliases]
 smoke_bot = {BOT_ID}
 
 [bot.onebot.self_commands]

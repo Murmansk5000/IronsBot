@@ -116,12 +116,10 @@ def install(
 def plugin_contribution(
     *,
     settings: Settings,
-    service: AiService,
     features: FeatureService,
-    input_routing: AiInputRoutingService,
     startup_check: Callable[[], Awaitable[None]],
 ) -> PluginContribution:
-    """Declare AI-chat command visibility and OneBot matcher ownership."""
+    """Declare AI-chat command visibility and startup checks."""
 
     enabled = settings.ai.enabled
     return PluginContribution(
@@ -140,15 +138,6 @@ def plugin_contribution(
             ),
         ),
         commands=ai_chat_command_contracts(enabled=enabled),
-        install=(
-            partial(
-                install,
-                service=service,
-                dependencies=AiChatMatcherDependencies(
-                    input_routing=input_routing,
-                ),
-            )
-        ),
         hooks=(
             PluginHooks(
                 first_bot_connect=(("ai_api_check", lambda _bot: startup_check()),)
@@ -164,9 +153,7 @@ if (context := active_plugin_install_context()) is not None:
         __plugin_meta__,
         plugin_contribution(
             settings=context.settings,
-            service=context.resources.ai,
             features=context.resources.features,
-            input_routing=context.resources.ai_input_routing,
             startup_check=context.resources.ai_startup_check,
         ),
     )

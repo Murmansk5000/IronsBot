@@ -23,8 +23,8 @@ async def confirm_shortcut_binding(
     sessions: PortableQuerySessions,
     player_id: int,
     context: MessageInputContext,
-    query: Callable[[int, MessageInputContext], Awaitable[PortableReply]],
-) -> PortableReply:
+    query: Callable[[int, MessageInputContext], Awaitable[PortableReply | None]],
+) -> PortableReply | None:
     if (
         context.has_member_mentions
         or not context.offer_player_binding
@@ -34,7 +34,7 @@ async def confirm_shortcut_binding(
 
     async def confirm(
         choice: Literal["confirm", "skip"], selected: MessageInputContext
-    ) -> PortableReply:
+    ) -> PortableReply | None:
         if choice == "confirm":
             status = (
                 service.bind_shortcut_target(selected.message.actor, player_id)
@@ -45,6 +45,8 @@ async def confirm_shortcut_binding(
             service.decline_binding_offer(selected.message.actor)
             status = ""
         reply = await query(player_id, selected)
+        if reply is None:
+            return PortableReply(OutboundMessage.from_text(status)) if status else None
         if not status:
             return reply
         return replace(

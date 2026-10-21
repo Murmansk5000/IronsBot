@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.config.models.messaging import BotRoutingConfig
+from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot import router as bot_router
@@ -18,7 +18,7 @@ class FakeBot:
     self_id: int
 
 
-def _routing_config(**overrides: object) -> BotRoutingConfig:
+def _routing_config(**overrides: object) -> OneBotRoutingConfig:
     values: dict[str, object] = {
         "enabled": True,
         "default_bot": "main_bot",
@@ -27,13 +27,13 @@ def _routing_config(**overrides: object) -> BotRoutingConfig:
         "users": {"owner": "main_bot", "user_a": "backup_bot"},
     }
     values.update(overrides)
-    return BotRoutingConfig.model_validate(values)
+    return OneBotRoutingConfig.model_validate(values)
 
 
 def _patch_router(
     monkeypatch: MonkeyPatch,
     *,
-    config: BotRoutingConfig,
+    config: OneBotRoutingConfig,
     connected: list[FakeBot],
     use_default_for_unconfigured_targets: bool = False,
 ) -> BotRouter:

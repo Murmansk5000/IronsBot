@@ -5,7 +5,62 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import Self
+
+BotReference = str | int
+
+
+class OneBotRoutingConfig(BaseModel):
+    """Account ownership for OneBot ingress and proactive delivery."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    default_bot: BotReference | None = None
+    bot_aliases: dict[str, int] = Field(default_factory=dict)
+    groups: dict[str, BotReference] = Field(default_factory=dict)
+    users: dict[str, BotReference] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_references(self) -> Self:
+        invalid_aliases = [
+            alias
+            for alias, bot_id in self.bot_aliases.items()
+            if not alias.strip() or bot_id <= 0
+        ]
+        if invalid_aliases:
+            msg = "bot.onebot.routing.bot_aliases contains invalid entries"
+            raise ValueError(msg)
+
+        invalid_targets = [
+            f"bot.onebot.routing.{mapping_name}.{target}"
+            for mapping_name, mapping in (
+                ("groups", self.groups),
+                ("users", self.users),
+            )
+            for target, bot_ref in mapping.items()
+            if not target.strip() or self.resolve_bot_reference(bot_ref) is None
+        ]
+        if (
+            self.default_bot is not None
+            and self.resolve_bot_reference(self.default_bot) is None
+        ):
+            invalid_targets.append("bot.onebot.routing.default_bot")
+        if invalid_targets:
+            msg = "unknown or invalid bot reference(s): " + ", ".join(invalid_targets)
+            raise ValueError(msg)
+        return self
+
+    def resolve_bot_reference(self, reference: BotReference) -> int | None:
+        if isinstance(reference, int):
+            return reference if reference > 0 else None
+        normalized = reference.strip()
+        if normalized in self.bot_aliases:
+            return self.bot_aliases[normalized]
+        if normalized.isdigit() and int(normalized) > 0:
+            return int(normalized)
+        return None
 
 
 class SelfCommandsConfig(BaseModel):
@@ -24,13 +79,14 @@ class SelfCommandsConfig(BaseModel):
 
 
 class OneBotConfig(BaseModel):
-    """OneBot ingress and fallback outbound policy."""
+    """OneBot ingress, identity observation and outbound policy."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
     send_messages: bool = True
     identity_verification: bool = False
+    routing: OneBotRoutingConfig = Field(default_factory=OneBotRoutingConfig)
     self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
     trusted_official_bots: dict[str, int] = Field(default_factory=dict)
 

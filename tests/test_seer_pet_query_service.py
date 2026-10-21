@@ -153,9 +153,7 @@ async def test_exact_pet_name_keeps_related_candidates(method: str) -> None:
     rendered: list[Any] = []
     result = await getattr(_service(data, rendered), method)("雷伊")
 
-    assert [choice.name for choice in result.choices] == [
-        "雷伊", "雷神·雷伊"
-    ]
+    assert [choice.name for choice in result.choices] == ["雷伊", "雷神·雷伊"]
     assert result.reply is None
     assert rendered == []
 

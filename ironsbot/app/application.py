@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         MatcherFactory,
     )
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
+    from ironsbot.services.portable_commands import PortableCommandRouter
 
 
 @dataclass(slots=True)
@@ -79,7 +80,7 @@ class Application:
         )
         self._configured = True
 
-    def install(self) -> None:
+    def install(self, router: PortableCommandRouter) -> None:
         if self._installed:
             return
         if not self._configured or self.lifecycle is None:
@@ -92,16 +93,10 @@ class Application:
             ):
                 contribution.install(self.matcher_factory)
         if self.onebot_message_handling_enabled:
-            from ironsbot.integrations.onebot.portable_queries import (
-                install_portable_menu_router,
+            from ironsbot.integrations.onebot.command_ingress import (
+                install_command_ingress,
             )
 
-            install_portable_menu_router(
-                self.matcher_factory,
-                self.resources.query_sessions,
-                self.resources.features,
-            )
-            self.matcher_factory.validate_command_catalog(self.resources.commands)
-            self.matcher_factory.install_postprocessor()
+            install_command_ingress(self.matcher_factory, router)
         self.lifecycle.install()
         self._installed = True

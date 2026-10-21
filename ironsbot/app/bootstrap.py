@@ -97,54 +97,53 @@ def bootstrap() -> Application:
             with application.resources.private_extensions.plugin_import_path():
                 nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
-    if application.resources.qq_official is not None:
-        from ironsbot.services.portable_commands import build_portable_command_router
+    from ironsbot.services.portable_commands import build_portable_command_router
 
+    router = build_portable_command_router(
+        catalog=application.resources.commands,
+        contribution_catalog=application.resources.contribution_catalog,
+        query_sessions=application.resources.query_sessions,
+        ignored_help_plugins=tuple(settings.features.help.ignored_plugins),
+        about=application.resources.about,
+        seer=application.resources.seer,
+        player_id_resolver=application.resources.player_id_resolver,
+        identity_links=application.resources.identity_links,
+        identity_principals=application.resources.identity_principals,
+        features=application.resources.features,
+        ai=application.resources.ai,
+        ai_intent_actions=application.resources.ai_intent_actions,
+        addressed_input_hints=application.resources.addressed_input_hints,
+        team_resource=application.resources.team_resource,
+        lucky_skin_window=application.resources.lucky_skin_window,
+        activity=application.resources.activity,
+        messaging=application.resources.messaging,
+        refresh_push_time_jobs=partial(
+            application.resources.messaging.refresh_push_time_jobs,
+            scheduler=application.scheduler,
+            activity_service=application.resources.activity,
+        ),
+        sendpic=application.resources.sendpic,
+        bilibili=application.resources.bilibili,
+        bilibili_monitor=application.resources.bilibili_monitor,
+        server_status=application.resources.server_status,
+        data_sync=application.resources.data_sync,
+        docker_update=application.resources.docker_update,
+        meeting_number=settings.messaging.meeting.number,
+        meeting_template=settings.messaging.meeting.template,
+        pet_config=application.resources.pet_config,
+        image_command_texts=application.resources.sendpic.exact_command_texts,
+        new_content_expanded_categories=frozenset(
+            settings.seer.new_content.expanded_categories
+        ),
+        new_content_preview_max_items=settings.seer.new_content.auto_expand_max_items,
+    )
+    if application.resources.qq_official is not None:
         application.resources.qq_official.bind(
-            build_portable_command_router(
-                catalog=application.resources.commands,
-                contribution_catalog=application.resources.contribution_catalog,
-                query_sessions=application.resources.query_sessions,
-                ignored_help_plugins=tuple(settings.features.help.ignored_plugins),
-                about=application.resources.about,
-                seer=application.resources.seer,
-                player_id_resolver=application.resources.player_id_resolver,
-                identity_links=application.resources.identity_links,
-                identity_principals=application.resources.identity_principals,
-                features=application.resources.features,
-                ai=application.resources.ai,
-                ai_intent_actions=application.resources.ai_intent_actions,
-                addressed_input_hints=application.resources.addressed_input_hints,
-                team_resource=application.resources.team_resource,
-                lucky_skin_window=application.resources.lucky_skin_window,
-                activity=application.resources.activity,
-                messaging=application.resources.messaging,
-                refresh_push_time_jobs=partial(
-                    application.resources.messaging.refresh_push_time_jobs,
-                    scheduler=application.scheduler,
-                    activity_service=application.resources.activity,
-                ),
-                sendpic=application.resources.sendpic,
-                bilibili=application.resources.bilibili,
-                bilibili_monitor=application.resources.bilibili_monitor,
-                server_status=application.resources.server_status,
-                data_sync=application.resources.data_sync,
-                docker_update=application.resources.docker_update,
-                meeting_number=settings.messaging.meeting.number,
-                meeting_template=settings.messaging.meeting.template,
-                pet_config=application.resources.pet_config,
-                image_command_texts=(application.resources.sendpic.exact_command_texts),
-                new_content_expanded_categories=frozenset(
-                    settings.seer.new_content.expanded_categories
-                ),
-                new_content_preview_max_items=(
-                    settings.seer.new_content.auto_expand_max_items
-                ),
-            ),
+            router,
             application.resources.outbound_messenger,
             identity_observer=application.resources.identity_observer,
             union_identity=application.resources.union_identity,
         )
     application.resources.onebot_ingress.install()
-    application.install()
+    application.install(router)
     return application

@@ -191,6 +191,7 @@ async def test_failed_business_reply_does_not_create_completed_cooldown(
         return PortableReply(await failed_result())
 
     reply = await sessions.interactions.execute_request(query, context, operation)
+    assert reply is not None
 
     async def send(_message: OutboundMessage) -> SendResult:
         return SendResult(delivered=True, message_id="result")

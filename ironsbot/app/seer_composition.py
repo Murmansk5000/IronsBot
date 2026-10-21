@@ -292,7 +292,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         admin_notices,
         partial(
             resolve_execution_identity,
-            aliases=settings.messaging.bot_routing.bot_aliases,
+            aliases=settings.bot.onebot.routing.bot_aliases,
         ),
         partial(resolve_notice_origin, principals=identity_principals),
     )

@@ -138,13 +138,13 @@ class PortableQuerySessions(PortableSessionState):
         async def select_untyped(
             value: object,
             selection_context: MessageInputContext,
-        ) -> OutboundMessage | PortableReply:
+        ) -> OutboundMessage | PortableReply | None:
             return await spec.select(cast("_T", value), selection_context)
 
         async def shared_select_untyped(
             value: object,
             selection_context: MessageInputContext,
-        ) -> OutboundMessage | PortableReply:
+        ) -> OutboundMessage | PortableReply | None:
             if spec.shared_select is None:
                 raise PortableQuerySessionError.invalid_shared_choice()
             return await spec.shared_select(cast("_T", value), selection_context)
@@ -437,6 +437,8 @@ class PortableQuerySessions(PortableSessionState):
                 result = await shared_select(value, responder)
         finally:
             _MENU_ACCESS.reset(access_token)
+        if result is None:
+            return None
         if isinstance(result, PortableReply) and not allow_deferred:
             raise PortableQuerySessionError.deferred_result_not_enabled()
         if isinstance(result, (PortableReply, OutboundMessage)):
@@ -518,6 +520,8 @@ class PortableQuerySessions(PortableSessionState):
                 result = await pending.select(value, context)
         finally:
             _MENU_ACCESS.reset(access_token)
+        if result is None:
+            return None
         if isinstance(result, (OutboundMessage, PortableReply)):
             if isinstance(result, PortableReply) and not allow_deferred:
                 raise PortableQuerySessionError.deferred_result_not_enabled()

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
@@ -69,12 +68,7 @@ def _install(
         )
 
 
-def plugin_contribution(
-    *,
-    service: ServerStatusService,
-    features: FeatureService,
-    commands: CommandCatalog,
-) -> PluginContribution:
+def plugin_contribution() -> PluginContribution:
     """Declare server-status commands and feature ownership."""
 
     return PluginContribution(
@@ -90,21 +84,11 @@ def plugin_contribution(
             ),
         ),
         commands=server_status_command_contracts(),
-        install=partial(
-            _install,
-            server_status=service,
-            features=features,
-            commands=commands,
-        ),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            service=context.resources.server_status,
-            features=context.resources.features,
-            commands=context.resources.commands,
-        ),
+        plugin_contribution(),
     )

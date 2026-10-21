@@ -101,9 +101,11 @@ def test_docker_release_requires_behavior_checks_before_build_and_publish() -> N
         if step["name"] == "Verify application behavior before publishing"
     )
 
-    assert names.index("Install command manifest dependencies") < names.index(
-        verification["name"]
-    ) < names.index("Build runtime candidate")
+    assert (
+        names.index("Install command manifest dependencies")
+        < names.index(verification["name"])
+        < names.index("Build runtime candidate")
+    )
     assert names.index(verification["name"]) < names.index("Build and Publish")
     assert "if" not in verification
     assert "pytest -q --tb=short" in verification["run"]

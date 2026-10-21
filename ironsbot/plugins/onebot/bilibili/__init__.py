@@ -18,16 +18,11 @@ from ironsbot.core.plugin_install import (
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
-from .commands import install
-
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
-    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
-    from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.operations.scheduler import Scheduler
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="B站动态",
@@ -44,12 +39,7 @@ async def _check_on_connect(bot: Bot, *, monitor: BilibiliMonitorService) -> Non
 
 
 def plugin_contribution(
-    *,
-    service: BilibiliService,
-    features: FeatureService,
-    monitor: BilibiliMonitorService,
-    scheduler: Scheduler,
-    query_sessions: PortableQuerySessions,
+    *, monitor: BilibiliMonitorService, scheduler: Scheduler
 ) -> PluginContribution:
     """Declare Bilibili commands, delivery construction, and monitor lifecycle."""
 
@@ -63,14 +53,6 @@ def plugin_contribution(
             order=20,
         ),
         commands=bilibili_command_contracts(),
-        install=partial(
-            install,
-            service=service,
-            features=features,
-            monitor=monitor,
-            targets=service.targets,
-            query_sessions=query_sessions,
-        ),
         hooks=PluginHooks(
             startup=(
                 (
@@ -92,10 +74,6 @@ if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
         plugin_contribution(
-            service=context.resources.bilibili,
-            features=context.resources.features,
-            monitor=context.resources.bilibili_monitor,
-            scheduler=context.scheduler,
-            query_sessions=context.resources.query_sessions,
+            monitor=context.resources.bilibili_monitor, scheduler=context.scheduler
         ),
     )

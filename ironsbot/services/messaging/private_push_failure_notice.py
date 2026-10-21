@@ -49,9 +49,7 @@ async def report_private_push_failures(
     if not lines:
         return
     await notices.send_private_to_superusers(
-        "⚠️ 私聊推送未完成\n"
-        f"任务：{action_name}\n"
-        + "\n".join(lines),
+        f"⚠️ 私聊推送未完成\n任务：{action_name}\n" + "\n".join(lines),
         subscription_key="admin_notice",
         action_name="private push failure notice",
         interval_seconds=0,

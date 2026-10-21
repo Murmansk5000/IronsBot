@@ -88,15 +88,12 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     )
 
 
-def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
+def plugin_contribution(
     *,
     config: MessageConfig,
     features: FeatureService,
-    references: QQReferenceResolver,
     service: MessagingService,
-    activity_service: ActivityService,
     scheduler: Scheduler,
-    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
@@ -121,22 +118,6 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
             visible=partial(help_visible, features=features, config=config),
         ),
         commands=commands,
-        install=partial(
-            _install,
-            messaging=service,
-            references=references,
-            activity_service=activity_service,
-            scheduler=scheduler,
-            query_sessions=query_sessions,
-            command_help_ids=tuple(
-                f"messaging.{action.id}" for action in config.commands if action.enabled
-            ),
-            keyword_help_ids=tuple(
-                f"messaging.keyword.{action.id}"
-                for action in config.keyword_replies
-                if action.enabled
-            ),
-        ),
         hooks=PluginHooks(
             startup=(("messaging", partial(service.start, scheduler)),),
             shutdown=(("push_topics", service.stop_topics),),
@@ -150,10 +131,7 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             config=context.settings.messaging,
             features=context.resources.features,
-            references=context.settings.qq_references,
             service=context.resources.messaging,
-            activity_service=context.resources.activity,
             scheduler=context.scheduler,
-            query_sessions=context.resources.query_sessions,
         ),
     )

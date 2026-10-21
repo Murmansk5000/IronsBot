@@ -120,8 +120,7 @@ def _migrate_rank_display_principals(connection: sqlite3.Connection) -> None:
     )
     connection.execute("DROP TABLE group_rank_display_limits")
     connection.execute(
-        "ALTER TABLE group_rank_display_limits_v3 "
-        "RENAME TO group_rank_display_limits"
+        "ALTER TABLE group_rank_display_limits_v3 RENAME TO group_rank_display_limits"
     )
 
 

@@ -59,10 +59,7 @@ def _install(
 
 
 def plugin_contribution(
-    *,
-    settings: Settings,
-    resources: ApplicationResources,
-    scheduler: Scheduler,
+    *, resources: ApplicationResources, scheduler: Scheduler
 ) -> PluginContribution:
     from ironsbot.services.seer.rank_refresh_scheduler import (
         register_local_rank_refresh_job,
@@ -100,7 +97,6 @@ def plugin_contribution(
             resources.player_id_resolver,
             image_commands=resources.sendpic.exact_command_texts,
         ),
-        install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(
                 ("render_crash_capture", render_crash_reporter.capture_previous),
@@ -136,9 +132,5 @@ def plugin_contribution(
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            settings=context.settings,
-            resources=context.resources,
-            scheduler=context.scheduler,
-        ),
+        plugin_contribution(resources=context.resources, scheduler=context.scheduler),
     )

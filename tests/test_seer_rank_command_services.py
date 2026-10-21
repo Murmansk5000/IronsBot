@@ -291,9 +291,7 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> N
     game = SimpleNamespace(operations=Operations())
     service = _query_service(FakeLocalRank(), FakeDisplay())
     service._rank = cast("RankService", Rank())
-    service._headless = cast(
-        "HeadlessService", SimpleNamespace(get_game=lambda: game)
-    )
+    service._headless = cast("HeadlessService", SimpleNamespace(get_game=lambda: game))
 
     listed = await service.prepare_list(
         RankListCommand(
@@ -312,9 +310,7 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> N
         conversation=None,
     )
 
-    assert [(item.rank, item.player_id) for item in listed.selections] == [
-        (11, 700011)
-    ]
+    assert [(item.rank, item.player_id) for item in listed.selections] == [(11, 700011)]
     assert [(item.rank, item.player_id) for item in scored.selections] == [
         (21, 700021),
         (22, 700022),
