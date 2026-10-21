@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ironsbot.core.failure_text import safe_platform_message
 from ironsbot.core.outbound import DeliveryFailureKind, SendResult
+from ironsbot.integrations.qq_official.delivery_diagnostics import QQDeliveryPhaseError
+from ironsbot.integrations.qq_official.safe_diagnostics import request_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -29,11 +32,14 @@ class QQOfficialApiError(RuntimeError):
         api_code: str,
         message: str,
         trace_id: str | None,
+        request: tuple[str, str] | None = None,
     ) -> None:
-        super().__init__(message)
+        super().__init__(safe_platform_message(message))
         self.http_status = http_status
         self.api_code = api_code
         self.trace_id = trace_id
+        self.method = request[0] if request else None
+        self.endpoint = request[1] if request else None
 
 
 class QQOfficialPartialDeliveryError(RuntimeError):
@@ -70,16 +76,68 @@ class QQOfficialHttpClient:
             return response
         data = _response_mapping(response)
         api_code = str(data.get("code", response.status_code))
-        message = str(data.get("message", "QQ Official API request failed"))
+        secrets = tuple((headers or {}).values())
+        message = safe_platform_message(data.get("message"), secrets=secrets)
         raise QQOfficialApiError(
             http_status=response.status_code,
             api_code=api_code,
             message=message,
             trace_id=response.headers.get("x-tps-trace-id") or None,
+            request=(method.upper(), request_endpoint(url)),
         )
 
 
 def qq_official_exception_result(error: Exception) -> SendResult:
+    if isinstance(error, QQDeliveryPhaseError):
+        api_error = _find_api_error(error)
+        kind = (
+            _api_failure_kind(api_error)
+            if api_error is not None
+            else DeliveryFailureKind.RETRYABLE
+            if error.original_type in {"ConnectError", "ConnectTimeout", "PoolTimeout"}
+            else DeliveryFailureKind.UNCERTAIN
+            if error.phase == "message_submit"
+            else DeliveryFailureKind.RETRYABLE
+            if error.transport_failure
+            else DeliveryFailureKind.PERMANENT
+        )
+        if (
+            error.http_status is not None
+            and _HTTP_CLIENT_ERROR_STATUS
+            <= error.http_status
+            < _HTTP_SERVER_ERROR_STATUS
+            and error.http_status != _HTTP_TOO_MANY_REQUESTS_STATUS
+            and error.api_code not in _RETRYABLE_API_CODES
+        ):
+            kind = DeliveryFailureKind.PERMANENT
+        elif (
+            error.http_status is not None
+            and error.http_status >= _HTTP_SERVER_ERROR_STATUS
+        ):
+            kind = (
+                DeliveryFailureKind.UNCERTAIN
+                if error.phase == "message_submit"
+                else DeliveryFailureKind.RETRYABLE
+            )
+        if error.phase != "message_submit" and error.original_type in {
+            "UploadDailyLimitExceededError",
+            "UploadFileTooLargeError",
+            "ValueError",
+            "FileNotFoundError",
+        }:
+            kind = DeliveryFailureKind.PERMANENT
+        return SendResult(
+            delivered=False,
+            error_code=f"{error.phase}:{error.api_code or error.original_type}",
+            error_message=str(error),
+            trace_id=error.trace_id,
+            failure_kind=kind,
+            failure_phase=error.phase,
+            http_status=error.http_status,
+            request_method=error.request_method,
+            request_endpoint=error.request_endpoint,
+            exception_type=error.original_type,
+        )
     if isinstance(error, QQOfficialPartialDeliveryError):
         api_error = _find_api_error(error)
         return SendResult(
@@ -101,6 +159,10 @@ def qq_official_exception_result(error: Exception) -> SendResult:
             error_message=str(api_error),
             trace_id=api_error.trace_id,
             failure_kind=_api_failure_kind(api_error),
+            http_status=api_error.http_status,
+            request_method=api_error.method,
+            request_endpoint=api_error.endpoint,
+            exception_type=type(api_error).__name__,
         )
 
     transport_error = _find_transport_error(error)

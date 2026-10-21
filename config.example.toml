@@ -832,8 +832,11 @@ max_attempts = 3
 # Default: -1; unlimited targets. A positive number bounds concurrency.
 # 默认 -1 表示所有目标同时发送；正整数限制并发目标数。
 max_parallel_targets = -1
-# Default: 3; divide retry batch capacity by this value after each attempt.
-retry_batch_divisor = 3
+# Default: 2; divisor for retry concurrency. Bilibili retries only unfinished
+# targets after 2/5/10 seconds; each retry batch is ceil(failed targets/divisor),
+# capped by max_parallel_targets. Other producers retain their retry policy.
+# B站按上一轮失败目标数二分批补发；成功内容不重发，其他推送沿用原策略。
+retry_batch_divisor = 2
 # Default: 2.0; pause before each retry round.
 retry_delay_seconds = 2.0
 # Default: 60.0; pause proactive sends from one OneBot account after a clear

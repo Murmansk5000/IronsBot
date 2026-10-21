@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ironsbot.core.delivery_attempt import delivery_unit
 from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.core.outbound import (
     BinaryImagePart,
@@ -101,6 +102,36 @@ PRIVATE = ConversationRef(
 )
 TEXT = OutboundMessage.from_text("result")
 FUTURE_DEADLINE = datetime(2099, 1, 1, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fails", [True, False])
+async def test_actual_execution_account_is_in_transport_context(*, fails: bool) -> None:
+    seen = []
+
+    class Bot(_Bot):
+        async def send_to_group(
+            self,
+            group_openid: str,
+            payloads: tuple[QQOfficialPayload, ...],
+            msg_id: str | None = None,
+            msg_seq: int | None = None,
+        ) -> object:
+            seen.append(delivery_unit.get())
+            if fails:
+                raise TimeoutError
+            return await super().send_to_group(group_openid, payloads, msg_id, msg_seq)
+
+    bot = Bot()
+    messenger = QQOfficialOutboundMessenger({"app": True}, bot_provider=lambda _: bot)
+    marker = delivery_unit.set("dynamic=test unit=image:1")
+    try:
+        result = await messenger.send(GROUP, TEXT)
+        assert result.delivered is not fails
+        assert seen == ["dynamic=test unit=image:1 execution_app=app"]
+        assert delivery_unit.get() == "dynamic=test unit=image:1"
+    finally:
+        delivery_unit.reset(marker)
 
 
 def _reply(

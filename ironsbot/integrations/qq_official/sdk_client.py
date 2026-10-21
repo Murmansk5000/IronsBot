@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -19,9 +20,11 @@ from qqbot_agent_sdk.media_loader import (
     UploadFileTooLargeError,
 )
 
+from ironsbot.core.delivery_attempt import controlled_delivery
 from ironsbot.integrations.qq_official.api_errors import (
     QQOfficialPartialDeliveryError,
 )
+from ironsbot.integrations.qq_official.delivery_diagnostics import delivery_phase
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
     QQOfficialPayload,
@@ -104,7 +107,12 @@ class TencentQQClient:
                     message_id=message_id,
                     sequence=sequence,
                 )
-                sent_id = _response_id(response)
+                async with (
+                    delivery_phase("message_submit")
+                    if controlled_delivery.get()
+                    else nullcontext()
+                ):
+                    sent_id = _response_id(response)
                 anchors.append(sent_id)
                 sequence_id = response.get("msg_idx")
                 if isinstance(sequence_id, (str, int)) and str(sequence_id).strip():
@@ -151,7 +159,12 @@ class TencentQQClient:
                 keyboard = _prompt_keyboard(payload.prompt)
         elif isinstance(payload, QQOfficialImagePayload):
             try:
-                file_info = await self.media.upload_image(scope, target_id, payload)
+                async with (
+                    delivery_phase("upload_prepare")
+                    if controlled_delivery.get()
+                    else nullcontext()
+                ):
+                    file_info = await self.media.upload_image(scope, target_id, payload)
             except UploadFileTooLargeError as error:
                 logger.warning(
                     "QQ Official image exceeds platform limit: target_scope=%s "
@@ -188,21 +201,22 @@ class TencentQQClient:
             msg = f"Unsupported QQ Official payload: {type(payload).__name__}"
             raise TypeError(msg)
         _attach_message_reference(message, payload, message_id=message_id)
-        if scope == "group":
+        async with (
+            delivery_phase("message_submit")
+            if controlled_delivery.get()
+            else nullcontext()
+        ):
+            if scope == "group":
+                if keyboard is None:
+                    return await self.api.post_group_message(target_id, message)
+                return await self.api.post_group_message(
+                    target_id, message, keyboard=keyboard
+                )
             if keyboard is None:
-                return await self.api.post_group_message(target_id, message)
-            return await self.api.post_group_message(
-                target_id,
-                message,
-                keyboard=keyboard,
+                return await self.api.post_c2c_message(target_id, message)
+            return await self.api.post_c2c_message(
+                target_id, message, keyboard=keyboard
             )
-        if keyboard is None:
-            return await self.api.post_c2c_message(target_id, message)
-        return await self.api.post_c2c_message(
-            target_id,
-            message,
-            keyboard=keyboard,
-        )
 
 
 def _text_message(

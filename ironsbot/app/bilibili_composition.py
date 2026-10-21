@@ -28,6 +28,7 @@ from ironsbot.integrations.storage.bilibili_history import (
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
+from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.delivery_recovery import BiliStartupRecovery
@@ -152,6 +153,7 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
     proactive_delivery: ProactiveMessageDelivery,
     ai_service: AiService,
     config: BiliConfig,
+    cache_paths: CachePaths | None = None,
 ) -> BilibiliMonitorService:
     """Assemble monitoring with platform-neutral notice and push delivery."""
     notice_sender = partial(send_bili_login_notice, admin_notices)
@@ -180,7 +182,9 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         image_collage=service.image_collage,
         combine_images=config.push.combine_images,
         ledger=SqliteDynamicDeliveryLedger(
-            Path(config.storage.data_dir) / "delivery_stages.sqlite"
+            Path(config.storage.data_dir) / "delivery_stages.sqlite",
+            media_root=(cache_paths or CachePaths(Path("cache"))).assets_dir()
+            / "bilibili",
         ),
         category_labels=lambda uid, keys: tuple(
             definition.label
