@@ -219,13 +219,15 @@ async def _load_identity_links(  # noqa: PLR0913
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(SelfCommandAdapter)
-    scheduler = SchedulerFacade(timezone="Asia/Shanghai")
+    task_owner = TaskOwner()
+    scheduler = SchedulerFacade(
+        timezone="Asia/Shanghai", spawn=task_owner.create_draining
+    )
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
     image_collage = build_image_collage_service(http_clients.origin)
     databases = DatabaseManager()
     cache_paths = CachePaths(settings.paths.cache_root)
-    task_owner = TaskOwner()
     identity_principals = IdentityPrincipalService()
     configured_conversation_merges = _register_configured_identity_principals(
         settings,

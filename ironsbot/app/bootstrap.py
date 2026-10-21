@@ -66,7 +66,6 @@ def initialize_nonebot(settings: Settings) -> None:
             command_start=set(settings.bot.command_start),
             superusers={str(value) for value in settings.superuser_ids},
             onebot_access_token=settings.bot.onebot_token or None,
-            apscheduler_autostart=False,
         )
     finally:
         if previous is None:

@@ -19,6 +19,7 @@ def test_generator_bootstrap_resolves_shared_ingress_annotations(
     )
     script = """
 import socket
+import sys
 import traceback
 import nonebot.dependencies as dependencies
 from nonebot.adapters import Event
@@ -57,6 +58,8 @@ dependencies.get_typed_signature = checked_signature
 from ironsbot.app.application import Application
 original_install = Application.install
 def checked_install(self, router):
+    assert self.lifecycle.scheduler is self.scheduler
+    assert 'nonebot_plugin_apscheduler' not in sys.modules
     assert router.ingress.claims.spawn == self.task_owner.create_draining
     assert self.resources.onebot_ingress.admission.features is self.resources.features
     assert self.resources.onebot_messenger._self_commands is (
@@ -133,6 +136,7 @@ def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     script = """
 import os
 import inspect
+import sys
 import nonebot
 from copy import deepcopy
 from functools import partial
@@ -202,6 +206,8 @@ assert "<secret:" in rendered
 assert "<id:" in rendered
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
+assert state.lifecycle.scheduler is state.scheduler
+assert 'nonebot_plugin_apscheduler' not in sys.modules
 assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
     "identity_links",
     "data_sync",

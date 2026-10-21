@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         NamedLifecycleHook,
         PluginContribution,
     )
+    from ironsbot.services.operations.scheduler import SchedulerLifecycle
 
 T = TypeVar("T")
 
@@ -84,6 +85,7 @@ class TaskOwner:
 class ApplicationLifecycle:
     driver: Driver
     task_owner: TaskOwner = field(default_factory=TaskOwner)
+    scheduler: SchedulerLifecycle | None = None
     resource_startup_hooks: tuple[NamedLifecycleHook, ...] = ()
     startup_hooks: tuple[NamedLifecycleHook, ...] = ()
     shutdown_hooks: tuple[NamedLifecycleHook, ...] = ()
@@ -96,18 +98,20 @@ class ApplicationLifecycle:
     _installed: bool = field(default=False, init=False)
 
     @classmethod
-    def from_contributions(
+    def from_contributions(  # noqa: PLR0913 - explicit lifecycle resources
         cls,
         driver: Driver,
         contributions: tuple[PluginContribution, ...],
         *,
         task_owner: TaskOwner,
+        scheduler: SchedulerLifecycle | None = None,
         resource_startup_hooks: tuple[NamedLifecycleHook, ...] = (),
         resource_shutdown_hooks: tuple[NamedLifecycleHook, ...] = (),
     ) -> ApplicationLifecycle:
         return cls(
             driver=driver,
             task_owner=task_owner,
+            scheduler=scheduler,
             resource_startup_hooks=resource_startup_hooks,
             startup_hooks=tuple(
                 hook
@@ -154,8 +158,12 @@ class ApplicationLifecycle:
             propagate_errors=True,
         )
         await self._run_lifecycle_hooks("startup", self.startup_hooks)
+        if self.scheduler is not None:
+            self.scheduler.start()
 
     async def shutdown(self) -> None:
+        if self.scheduler is not None:
+            await self.scheduler.shutdown()
         await self._run_lifecycle_hooks(
             "shutdown",
             tuple(reversed(self.shutdown_hooks)),

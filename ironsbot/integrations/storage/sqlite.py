@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import asyncio
 import re
 import sqlite3
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
+
+from ironsbot.core.tasks import run_owned_blocking
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -95,27 +97,11 @@ class SqliteDatabase:
         if self.spawn is None:
             message = "Async SQLite transactions require an owned task spawner"
             raise RuntimeError(message)
-        await asyncio.sleep(0)
-        worker = self.spawn(
-            asyncio.to_thread(self._run_transaction, operation),
+        return await run_owned_blocking(
+            partial(self._run_transaction, operation),
+            spawn=self.spawn,
             name="sqlite_transaction",
         )
-        cancelled = False
-        while True:
-            try:
-                result = await asyncio.shield(worker)
-                break
-            except asyncio.CancelledError:
-                if worker.cancelled():
-                    raise
-                cancelled = True
-            except Exception:
-                if cancelled:
-                    raise asyncio.CancelledError from None
-                raise
-        if cancelled:
-            raise asyncio.CancelledError
-        return result
 
     def _run_transaction(self, operation: Callable[[sqlite3.Connection], _T]) -> _T:
         with self.connect() as connection:

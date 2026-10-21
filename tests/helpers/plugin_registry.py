@@ -71,9 +71,6 @@ from ironsbot.plugins.onebot.pet_config import (
 from ironsbot.plugins.onebot.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
-from ironsbot.plugins.onebot.scheduler import (
-    plugin_contribution as scheduler_plugin_contribution,
-)
 from ironsbot.plugins.onebot.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,
 )
@@ -153,6 +150,9 @@ def build_test_plugin_registry(
         superuser_ids=tuple(config.superuser_ids),
         command_features=config.messaging.command_feature_keys,
         schedule_features=config.messaging.schedule_feature_keys,
+    )
+    scheduler = SchedulerFacade(
+        timezone="Asia/Shanghai", spawn=runtime.tasks.create_draining
     )
     headless = HeadlessService(
         ClientManager(runtime.tasks.create),
@@ -372,18 +372,15 @@ def build_test_plugin_registry(
         ),
     )
     return (
-        scheduler_plugin_contribution(scheduler=SchedulerFacade()),
-        seer_query_plugin_contribution(
-            resources=resources, scheduler=SchedulerFacade()
-        ),
+        seer_query_plugin_contribution(resources=resources, scheduler=scheduler),
         bilibili_plugin_contribution(
-            monitor=resources.bilibili_monitor, scheduler=SchedulerFacade()
+            monitor=resources.bilibili_monitor, scheduler=scheduler
         ),
         messaging_plugin_contribution(
             config=config.messaging,
             features=runtime.features,
             service=resources.messaging,
-            scheduler=SchedulerFacade(),
+            scheduler=scheduler,
         ),
         ai_chat_plugin_contribution(
             settings=config,
@@ -416,33 +413,31 @@ def build_test_plugin_registry(
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,
             runtime.features,
-            SchedulerFacade(),
+            scheduler,
             resources.player_id_resolver,
         ),
         team_audit_plugin_contribution(
-            scheduler=SchedulerFacade(),
+            scheduler=scheduler,
             service=resources.team_audit,
         ),
         team_resource_plugin_contribution(
             config=config.seer.team_resource,
             features=runtime.features,
-            scheduler=SchedulerFacade(),
+            scheduler=scheduler,
             service=resources.team_resource,
         ),
-        activity_plugin_contribution(
-            service=resources.activity, scheduler=SchedulerFacade()
-        ),
+        activity_plugin_contribution(service=resources.activity, scheduler=scheduler),
         startup_notice_plugin_contribution(
             service=resources.startup_notice,
             config=config.operations.startup_notice,
         ),
         headless_notice_plugin_contribution(
-            scheduler=SchedulerFacade(),
+            scheduler=scheduler,
             service=headless,
         ),
         headless_runtime_plugin_contribution(service=headless),
         scheduled_restart_plugin_contribution(
-            scheduler=SchedulerFacade(),
+            scheduler=scheduler,
             service=resources.scheduled_restart,
         ),
     )
