@@ -57,6 +57,7 @@ from ironsbot.integrations.onebot.self_commands import (
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
+from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -740,4 +741,7 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
         accounts,
         on_link=register_link,
         on_group_link=register_group_link,
+        claims=SqliteInboundMessageClaims(
+            settings.paths.cache_root / "identity" / "observations.sqlite"
+        ),
     )

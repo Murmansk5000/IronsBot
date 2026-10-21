@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ironsbot.core.inbound_claims import InboundMessageKey
 from ironsbot.core.outbound import TextPart
 from ironsbot.core.platform import ActorRef, Platform, reference_digest
 from ironsbot.services.identity_link_store import (
@@ -19,10 +20,12 @@ from ironsbot.services.identity_link_store import (
     OfficialIdentity,
     canonical_official_identity,
 )
+from ironsbot.services.inbound_claims import MemoryInboundMessageClaims
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from ironsbot.core.inbound_claims import InboundMessageClaims
     from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.identity_link_store import IdentityLinkStore
@@ -85,6 +88,7 @@ class SilentIdentityObservationService:
     clock: Callable[[], float] = time.time
     on_link: Callable[[str, OfficialIdentity], None] | None = None
     on_group_link: Callable[[CrossPlatformGroupLink], None] | None = None
+    claims: InboundMessageClaims = field(default_factory=MemoryInboundMessageClaims)
     _pending: list[_PendingReply] = field(default_factory=list, init=False)
     _pending_official_messages: list[_PendingOfficialMessage] = field(
         default_factory=list,
@@ -240,7 +244,19 @@ class SilentIdentityObservationService:
         )
         if pending is None:
             return False
+        account_id = incoming.actor.account_id
+        assert account_id is not None
         async with self._lock:
+            if not await self.claims.claim(
+                InboundMessageKey(
+                    incoming.platform,
+                    account_id,
+                    incoming.conversation.kind,
+                    incoming.conversation.id,
+                    incoming.message_id,
+                )
+            ):
+                return False
             now = self.clock()
             self._prune(now)
             matches = [
@@ -261,7 +277,7 @@ class SilentIdentityObservationService:
                         reference_digest(pending.incoming.conversation.id),
                         len(matches),
                     )
-                self._remember_official_message(pending)
+                self._pending_official_messages.append(pending)
                 return False
             matched = matches[0]
             self._pending_onebot_messages.remove(matched)
@@ -276,6 +292,16 @@ class SilentIdentityObservationService:
         observation: OneBotGroupMessageObservation,
     ) -> bool:
         async with self._lock:
+            if not await self.claims.claim(
+                InboundMessageKey(
+                    Platform.ONEBOT,
+                    str(observation.self_id),
+                    "group",
+                    str(observation.group_id),
+                    observation.message_id,
+                )
+            ):
+                return False
             now = self.clock()
             self._prune(now)
             original_matches = [
@@ -299,7 +325,9 @@ class SilentIdentityObservationService:
                 )
 
             if self._is_original_message_candidate(observation):
-                self._remember_onebot_message(observation, now=now)
+                self._pending_onebot_messages.append(
+                    _PendingOneBotMessage(observation, now)
+                )
                 self._mirror_changed.set()
 
             match = self._match_onebot_reply(observation, now=now)
@@ -621,29 +649,6 @@ class SilentIdentityObservationService:
             and str(account.trusted_onebot_sender_id) in mentioned
             for account in self.accounts.values()
         )
-
-    def _remember_official_message(self, pending: _PendingOfficialMessage) -> None:
-        self._pending_official_messages = [
-            item
-            for item in self._pending_official_messages
-            if item.incoming.message_id != pending.incoming.message_id
-            or item.incoming.actor.account_id != pending.incoming.actor.account_id
-        ]
-        self._pending_official_messages.append(pending)
-
-    def _remember_onebot_message(
-        self,
-        observation: OneBotGroupMessageObservation,
-        *,
-        now: float,
-    ) -> None:
-        self._pending_onebot_messages = [
-            item
-            for item in self._pending_onebot_messages
-            if item.observation.message_id != observation.message_id
-            or item.observation.self_id != observation.self_id
-        ]
-        self._pending_onebot_messages.append(_PendingOneBotMessage(observation, now))
 
     def _prune(self, now: float) -> None:
         cutoff = now - self.match_window_seconds
