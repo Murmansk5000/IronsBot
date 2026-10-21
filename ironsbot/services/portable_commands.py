@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from functools import partial
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.command_catalog import CommandContext, command_context_from_input
@@ -19,6 +21,7 @@ from ironsbot.services.ai.fallback_operations import (
 )
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.source_context import format_ai_source_context
+from ironsbot.services.command_errors import CommandErrorReporter
 from ironsbot.services.identity_link_commands import (
     build_portable_identity_link_operations,
 )
@@ -39,6 +42,7 @@ from ironsbot.services.portable_bilibili_commands import (
 from ironsbot.services.portable_countermark_commands import (
     build_portable_countermark_operations,
 )
+from ironsbot.services.portable_interactions import as_portable_reply
 from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
@@ -82,8 +86,6 @@ from ironsbot.services.portable_seer_commands import build_portable_seer_operati
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
 )
-from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_commands import is_query_input_syntax
 
 if TYPE_CHECKING:
@@ -104,6 +106,7 @@ if TYPE_CHECKING:
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.identity_principals import IdentityPrincipalService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
@@ -151,6 +154,7 @@ class PortableCommandRouter:
         ai_intent_actions: AiIntentActionExecutor | None = None,
         ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
+        admin_notices: AdminNoticeService | None = None,
         messaging: MessagingService | None = None,
         identity_principals: IdentityPrincipalService | None = None,
         query_sessions: PortableQuerySessions | None = None,
@@ -180,6 +184,7 @@ class PortableCommandRouter:
         self._ai_intent_actions = ai_intent_actions
         self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
+        self._errors = CommandErrorReporter(admin_notices)
         self._messaging = messaging
         self._identity_principals = identity_principals
         self._query_sessions = query_sessions or PortableQuerySessions()
@@ -201,16 +206,15 @@ class PortableCommandRouter:
     ) -> bool:
         if self._message_is_blocked(context):
             return False
-        raw_command = context.text.strip()
+        raw_command = context.text
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
         return (
             self._query_sessions.recognizes_response(command, context)
             or is_query_input_syntax(raw_command)
             or (
-                self._matching_input_contract(
+                self._matching_contract(
                     raw_command,
-                    command,
                     context=command_context,
                 )
                 is not None
@@ -223,7 +227,6 @@ class PortableCommandRouter:
             or self._ai_input_routing.decide(
                 context,
                 command_context,
-                normalized_text=command,
             ).recognized
         )
 
@@ -246,7 +249,15 @@ class PortableCommandRouter:
 
     async def dispatch(self, context: MessageInputContext) -> PortableReply | None:
         with message_origin(context):
-            return await self._dispatch(context)
+            try:
+                reply = await self._dispatch(context)
+            except Exception as error:  # noqa: BLE001 - shared business boundary
+                reply = PortableReply(await self._errors.reply(context, error))
+            return (
+                replace(reply, on_operation_error=partial(self._errors.reply, context))
+                if reply is not None
+                else None
+            )
 
     async def _dispatch(  # noqa: PLR0911 - explicit routing precedence
         self,
@@ -254,30 +265,19 @@ class PortableCommandRouter:
     ) -> PortableReply | None:
         if self._message_is_blocked(context):
             return None
-        raw_command = context.text.strip()
+        raw_command = context.text
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
         is_menu_reply = self._query_sessions.recognizes_response(command, context)
-        try:
-            selected = await self._query_sessions.interactions.select(
-                command,
-                context,
-            )
-        except DataUnavailableError:
-            return PortableReply(
-                OutboundMessage.from_text(
-                    DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
-                )
-            )
+        selected = await self._query_sessions.interactions.select(command, context)
         if is_menu_reply:
             return (
                 selected
                 if isinstance(selected, PortableReply) or selected is None
                 else PortableReply(selected)
             )
-        contract = self._matching_input_contract(
+        contract = self._matching_contract(
             raw_command,
-            command,
             context=command_context,
         )
         if contract is None:
@@ -292,13 +292,19 @@ class PortableCommandRouter:
                     return cast("PortableReply", mention_reply)
                 keyword_action = self._keyword_action(context)
                 if keyword_action is not None:
-                    return cast(
-                        "PortableReply",
-                        await build_portable_text_operation(
+                    contract = self._catalog.get(
+                        f"messaging.keyword.{keyword_action.id}"
+                    )
+                    assert contract is not None
+                    return await self._dispatch_operation(
+                        contract,
+                        build_portable_text_operation(
                             keyword_action,
                             self._messaging.command_mentions(keyword_action.id),
                             self._identity_principals,
-                        )(command, context),
+                        ),
+                        command,
+                        context,
                     )
             if (
                 context.kind is MessageInputKind.BOT_MENTION
@@ -306,49 +312,49 @@ class PortableCommandRouter:
                 and not context.member_mentions
             ):
                 return self.bare_mention_hint(context)
+            prompt = raw_command.strip()
             return await execute_ai_fallback(
                 self._query_sessions,
                 context,
-                command,
-                lambda: self._fallback_reply(context, command_context, command),
+                prompt,
+                lambda: self._fallback_reply(context, command_context, prompt),
             )
-        return await self._dispatch_contract(contract.id, command, context)
+        return await self._dispatch_operation(
+            contract, self._operations[contract.id], command, context
+        )
 
-    async def _dispatch_contract(
-        self, command_id: str, command: str, context: MessageInputContext
+    async def _dispatch_operation(
+        self,
+        contract: CommandContract,
+        operation: PortableOperation,
+        command: str,
+        context: MessageInputContext,
     ) -> PortableReply | None:
-        contract = self._catalog.get(command_id)
-        assert contract is not None
         request = (
             None
-            if command_id in self._resolved_target_commands
+            if contract.id in self._resolved_target_commands
             else direct_command_request(
-                command_id, command, context, category=contract.category
+                contract.id, command, context, category=contract.category
             )
         )
 
         async def execute() -> PortableReply | None:
             with semantic_request_scope(request, actor=context.message.actor):
+                authorized = authorized_operation(operation, contract, self._features)
+                if contract.interaction == "automatic":
+                    result = await authorized(command, context)
+                    return as_portable_reply(result) if result is not None else None
                 return await self._query_sessions.interactions.execute(
-                    authorized_operation(
-                        self._operations[command_id], contract, self._features
-                    ),
+                    authorized,
                     command,
                     context,
                 )
 
-        try:
-            if request is None:
-                return await execute()
-            return await self._query_sessions.interactions.execute_request(
-                request, context, execute
-            )
-        except DataUnavailableError:
-            return PortableReply(
-                OutboundMessage.from_text(
-                    DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
-                )
-            )
+        if request is None:
+            return await execute()
+        return await self._query_sessions.interactions.execute_request(
+            request, context, execute
+        )
 
     def _matching_contract(
         self,
@@ -364,18 +370,6 @@ class PortableCommandRouter:
             ),
             None,
         )
-
-    def _matching_input_contract(
-        self,
-        raw_text: str,
-        normalized_text: str,
-        *,
-        context: CommandContext,
-    ) -> CommandContract | None:
-        contract = self._matching_contract(raw_text, context=context)
-        if contract is not None or raw_text == normalized_text:
-            return contract
-        return self._matching_contract(normalized_text, context=context)
 
     def _available_contracts(
         self, context: CommandContext
@@ -402,7 +396,6 @@ class PortableCommandRouter:
         decision = self._ai_input_routing.decide(
             context,
             command_context,
-            normalized_text=prompt,
         )
         if decision.try_intent and self._ai_intent_actions is not None:
             source_context = format_ai_source_context(context)
@@ -471,6 +464,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     identity_principals: IdentityPrincipalService | None = None,
     ai_intent_actions: AiIntentActionExecutor | None = None,
     addressed_input_hints: AddressedInputHintService,
+    admin_notices: AdminNoticeService | None = None,
     team_resource: TeamResourceService,
     lucky_skin_window: LuckySkinWindowService | None = None,
     activity: ActivityService | None = None,
@@ -709,6 +703,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         ai_intent_actions=ai_intent_actions,
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
+        admin_notices=admin_notices,
         messaging=messaging,
         identity_principals=identity_principals,
         query_sessions=sessions,

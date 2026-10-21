@@ -4,8 +4,8 @@ import asyncio
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
@@ -23,8 +23,8 @@ from ironsbot.config.message_schedule_targets import (
     build_message_schedule_targets,
 )
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
-from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import MentionPart, OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
@@ -36,9 +36,6 @@ from ironsbot.core.platform import (
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot.messaging import matcher_rules
-from ironsbot.plugins.onebot.messaging import matchers as messaging_matchers
-from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_link_store import CrossPlatformGroupLink
 from ironsbot.services.identity_principals import IdentityPrincipalService
@@ -52,9 +49,12 @@ from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import deliver_portable_reply
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
+    CommandCooldownConfig,
+    CommandCooldownWindowConfig,
     MessageCommandAction,
     MessageConfig,
     MessageKeywordReplyAction,
@@ -62,12 +62,12 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
-from ironsbot.integrations.onebot import portable_queries
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
 )
 from ironsbot.services.messaging import schedules as message_schedules
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.push_time import PushTimeOption
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.messaging.subscriptions import (
@@ -89,7 +89,6 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.scheduled_delivery import (
         ScheduledMessageDelivery,
     )
-    from nonebot.matcher import Matcher
     from pytest import MonkeyPatch
 
     from ironsbot.services.activity.service import ActivityService
@@ -451,30 +450,29 @@ def test_push_subscription_menu_keeps_read_only_options_when_names_fail(
 def test_group_push_subscription_command_allows_superuser_member(
     tmp_path: Path,
 ) -> None:
-    assert matcher_rules.match_push_subscription_command(
-        _group_event(),
-        {},
-        messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite", superusers=(SUPERUSER_ID,)
+    )
+    assert _messaging_router(MessageConfig(), messaging).recognizes(
+        message_input_context(_group_event())
     )
 
 
 def test_group_push_subscription_command_allows_regular_member_to_view(
     tmp_path: Path,
 ) -> None:
-    assert matcher_rules.match_push_subscription_command(
-        _group_event(),
-        {},
-        messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
+    messaging = _messaging_resources(tmp_path / "unsubscribe.sqlite")
+    assert _messaging_router(MessageConfig(), messaging).recognizes(
+        message_input_context(_group_event())
     )
 
 
 def test_group_push_subscription_management_command_matches_regular_member(
     tmp_path: Path,
 ) -> None:
-    assert matcher_rules.match_push_subscription_command(
-        _group_event("推送管理", user_id=3003),
-        {},
-        messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
+    messaging = _messaging_resources(tmp_path / "unsubscribe.sqlite")
+    assert _messaging_router(MessageConfig(), messaging).recognizes(
+        message_input_context(_group_event("推送管理", user_id=3003))
     )
 
 
@@ -492,10 +490,12 @@ def _messaging_catalog(config: MessageConfig) -> CommandCatalog:
 
 
 def _messaging_router(
-    config: MessageConfig, messaging: MessagingService
+    config: MessageConfig,
+    messaging: MessagingService,
+    sessions: PortableQuerySessions | None = None,
 ) -> PortableCommandRouter:
     catalog = _messaging_catalog(config)
-    sessions = PortableQuerySessions()
+    sessions = sessions or PortableQuerySessions()
 
     async def refresh(_option: PushTimeOption) -> None:
         pass
@@ -525,9 +525,9 @@ def test_push_menu_private_entry_is_claimed_and_not_captured_by_ai(
     )
     catalog = _messaging_catalog(MessageConfig())
     event = private_message_event(text, user_id=SUPERUSER_ID)
-    assert matcher_rules.match_push_subscription_command(
-        event, {}, messaging=messaging
-    ) or matcher_rules.match_push_time_command(event, {}, messaging=messaging)
+    assert _messaging_router(MessageConfig(), messaging).recognizes(
+        message_input_context(event)
+    )
     assert catalog.claims_direct_input(
         CommandContext(_actor(SUPERUSER_ID), _private(SUPERUSER_ID)),
         messaging.feature_policy,
@@ -551,12 +551,12 @@ def test_push_menu_group_directory_agrees_with_actual_permission(
     )
     event = _group_event(text, role=role)
     expected = text == "TD" or superuser or role != "member"
-    rule = (
-        matcher_rules.match_push_subscription_command
-        if text == "TD"
-        else matcher_rules.match_push_time_command
+    assert (
+        _messaging_router(MessageConfig(), messaging).recognizes(
+            message_input_context(event)
+        )
+        is expected
     )
-    assert rule(event, {}, messaging=messaging) is expected
     assert (
         _messaging_catalog(MessageConfig()).claims_direct_input(
             CommandContext(_actor(SUPERUSER_ID), _group(2002), role),
@@ -746,55 +746,180 @@ def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None
     }
 
 
-def test_reply_cooldown_keys_distinguish_same_named_action_families() -> None:
-    state = {
-        matcher_rules.MESSAGE_ACTION_KEY: MessageKeywordReplyAction(
-            id="same", keywords=["示例"], messages=["keyword"]
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+async def test_reply_cooldown_keys_distinguish_same_named_action_families(
+    tmp_path: Path,
+    platform: Platform,
+) -> None:
+    config = MessageConfig(
+        commands=[
+            MessageCommandAction(id="same", commands=["指令"], messages=["direct"])
+        ],
+        keyword_replies=[
+            MessageKeywordReplyAction(
+                id="same", keywords=["触发"], messages=["keyword"]
+            )
+        ],
+    )
+    messaging = _messaging_resources(
+        tmp_path / "qq.sqlite",
+        commands=config.commands,
+        keyword_replies=config.keyword_replies,
+        user_policy={"2001": ["text"]},
+        superusers=(),
+    )
+    actor = ActorRef(platform, "2001")
+    conversation = ConversationRef(platform, "private", actor.id)
+    messaging = replace(
+        messaging,
+        _features=FeatureService({}, {actor: frozenset({"text"})}, frozenset()),
+    )
+    sessions = PortableQuerySessions()
+    cooldown = Mock(
+        wraps=CommandCooldownService(
+            CommandCooldownConfig(
+                enabled=True,
+                windows=[
+                    CommandCooldownWindowConfig(window_seconds=60, max_requests=1)
+                ],
+            ),
+            messaging.feature_policy,
         )
-    }
-    assert _action_command_id("message")(None, state) == "message.same"
-    assert _action_command_id("message.keyword")(None, state) == "message.keyword.same"
-    with pytest.raises(KeyError):
-        _action_command_id("message.keyword")(None, {})
+    )
+    sessions.interactions.cooldown = cooldown
+    router = _messaging_router(config, messaging, sessions)
+    messages = []
+    for text in ("指令", "触发", "触发"):
+        reply = await router.dispatch(
+            MessageInputContext(
+                IncomingMessageRef(
+                    platform, actor, conversation, str(len(messages)), text
+                ),
+                mentions_bot=False,
+            )
+        )
+        assert reply is not None
+        messages.append(
+            "".join(
+                part.text for part in reply.message.parts if isinstance(part, TextPart)
+            )
+        )
+        await deliver_portable_reply(
+            reply,
+            AsyncMock(
+                return_value=SendResult(delivered=True, message_id=str(len(messages)))
+            ),
+        )
+    assert messages[:2] == ["direct", "keyword"]
+    assert "操作过于频繁" in messages[-1]
+    assert [call.kwargs["command_id"] for call in cooldown.admit.call_args_list] == [
+        "messaging.same",
+        "messaging.keyword.same",
+        "messaging.keyword.same",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("group", [False, True])
+async def test_keyword_reply_preserves_active_subscription_menu(
+    tmp_path: Path, platform: Platform, *, group: bool
+) -> None:
+    config = MessageConfig(
+        keyword_replies=[
+            MessageKeywordReplyAction(
+                id="example", keywords=["触发"], messages=["keyword"]
+            )
+        ]
+    )
+    actor = ActorRef(platform, "2001")
+    conversation = ConversationRef(platform, "group" if group else "private", "2001")
+    store = PushUnsubscribeStore(tmp_path / "qq.sqlite")
+    messaging = replace(
+        _messaging_resources(
+            tmp_path / "qq.sqlite",
+            keyword_replies=config.keyword_replies,
+            store=store,
+            extra_push_options=lambda _conversation: [
+                PushSubscriptionOption("example", "示例", "text")
+            ],
+        ),
+        _features=FeatureService(
+            {conversation: frozenset({"text"})} if group else {},
+            {actor: frozenset({"text"})},
+            frozenset(),
+        ),
+    )
+    sessions = PortableQuerySessions()
+    router = _messaging_router(config, messaging, sessions)
+
+    async def dispatch(text: str):
+        context = MessageInputContext(
+            IncomingMessageRef(
+                platform,
+                actor,
+                conversation,
+                text,
+                text,
+                group_role="admin" if group else None,
+            ),
+            mentions_bot=False,
+        )
+        reply = await router.dispatch(context)
+        assert reply is not None
+        await deliver_portable_reply(
+            reply, AsyncMock(return_value=SendResult(delivered=True, message_id=text))
+        )
+        return context, reply
+
+    context, _ = await dispatch("TD")
+    prompt = sessions.active_prompt(context)
+    assert prompt is not None
+    _, reply = await dispatch("触发")
+    assert reply.message == OutboundMessage.from_text("keyword")
+    assert sessions.active_prompt(context) == prompt
+    await dispatch("1")
+    assert store.is_unsubscribed(conversation, "example")
 
 
 @pytest.mark.asyncio
 async def test_onebot_configured_reply_sends_messages_in_order(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     sent: list[str] = []
 
-    async def record(
-        _matcher: object, _event: object, message: OutboundMessage
-    ) -> SendResult:
+    async def record(message: OutboundMessage) -> SendResult:
         sent.append("".join(p.text for p in message.parts if isinstance(p, TextPart)))
         return SendResult(delivered=True, message_id=str(len(sent)))
 
-    monkeypatch.setattr(portable_queries, "send_portable_event_reply", record)
     action = MessageCommandAction(
         id="sequence",
         commands=["连续回复"],
         messages=["第一条", "第二条", "第三条"],
     )
-    await messaging_matchers.handle_message_command(
-        cast("Matcher", SimpleNamespace(state={})),
-        private_message_event("连续回复", user_id=SUPERUSER_ID),
-        {matcher_rules.MESSAGE_ACTION_KEY: action},
-        references=QQReferenceResolver(group_aliases={}, user_aliases={}),
-        sessions=PortableQuerySessions(),
+    messaging = _messaging_resources(
+        tmp_path / "qq.sqlite",
+        commands=[action],
+        user_policy={str(SUPERUSER_ID): ["text"]},
     )
+    reply = await _messaging_router(
+        MessageConfig(commands=[action]), messaging
+    ).dispatch(
+        message_input_context(private_message_event("连续回复", user_id=SUPERUSER_ID))
+    )
+    assert reply is not None
+    await deliver_portable_reply(reply, record)
     assert sent == action.messages
 
 
 @pytest.mark.asyncio
 async def test_onebot_configured_reply_addresses_explicit_member_targets(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     sent_targets: list[tuple[int, ...]] = []
 
     async def record(
-        _matcher: object,
-        _event: object,
         message: OutboundMessage,
     ) -> SendResult:
         sent_targets.append(
@@ -802,7 +927,6 @@ async def test_onebot_configured_reply_addresses_explicit_member_targets(
         )
         return SendResult(delivered=True, message_id="targeted")
 
-    monkeypatch.setattr(portable_queries, "send_portable_event_reply", record)
     action = MessageCommandAction(
         id="targeted",
         commands=["加群"],
@@ -813,13 +937,19 @@ async def test_onebot_configured_reply_addresses_explicit_member_targets(
         message=Message("加群 ") + MessageSegment.at(789) + MessageSegment.at(789),
     )
 
-    await messaging_matchers.handle_message_command(
-        cast("Matcher", SimpleNamespace(state={})),
-        event,
-        {matcher_rules.MESSAGE_ACTION_KEY: action},
-        references=QQReferenceResolver(group_aliases={}, user_aliases={}),
-        sessions=PortableQuerySessions(),
+    messaging = replace(
+        _messaging_resources(
+            tmp_path / "qq.sqlite",
+            commands=[action],
+            group_policy={str(event.group_id): ["text"]},
+        ),
+        _command_mentions={"targeted": (_actor(790),)},
     )
+    reply = await _messaging_router(
+        MessageConfig(commands=[action]), messaging
+    ).dispatch(message_input_context(event))
+    assert reply is not None
+    await deliver_portable_reply(reply, record)
 
     assert sent_targets == [(789,)]
 
@@ -842,28 +972,20 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
         group_policy={"1001": ["web_activity_link"]},
     )
 
-    private_state: dict[str, object] = {}
-    group_state: dict[str, object] = {}
-    assert matcher_rules.match_message_command(
-        private_message_event("activity", user_id=2001),
-        private_state,
-        messaging=messaging,
+    private_action = messaging.match_action(
+        "activity",
+        actor=_actor(2001),
+        conversation=_private(2001),
         interaction="direct",
     )
-    assert matcher_rules.match_message_command(
-        group_member_message_event("activity", user_id=2002, group_id=1001),
-        group_state,
-        messaging=messaging,
+    group_action = messaging.match_action(
+        "activity",
+        actor=_actor(2002),
+        conversation=_group(1001),
         interaction="direct",
     )
-    private_action = cast(
-        "MessageCommandAction",
-        private_state[matcher_rules.MESSAGE_ACTION_KEY],
-    )
-    group_action = cast(
-        "MessageCommandAction",
-        group_state[matcher_rules.MESSAGE_ACTION_KEY],
-    )
+    assert private_action is not None
+    assert group_action is not None
     assert private_action.id == "activity_link"
     assert group_action.at_user_ids == [3001]
 
@@ -892,35 +1014,30 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
         group_policy={"1001": ["text"]},
     )
 
-    exact_state: dict[str, object] = {}
-    keyword_state: dict[str, object] = {}
-    assert matcher_rules.match_message_command(
-        group_member_message_event("出出", user_id=2002, group_id=1001),
-        exact_state,
-        messaging=messaging,
+    exact_action = messaging.match_action(
+        "出出",
+        actor=_actor(2002),
+        conversation=_group(1001),
         interaction="direct",
     )
-    assert matcher_rules.match_message_command(
-        group_member_message_event("自 动词", user_id=2002, group_id=1001),
-        keyword_state,
-        messaging=messaging,
+    keyword_action = messaging.match_action(
+        "自 动词",
+        actor=_actor(2002),
+        conversation=_group(1001),
         interaction="automatic",
     )
-    exact_action = cast(
-        "MessageCommandAction",
-        exact_state[matcher_rules.MESSAGE_ACTION_KEY],
-    )
-    keyword_action = cast(
-        "MessageKeywordReplyAction",
-        keyword_state[matcher_rules.MESSAGE_ACTION_KEY],
-    )
+    assert exact_action is not None
+    assert keyword_action is not None
     assert exact_action.id == "exact_reply"
     assert keyword_action.id == "keyword_reply"
-    assert not matcher_rules.match_message_command(
-        group_member_message_event("今天出出了", user_id=2002, group_id=1001),
-        {},
-        messaging=messaging,
-        interaction="automatic",
+    assert (
+        messaging.match_action(
+            "今天出出了",
+            actor=_actor(2002),
+            conversation=_group(1001),
+            interaction="automatic",
+        )
+        is None
     )
 
 
@@ -958,38 +1075,34 @@ def test_onebot_contains_reply_permissions_and_fixed_command_priority(
         ],
         group_policy={"1001": ["seerinfo"] if allowed else []},
     )
-    state: dict[str, object] = {}
-    assert (
-        matcher_rules.match_message_command(
-            group_member_message_event("看看竞技胜率榜", user_id=2002, group_id=1001),
-            state,
-            messaging=messaging,
-            interaction="automatic",
-        )
-        is allowed
-    )
-    if allowed:
-        assert (
-            cast(
-                "MessageKeywordReplyAction", state[matcher_rules.MESSAGE_ACTION_KEY]
-            ).id
-            == "webpage"
-        )
-    assert not matcher_rules.match_message_command(
-        group_member_message_event("竞技胜率榜", user_id=2002, group_id=1001),
-        {},
-        messaging=messaging,
+    action = messaging.match_action(
+        "看看竞技胜率榜",
+        actor=_actor(2002),
+        conversation=_group(1001),
         interaction="automatic",
     )
+    assert (action is not None) is allowed
+    if allowed:
+        assert action is not None
+        assert action.id == "webpage"
     assert (
-        matcher_rules.match_message_command(
-            group_member_message_event("竞技胜率榜", user_id=2002, group_id=1001),
-            {},
-            messaging=messaging,
+        messaging.match_action(
+            "竞技胜率榜",
+            actor=_actor(2002),
+            conversation=_group(1001),
+            interaction="automatic",
+        )
+        is None
+    )
+    assert (
+        messaging.match_action(
+            "竞技胜率榜",
+            actor=_actor(2002),
+            conversation=_group(1001),
             interaction="direct",
         )
-        is allowed
-    )
+        is not None
+    ) is allowed
 
 
 def _mention_context(
@@ -1043,7 +1156,7 @@ def test_mention_reply_requires_the_configured_actor_and_bot_mention(
     )
 
 
-def test_onebot_mention_rule_uses_shared_mention_reply_matcher(
+def test_onebot_context_uses_shared_mention_reply_matching(
     tmp_path: Path,
 ) -> None:
     configured = _actor(2002)
@@ -1058,7 +1171,6 @@ def test_onebot_mention_rule_uses_shared_mention_reply_matcher(
         ],
         mention_reply_targets=((configured,),),
     )
-    state: dict[str, object] = {}
     event = group_message_event(
         user_id=2002,
         group_id=1001,
@@ -1066,11 +1178,8 @@ def test_onebot_mention_rule_uses_shared_mention_reply_matcher(
         message=Message([MessageSegment.at(1)]),
     )
 
-    assert matcher_rules.match_mention_reply(event, state, messaging=messaging)
-    action = cast(
-        "MessageMentionReplyAction",
-        state[matcher_rules.MESSAGE_ACTION_KEY],
-    )
+    action = messaging.match_mention_reply(message_input_context(event))
+    assert action is not None
     assert action.id == "example"
 
 

@@ -26,6 +26,7 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.command_errors import COMMAND_FAILED_MESSAGE
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.portable_commands import PortableCommandRouter
@@ -33,6 +34,7 @@ from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessions,
 )
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -167,6 +169,19 @@ async def test_actual_onebot_entry_uses_public_route_and_cooldown(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["执行", " 执行", "执行 ", "/执行"])
+async def test_actual_onebot_entry_does_not_broaden_literal_commands(
+    runtime: SimpleNamespace, text: str
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    await handle_event(runtime.bot, group_message_event(text, user_id=101))
+    claimed = text == "执行"
+    assert runtime.execute.await_count == int(claimed)
+    assert len(runtime.sends) == int(claimed)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["business", "transport", "unclaimed"])
 async def test_failed_onebot_reply_does_not_consume_shared_cooldown(
     runtime: SimpleNamespace, failure: str
@@ -190,6 +205,42 @@ async def test_failed_onebot_reply_does_not_consume_shared_cooldown(
         runtime.bot, group_message_event("执行", user_id=101, message_id=2)
     )
     assert runtime.execute.await_count == len(("failed", "recovered"))
+    assert "recovered" in str(runtime.sends[-1]["message"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["dispatch", "follow_up", "menu"])
+async def test_actual_onebot_exception_is_safe_and_releases_admission(
+    runtime: SimpleNamespace, stage: str
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    error = RuntimeError("sensitive-query-detail")
+    if stage == "menu":
+        await handle_event(
+            runtime.bot, group_message_event("菜单", user_id=101, message_id=1)
+        )
+        runtime.select.side_effect = error
+    elif stage == "follow_up":
+        runtime.execute.return_value = PortableReply(
+            OutboundMessage.from_text("initial"),
+            follow_up=AsyncMock(side_effect=error),
+        )
+    else:
+        runtime.execute.side_effect = error
+    await handle_event(
+        runtime.bot,
+        group_message_event(
+            "1" if stage == "menu" else "执行", user_id=101, message_id=2
+        ),
+    )
+    assert COMMAND_FAILED_MESSAGE in str(runtime.sends[-1]["message"])
+    assert "sensitive-query-detail" not in str(runtime.sends)
+    runtime.execute.side_effect = None
+    runtime.execute.return_value = OutboundMessage.from_text("recovered")
+    await handle_event(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=3)
+    )
     assert "recovered" in str(runtime.sends[-1]["message"])
 
 

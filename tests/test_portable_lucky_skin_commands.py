@@ -2,14 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from ironsbot.config.models.messaging import (
+    CommandCooldownConfig,
+    CommandCooldownWindowConfig,
+)
+from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -17,13 +23,23 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.player_references import PlayerReferenceChoice
+from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_link_store import OfficialIdentity
 from ironsbot.services.identity_principals import IdentityPrincipalService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_lucky_skin_commands import (
     PortableLuckySkinCommands,
     build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import deliver_portable_reply
+from ironsbot.services.seer.lucky_skin_commands import (
+    lucky_skin_window_command_contracts,
+)
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinQuery,
     LuckySkinWatchItem,
@@ -35,6 +51,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 if TYPE_CHECKING:
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
 
@@ -517,3 +534,151 @@ async def test_unlinked_identity_cannot_read_or_change_watch_preferences(
     ](text, _context(text))
     assert "关联官方账号" in _text(reply)
     assert service.mock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("private", [False, True])
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("outcome", ["success", "delivery_failure", "query_failure"])
+async def test_lucky_query_route_admits_player_once_and_settles_delivery(  # noqa: PLR0915 - admission, delivery and retry assertions stay together
+    platform: Platform, outcome: str, *, private: bool, cached: bool
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    context = _context(platform=platform)
+    if private:
+        actor = replace(context.message.actor, kind="user", scope_id=None)
+        context = replace(
+            context,
+            message=replace(
+                context.message,
+                actor=actor,
+                conversation=ConversationRef(
+                    platform, "private", actor.id, actor.account_id
+                ),
+            ),
+        )
+    result = LuckySkinWindowResult("2026-10-22", 90001, (), from_cache=cached)
+    service.account_for_actor.return_value = SimpleNamespace(player_id=90001)
+    service.cached_query.return_value = result if cached else None
+    service.query = AsyncMock(return_value=result)
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(
+        return_value=OutboundMessage.from_text("橱窗结果")
+    )
+    if outcome == "query_failure":
+        failing_operation = service.result_message if cached else service.query
+        failing_operation.side_effect = RuntimeError("private diagnostic")
+    notices = Mock(send=AsyncMock())
+    features = FeatureService(
+        {context.message.conversation: frozenset({"lucky_skin_window"})},
+        {context.message.actor: frozenset({"lucky_skin_window"})},
+        frozenset(),
+        principals=identity,
+    )
+    config = CommandCooldownConfig(
+        enabled=True,
+        windows=[CommandCooldownWindowConfig(window_seconds=60, max_requests=1)],
+    )
+    requests = Mock(wraps=InFlightRequestService(features, config))
+    cooldown = Mock(wraps=CommandCooldownService(config, features))
+    sessions.interactions.request_service = requests
+    sessions.interactions.cooldown = cooldown
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="lucky_skin_window", commands=lucky_skin_window_command_contracts()
+            ),
+        ),
+        known_features={"lucky_skin_window"},
+    )
+    router = PortableCommandRouter(
+        catalog,
+        cast(
+            "dict[str, PortableOperation]",
+            _operations(service, pet, identity, sessions),
+        ),
+        features,
+        ai=Mock(),
+        admin_notices=notices,
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+
+    async def query():
+        previous_queries = service.query.await_count
+        previous_admissions = requests.admit.call_count
+        reply = await router.dispatch(context)
+        assert reply is not None
+        if not cached:
+            assert service.query.await_count == previous_queries
+            assert requests.admit.call_count == previous_admissions
+            await deliver_portable_reply(
+                reply,
+                AsyncMock(
+                    return_value=SendResult(delivered=True, message_id="confirmation")
+                ),
+            )
+            reply = await router.dispatch(
+                replace(
+                    context,
+                    message=replace(context.message, text="1", message_id="choice-1"),
+                )
+            )
+            assert reply is not None
+        return reply
+
+    reply = await query()
+    if outcome == "query_failure":
+        assert _text(reply.message) == "❌ 命令执行失败，请稍后再试。"
+        notices.send.assert_awaited_once()
+        assert "private diagnostic" not in str(notices.send.await_args)
+    else:
+        assert _text(reply.message) == "橱窗结果"
+        notices.send.assert_not_awaited()
+    requests.admit.assert_called_once()
+    cooldown.admit.assert_called_once()
+    request = requests.admit.call_args.kwargs["request"]
+    assert request.action.id == "seer.lucky_skin_window.query"
+    assert request.target.key == "90001"
+    requests.finish.assert_not_called()
+    cooldown.finish.assert_not_called()
+    await deliver_portable_reply(
+        reply,
+        AsyncMock(
+            return_value=SendResult(
+                delivered=outcome != "delivery_failure",
+                message_id="result" if outcome != "delivery_failure" else None,
+                error_code="rejected" if outcome == "delivery_failure" else None,
+            )
+        ),
+    )
+    assert (
+        requests.finish.call_count
+        == cooldown.finish.call_count
+        == int(outcome == "success")
+    )
+    assert (
+        requests.release.call_count
+        == cooldown.release.call_count
+        == int(outcome != "success")
+    )
+    if outcome != "success":
+        service.query.side_effect = service.result_message.side_effect = None
+        recovered = await query()
+        assert _text(recovered.message) == "橱窗结果"
+        await deliver_portable_reply(
+            recovered,
+            AsyncMock(return_value=SendResult(delivered=True, message_id="recovered")),
+        )
+        assert requests.finish.call_count == cooldown.finish.call_count == 1
+    if cached:
+        service.query.assert_not_awaited()
+    else:
+        assert service.query.await_count == (1 if outcome == "success" else 2)
+        assert all(
+            call.args == (LuckySkinQuery(context.message.actor, onebot),)
+            for call in service.query.await_args_list
+        )

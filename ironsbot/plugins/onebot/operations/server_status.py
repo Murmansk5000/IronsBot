@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""OneBot handlers and manifest contribution for server-status commands."""
+"""Manifest contribution for shared server-status commands."""
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
 
@@ -13,22 +11,9 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.portable_queries import (
-    make_authorized_portable_handler,
-)
-from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
-from ironsbot.services.portable_operational_commands import (
-    build_portable_server_status_operations,
-)
-
-if TYPE_CHECKING:
-    from ironsbot.core.command_catalog import CommandCatalog
-    from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.services.operations.server_status import ServerStatusService
 
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
@@ -38,34 +23,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def _install(
-    registry: MatcherFactory,
-    server_status: ServerStatusService,
-    features: FeatureService,
-    commands: CommandCatalog,
-) -> None:
-    del commands
-    operations = build_portable_server_status_operations(server_status)
-    for contract in server_status_command_contracts():
-        matcher = registry.on_fullmatch(
-            contract.examples,
-            policy=CommandPolicy.command(contract.id, help_ids=(contract.id,)),
-            rule=explicit_command(),
-            priority=registry.priority(
-                "server_status_admin"
-                if contract.id
-                in {"server_status.admin_query", "server_status.headless_instances"}
-                else "server_status"
-            ),
-            block=True,
-        )
-        matcher.append_handler(
-            make_authorized_portable_handler(
-                operations[contract.id], contract, features
-            )
-        )
 
 
 def plugin_contribution() -> PluginContribution:
