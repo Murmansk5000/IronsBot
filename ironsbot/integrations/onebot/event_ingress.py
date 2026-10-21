@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -28,15 +28,12 @@ from ironsbot.integrations.onebot.identity import (
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandEvent,
-    own_account_echo,
     own_account_input,
 )
 from ironsbot.services.identity_observation import OneBotGroupMessageObservation
 from ironsbot.services.onebot_admission import OneBotAdmissionInput
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Bot as AdapterBot
-
     from ironsbot.services.onebot_admission import OneBotAdmissionService
 
 logger = logging.getLogger(__name__)
@@ -66,20 +63,6 @@ class OneBotEventIngress:
 
     def install(self) -> None:
         ingress = self
-        self_commands = self.admission.self_commands
-        if self.admission.messages_enabled and self_commands is not None:
-
-            async def observe_outbound(
-                bot: AdapterBot, api: str, data: dict[str, Any]
-            ) -> None:
-                if not isinstance(bot, Bot):
-                    return
-                echo = own_account_echo(bot, api, data)
-                if echo is not None:
-                    self_commands.record_outbound(echo)
-
-            Bot.on_calling_api(observe_outbound)
-
         @event_preprocessor
         async def enforce_onebot_ingress(bot: Bot, event: Event) -> None:
             if bot.self_id != str(event.self_id):

@@ -58,10 +58,10 @@ class FakeStore:
     reminder: TeamAuditPendingReminder | None = None
     cleared: bool = False
 
-    def save(self, reminder: TeamAuditPendingReminder) -> None:
+    async def save(self, reminder: TeamAuditPendingReminder) -> None:
         self.reminder = reminder
 
-    def get(
+    async def get(
         self,
         conversation: ConversationRef,
         actor: ActorRef,
@@ -69,13 +69,20 @@ class FakeStore:
         assert (conversation, actor) == (CONVERSATION, ACTOR)
         return self.reminder
 
-    def list_all(self) -> list[TeamAuditPendingReminder]:
+    async def list_all(self) -> list[TeamAuditPendingReminder]:
         return [self.reminder] if self.reminder is not None else []
 
-    def clear(self, conversation: ConversationRef, actor: ActorRef) -> None:
-        assert (conversation, actor) == (CONVERSATION, ACTOR)
-        self.cleared = True
-        self.reminder = None
+    async def transition(
+        self,
+        expected: TeamAuditPendingReminder,
+        *,
+        replacement: TeamAuditPendingReminder | None = None,
+    ) -> bool:
+        if self.reminder != expected:
+            return False
+        self.cleared = replacement is None
+        self.reminder = replacement
+        return True
 
 
 @dataclass

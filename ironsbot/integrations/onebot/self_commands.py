@@ -12,8 +12,6 @@ from ironsbot.core.own_commands import OwnAccountInput
 from ironsbot.core.platform import ConversationRef, Platform
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Bot
-
     from ironsbot.core.own_commands import OwnAccountCommand
 
 
@@ -67,31 +65,30 @@ def is_unaccepted_self_message(event: GroupMessageEvent | Event) -> bool:
 def own_account_input(event: SelfCommandEvent) -> OwnAccountInput:
     return _snapshot(
         str(event.self_id),
-        str(event.group_id),
+        ConversationRef(Platform.ONEBOT, "group", str(event.group_id)),
         event.original_message or event.message,
         is_own_message=event.user_id == event.self_id,
     )
 
 
-def own_account_echo(
-    bot: Bot, api: str, data: dict[str, Any]
+def outbound_own_account_input(
+    account_id: str, conversation: ConversationRef, message: Message
 ) -> OwnAccountInput | None:
-    if api not in {"send_group_msg", "send_msg"}:
+    if conversation.platform is not Platform.ONEBOT or conversation.kind != "group":
         return None
-    group_id = data.get("group_id")
-    if group_id is None or "message" not in data:
-        return None
-    return _snapshot(
-        bot.self_id, str(group_id), Message(data["message"]), is_own_message=True
-    )
+    return _snapshot(account_id, conversation, message, is_own_message=True)
 
 
 def _snapshot(
-    account_id: str, group_id: str, message: Message, *, is_own_message: bool
+    account_id: str,
+    conversation: ConversationRef,
+    message: Message,
+    *,
+    is_own_message: bool,
 ) -> OwnAccountInput:
     return OwnAccountInput(
         account_id,
-        ConversationRef(Platform.ONEBOT, "group", group_id),
+        conversation,
         is_own_message,
         message.extract_plain_text(),
         tuple(

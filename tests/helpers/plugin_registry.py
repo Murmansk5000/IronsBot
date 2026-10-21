@@ -116,6 +116,10 @@ async def _noop_startup(_scheduler: object) -> None:
     return
 
 
+async def _noop_audit_start(*, scheduler: object) -> None:
+    del scheduler
+
+
 def _noop_startup_notice_add(*_args: object) -> None:
     return
 
@@ -134,14 +138,6 @@ async def _noop_bili_login_notice(
     **_kwargs: object,
 ) -> None:
     return None
-
-
-async def _noop_bot_connect(
-    _bot: object,
-    *,
-    scheduler: object,
-) -> None:
-    del scheduler
 
 
 async def _noop_query() -> str:
@@ -237,7 +233,11 @@ def build_test_plugin_registry(
                 ),
                 exact_command_texts=frozenset({"示例图片"}),
             ),
-            team_audit=SimpleNamespace(start=_noop_bot_connect),
+            team_audit=SimpleNamespace(
+                start=_noop_audit_start,
+                stop=lambda **_kwargs: None,
+                schedule_pending=_noop_startup,
+            ),
             team_resource=SimpleNamespace(
                 enabled=config.seer.team_resource.enabled,
                 query_commands=tuple(config.seer.team_resource.commands),
