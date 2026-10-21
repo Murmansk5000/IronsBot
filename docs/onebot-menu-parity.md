@@ -16,24 +16,26 @@
 
 ## 已统一
 
-| 功能 | OneBot 实际入口 | 公共实现与官方端对应 |
+生产命令统一经过 `integrations/onebot/command_ingress.py`，下表旧入口仅用于追溯迁移，不表示仍注册运行。
+
+| 功能 | 历史 OneBot 入口 | 公共实现与官方端对应 |
 | --- | --- | --- |
 | 帮助 | `plugins/onebot/help/__init__.py:install` | `services/help_menu.py`；详情有返回层 |
-| TD、推送时间 | `plugins/onebot/messaging/matchers.py:install` | `portable_messaging_commands.py`；本轮替换旧入口 |
+| TD、推送时间 | 旧 `messaging/matchers.py` 已删除 | `portable_messaging_commands.py`；公共路由统一命令认领、权限及菜单 |
 | 普通资料、头像、立绘、装备、刻印、属性 | `seer/query/commands/*_queries.py:install` | `portable_seer_commands.build_portable_catalog_queries` 统一搜索、候选标签、选择回调与会话；删除独立 `query_conversation` |
 | 玩家详情、快捷详情 | `seer/query/commands/player.py`、`player_shortcuts.py` | `portable_player_commands.py`；玩家选择进入详情可返回 |
 | 榜单列表、范围、分数查询 | `seer/query/commands/rank_list.py:install` | `portable_rank_commands.py`；进入玩家详情保留榜单父层 |
 | 群星牌、圣域 | `seer/query/commands/autocard.py`、`autocard_sanctuary.py` | `portable_autocard_commands.py`；本轮移除未注册旧会话代码 |
 | 新增内容 | `seer/query/commands/new_content.py:install` | `portable_new_content_commands.py`；本轮移除未注册旧 Prompt 及测试，替换为公共服务验证 |
 | B站历史、刷新、账号、推送模式 | `plugins/onebot/bilibili/commands.py:install` | `portable_bilibili_commands.py`；统一命令契约、执行前权限和失败状态，移除独立账号与刷新处理器 |
-| 战队资料、订阅战队详情 | `seer/query/commands/team.py`、`plugins/onebot/team_resource.py` 的查询注册 | `seer/team_commands.py`、`portable_team_resource_commands.py` |
-| 橱窗及皮肤详情 | `plugins/onebot/lucky_skin_window.py:_install` | `portable_lucky_skin_commands.py`、`portable_lucky_skin_result.py` |
+| 战队资料、订阅战队详情 | 旧 `seer/query/commands/team.py` 已删除，`team_resource.py` 的命令安装器已删除 | `seer/team_commands.py`、`portable_team_resource_commands.py`；贡献元数据与定时资源扫描保留 |
+| 橱窗及皮肤详情 | `lucky_skin_window.py` 的旧命令安装器已删除 | `portable_lucky_skin_commands.py`、`portable_lucky_skin_result.py`；未知异常由公共管理告警处理，日常扫描与缓存行为保留 |
 | 数据同步确认、镜像维护确认 | `plugins/onebot/operations/db_sync.py`、`docker_update.py` | `portable_operational_commands.py`；本轮迁移；仍限制超管，重启在回复发送成功后执行 |
 | 身份关联、状态、撤销 | `seer/query/commands/player.py` | `identity_link_commands.py`；保留关联开始与确认的平台约束 |
 | 榜单帮助 | `plugins/onebot/rank_help` | `portable_seer_commands.build_portable_rank_help_operation` |
 | 精灵配置 | `plugins/onebot/pet_config` | `portable_pet_config_commands.py`；复用应用会话，不另建独立菜单存储 |
 | AI 意图、聊天、单独提及提示 | `plugins/onebot/ai` | `ai/chat_operation.py`、`ai/fallback_operations.py`；平台只提供事件及来源信息 |
-| 配置提及回复、主题管理 | `plugins/onebot/messaging/matchers.py` | 公共 messaging 操作与公共投递；不在 handler 中直接拼装平台消息 |
+| 配置提及回复、关键词回复、主题管理 | 旧 `messaging/matchers.py` 和 `matcher_rules.py` 已删除 | 公共 messaging 操作与公共投递；关键词回复统一请求冷却，且不替换正在使用的菜单 |
 | 启动通知 | `plugins/onebot/startup_notice/__init__.py` | `operations/startup_delivery.py`；适配器只负责生命周期钩子 |
 
 B站正文、图片、战队普通详情等不额外建立虚假的返回页面；有可继续选择的菜单保持原会话。
@@ -42,7 +44,7 @@ B站正文、图片、战队普通详情等不额外建立虚假的返回页面�
 
 刻印数值榜、活动、固定／图库图片、会议、数据版本、预告及赛季倒计时均已由 OneBot 适配器调用公共操作。榜单管理同样共用公共操作，超过 3 秒提示一次，快速结果不提示，提示发送失败仍继续执行。
 
-开服和关于已接入 `portable_operational_commands` 公共操作，OneBot 独立开服处理器已删除。OneBot 通过 `make_authorized_portable_handler` 在执行前使用同一 CommandContract 复核功能、超管、会话范围与黑名单；无头实例状态仅允许超管私聊。无前缀“开服查询”只返回用法提示，不触发重连；关于与开服不增加慢提示。管理员重连失败保留公告及失败原因，并显式标记业务失败。
+开服和关于已接入 `portable_operational_commands` 公共操作，OneBot 独立开服处理器已删除。公共 `PortableCommandRouter` 在执行前使用同一 CommandContract 复核功能、超管、会话范围与黑名单；无头实例状态仅允许超管私聊。无前缀“开服查询”只返回用法提示，不触发重连；关于与开服不增加慢提示。管理员重连失败保留公告及失败原因，并显式标记业务失败。
 
 这里保留的适配器负责事件转换和发送，不是另一套查询实现；主动推送同样不重复注册业务调度。
 
@@ -59,7 +61,7 @@ B站正文、图片、战队普通详情等不额外建立虚假的返回页面�
 
 | 项目 | 公共行为 | 实际入口与保留边界 |
 | --- | --- | --- |
-| 配置文本附带的 @ | 显式成员优先，否则使用配置对象，无目标交由回复层回复发送者；去重，不附加发送者 | OneBot `handle_message_command` 调用 `build_portable_text_operation`；官方配置目标须解析为同账号的可信成员 |
+| 配置文本附带的 @ | 显式成员优先，否则使用配置对象，无目标交由回复层回复发送者；去重，不附加发送者 | 两平台公共路由调用 `build_portable_text_operation`；官方配置目标须解析为同账号的可信成员 |
 | 战队订阅确认 | 公共确认菜单归发起人及当前机器人，确认时检查管理权限及待办快照，`0` 取消 | 普通战队、订阅详情、玩家详情扩展均接入 `subscription_confirmation`；旧按群捕获是／否的 matcher 已移除 |
 | 巅峰查询进度 | 池子、投票和统计榜超过 3 秒提示一次，已有等待提示则不再发送；提示失败继续交付结果 | 两端使用公共巅峰操作；发送仍经过平台消息限流 |
 | 个人榜单目标 | 两端由公共操作解析目标，允许多候选；按最终玩家及榜单做重复判定 | OneBot 规则仅确认格式和可见目标，不提前执行单目标解析；候选展示不查询淘米 |

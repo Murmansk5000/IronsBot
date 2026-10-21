@@ -283,7 +283,9 @@ def _rank_operations(
         resolver,
         sessions,
         player_query,
-        cast("FeatureService", _Features()), player_shortcut=AsyncMock())
+        cast("FeatureService", _Features()),
+        player_shortcut=player_query,
+    )
 
 
 def _text(message: OutboundMessage) -> str:
@@ -341,7 +343,9 @@ async def test_rank_partial_alias_selects_one_player() -> None:
         resolver,
         sessions,
         player_query,
-        cast("FeatureService", _Features()), player_shortcut=AsyncMock())
+        cast("FeatureService", _Features()),
+        player_shortcut=player_query,
+    )
     context = _context("成就榜玩家")
     menu = await operations["rank.global_collection"](context.text, context)
     assert isinstance(menu, PortableReply)
@@ -381,7 +385,9 @@ async def test_rank_selected_alias_and_numeric_query_share_duplicate_identity(
         resolver,
         sessions,
         AsyncMock(),
-        cast("FeatureService", _Features()), player_shortcut=AsyncMock())
+        cast("FeatureService", _Features()),
+        player_shortcut=AsyncMock(),
+    )
     operation = operations["rank.global_collection"]
     context = _context("成就榜玩家")
     menu = await sessions.interactions.execute(operation, context.text, context)
@@ -398,8 +404,7 @@ async def test_rank_selected_alias_and_numeric_query_share_duplicate_identity(
     assert "重复" in _text(repeated.message)
     await deliver_portable_reply(repeated, send)
     silent = await operation("成就榜700002", context)
-    assert isinstance(silent, PortableReply)
-    assert not await deliver_portable_reply(silent, send)
+    assert silent is None
     assert send.await_count == len(("result", "duplicate warning"))
     assert spy.await_count == 1
 
@@ -426,7 +431,9 @@ async def test_rank_menu_preserves_displayed_rank_and_opens_player_query() -> No
         _resolver(),
         sessions,
         player_query,
-        cast("FeatureService", _Features()), player_shortcut=AsyncMock())
+        cast("FeatureService", _Features()),
+        player_shortcut=player_query,
+    )
     context = _context("成就榜11-20")
     result = cast(
         "PortableReply",
@@ -466,7 +473,9 @@ async def test_rank_menu_quoted_member_uses_responder_identity() -> None:
         _resolver(),
         sessions,
         player_query,
-        cast("FeatureService", _Features()), player_shortcut=AsyncMock())
+        cast("FeatureService", _Features()),
+        player_shortcut=player_query,
+    )
     owner = _context("成就榜11-20")
     result = cast(
         "PortableReply",
@@ -516,7 +525,9 @@ async def test_rank_score_menu_accepts_sparse_displayed_ranks() -> None:
         _resolver(),
         sessions,
         player_query,
-        cast("FeatureService", _Features()), player_shortcut=AsyncMock())
+        cast("FeatureService", _Features()),
+        player_shortcut=player_query,
+    )
     context = _context("群星之巅榜8884分")
     result = cast(
         "PortableReply",

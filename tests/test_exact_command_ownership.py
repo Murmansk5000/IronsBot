@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
-import nonebot
 import pytest
-from nonebot.rule import Rule, fullmatch
+from nonebot.rule import fullmatch
 
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.core.command_catalog import (
@@ -15,16 +14,22 @@ from ironsbot.core.command_catalog import (
 )
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.feature_policy import FeatureService
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
-from ironsbot.services.about import AboutService, about_command_contracts
+from ironsbot.services.about import about_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.meeting import meeting_command_contracts
 from ironsbot.services.messaging.service import find_command_action
@@ -32,7 +37,7 @@ from ironsbot.services.operations.docker_commands import docker_command_contract
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
-from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
@@ -97,15 +102,27 @@ async def test_fixed_contracts_match_literal_fullmatch(
 
 
 @pytest.mark.asyncio
-async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
-    try:
-        nonebot.get_driver()
-    except ValueError:
-        nonebot.init()
-    from ironsbot.plugins.onebot import about
-    from ironsbot.plugins.onebot import help as help_plugin
-
-    registry = Mock()
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("name", ["帮助", "关于"])
+@pytest.mark.parametrize("shape", ["literal", "leading", "trailing", "middle", "slash"])
+async def test_public_route_and_ai_obey_literal_command_ownership(
+    platform: Platform, name: str, shape: str
+) -> None:
+    text = {
+        "literal": name,
+        "leading": " " + name,
+        "trailing": name + " ",
+        "middle": " ".join(name),
+        "slash": "/" + name,
+    }[shape]
+    actor = ActorRef(platform, "100")
+    conversation = ConversationRef(platform, "private", actor.id)
+    context = MessageInputContext(
+        IncomingMessageRef(platform, actor, conversation, "1", text), mentions_bot=False
+    )
+    features = FeatureService(
+        {}, {actor: frozenset({"help", "about", "ai_chat"})}, frozenset()
+    )
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -118,28 +135,28 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
         ),
         known_features={"help", "about", "ai_chat"},
     )
-    about.install(registry, AboutService("test"), FEATURES)
-    help_plugin.install(
-        registry,
-        Mock(),
-        FEATURES,
+    operation = AsyncMock(return_value=OutboundMessage.from_text("command"))
+    ai = Mock(chat_reply=AsyncMock(return_value="chat"))
+    routing = AiInputRoutingService(features, catalog)
+    router = PortableCommandRouter(
         catalog,
-        PortableQuerySessions(),
-        ignored_plugins=(),
+        {"help": operation, "about": operation},
+        features,
+        ai=ai,
+        ai_input_routing=routing,
+        addressed_input_hints=AddressedInputHintService(),
     )
-    for call in registry.on_fullmatch.call_args_list:
-        name = call.args[0]
-        rule = fullmatch(name) & cast("Rule", call.kwargs["rule"])
-        for text in (name, " " + name, name + " ", " ".join(name)):
-            event = private_message_event(text, user_id=100)
-            actual = await rule(cast("Bot", None), event, {})
-            assert catalog.claims_direct_input(CONTEXT, FEATURES, text) == actual
-            assert (
-                AiInputRoutingService(FEATURES, catalog)
-                .decide(message_input_context(event), command_context(event))
-                .try_chat
-                is not actual
-            )
+    claimed = shape == "literal"
+    assert router.recognizes(context)
+    reply = await router.dispatch(context)
+    assert reply is not None
+    assert reply.message == OutboundMessage.from_text("command" if claimed else "chat")
+    assert operation.await_count == int(claimed)
+    assert ai.chat_reply.await_count == int(not claimed)
+    if not claimed:
+        assert ai.chat_reply.await_args.kwargs["prompt"] == text.strip()
+    decision = routing.decide(context, CommandContext(actor, conversation))
+    assert decision.try_chat is not claimed
 
 
 def _normalized_contracts() -> tuple[CommandContract, ...]:
@@ -185,11 +202,6 @@ def test_explicit_normalization_keeps_existing_domain_language(
     )
     assert contract.matches_direct_input(CONTEXT, text)
     assert not contract.matches_direct_input(CONTEXT, "/" + text)
-    event = private_message_event(text, user_id=100)
-    if id_ == "bilibili.dynamic":
-        assert matches_bilibili_command("bilibili.dynamic", FEATURES, event)
-    if id_ == "bilibili.accounts":
-        assert matches_bilibili_command("bilibili.accounts", FEATURES, event)
     if id_ == "messaging.example":
         config = MessageConfig.model_validate(
             {
@@ -210,19 +222,26 @@ def test_explicit_normalization_keeps_existing_domain_language(
 
 
 @pytest.mark.asyncio
-async def test_meeting_installed_rule_preserves_normalization() -> None:
-    try:
-        nonebot.get_driver()
-    except ValueError:
-        nonebot.init()
-    from ironsbot.plugins.onebot.messaging import meeting
-
-    registry = Mock()
-    meeting.install(registry, ("Meeting",), "", "{meeting_number}", FEATURES)
-    rule = cast("Rule", registry.on_message.call_args.kwargs["rule"])
+async def test_public_meeting_route_preserves_explicit_normalization() -> None:
     contract = meeting_command_contracts(("Meeting",))[0]
+    catalog = CommandCatalog()
+    catalog.load(
+        (PluginContribution(id="meeting", commands=(contract,)),),
+        known_features=("meeting",),
+    )
+    operation = AsyncMock(return_value=OutboundMessage.from_text("meeting"))
+    router = PortableCommandRouter(
+        catalog,
+        {"meeting": operation},
+        FEATURES,
+        ai=Mock(),
+        ai_input_routing=AiInputRoutingService(FEATURES, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+    )
     for text in ("Meeting", " mEeTing ", "M E E T I N G", "/Meeting", "Meeting X"):
         event = private_message_event(text, user_id=100)
-        assert contract.matches_direct_input(CONTEXT, text) == await rule(
-            cast("Bot", None), event, {}
-        )
+        context = message_input_context(event)
+        claimed = contract.matches_direct_input(CONTEXT, text)
+        assert router.recognizes(context) == claimed
+        reply = await router.dispatch(context)
+        assert (reply is not None) == claimed

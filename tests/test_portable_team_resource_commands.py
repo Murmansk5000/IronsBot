@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -20,6 +21,7 @@ from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import deliver_portable_reply
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
 )
@@ -61,9 +63,10 @@ class _Service:
     )
     first_team_ids: list[int | None] = field(default_factory=list)
 
-    @staticmethod
-    def is_superuser(_actor: ActorRef) -> bool:
-        return False
+    superuser_actors: frozenset[ActorRef] = frozenset()
+
+    def is_superuser(self, actor: ActorRef) -> bool:
+        return actor in self.superuser_actors
 
     async def query_overview(
         self,
@@ -325,3 +328,90 @@ async def test_catalog_limits_subscribe_to_group_managers() -> None:
     assert member_reply is None
     assert manager_reply is not None
     assert _text(manager_reply.message) == "订阅成功"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize(
+    ("private", "role", "enabled", "superuser", "blacklisted", "command", "allowed"),
+    [
+        (False, "member", True, False, False, "战队订阅", True),
+        (False, "member", True, False, False, "订阅战队705001", False),
+        (False, "admin", True, False, False, "订阅战队705001", True),
+        (False, "admin", False, False, False, "订阅战队705001", False),
+        (False, "member", False, True, False, "订阅战队705001", True),
+        (True, None, True, False, False, "订阅战队705001", True),
+        (True, None, False, False, False, "订阅战队705001", False),
+        (False, "admin", True, True, True, "订阅战队705001", False),
+    ],
+)
+async def test_shared_team_subscription_route_permissions_and_side_effects(  # noqa: PLR0913 - cross-platform permission matrix
+    platform: Platform,
+    role: str | None,
+    command: str,
+    *,
+    private: bool,
+    enabled: bool,
+    superuser: bool,
+    blacklisted: bool,
+    allowed: bool,
+) -> None:
+    actor = ActorRef(platform, "705101")
+    conversation = ConversationRef(
+        platform, "private" if private else "group", "705101"
+    )
+    context = MessageInputContext(
+        IncomingMessageRef(
+            platform, actor, conversation, "event-1", command, group_role=role
+        ),
+        mentions_bot=False,
+    )
+    enabled_features = (
+        frozenset({"team_resource_subscription"}) if enabled else frozenset()
+    )
+    actor_features = enabled_features if private else frozenset()
+    if blacklisted:
+        actor_features |= {"blacklist"}
+    features = FeatureService(
+        {} if private else {conversation: enabled_features},
+        {actor: frozenset(actor_features)},
+        frozenset({actor}) if superuser else frozenset(),
+    )
+    service = _Service(superuser_actors=features.superusers)
+    sessions = PortableQuerySessions()
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="team_resource",
+                commands=team_resource_command_contracts(
+                    enabled=True, query_commands=("战队",)
+                ),
+            ),
+        ),
+        known_features={"team_resource_subscription"},
+    )
+    router = PortableCommandRouter(
+        catalog,
+        _operations(service, sessions=sessions),
+        features,
+        ai=cast("AiService", object()),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+    reply = await router.dispatch(context)
+    assert (reply is not None) is allowed
+    if reply is not None:
+        await deliver_portable_reply(
+            reply,
+            AsyncMock(return_value=SendResult(delivered=True, message_id="receipt-1")),
+        )
+    expected_target = TeamResourceSubscriptionTarget(actor if private else conversation)
+    if allowed and command.startswith("订阅"):
+        assert service.additions == [(expected_target, 705001, None, actor)]
+        assert service.targets == []
+    else:
+        assert service.additions == []
+        assert service.targets == ([expected_target] if allowed else [])
+    assert service.removals == []

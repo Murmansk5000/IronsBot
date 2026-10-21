@@ -5,7 +5,6 @@ import pytest
 from ironsbot.core.command_catalog import CommandContext, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
 from ironsbot.services.about import about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
@@ -22,6 +21,7 @@ from ironsbot.services.bilibili.commands import (
     BILI_PUSH_MODE_COMMANDS,
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
+    is_dynamic_update_text,
 )
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.operations.command_text import (
@@ -50,7 +50,6 @@ from ironsbot.services.seer.lucky_skin_commands import (
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
-from tests.helpers.onebot_events import private_message_event
 
 
 def _by_id(
@@ -244,7 +243,7 @@ def test_activity_ownership_matches_domain_prefix_rules(
 
 @pytest.mark.parametrize("prefix", ["", "/", "//"])
 @pytest.mark.parametrize("command", DYNAMIC_UPDATE_COMMANDS)
-def test_bilibili_update_ownership_matches_actual_onebot_rule(
+def test_bilibili_update_ownership_matches_shared_domain_parser(
     prefix: str,
     command: str,
 ) -> None:
@@ -255,7 +254,5 @@ def test_bilibili_update_ownership_matches_actual_onebot_rule(
     features = FeatureService({}, {}, frozenset({actor}))
     contract = _by_id(bilibili_command_contracts())["bilibili.refresh"]
     text = prefix + command
-    event = private_message_event(text, user_id=int(actor.id))
-    assert contract.matches_direct_input(context, text) is matches_bilibili_command(
-        "bilibili.refresh", features, event
-    )
+    assert contract.is_executable(context, features)
+    assert contract.matches_direct_input(context, text) is is_dynamic_update_text(text)
