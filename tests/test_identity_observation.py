@@ -30,6 +30,7 @@ from ironsbot.services.identity_link_store import (
     GroupLinkConflictError,
     OfficialIdentity,
 )
+from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 from ironsbot.services.identity_observation import (
     IdentityObservationAccount,
     OneBotGroupMessageObservation,
@@ -57,15 +58,18 @@ MEMBER_QQ = 30003
 async def test_missing_rank_target_requires_linked_sender(
     tmp_path: Path, sender: int, *, mirror_later: bool
 ) -> None:
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     await store.link_verified(
         onebot_qq_id=str(MEMBER_QQ),
         official=OfficialIdentity(APP_ID, "member", "member-openid", OFFICIAL_GROUP),
         now=100,
     )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID, OFFICIAL_BOT_QQ, {OFFICIAL_GROUP: ONEBOT_GROUP}
             )
@@ -198,10 +202,13 @@ def _service(
     tmp_path: Path,
     clock: list[float],
 ) -> tuple[SilentIdentityObservationService, SqliteIdentityLinkStore]:
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -218,11 +225,14 @@ async def test_normal_command_reply_discovers_group_without_configured_openid(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     linked_groups = []
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -249,7 +259,9 @@ async def test_normal_command_reply_discovers_group_without_configured_openid(
     assert link.official_group_openid == OFFICIAL_GROUP
     assert service.accounts[APP_ID].groups[OFFICIAL_GROUP] == ONEBOT_GROUP
     assert await store.all_group_links() == (link,)
-    restarted_store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    restarted_store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     assert await restarted_store.all_group_links() == (link,)
 
 
@@ -258,10 +270,13 @@ async def test_addressed_hint_uses_the_same_reply_observation_path(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -291,10 +306,13 @@ async def test_addressed_hint_uses_the_same_reply_observation_path(
 @pytest.mark.asyncio
 async def test_group_discovery_does_not_require_member_mention(tmp_path: Path) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -333,10 +351,13 @@ async def test_group_discovery_accepts_textual_official_reply_mention(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -369,10 +390,13 @@ async def test_group_discovery_rejects_unconfigured_or_ambiguous_groups(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -405,7 +429,9 @@ async def test_group_discovery_rejects_unconfigured_or_ambiguous_groups(
 async def test_group_link_conflicts_never_overwrite_existing_mapping(
     tmp_path: Path,
 ) -> None:
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     first = await store.link_group_verified(
         onebot_group_id=str(ONEBOT_GROUP),
         official_app_id=APP_ID,
@@ -605,10 +631,13 @@ async def test_observations_are_isolated_by_trusted_bot_and_app_id(
     second_bot_qq = 20003
     second_member = "member-openid-b"
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -659,7 +688,9 @@ async def test_observations_are_isolated_by_trusted_bot_and_app_id(
 
 @pytest.mark.asyncio
 async def test_observed_member_link_is_shared_across_groups(tmp_path: Path) -> None:
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     await store.link_verified(
         onebot_qq_id=str(MEMBER_QQ),
         official=OfficialIdentity(
@@ -892,10 +923,13 @@ async def test_original_command_can_discover_group_when_bot_is_mentioned(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -924,10 +958,13 @@ async def test_original_command_can_discover_group_when_bot_is_mentioned(
 @pytest.mark.asyncio
 async def test_original_command_links_napcat_self_mention(tmp_path: Path) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -1056,10 +1093,13 @@ async def test_napcat_command_without_bot_mention_cannot_discover_group(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,
@@ -1084,10 +1124,13 @@ async def test_napcat_self_mention_does_not_link_unconfigured_group(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    store = SqliteIdentityLinkStore(tmp_path / "identity.sqlite")
+    store = SqliteIdentityLinkStore(
+        tmp_path / "identity.sqlite", spawn=asyncio.create_task
+    )
     service = SilentIdentityObservationService(
-        store,
-        {
+        mutations=IdentityMutationCoordinator(asyncio.create_task),
+        store=store,
+        accounts={
             APP_ID: IdentityObservationAccount(
                 APP_ID,
                 OFFICIAL_BOT_QQ,

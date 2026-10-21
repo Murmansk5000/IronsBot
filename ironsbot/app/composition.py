@@ -70,6 +70,7 @@ from ironsbot.services.identity_link_store import (
     OfficialIdentity,
 )
 from ironsbot.services.identity_linking import IdentityLinkingService, OfficialAccount
+from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 from ironsbot.services.identity_observation import (
     IdentityObservationAccount,
     SilentIdentityObservationService,
@@ -418,7 +419,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
-    identity_store = SqliteIdentityLinkStore(settings.paths.qq_state)
+    identity_store = SqliteIdentityLinkStore(
+        settings.paths.qq_state, spawn=task_owner.create_draining
+    )
+    identity_mutations = IdentityMutationCoordinator(task_owner.create_draining)
 
     def merge_actor_principal(merge: ActorPrincipalMerge) -> None:
         player_bindings.merge_principals(merge.source, merge.target)
@@ -473,6 +477,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         },
         on_link=register_identity_link,
         on_unlink=unregister_identity_link,
+        mutations=identity_mutations,
     )
     identity_links = IdentityLinkCommands(identity_linking)
     union_identity = (
@@ -481,7 +486,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             common.admin_notices,
             identity_principals,
             merge_actor_principal,
-            register_identity_link,
+            addresses.accept_link,
+            mutations=identity_mutations,
             addresses=addresses,
         )
         if common.qq_official is not None
@@ -496,6 +502,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         merge_conversation_principal,
         common.qq_official,
         transaction_spawn=task_owner.create_draining,
+        mutations=identity_mutations,
         addresses=addresses,
     )
     command_errors = CommandErrorReporter(common.admin_notices)
@@ -706,6 +713,7 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
     qq_official: QQOfficialRuntime | None,
     *,
     transaction_spawn: TaskSpawner,
+    mutations: IdentityMutationCoordinator,
     addresses: OfficialAddressService | None = None,
 ) -> SilentIdentityObservationService | None:
     if not settings.bot.onebot.identity_verification:
@@ -754,6 +762,7 @@ def _build_identity_observer(  # noqa: PLR0913 - explicit composition dependenci
     return SilentIdentityObservationService(
         store,
         accounts,
+        mutations=mutations,
         on_link=register_link,
         on_group_link=register_group_link,
         claims=SqliteInboundMessageClaims(

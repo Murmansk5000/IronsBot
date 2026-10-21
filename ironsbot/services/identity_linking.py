@@ -6,7 +6,8 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import ActorRef, Platform
@@ -22,6 +23,8 @@ from ironsbot.services.identity_link_store import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+
+    from ironsbot.services.identity_mutations import IdentityMutationCoordinator
 
 _TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 _TOKEN_LENGTH = 8
@@ -108,6 +111,7 @@ class IdentityLinkChallenge:
 class IdentityLinkingService:
     store: IdentityLinkStore
     accounts: Mapping[str, OfficialAccount]
+    mutations: IdentityMutationCoordinator = field(kw_only=True, repr=False)
     challenge_ttl_seconds: float = 600.0
     clock: Callable[[], float] = time.time
     on_link: Callable[[CrossPlatformIdentityLink], None] | None = None
@@ -159,6 +163,11 @@ class IdentityLinkingService:
         normalized = _normalize_token(token)
         if len(normalized) != _TOKEN_LENGTH:
             raise IdentityLinkingTokenError.malformed()
+        return await self.mutations.run(partial(self._confirm, official, normalized))
+
+    async def _confirm(
+        self, official: OfficialIdentity, normalized: str
+    ) -> CrossPlatformIdentityLink:
         try:
             link = await self.store.consume(
                 token_hash=_token_hash(normalized),
@@ -194,6 +203,9 @@ class IdentityLinkingService:
         return ActorRef(Platform.ONEBOT, link.onebot_qq_id)
 
     async def revoke(self, actor: ActorRef) -> int:
+        return await self.mutations.run(partial(self._revoke, actor))
+
+    async def _revoke(self, actor: ActorRef) -> int:
         now = self.clock()
         if actor.platform is Platform.ONEBOT:
             qq_id = _onebot_qq_id(actor)

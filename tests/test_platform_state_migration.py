@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
@@ -488,7 +489,9 @@ async def test_platform_migration_preserves_explicit_identity_links(
 ) -> None:
     data_root = tmp_path / "data"
     _seed_legacy_platform_state(data_root)
-    store = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
+    store = SqliteIdentityLinkStore(
+        data_root / "state/qq_state.sqlite", spawn=asyncio.create_task
+    )
     official = OfficialIdentity("app-a", "member", "member-a", "group-a")
     await store.issue(
         token_hash="token-hash",
@@ -502,7 +505,9 @@ async def test_platform_migration_preserves_explicit_identity_links(
     result = migrate_platform_state_identities(data_root=data_root, apply=True)
 
     assert result.applied
-    migrated = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
+    migrated = SqliteIdentityLinkStore(
+        data_root / "state/qq_state.sqlite", spawn=asyncio.create_task
+    )
     links = await migrated.for_onebot("1001")
     assert len(links) == 1
     assert links[0].official == OfficialIdentity("app-a", "member", "member-a")
