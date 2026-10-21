@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
+from ironsbot.services.bilibili.image_messages import iter_dynamic_image_messages
 from ironsbot.services.bilibili.outbound_delivery import (
-    iter_dynamic_image_messages,
     prepare_dynamic_content_messages,
     render_dynamic_text_message,
 )

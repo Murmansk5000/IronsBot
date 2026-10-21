@@ -39,7 +39,7 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 
 def _runtime(platform: Platform, stage: str, error: BaseException) -> SimpleNamespace:
@@ -103,7 +103,7 @@ def _runtime(platform: Platform, stage: str, error: BaseException) -> SimpleName
     async def nested() -> PortableReply:
         return PortableReply(OutboundMessage.from_text("nested"), follow_up=fail)
 
-    async def stream() -> AsyncIterator[OutboundMessage]:
+    async def stream() -> AsyncGenerator[OutboundMessage, None]:
         yield OutboundMessage.from_text("partial")
         await fail()
 
