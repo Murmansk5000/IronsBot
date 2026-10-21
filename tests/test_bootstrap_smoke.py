@@ -204,6 +204,7 @@ assert not state.onebot_message_handling_enabled
 assert len(state.matcher_factory.message_matchers) == 0
 assert len(state.matcher_factory.notice_matchers) == 0
 assert state.resources.onebot_ingress is not None
+assert state.resources.onebot_ingress.admission.errors is state.resources.command_errors
 assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
 
 for matcher in (

@@ -30,6 +30,7 @@ from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
     ProactiveMessageDelivery,
 )
+from ironsbot.services.onebot_routing import OneBotRoutingPolicy
 from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 if TYPE_CHECKING:
@@ -97,9 +98,11 @@ def build_common_components(
         principal_for=identity_principals.conversation_principal,
     )
     bot_router = BotRouter(
-        settings.bot.onebot.routing,
-        settings.qq_references,
-        settings.bot.use_default_for_unconfigured_targets,
+        OneBotRoutingPolicy(
+            settings.bot.onebot.routing,
+            settings.qq_references,
+            settings.bot.use_default_for_unconfigured_targets,
+        ),
     )
     routed_onebot_groups = (
         {
@@ -221,7 +224,7 @@ def build_common_components(
         if settings.bot.onebot.routing.enabled
         else frozenset(),
         group_route=lambda conversation: (
-            bot_router.push_route(conversation)
+            bot_router.policy.push_route(conversation)
             if conversation.platform is Platform.ONEBOT
             else ingress_routing.push_route(conversation)
             if ingress_routing is not None

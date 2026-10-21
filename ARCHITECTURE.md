@@ -57,6 +57,47 @@ The following distinctions are mandatory during the migration:
   normal runtime code must use exactly one schema and one read path after that
   migration succeeds.
 
+### Shared Account Routing (Target)
+
+OneBot account selection belongs to the framework-independent
+`services/onebot_routing.py` policy. Inbound group ownership, proactive targets,
+outbound capabilities, and configured account names use that policy. The
+OneBot connection adapter only retrieves the selected live connection; it
+must not reinterpret configuration or choose another online account.
+
+The baseline keeps private replies on the receiving account and private
+proactive delivery on the configured route. The native event hook and framework
+connection registry are transitional protocol resources, not business owners.
+
+### Own-Account Admission (Target)
+
+Own-account command policy consumes normalized `OwnAccountInput` facts and
+returns an `OwnAccountCommand`; it must not retain or mutate SDK events.
+The OneBot adapter preserves protocol mentions and reply references when
+applying that decision. Actual execution still uses `MessageInputContext`
+and the shared permission, message replay, and business request lifecycle.
+
+Echo suppression has its own bounded outbound-content history. It is not a
+second message-ID ledger and must cover every admitted own-account shape,
+including administrative binding messages. Transport admission never grants
+business authorization; the existing binding routing exception is a baseline,
+not an administrator grant.
+
+### Transport Admission (Target)
+
+`OneBotAdmissionService` owns the ordering of normalized mirror observation,
+silent mode, own-account admission, group ownership and everyone-mention
+rejection. Its facts must agree on account, actor and conversation. Group and
+private conversations retain different routing semantics, not duplicate queries.
+The native `OneBotEventIngress` only decodes protocol facts, applies the own-
+command result and installs hooks. Admission failures use the same composition-
+owned error reporter as shared command execution, without replying to an
+unclaimed message or exposing exception details. Cancellation propagates.
+
+Native hook registration, mirror replay timing and outbound echo receipt
+handling remain transitional; this extraction does not complete their lifecycle
+audit or remove the framework host.
+
 ### Normative Reading Rules
 
 This document contains both a description of the running application and the

@@ -15,16 +15,14 @@ from qqbot_agent_sdk.api_client import QQApiClient
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
-from ironsbot.core.message_input import MessageInputContext, MessageInputKind
-from ironsbot.core.outbound import ExecutionIdentity, OutboundMessage
-from ironsbot.core.platform import reference_digest
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.controlled_upload import ControlledMediaUploader
 from ironsbot.integrations.qq_official.group_message_events import (
     GROUP_MESSAGE_CREATE,
     enable_qq_event_dispatch,
     is_recipient_state_event,
-    message_event_family,
     parse_message_event,
 )
 from ironsbot.integrations.qq_official.identity import (
@@ -32,35 +30,24 @@ from ironsbot.integrations.qq_official.identity import (
     qq_official_event_mentions_everyone,
     qq_official_incoming_message,
 )
-from ironsbot.integrations.qq_official.inbound_deduplication import (
-    QQOfficialInboundDeduplicator,
-)
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
+from ironsbot.integrations.qq_official.reply_transport import QQOfficialReplyTransport
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.integrations.qq_official.token_lifecycle import QQOfficialTokenObserver
-from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
-from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from httpx import AsyncClient
     from qqbot_agent_sdk.event_parser import InboundEvent
 
-    from ironsbot.core.outbound import OutboundMessenger, SendResult
-    from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
     from ironsbot.integrations.qq_official.recipient_state import (
         QQOfficialRecipientStateStore,
     )
     from ironsbot.services.identity_link_store import CrossPlatformGroupLink
-    from ironsbot.services.identity_observation import (
-        SilentIdentityObservationService,
-    )
-    from ironsbot.services.official_union_identity import OfficialUnionIdentityService
     from ironsbot.services.portable_commands import PortableCommandRouter
-    from ironsbot.services.portable_reply import DeliveryStage
 
 logger = logging.getLogger(__name__)
 
@@ -266,13 +253,8 @@ class QQOfficialRuntime:
             raise ValueError(msg)
         enable_qq_event_dispatch()
         self._startup_timeout_seconds = startup_timeout_seconds
-        self._inbound_deduplicator = QQOfficialInboundDeduplicator(
-            session_root / "inbound.sqlite"
-        )
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
-        self._identity_observer: SilentIdentityObservationService | None = None
-        self._union_identity: OfficialUnionIdentityService | None = None
         self._recipient_state = recipient_state
         self._ingress_routing: QQOfficialIngressRouting | None = None
         self._connections: dict[str, _Connection] = {}
@@ -356,17 +338,12 @@ class QQOfficialRuntime:
         self,
         router: PortableCommandRouter,
         messenger: OutboundMessenger,
-        *,
-        identity_observer: SilentIdentityObservationService | None = None,
-        union_identity: OfficialUnionIdentityService | None = None,
     ) -> None:
         if self._router is not None or self._messenger is not None:
             msg = "QQ Official runtime is already bound"
             raise RuntimeError(msg)
         self._router = router
         self._messenger = messenger
-        self._identity_observer = identity_observer
-        self._union_identity = union_identity
 
     async def start(self) -> None:
         if self._router is None or self._messenger is None:
@@ -406,7 +383,7 @@ class QQOfficialRuntime:
             connection.started = False
             connection.lifecycle.stopped()
 
-    async def handle_event(  # noqa: C901, PLR0911, PLR0912 - transport boundary owns event outcomes
+    async def handle_event(
         self,
         app_id: str,
         event_type: str,
@@ -443,46 +420,10 @@ class QQOfficialRuntime:
             return
         incoming = qq_official_incoming_message(event, account_id=app_id)
         mentions_bot = qq_official_event_mentions_bot(event)
-        if not await self._inbound_deduplicator.claim(
-            app_id=app_id,
-            event_type=message_event_family(event_type),
-            message_id=incoming.message_id,
-            conversation_id=incoming.conversation.id,
-        ):
-            logger.info(
-                "QQ Official duplicate inbound message ignored: "
-                "account=%s event_type=%s message_ref=%s",
-                self._connections[app_id].lifecycle.account,
-                event_type,
-                reference_digest(incoming.message_id),
-            )
-            return
-        if qq_official_event_mentions_everyone(event):
-            return
-        if self._union_identity is not None:
-            await self._union_identity.observe(incoming)
-        verified_targets = ()
-        if self._identity_observer is not None and (
-            incoming.conversation.kind == "group" and mentions_bot
-        ):
-            await self._identity_observer.observe_official_message(
-                incoming,
-                explicitly_addressed=mentions_bot,
-            )
-            if (
-                not incoming.direct_mentions
-                and incoming.reply_to_id is None
-                and parse_rank_player_target_command(incoming.text) is not None
-            ):
-                target = await self._identity_observer.missing_member_target(incoming)
-                if target is not None:
-                    verified_targets = (target,)
-                else:
-                    logger.debug("QQ Official rank target mirror unavailable")
         context = MessageInputContext(
             incoming,
-            verified_member_mentions=verified_targets,
             mentions_bot=mentions_bot,
+            mentions_everyone=qq_official_event_mentions_everyone(event),
             execution_identity=ExecutionIdentity(
                 incoming.platform, app_id, self._connections[app_id].lifecycle.account
             ),
@@ -495,79 +436,27 @@ class QQOfficialRuntime:
                 event_type != GROUP_MESSAGE_CREATE or mentions_bot
             ),
         )
-        if not self._accepts_incoming(
-            app_id,
-            event_type,
+        transport = QQOfficialReplyTransport(
+            messenger,
             incoming,
-            explicitly_addressed=mentions_bot,
-        ):
-            if (
-                context.kind is MessageInputKind.BOT_MENTION
-                and not context.text.strip()
-                and not context.member_mentions
-            ):
-                hint = router.bare_mention_hint(context)
-                if hint is not None:
-                    await deliver_qq_official_reply(
-                        messenger,
-                        incoming,
-                        hint,
-                        account_label=self._connections[app_id].lifecycle.account,
-                    )
-            return
-        recognized = router.recognizes(context)
-        logger.info(
-            "QQ Official inbound routed: account=%s event_type=%s "
-            "input_kind=%s recognized=%s",
             self._connections[app_id].lifecycle.account,
-            event_type,
-            context.kind.value,
-            recognized,
         )
-        if self._identity_observer is not None and recognized and not mentions_bot:
-            await self._identity_observer.observe_official_message(
-                incoming,
-                explicitly_addressed=mentions_bot,
-            )
-        if not recognized:
-            return
-        reply = await router.dispatch(context)
-        if reply is not None:
-            await deliver_qq_official_reply(
-                messenger,
-                incoming,
-                reply,
-                account_label=self._connections[app_id].lifecycle.account,
-                identity_observer=self._identity_observer,
-                on_menu_sent=lambda message, result: router.record_menu_delivery(
-                    context, message, result
-                ),
+
+        def accepts(prepared: MessageInputContext) -> bool:
+            routing = self._ingress_routing
+            return routing is None or routing.allows(
+                account_id=prepared.request_bot_id,
+                conversation_kind=prepared.message.conversation.kind,
+                conversation_id=prepared.message.conversation.id,
+                explicitly_addressed=prepared.mentions_bot,
             )
 
-    def _accepts_incoming(
-        self,
-        app_id: str,
-        event_type: str,
-        incoming: IncomingMessageRef,
-        *,
-        explicitly_addressed: bool,
-    ) -> bool:
-        routing = self._ingress_routing
-        if routing is None or routing.allows(
-            account_id=app_id,
-            conversation_kind=incoming.conversation.kind,
-            conversation_id=incoming.conversation.id,
-            explicitly_addressed=explicitly_addressed,
-        ):
-            return True
-        logger.info(
-            "QQ Official inbound ignored by account routing: "
-            "account=%s event_type=%s conversation=%s",
-            self._connections[app_id].lifecycle.account,
-            event_type,
-            reference_digest(incoming.conversation.id),
+        await router.ingress.handle(
+            context,
+            transport.send,
+            allows=accepts,
+            on_sent=transport.record_receipt,
         )
-        return False
 
     def _callbacks(
         self,
@@ -665,59 +554,6 @@ async def _start_connection(
     return connection.lifecycle.snapshot().state is QQOfficialConnectionState.READY
 
 
-async def deliver_qq_official_reply(  # noqa: PLR0913 - platform delivery hooks
-    messenger: OutboundMessenger,
-    incoming: IncomingMessageRef,
-    reply: PortableReply,
-    *,
-    account_label: str = "official-account",
-    identity_observer: SilentIdentityObservationService | None = None,
-    on_menu_sent: Callable[[OutboundMessage, SendResult], None] | None = None,
-) -> None:
-    """Commit delivery-aware work only after the official API accepts a reply."""
-
-    from ironsbot.core.outbound import COMMAND_REPLY_TEMPLATE
-
-    def on_sent(stage: DeliveryStage, result: SendResult) -> None:
-        if result.delivered:
-            _log_delivery_success(incoming, stage=stage, account_label=account_label)
-        else:
-            _log_delivery_failure(
-                incoming,
-                result,
-                stage=stage,
-                account_label=account_label,
-            )
-
-    async def send(message: OutboundMessage) -> SendResult:
-        observation = (
-            identity_observer.record_official_reply(incoming, message)
-            if identity_observer is not None
-            else None
-        )
-        prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, message)
-        result = (
-            await messenger.reply(prepared.context, prepared.message)
-            if prepared.context is not None
-            else await messenger.send(incoming.conversation, prepared.message)
-        )
-        if on_menu_sent is not None:
-            on_menu_sent(message, result)
-        if (
-            not result.delivered
-            and observation is not None
-            and identity_observer is not None
-        ):
-            identity_observer.discard_official_reply(observation)
-        return result
-
-    await deliver_portable_reply(
-        reply,
-        send,
-        on_sent=on_sent,
-    )
-
-
 def qq_official_event_is_supported(
     event: InboundEvent,
     *,
@@ -730,38 +566,4 @@ def qq_official_event_is_supported(
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
         )
-    )
-
-
-def _log_delivery_failure(
-    incoming: IncomingMessageRef,
-    result: SendResult,
-    *,
-    stage: str,
-    account_label: str = "official-account",
-) -> None:
-    logger.warning(
-        "QQ Official reply failed: stage=%s account=%s kind=%s ref=%s "
-        "code=%s failure_kind=%s trace_id=%s",
-        stage,
-        account_label,
-        incoming.conversation.kind,
-        reference_digest(incoming.conversation.id),
-        result.error_code,
-        result.failure_kind.value if result.failure_kind is not None else None,
-        result.trace_id,
-    )
-
-
-def _log_delivery_success(
-    incoming: IncomingMessageRef,
-    *,
-    stage: str,
-    account_label: str,
-) -> None:
-    logger.info(
-        "QQ Official reply delivered: stage=%s account=%s kind=%s",
-        stage,
-        account_label,
-        incoming.conversation.kind,
     )

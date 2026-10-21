@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Persistent claims for QQ Official inbound message delivery."""
+"""Persistent, platform-scoped inbound delivery claims."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from ironsbot.core.inbound_claims import InboundMessageKey
 
 _DEFAULT_RETENTION_SECONDS = 24 * 60 * 60
 _MIGRATIONS = (
@@ -60,11 +62,48 @@ _MIGRATIONS = (
             "ON qq_official_inbound_claims (claimed_at)",
         ),
     ),
+    SqliteMigration(
+        3,
+        statements=(
+            """
+            CREATE TABLE inbound_message_claims (
+                platform TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                conversation_kind TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                claimed_at REAL NOT NULL,
+                PRIMARY KEY (
+                    platform, account_id, conversation_kind,
+                    conversation_id, message_id
+                )
+            )
+            """,
+            """
+            INSERT INTO inbound_message_claims
+            SELECT 'qq_official', app_id,
+                CASE
+                    WHEN event_type IN (
+                        'GROUP_MESSAGE', 'GROUP_MESSAGE_CREATE',
+                        'GROUP_AT_MESSAGE_CREATE', 'group'
+                    ) THEN 'group'
+                    WHEN event_type IN ('C2C_MESSAGE_CREATE', 'c2c') THEN 'private'
+                    ELSE event_type
+                END AS conversation_kind,
+                conversation_id, message_id, MAX(claimed_at)
+            FROM qq_official_inbound_claims
+            GROUP BY app_id, conversation_kind, conversation_id, message_id
+            """,
+            "DROP TABLE qq_official_inbound_claims",
+            "CREATE INDEX inbound_message_claims_claimed_at "
+            "ON inbound_message_claims (claimed_at)",
+        ),
+    ),
 )
 
 
 @dataclass(slots=True)
-class QQOfficialInboundDeduplicator:
+class SqliteInboundMessageClaims:
     path: Path
     retention_seconds: float = _DEFAULT_RETENTION_SECONDS
     clock: Callable[[], float] = field(default=time, repr=False, compare=False)
@@ -80,52 +119,41 @@ class QQOfficialInboundDeduplicator:
             migration_namespace="qq_official_inbound_claims",
         )
 
-    async def claim(
-        self,
-        *,
-        app_id: str,
-        event_type: str,
-        message_id: str,
-        conversation_id: str = "",
-    ) -> bool:
+    async def claim(self, key: InboundMessageKey) -> bool:
         async with self._claim_lock:
-            return await asyncio.to_thread(
-                self._claim_sync,
-                app_id,
-                event_type,
-                message_id,
-                conversation_id,
-            )
+            return await asyncio.to_thread(self._claim_sync, key)
 
-    def _claim_sync(
-        self, app_id: str, event_type: str, message_id: str, conversation_id: str
-    ) -> bool:
+    def _claim_sync(self, key: InboundMessageKey) -> bool:
         now = self.clock()
         with self._database.connect() as connection:
             connection.execute(
-                "DELETE FROM qq_official_inbound_claims WHERE claimed_at < ?",
+                "DELETE FROM inbound_message_claims WHERE claimed_at <= ?",
                 (now - self.retention_seconds,),
             )
             cursor = connection.execute(
                 """
-                INSERT OR IGNORE INTO qq_official_inbound_claims (
-                    app_id, event_type, conversation_id, message_id, claimed_at
-                ) SELECT ?, ?, ?, ?, ?
+                INSERT OR IGNORE INTO inbound_message_claims (
+                    platform, account_id, conversation_kind,
+                    conversation_id, message_id, claimed_at
+                ) SELECT ?, ?, ?, ?, ?, ?
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM qq_official_inbound_claims
-                    WHERE app_id = ? AND event_type = ? AND message_id = ?
+                    SELECT 1 FROM inbound_message_claims
+                    WHERE platform = ? AND account_id = ?
+                    AND conversation_kind = ? AND message_id = ?
                     AND conversation_id = ''
                 )
                 """,
                 (
-                    app_id,
-                    event_type,
-                    conversation_id,
-                    message_id,
+                    key.platform.value,
+                    key.account_id,
+                    key.conversation_kind,
+                    key.conversation_id,
+                    key.message_id,
                     now,
-                    app_id,
-                    event_type,
-                    message_id,
+                    key.platform.value,
+                    key.account_id,
+                    key.conversation_kind,
+                    key.message_id,
                 ),
             )
             return cursor.rowcount == 1

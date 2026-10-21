@@ -9,28 +9,21 @@ import nonebot
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves rule signatures
 from nonebot.adapters.onebot.v11 import Adapter, Bot, Message, MessageSegment
-from nonebot.exception import IgnoredException
 from nonebot.matcher import matchers
 from nonebot.message import handle_event
 from nonebot.rule import Rule
 
-from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.response_admission import ResponseAdmissionDecision
 from ironsbot.core.text_matching import TextMatchRule
-from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import (
     install_portable_menu_router,
     make_portable_query_handler,
-)
-from ironsbot.integrations.onebot.self_commands import (
-    SelfCommandAdapter,
-    SelfCommandGate,
 )
 from ironsbot.services.portable_query_operations import build_query_operation
 from ironsbot.services.portable_query_sessions import (
@@ -46,22 +39,20 @@ from tests.helpers.onebot_events import group_message_event
 @pytest.mark.asyncio
 async def test_replayed_event_only_replies_once_but_new_local_message_runs(
     ingress: SimpleNamespace,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import nonebot.message as message_runtime
+    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
 
-    monkeypatch.setattr(
-        message_runtime,
-        "_event_preprocessors",
-        set(message_runtime._event_preprocessors),
+    matchers.clear()
+    messaging = _subscription_service()
+    install_command_ingress(
+        ingress.factory, _messaging_router(messaging, ingress.sessions)
     )
-    OneBotIngressPolicy(messages_enabled=True).install()
-    event = group_message_event("菜单", user_id=101, message_id=301)
+    event = group_message_event("td", user_id=101, message_id=301)
     await handle_event(ingress.bots[0], event)
     await handle_event(ingress.bots[0], event)
     assert len(ingress.sends) == 1
     await handle_event(
-        ingress.bots[0], group_message_event("菜单", user_id=101, message_id=302)
+        ingress.bots[0], group_message_event("td", user_id=101, message_id=302)
     )
     assert len(ingress.sends) == len(("first", "second"))
 
@@ -211,12 +202,14 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=ingress.sessions,
     )
+    matchers.clear()
     install_command_ingress(ingress.factory, router)
     await handle_event(
         ingress.bots[0],
         group_message_event(
             "战队730001",
             user_id=101,
+            message_id=1,
             sender={"role": "admin"},
         ),
     )
@@ -227,6 +220,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
         group_message_event(
             "y",
             user_id=102,
+            message_id=2,
             sender={"role": "admin"},
         ),
     )
@@ -236,6 +230,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
             "y",
             user_id=101,
             self_id=2,
+            message_id=2,
             sender={"role": "admin"},
         ),
     )
@@ -246,11 +241,14 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
             "y",
             user_id=101,
             sender={"role": "admin"},
+            message_id=3,
         ),
     )
     assert len(ingress.sends) == len(("suggestion", "confirmation"))
     assert "已订阅本群战队" in str(ingress.sends[-1]["message"])
-    await handle_event(ingress.bots[0], group_message_event("y", user_id=101))
+    await handle_event(
+        ingress.bots[0], group_message_event("y", user_id=101, message_id=4)
+    )
     assert len(ingress.sends) == len(("suggestion", "confirmation"))
     assert "730001" in service.subscriptions_message(
         TeamResourceSubscriptionTarget(conversation)
@@ -316,12 +314,17 @@ async def test_onebot_public_entry_uses_shared_rank_candidates_and_final_target(
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=ingress.sessions,
     )
+    matchers.clear()
     install_command_ingress(ingress.factory, router)
-    await handle_event(ingress.bots[0], group_message_event("成就榜示例", user_id=101))
+    await handle_event(
+        ingress.bots[0], group_message_event("成就榜示例", user_id=101, message_id=1)
+    )
     assert len(ingress.sends) == 1
     assert service.delivered == []
     assert "示例甲" in str(ingress.sends[0]["message"])
-    await handle_event(ingress.bots[0], group_message_event("2", user_id=101))
+    await handle_event(
+        ingress.bots[0], group_message_event("2", user_id=101, message_id=2)
+    )
     assert len(ingress.sends) == len(("candidates", "result"))
     assert service.delivered == [("成就点数", 740003)]
     assert "740003" in str(ingress.sends[-1]["message"])
@@ -384,9 +387,12 @@ async def test_onebot_registered_td_back_toggle_exit_and_reopen(
     )
     bot = ingress.bots[0]
     sequence = ("td", "1", "1", "0", "2", "0", "td")
-    for value in sequence:
+    for message_id, value in enumerate(sequence, start=1):
         await handle_event(
-            bot, group_message_event(value, user_id=101, sender={"role": "admin"})
+            bot,
+            group_message_event(
+                value, user_id=101, sender={"role": "admin"}, message_id=message_id
+            ),
         )
     messages = [str(sent["message"]) for sent in ingress.sends]
     assert len(messages) == len(sequence)
@@ -403,7 +409,6 @@ async def test_official_parsed_td_uses_same_navigation_and_delivery() -> None:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import SendResult
     from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
-    from ironsbot.services.portable_reply import deliver_portable_reply
     from tests.test_qq_official_mvp import _sdk_event
 
     sessions = PortableQuerySessions()
@@ -425,15 +430,13 @@ async def test_official_parsed_td_uses_same_navigation_and_delivery() -> None:
 
         async def send(
             message: OutboundMessage,
-            current: MessageInputContext = context,
             receipt: int = index,
         ) -> SendResult:
             result = SendResult(delivered=True, message_id=f"receipt-{receipt}")
-            router.record_menu_delivery(current, message, result)
             messages.append(str(message.parts))
             return result
 
-        await deliver_portable_reply(reply, send)
+        await router.delivery.deliver(context, reply, send)
     assert "返回上级" in messages[1] and "返回上级" in messages[2]
     assert "root" in messages[3] and "已修改订阅" in messages[4]
     assert "已退出" in messages[5] and "root" in messages[6]
@@ -600,6 +603,7 @@ async def test_status_about_real_ingress_contract(  # noqa: PLR0913 - contract m
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=ingress.sessions,
     )
+    matchers.clear()
     install_command_ingress(ingress.factory, router)
     event = (
         private_message_event(text, user_id=101)
@@ -701,42 +705,6 @@ async def test_onebot_query_matching_and_no_hit_cleanup_at_event_ingress(
     context = message_input_context(group_message_event(user_id=101))
     assert sessions.menu_anchor(context) is None
     assert not sessions.recognizes_response("1", context)
-
-
-@pytest.mark.asyncio
-async def test_prefixed_self_menu_selection_cancel_and_replay(
-    ingress: SimpleNamespace,
-) -> None:
-    policy = OneBotIngressPolicy(
-        messages_enabled=True,
-        self_commands=SelfCommandGate(
-            SelfCommandsConfig(enabled=True, prefixes=["demo "])
-        ),
-    )
-
-    async def deliver(text: str, message_id: int) -> None:
-        data = group_message_event(text, user_id=1, message_id=message_id).model_dump()
-        data["post_type"] = "message_sent"
-        event = SelfCommandAdapter.json_to_event(data)
-        assert event is not None
-        await policy.process(event)
-        await handle_event(ingress.bots[0], event)
-
-    await deliver("demo 菜单", -10)
-    assert len(ingress.sends) == 1
-    with pytest.raises(IgnoredException):
-        await deliver("1", -11)
-    await deliver("demo 1", -12)
-    with pytest.raises(IgnoredException):
-        await deliver("demo 1", -12)
-    await deliver("demo 2", -13)
-    await deliver("demo 0", -14)
-    assert ingress.selected == [("1", 1), ("1", 2)]
-    assert not ingress.sessions.has_active_session(
-        message_input_context(group_message_event(user_id=1))
-    )
-    for sent in ingress.sends:
-        assert not any(part.type == "at" for part in sent["message"])
 
 
 @pytest.mark.asyncio

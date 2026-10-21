@@ -97,12 +97,7 @@ class OneBotOutboundMessenger:
         except Exception:  # noqa: BLE001 - nickname lookup must not block delivery
             pass
         if not nickname:
-            config = getattr(self._router, "config", None)
-            aliases = getattr(config, "bot_aliases", {})
-            nickname = next(
-                (name for name, value in aliases.items() if str(value) == account_id),
-                account_id,
-            )
+            nickname = self._router.policy.account_name(account_id)
         identity = ExecutionIdentity(Platform.ONEBOT, account_id, nickname)
         if account_id:
             self._identities[account_id] = identity
@@ -116,7 +111,7 @@ class OneBotOutboundMessenger:
             _ONEBOT_CAPABILITIES
             if self._enabled
             and _supports_conversation(conversation)
-            and self._router.allows_outbound(conversation)
+            and self._router.policy.allows_outbound(conversation)
             else _UNSUPPORTED_CAPABILITIES
         )
 

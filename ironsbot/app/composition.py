@@ -44,16 +44,15 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
+from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
 )
-from ironsbot.integrations.onebot.ingress_policy import OneBotIngressPolicy
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.poke_reply import OneBotPokeReplyService
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
-    SelfCommandGate,
 )
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -68,6 +67,7 @@ from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundS
 from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.service import AiService
+from ironsbot.services.command_errors import CommandErrorReporter
 from ironsbot.services.identity_link_commands import IdentityLinkCommands
 from ironsbot.services.identity_link_store import (
     CrossPlatformIdentityLink,
@@ -85,6 +85,8 @@ from ironsbot.services.messaging.command_recommendations import (
     CommandRecommendationService,
 )
 from ironsbot.services.official_union_identity import OfficialUnionIdentityService
+from ironsbot.services.onebot_admission import OneBotAdmissionService
+from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
@@ -494,13 +496,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         common.qq_official,
         addresses=addresses,
     )
-    onebot_ingress = OneBotIngressPolicy(
-        messages_enabled=(
-            settings.outbound_platform_selection.onebot_message_handling_enabled
-        ),
-        identity_observer=identity_observer,
-        self_commands=SelfCommandGate(settings.bot.onebot.self_commands),
-        router=common.bot_router,
+    command_errors = CommandErrorReporter(common.admin_notices)
+    onebot_ingress = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=(
+                settings.outbound_platform_selection.onebot_message_handling_enabled
+            ),
+            identity_observer=identity_observer,
+            self_commands=OwnAccountCommandPolicy(settings.bot.onebot.self_commands),
+            routing=common.bot_router.policy,
+            errors=command_errors,
+        )
     )
 
     def poke_reply_candidates(
@@ -591,6 +597,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         identity_observer=identity_observer,
         union_identity=union_identity,
         onebot_ingress=onebot_ingress,
+        command_errors=command_errors,
         private_extensions=private_extensions,
     )
     query_sessions.interactions.request_service = InFlightRequestService(
