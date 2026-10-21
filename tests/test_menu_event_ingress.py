@@ -21,6 +21,7 @@ from ironsbot.core.response_admission import ResponseAdmissionDecision
 from ironsbot.core.text_matching import TextMatchRule
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.portable_queries import (
     install_portable_menu_router,
     make_portable_query_handler,
@@ -34,6 +35,7 @@ from ironsbot.services.portable_query_sessions import (
 from ironsbot.services.seer.query_commands import AUTOCARD_QUERY
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.runtime import build_test_runtime
 
 
 @pytest.mark.asyncio
@@ -45,7 +47,9 @@ async def test_replayed_event_only_replies_once_but_new_local_message_runs(
     matchers.clear()
     messaging = _subscription_service()
     install_command_ingress(
-        ingress.factory, _messaging_router(messaging, ingress.sessions)
+        ingress.factory,
+        _messaging_router(messaging, ingress.sessions),
+        ingress.messenger,
     )
     event = group_message_event("td", user_id=101, message_id=301)
     await handle_event(ingress.bots[0], event)
@@ -203,7 +207,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
         query_sessions=ingress.sessions,
     )
     matchers.clear()
-    install_command_ingress(ingress.factory, router)
+    install_command_ingress(ingress.factory, router, ingress.messenger)
     await handle_event(
         ingress.bots[0],
         group_message_event(
@@ -315,7 +319,7 @@ async def test_onebot_public_entry_uses_shared_rank_candidates_and_final_target(
         query_sessions=ingress.sessions,
     )
     matchers.clear()
-    install_command_ingress(ingress.factory, router)
+    install_command_ingress(ingress.factory, router, ingress.messenger)
     await handle_event(
         ingress.bots[0], group_message_event("成就榜示例", user_id=101, message_id=1)
     )
@@ -359,7 +363,7 @@ async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
     # The fixture's legacy menu matcher must not run alongside the production ingress.
     matchers.clear()
     install_command_ingress(
-        ingress.factory, _messaging_router(service, ingress.sessions)
+        ingress.factory, _messaging_router(service, ingress.sessions), ingress.messenger
     )
     message = Message("示例")
     if explicit:
@@ -383,7 +387,9 @@ async def test_onebot_registered_td_back_toggle_exit_and_reopen(
     messaging = _subscription_service()
     matchers.clear()
     install_command_ingress(
-        ingress.factory, _messaging_router(messaging, ingress.sessions)
+        ingress.factory,
+        _messaging_router(messaging, ingress.sessions),
+        ingress.messenger,
     )
     bot = ingress.bots[0]
     sequence = ("td", "1", "1", "0", "2", "0", "td")
@@ -464,7 +470,7 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     sends: list[dict[str, Any]] = []
 
     async def api(_adapter: Adapter, bot: Bot, api: str, **data: Any) -> object:
-        assert api in {"send_msg", "send_group_msg"}
+        assert api in {"send_msg", "send_group_msg", "send_private_msg"}
         sends.append({"bot": bot.self_id, **data})
         return {"message_id": len(sends) + 100}
 
@@ -515,6 +521,9 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
             selected=selected,
             gate=gate,
             factory=factory,
+            messenger=OneBotOutboundMessenger(
+                cast("Any", Mock()), build_test_runtime().outbound
+            ),
         )
     finally:
         matchers.clear()
@@ -604,7 +613,7 @@ async def test_status_about_real_ingress_contract(  # noqa: PLR0913 - contract m
         query_sessions=ingress.sessions,
     )
     matchers.clear()
-    install_command_ingress(ingress.factory, router)
+    install_command_ingress(ingress.factory, router, ingress.messenger)
     event = (
         private_message_event(text, user_id=101)
         if private

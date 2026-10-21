@@ -21,9 +21,6 @@ from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.onebot.matchers import MatcherFactory
-from ironsbot.integrations.onebot.outbound import (
-    GroupOutboundRateLimitService,
-)
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -31,6 +28,7 @@ from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.messaging.outbound_limits import GroupOutboundRateLimitService
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 from ironsbot.services.onebot_routing import OneBotRoutingPolicy
 

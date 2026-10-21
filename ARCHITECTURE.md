@@ -105,6 +105,32 @@ cannot refresh evidence or be reused for a later identity; its replay retention
 does not signify business success. Production uses persistent stores and fails
 closed on storage errors, never switching to volatile claims at runtime.
 
+### Outbound Permit Ownership (Target)
+
+The configured numeric-group outbound windows, priority queues, administrator
+exemptions and permit accounting belong to the framework-free
+`services/messaging/outbound_limits.py`. Native API hooks decode group/actor
+facts and correlate the API callback with its permit; they do not own queue or
+permission policy. This baseline does not apply numeric-group windows to the
+official platform or alter its protocol reply quota.
+
+Permit identifiers remain unique across resets. Queue-worker completion is
+owned by the service, including cancellation before the coroutine starts;
+shutdown cancellation must release waiting tasks without spawning a successor.
+The public `execute_send` boundary owns admission, attempt phase and receipt
+settlement. Cancellation before submission refunds the reservation; cancellation
+after submission, missing receipts and unclassified failures retain it. Settlement
+is idempotent within the existing window entry, not a second unbounded ledger.
+Native hooks must skip an explicitly managed send rather than settling it again.
+The production command ingress injects the native outbound port and replies
+through its receiving connection, normalized identity and shared reply template,
+not `Matcher.send` or proactive routing. Account mismatch must be rejected
+before identity observation or business execution. Unconfirmed attempted command
+deliveries are reported through the same admin-only public error boundary on
+both platforms, without retrying or replying again to the user.
+Non-command matcher sends, API callback correlation and transport health ownership
+remain transitional and must not be mistaken for completed delivery unification.
+
 ### Normative Reading Rules
 
 This document contains both a description of the running application and the
@@ -331,7 +357,8 @@ feature, persistence schema, or policy decision.
 | OneBot outbound delivery | target adapter | `integrations.onebot.outbound_messenger.OneBotOutboundMessenger` | Convert typed messages to OneBot only after `ConversationRef` routing. Numeric batch targets and `OneBotDelivery` are deleted and must not return. |
 | OneBot reference resolution and numeric QQ configuration | target adapter | `config.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
-| OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
+| Poke replies | target policy, OneBot-only event capability | `services.messaging.poke_reply.PokeReplyService` plus the passive OneBot event adapter | Compile configured aliases to typed actors/conversations in composition. Public policy owns hint limits, user/group precedence, permission-filtered recommendations and structured addressing; native code decodes the notice, looks up group role and passes the receiving connection to the same explicit outbound attempt. Do not fabricate an official poke event or a message ID for a notice. |
+| Red-packet notices | target policy, OneBot-only event capability | `services.messaging.red_packet.RedPacketNoticeService` plus native message/notice decoding | The root owns one service shared by both sources. Public policy checks enablement, admits one notification per group cooldown using the existing limiter, obtains optional group metadata and delegates to `AdminNoticeService`. Preserve zero-cooldown behavior and admission retention on cancellation/failure; this is not exact event deduplication. Native code must not select recipients, construct operational notices or log source exception bodies. |
 | Lucky-skin-window delivery | target reference | `LuckySkinWindowService` plus `LuckySkinWindowOutboundSender` | Reuse typed actor ownership and the shared outbound messenger; persist domain-specific daily state in the lucky-skin service. |
 | Team-resource subscription delivery | target reference | `TeamResourceService` plus `TeamResourceOutboundSender` | Compile numeric QQ configuration and mention parts at the OneBot boundary, then deliver through the shared outbound messenger. |
 | Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |

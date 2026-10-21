@@ -190,6 +190,56 @@ def _runtime(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", list(Platform))
 @pytest.mark.parametrize(
+    "kind,notice_expected",
+    [
+        (DeliveryFailureKind.UNCERTAIN, True),
+        (DeliveryFailureKind.TRANSPORT_UNAVAILABLE, True),
+        (DeliveryFailureKind.PERMANENT, False),
+        (DeliveryFailureKind.RETRYABLE, False),
+    ],
+)
+async def test_structured_delivery_failure_notifies_admins_without_user_retry(
+    platform: Platform,
+    kind: DeliveryFailureKind,
+    *,
+    notice_expected: bool,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    runtime = _runtime(platform, "normal", RuntimeError("unused"))
+    send = AsyncMock(
+        return_value=SendResult(
+            delivered=False,
+            error_code="send_failed",
+            error_message="private-receipt-detail",
+            failure_kind=kind,
+        )
+    )
+    assert not await runtime.router.execute(runtime.context, send)
+    send.assert_awaited_once()
+    runtime.requests.finish.assert_not_called()
+    runtime.cooldown.finish.assert_not_called()
+    runtime.requests.release.assert_called_once()
+    runtime.cooldown.release.assert_called_once()
+    assert runtime.sender.send_admin_notice.await_count == int(notice_expected)
+    if notice_expected:
+        notice = runtime.sender.send_admin_notice.await_args
+        assert notice is not None
+        assert notice.kwargs["private_actors"] == (runtime.admin,)
+        assert notice.kwargs["group_conversations"] == (runtime.admin_group,)
+        assert "private-receipt-detail" not in str(notice.args[0]) + caplog.text
+    send.reset_mock()
+    send.return_value = SendResult(delivered=True, message_id="new-result")
+    context = replace(
+        runtime.context,
+        message=replace(runtime.context.message, message_id="new-message"),
+    )
+    assert await runtime.router.execute(context, send)
+    send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize(
     "stage",
     ["send", "receipt", "completion", "failed_callback", "stream_close", "on_sent"],
 )

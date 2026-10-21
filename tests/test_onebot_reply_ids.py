@@ -3,11 +3,17 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    DeliveryFailureKind,
+    OutboundMessage,
+    TextPart,
+)
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     render_onebot_outbound_message,
 )
+from ironsbot.integrations.onebot.receipts import onebot_result_message_id
 from ironsbot.integrations.onebot.replies import (
     build_event_reply_message,
     send_portable_event_reply,
@@ -53,3 +59,29 @@ def test_reply_message_ids_reject_non_decimal_syntax(value: str) -> None:
         render_onebot_outbound_message(
             OutboundMessage((TextPart("result"),)), reply_to_id=value
         )
+
+
+@pytest.mark.parametrize(
+    "value", [True, False, [], {}, 1.5, "abc", "1.0", "+1", " 1", "1 ", "１２", None]
+)
+def test_send_receipt_requires_a_protocol_message_id(value: object) -> None:
+    assert onebot_result_message_id({"message_id": value}) is None
+
+
+@pytest.mark.parametrize("value", [-42, 0, 42, "-42", "0", "42"])
+def test_send_receipt_accepts_signed_integer_ids(value: int | str) -> None:
+    assert onebot_result_message_id({"message_id": value}) == str(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [True, False, [], {}, 1.5, "abc", None])
+async def test_passive_reply_with_malformed_id_is_uncertain_not_success(
+    value: object,
+) -> None:
+    matcher = Mock(send=AsyncMock(return_value={"message_id": value}))
+    result = await send_portable_event_reply(
+        matcher, group_message_event("help"), OutboundMessage.from_text("result")
+    )
+    assert not result.delivered
+    assert result.failure_kind is DeliveryFailureKind.UNCERTAIN
+    matcher.send.assert_awaited_once()

@@ -96,6 +96,7 @@ from ironsbot.services.about import AboutService
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
+from ironsbot.services.messaging.red_packet import RedPacketNoticeService
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
@@ -354,6 +355,10 @@ def build_test_plugin_registry(
             contribution_catalog=PluginContributionCatalog(),
             query_sessions=PortableQuerySessions(),
             poke_reply=object(),
+            onebot_messenger=object(),
+            red_packet_notice=RedPacketNoticeService(
+                config.messaging.red_packet_notice, runtime.admin_notices
+            ),
             addressed_input_hints=AddressedInputHintService(),
             identity_principals=IdentityPrincipalService(),
             identity_links=SimpleNamespace(
@@ -397,12 +402,12 @@ def build_test_plugin_registry(
         meeting_plugin_contribution(commands=tuple(config.messaging.meeting.commands)),
         blacklist_plugin_contribution(features=runtime.features),
         red_packet_plugin_contribution(
-            config=config.messaging.red_packet_notice,
-            admin_notices=runtime.admin_notices,
+            service=resources.red_packet_notice,
         ),
         fire_manual_ad_plugin_contribution(),
         poke_reply_plugin_contribution(
             service=resources.poke_reply,
+            messenger=resources.onebot_messenger,
         ),
         rank_help_plugin_contribution(player_id_resolver=resources.player_id_resolver),
         pet_config_plugin_contribution(

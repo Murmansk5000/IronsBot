@@ -13,15 +13,13 @@ from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.core.push_routing import PushRouteDecision
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
-from ironsbot.integrations.onebot.outbound import (
-    GroupOutboundRateLimitService,
-    install_outbound_rate_limit_hooks,
-)
+from ironsbot.integrations.onebot.outbound_hooks import OneBotOutboundRateLimitHooks
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
+from ironsbot.services.messaging.outbound_limits import GroupOutboundRateLimitService
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 from ironsbot.services.messaging.private_push_failure_notice import (
     report_private_push_failures,
@@ -251,7 +249,7 @@ def build_common_components(
         ),
         private_routes=private_routes,
     )
-    install_outbound_rate_limit_hooks(outbound)
+    OneBotOutboundRateLimitHooks(outbound).install()
     admin_notices = AdminNoticeService(
         features,
         OutboundAdminNoticeSender(proactive_delivery, private_routes),

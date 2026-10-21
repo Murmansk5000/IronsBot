@@ -9,26 +9,26 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import (
     ActionFailed,
     Bot,
-    MessageSegment,
     NoticeEvent,
     PokeNotifyEvent,
 )
-from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.poke_reply import (
-    OneBotPokeReplyPort,
-    is_onebot_poke_at_bot,
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
 )
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
+    from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
+    from ironsbot.services.messaging.poke_reply import PokeReplyService
 
 __plugin_meta__ = PluginMetadata(
     name="戳一戳回复",
@@ -41,7 +41,7 @@ __plugin_meta__ = PluginMetadata(
 
 
 async def _is_poke_at_bot(event: NoticeEvent) -> bool:
-    return isinstance(event, PokeNotifyEvent) and is_onebot_poke_at_bot(event)
+    return isinstance(event, PokeNotifyEvent) and event.target_id == event.self_id
 
 
 async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
@@ -59,26 +59,25 @@ async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
     return str(role) if role is not None else None
 
 
-def install(registry: MatcherFactory, service: OneBotPokeReplyPort) -> None:
+def install(
+    registry: MatcherFactory,
+    service: PokeReplyService,
+    messenger: OneBotOutboundMessenger,
+) -> None:
     async def handle_poke_reply(
-        matcher: Matcher,
         bot: Bot,
         event: PokeNotifyEvent,
     ) -> None:
-        if not service.can_send(event.group_id):
-            await matcher.finish()
-        reply = (
-            service.get_reply(
-                group_id=event.group_id,
-                user_id=event.user_id,
-                group_role=await _group_role(bot, event),
-            )
-            or DIRECT_COMMAND_HELP_HINT_TEXT
+        context = CommandContext(
+            actor=onebot_actor_ref(event.user_id),
+            conversation=onebot_conversation_ref(
+                event.user_id, group_id=event.group_id
+            ),
         )
-        if event.group_id is None:
-            await matcher.finish(reply)
-        await matcher.finish(
-            MessageSegment.at(event.user_id) + MessageSegment.text(f" {reply}")
+        await service.handle(
+            context,
+            partial(messenger.send_from, bot, context),
+            group_role=partial(_group_role, bot, event),
         )
 
     matcher = registry.on_notice(
@@ -89,15 +88,20 @@ def install(registry: MatcherFactory, service: OneBotPokeReplyPort) -> None:
     matcher.append_handler(handle_poke_reply)
 
 
-def plugin_contribution(*, service: OneBotPokeReplyPort) -> PluginContribution:
+def plugin_contribution(
+    *, service: PokeReplyService, messenger: OneBotOutboundMessenger
+) -> PluginContribution:
     return PluginContribution(
         id="poke_reply",
-        install=partial(install, service=service),
+        install=partial(install, service=service, messenger=messenger),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(service=context.resources.poke_reply),
+        plugin_contribution(
+            service=context.resources.poke_reply,
+            messenger=context.resources.onebot_messenger,
+        ),
     )
