@@ -1,0 +1,77 @@
+{
+  "provenance": {
+    "database": "seerapi-data.sqlite",
+    "sha256": "92bb0d8f4db05d64adeae0a367bd2c2399ab407d02079c8dd1cced4b53402a6b",
+    "generate_time": "2026-10-16 16:47:35.193833",
+    "repository": "PetInfoRepository.load(3488)",
+    "scope": "Selected real skills 29402/31391/38462/38463, complete raw soulmark and published special effects; unrelated skills, item prices and binary assets omitted."
+  },
+  "pet": {
+    "id": 3488, "name": "阴灵魂姬", "resource_id": 3488,
+    "gender_id": 2, "type_id": 62, "type_name": "邪灵 神秘",
+    "introduction": "阴冥妖姬的超进化形态，外表虽然变得有些可怖，但是战斗的实力却更上一层楼！",
+    "height": 171.0, "weight": 47.0, "food": ""
+  },
+  "base_stats": {"atk": 132, "def_": 109, "sp_atk": 70, "sp_def": 107, "spd": 128, "hp": 159},
+  "skills": [
+    {
+      "id": 29402, "name": "黄泉妖偈", "type_id": 8, "type_name": "普通", "category_id": 4, "category_name": "属性技能",
+      "power": 0, "max_pp": 5, "accuracy": 95, "crit_rate": null, "priority": 0, "must_hit": true,
+      "info": "全属性提升了；开始吸取对手的体力了；攻击变得凌厉了；出手变得更快了",
+      "learning_level": 0, "is_special": true, "is_advanced": false, "is_fifth": false,
+      "effects": [
+        {"effect_id": 2545, "analyze_info": "[sprite name=iconInherent]自身[color=#52a5f2]登场时[/color]，若自身携带了芳华寂灭则剥离自身的神秘系[color=#52a5f2]以[/color]获得[color=#f35555]冥妖之悼[/color]，若自身携带了幽冥鬼甲则剥离自身的邪灵系[color=#52a5f2]以[/color]获得[color=#f35555]幽迹之秘[/color]，同时携带时此效果失效", "info": "自身登场时，若自身携带了芳华寂灭则剥离自身的神秘系以获得冥妖之悼，若自身携带了幽冥鬼甲则剥离自身的邪灵系以获得幽迹之秘，同时携带时此效果失效"},
+        {"effect_id": 1001, "analyze_info": "[sprite name=iconHit][color=#52a5f2]全属性[/color]+1，对手处于异常状态时强化效果翻倍（boss有效）", "info": "全属性+1，对手处于异常状态时强化效果翻倍"},
+        {"effect_id": 597, "analyze_info": "[sprite name=iconHit]4回合内每回合使用技能[color=#52a5f2]吸取[/color]对手最大体力的1/3", "info": "4回合内每回合使用技能吸取对手最大体力的1/3"},
+        {"effect_id": 693, "analyze_info": "[sprite name=iconHit]下2回合造成的攻击[color=#52a5f2]伤害额外提升[/color]100%（boss有效）", "info": "下2回合造成的攻击伤害额外提升100%"},
+        {"effect_id": 843, "analyze_info": "[sprite name=iconHit]下2回合令自身所有[color=#52a5f2]技能先制[/color]+2（boss有效）", "info": "下2回合令自身所有技能先制+2"}
+      ],
+      "friend_effects": [], "activation_item_id": 1728296, "hide_effect_description": null
+    },
+    {
+      "id": 31391, "name": "冥·十刀弑魂", "type_id": 62, "type_name": "邪灵 神秘", "category_id": 1, "category_name": "物理攻击",
+      "power": 160, "max_pp": 5, "accuracy": 95, "crit_rate": 6.25, "priority": 0, "must_hit": true, "info": null,
+      "learning_level": 76, "is_special": false, "is_advanced": false, "is_fifth": true,
+      "effects": [
+        {"effect_id": 1199, "analyze_info": "[sprite name=iconHit][color=#52a5f2]吸取[/color]对手能力提升状态，[color=#52a5f2]吸取[/color]成功则对手2回合内[color=#52a5f2]无法通过自身技能恢复体力[/color]（boss有效）", "info": "吸取对手能力提升状态，吸取成功则对手2回合内无法通过自身技能恢复体力"},
+        {"effect_id": 999, "analyze_info": "[sprite name=iconHit]自身每处于1种能力提升状态，造成的[color=#52a5f2]伤害额外提升[/color]15%", "info": "自身每处于1种能力提升状态，造成的伤害额外提升15%"},
+        {"effect_id": 897, "analyze_info": "[sprite name=iconHit]未[color=#57c975]击败[/color]对手则令自身下1次受到的攻击[color=#52a5f2]伤害额外减少[/color]50%（boss有效）", "info": "未击败对手则令自身下1次受到的攻击伤害额外减少50%"}
+      ],
+      "friend_effects": [], "activation_item_id": null, "hide_effect_description": null
+    },
+    {
+      "id": 38462, "name": "瑰·极天阴谕", "type_id": 19, "type_name": "邪灵", "category_id": 1, "category_name": "物理攻击",
+      "power": 160, "max_pp": 5, "accuracy": 95, "crit_rate": 6.25, "priority": 0, "must_hit": true, "info": null,
+      "learning_level": 71, "is_special": true, "is_advanced": false, "is_fifth": true,
+      "effects": [
+        {"effect_id": 2389, "analyze_info": "[sprite name=iconHit]自身处于能力提升状态时，此攻击不会微弱对手", "info": "自身处于能力提升状态时，此攻击不会微弱对手"},
+        {"effect_id": 1199, "analyze_info": "[sprite name=iconHit][color=#52a5f2]吸取[/color]对手能力提升状态，[color=#52a5f2]吸取[/color]成功则对手2回合内[color=#52a5f2]无法通过自身技能恢复体力[/color]（boss有效）", "info": "吸取对手能力提升状态，吸取成功则对手2回合内无法通过自身技能恢复体力"},
+        {"effect_id": 882, "analyze_info": "[sprite name=iconHit]自身每处于一种能力提升状态，此技能[color=#52a5f2]威力[/color]提升20（boss有效）", "info": "自身每处于一种能力提升状态，此技能威力提升20"},
+        {"effect_id": 1040, "analyze_info": "[sprite name=iconHit][color=#52a5f2]当回合[/color]若未[color=#57c975]击败[/color]对手则100%令对手[color=#57c975]神游[/color]，[color=#52a5f2]未触发[/color]则令自身[color=#52a5f2]全属性[/color]+1", "info": "当回合若未击败对手则100%令对手神游，未触发则令自身全属性+1"},
+        {"effect_id": 897, "analyze_info": "[sprite name=iconHit]未[color=#57c975]击败[/color]对手则令自身下1次受到的攻击[color=#52a5f2]伤害额外减少[/color]50%（boss有效）", "info": "未击败对手则令自身下1次受到的攻击伤害额外减少50%"}
+      ],
+      "friend_effects": [], "activation_item_id": null, "hide_effect_description": null
+    },
+    {
+      "id": 38463, "name": "瑰·伏心命朽", "type_id": 14, "type_name": "神秘", "category_id": 1, "category_name": "物理攻击",
+      "power": 160, "max_pp": 5, "accuracy": 95, "crit_rate": 6.25, "priority": 0, "must_hit": true, "info": null,
+      "learning_level": 71, "is_special": true, "is_advanced": false, "is_fifth": true,
+      "effects": [
+        {"effect_id": 2389, "analyze_info": "[sprite name=iconHit]自身处于能力提升状态时，此攻击不会微弱对手", "info": "自身处于能力提升状态时，此攻击不会微弱对手"},
+        {"effect_id": 1199, "analyze_info": "[sprite name=iconHit][color=#52a5f2]吸取[/color]对手能力提升状态，[color=#52a5f2]吸取[/color]成功则对手2回合内[color=#52a5f2]无法通过自身技能恢复体力[/color]（boss有效）", "info": "吸取对手能力提升状态，吸取成功则对手2回合内无法通过自身技能恢复体力"},
+        {"effect_id": 882, "analyze_info": "[sprite name=iconHit]自身每处于一种能力提升状态，此技能[color=#52a5f2]威力[/color]提升20（boss有效）", "info": "自身每处于一种能力提升状态，此技能威力提升20"},
+        {"effect_id": 852, "analyze_info": "[sprite name=iconHit]附加自身最大体力25%的[color=#52a5f2]百分比伤害[/color]并恢复等量体力，恢复体力时若自身体力低于最大体力的1/3则恢复效果和[color=#52a5f2]百分比伤害[/color]翻倍（boss有效）", "info": "附加自身最大体力25%的百分比伤害并恢复等量体力，恢复体力时若自身体力低于最大体力的1/3则恢复效果和百分比伤害翻倍"},
+        {"effect_id": 897, "analyze_info": "[sprite name=iconHit]未[color=#57c975]击败[/color]对手则令自身下1次受到的攻击[color=#52a5f2]伤害额外减少[/color]50%（boss有效）", "info": "未击败对手则令自身下1次受到的攻击伤害额外减少50%"}
+      ],
+      "friend_effects": [], "activation_item_id": null, "hide_effect_description": null
+    }
+  ],
+  "soulmarks": [
+    {"id": 796, "desc": "自身首次技能命中前{吸取}对手150点{体力}，之后每次技能命中前{吸取}对手250点{体力}，若自身使用技能的当回合对手被击败则下回合吸取效果重置；|每次登场后若自身使用过技能，则每次击败对手时吸取对手能力提升状态，若吸取成功则对方下只精灵出战时进入等同的能力下降状态，若吸取失败或对手不处于能力提升状态则对方下只精灵出战时100%进入害怕状态|（boss无效）", "analyze_desc": "", "formatting_adjustment": null, "intensified": false, "intensified_to_id": null, "is_adv": false, "pve_effective": false, "tags": ["恢复", "控制", "弱化"]}
+  ],
+  "special_effects": [
+    {"name": "吸取体力", "description": "减少对手固定数值或者一定百分比的体力，并附加给自己", "glossary_id": 117, "status_id": null, "sources": ["官方关联词条"], "icon_key": null, "effect_key": "g:117", "parent_effect_keys": []},
+    {"name": "冥妖之悼", "description": "自身芳华寂灭先制+1；自身登场时恢复自身所有技能1点PP值，自身所有技能为满时恢复己方所有精灵100点体力值；自身使用的第五技能转化为瑰·极天阴谕", "glossary_id": 544, "status_id": null, "sources": ["技能·黄泉妖偈"], "icon_key": "191_1", "effect_key": "g:544", "parent_effect_keys": []},
+    {"name": "幽迹之秘", "description": "自身幽冥鬼甲先制+1；自身登场时令对手1回合内属性技能命中效果失效；自身使用的第五技能转化为瑰·伏心命朽", "glossary_id": 545, "status_id": null, "sources": ["技能·黄泉妖偈"], "icon_key": "191_2", "effect_key": "g:545", "parent_effect_keys": []}
+  ]
+}
