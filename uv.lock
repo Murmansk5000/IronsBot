@@ -931,7 +931,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "qqbot-agent-sdk", marker = "extra == 'qq-official'", specifier = "==1.2.2" },
     { name = "qrcode", extras = ["pil"], specifier = ">=8.2" },
-    { name = "seerapi-models", git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=434667937424e73be3f6cd8f87bd942f7e135666" },
+    { name = "seerapi-models", git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=main" },
     { name = "uvicorn", specifier = ">=0.20.0,<1.0.0" },
     { name = "websockets", specifier = ">=15.0" },
 ]
@@ -2087,7 +2087,7 @@ wheels = [
 [[package]]
 name = "seerapi-models"
 version = "106.10.2"
-source = { git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=434667937424e73be3f6cd8f87bd942f7e135666#434667937424e73be3f6cd8f87bd942f7e135666" }
+source = { git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=main#c3f8c0839e31e51f4437cea4b87dd6b97eceeebb" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlmodel" },
@@ -2157,15 +2157,16 @@ wheels = [
 
 [[package]]
 name = "sqlmodel"
-version = "0.0.37"
+version = "0.0.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlalchemy" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fb/26/1d2faa0fd5a765267f49751de533adac6b9ff9366c7c6e7692df4f32230f/sqlmodel-0.0.37.tar.gz", hash = "sha256:d2c19327175794faf50b1ee31cc966764f55b1dedefc046450bc5741a3d68352", size = 85527, upload-time = "2026-02-21T16:39:47.038Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/67/b2c0b771c89c023262dd8fb6ba2cdc6a004e5ff75dd5763051b38ccd133a/sqlmodel-0.0.48.tar.gz", hash = "sha256:5582e87e845e23bb1179a7d8b11a4f5e441b4494528a41ee2fe1d129ffe91543", size = 99329, upload-time = "2026-10-06T21:44:36.391Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/e1/7c8d18e737433f3b5bbe27b56a9072a9fcb36342b48f1bef34b6da1d61f2/sqlmodel-0.0.37-py3-none-any.whl", hash = "sha256:2137a4045ef3fd66a917a7717ada959a1ceb3630d95e1f6aaab39dd2c0aef278", size = 27224, upload-time = "2026-02-21T16:39:47.781Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/76/6f8221eda15f28471c3887e5a75a62cd7338d20ac03e1e78a110a127d61e/sqlmodel-0.0.48-py3-none-any.whl", hash = "sha256:8d389bf735b03a17508e93e888c13a30ef1ddca22dd8e57add12317401e4112e", size = 31468, upload-time = "2026-10-06T21:44:35.326Z" },
 ]
 
 [[package]]
