@@ -473,7 +473,7 @@ class ProactiveDeliveryConfig(BaseModel):
 
     max_attempts: int = Field(default=3, ge=1)
     max_parallel_targets: int = -1
-    retry_batch_divisor: int = Field(default=3, ge=1)
+    retry_batch_divisor: int = Field(default=2, ge=1)
     retry_delay_seconds: float = Field(default=2.0, ge=0)
     transport_failure_cooldown_seconds: float = Field(default=60.0, ge=0)
 
