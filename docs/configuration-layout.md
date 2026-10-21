@@ -1,5 +1,7 @@
 # 配置布局与新增功能指南
 
+[返回 README](../README.md) · [部署者配置与订阅教程](configuration-and-subscriptions.md)
+
 `config.example.toml` 是部署者阅读和维护机器人的主要入口。它的章节顺序按用户可见功能与运行依赖组织，
 而不是按 Python 包、服务类或最后一次修改的文件组织。
 
