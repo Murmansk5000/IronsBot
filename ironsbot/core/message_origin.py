@@ -22,7 +22,7 @@ def current_message_origin() -> MessageInputContext | None:
 
 
 @contextmanager
-def message_origin(context: MessageInputContext) -> Iterator[None]:
+def message_origin(context: MessageInputContext | None) -> Iterator[None]:
     token = _CURRENT_MESSAGE.set(context)
     try:
         yield

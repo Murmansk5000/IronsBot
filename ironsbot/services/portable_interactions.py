@@ -12,6 +12,7 @@ from weakref import WeakValueDictionary
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.semantic_requests import (
+    SemanticRequestTrace,
     current_semantic_request_trace,
     semantic_request_scope,
 )
@@ -20,7 +21,7 @@ from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -162,6 +163,19 @@ def check_current_interaction() -> None:
         raise asyncio.CancelledError
 
 
+@contextmanager
+def _generation_scope(
+    generation: _Generation, *, require_current: bool = True
+) -> Iterator[None]:
+    token = _CURRENT.set(generation)
+    try:
+        if require_current:
+            check_current_interaction()
+        yield
+    finally:
+        _CURRENT.reset(token)
+
+
 def as_portable_reply(
     result: OutboundMessage | PortableReply | DataQueryImageReply | str,
 ) -> PortableReply:
@@ -228,11 +242,8 @@ class PortableInteractions:
 
     @contextmanager
     def navigation_scope(self, context: MessageInputContext) -> Iterator[None]:
-        token = _CURRENT.set(self._generation(self.sessions._key(context)))
-        try:
+        with _generation_scope(self._generation(self.sessions._key(context))):
             yield
-        finally:
-            _CURRENT.reset(token)
 
     def invalidate_key(self, key: _SessionKey) -> None:
         generation = self._generations.pop(key, None)
@@ -361,8 +372,7 @@ class PortableInteractions:
             run.acquired = True
             if not generation.active:
                 return None
-            generation_token = _CURRENT.set(generation)
-            try:
+            with _generation_scope(generation):
                 reservation = self.sessions._active_reservation(key)
                 if reservation is not None and reservation.accepts(text):
                     await self.sessions._wait_for_reservation(key, reservation)
@@ -376,8 +386,6 @@ class PortableInteractions:
                     result = await self.sessions.select(
                         text, context, allow_deferred=True
                     )
-            finally:
-                _CURRENT.reset(generation_token)
             if result is None:
                 return None
             reply = as_portable_reply(result)
@@ -403,16 +411,15 @@ class PortableInteractions:
         reservation = self.sessions.reserve_responses(context, accepts_menu_input)
         generation = self._generation(self.sessions._key(context))
         generation.running += 1
-        generation_token = _CURRENT.set(generation)
         try:
-            result = await operation(text, context)
+            with _generation_scope(generation):
+                result = await operation(text, context)
         except BaseException:
             reservation.cancel()
             if generation.active:
                 self.invalidate(context)
             raise
         finally:
-            _CURRENT.reset(generation_token)
             generation.running -= 1
         if result is None:
             reservation.cancel()
@@ -427,6 +434,8 @@ class PortableInteractions:
         request: SemanticRequest | None = None,
         actor: ActorRef | None = None,
     ) -> PortableReply:
+        if request is not None:
+            reply = replace(reply, semantic_trace=SemanticRequestTrace(request, actor))
         generation.running += 1
         released = False
 
@@ -440,13 +449,32 @@ class PortableInteractions:
 
         async def follow_up() -> OutboundMessage:
             assert reply.follow_up is not None
-            token = _CURRENT.set(generation)
+            with _generation_scope(generation), reply.execution_scope():
+                return await reply.follow_up()
+
+        async def continuation() -> PortableReply | None:
+            assert reply.continuation is not None
+            with _generation_scope(generation), reply.execution_scope():
+                result = await reply.continuation()
+                return self._guard(result, generation) if result is not None else None
+
+        async def stream() -> AsyncGenerator[OutboundMessage, None]:
+            assert reply.additional_stream is not None
+            source = reply.additional_stream()
             try:
-                check_current_interaction()
-                with semantic_request_scope(request, actor=actor):
-                    return await reply.follow_up()
+                while True:
+                    with _generation_scope(generation), reply.execution_scope():
+                        try:
+                            message = await anext(source)
+                        except StopAsyncIteration:
+                            return
+                    yield message
             finally:
-                _CURRENT.reset(token)
+                with (
+                    _generation_scope(generation, require_current=False),
+                    reply.execution_scope(),
+                ):
+                    await source.aclose()
 
         return replace(
             reply,
@@ -454,6 +482,8 @@ class PortableInteractions:
                 generation.active and (reply.is_current is None or reply.is_current())
             ),
             follow_up=follow_up if reply.follow_up is not None else None,
+            continuation=continuation if reply.continuation is not None else None,
+            additional_stream=stream if reply.additional_stream is not None else None,
             on_finished=finished,
         )
 

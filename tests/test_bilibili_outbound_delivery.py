@@ -20,6 +20,7 @@ from ironsbot.integrations.storage.bilibili_history import (
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.bilibili.content import DynamicContentCompactor
+from ironsbot.services.bilibili.image_messages import render_dynamic_image_message
 from ironsbot.services.bilibili.outbound_delivery import (
     BILI_PUSH_ADMIN_HINT,
     CATEGORY_SUBSCRIPTION_HINT,
@@ -29,7 +30,6 @@ from ironsbot.services.bilibili.outbound_delivery import (
     BilibiliDynamicOutboundSender,
     prepare_dynamic_image_message,
     render_dynamic_content_message,
-    render_dynamic_image_message,
     render_dynamic_link_message,
     render_dynamic_text_message,
 )
@@ -675,11 +675,10 @@ async def test_full_dynamic_filters_unsubscribed_targets_before_link_and_content
         _group(1002),
         _private(2002),
     ]
-    assert [
-        conversation
-        for call in delivery.content_calls
-        for conversation in call["conversations"]
-    ] == [_group(1002), _private(2002)]
+    assert [call["conversations"] for call in delivery.content_calls] == [
+        (_group(1002),),
+        (_private(2002),),
+    ]
 
 
 @pytest.mark.asyncio
