@@ -205,6 +205,12 @@ assert len(state.matcher_factory.message_matchers) == 0
 assert len(state.matcher_factory.notice_matchers) == 0
 assert state.resources.onebot_ingress is not None
 assert state.resources.onebot_ingress.admission.errors is state.resources.command_errors
+from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
+assert state.resources.identity_observer is not None
+assert isinstance(state.resources.identity_observer.claims, SqliteInboundMessageClaims)
+assert state.resources.identity_observer.claims.path == (
+    state.settings.paths.cache_root / "identity" / "observations.sqlite"
+)
 assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
 
 for matcher in (
@@ -239,6 +245,8 @@ print("BOOTSTRAP_OK")
             "ENVIRONMENT": "outer",
             "APP_CONFIG_PATH": str(config_path),
             "APP_SECRET_10001": "test-secret",
+            "ONEBOT_IDENTITY_VERIFICATION": "true",
+            "ONEBOT_TRUSTED_OFFICIAL_BOT_EXAMPLE_BOT": "123456789",
         },
     )
 
