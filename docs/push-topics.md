@@ -1,5 +1,7 @@
 # 通用主题推送
 
+[返回 README](../README.md) · [其他推送与订阅](configuration-and-subscriptions.md)
+
 主题推送使用独立功能 `push_topics`，与固定文本、B站和活动提醒共用现有发送、路由、TD 偏好及调度设施。开启该功能不会自动订阅主题，也不会修改已有群的权限。
 
 ## 口令

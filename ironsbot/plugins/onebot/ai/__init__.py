@@ -1,17 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves callback annotations at runtime
-    Bot,
-    MessageEvent,
-)
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
@@ -20,17 +12,6 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.context import (
-    build_notice_source,
-    command_context,
-)
-from ironsbot.integrations.onebot.matcher_support import bind
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.portable_queries import (
-    make_portable_operation_handler,
-)
-from ironsbot.services.ai.chat_operation import execute_chat
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.help_visibility import feature_help_visible
 
@@ -39,16 +20,6 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.services.ai.input_routing import AiInputRoutingService
-    from ironsbot.services.ai.service import AiService
-
-AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
-
-
-@dataclass(frozen=True, slots=True)
-class AiChatMatcherDependencies:
-    input_routing: AiInputRoutingService
 
 
 __plugin_meta__ = PluginMetadata(
@@ -59,58 +30,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def _capture_ai_prompt(
-    event: MessageEvent,
-    state: T_State,
-    input_routing: AiInputRoutingService,
-) -> bool:
-    context = message_input_context(event)
-    if not input_routing.decide(context, command_context(event)).try_chat:
-        return False
-
-    state[AI_CHAT_PROMPT_KEY] = context.text.strip()
-    return True
-
-
-def install(
-    registry: MatcherFactory,
-    service: AiService,
-    dependencies: AiChatMatcherDependencies,
-) -> None:
-    async def run_ai_chat(
-        matcher: Matcher,
-        bot: Bot,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
-        source_context = await build_notice_source(event, prompt, bot=bot)
-
-        async def operation(text: str, context: MessageInputContext):
-            del text
-            return await execute_chat(
-                service, context, prompt, source_context=source_context
-            )
-
-        await make_portable_operation_handler(operation)(matcher, state, event)
-
-    direct_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "ai_chat",
-            help_ids=("ai_chat.group", "ai_chat.private"),
-        ),
-        rule=Rule(
-            bind(
-                _capture_ai_prompt,
-                input_routing=dependencies.input_routing,
-            )
-        ),
-        priority=registry.priority("ai_chat"),
-        block=True,
-    )
-    direct_matcher.append_handler(run_ai_chat)
 
 
 def plugin_contribution(
