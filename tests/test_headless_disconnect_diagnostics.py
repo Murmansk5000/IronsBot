@@ -2,6 +2,11 @@ import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+from pytest import MonkeyPatch
+
+from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.config.models.seer import RankPageRefreshConfig
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -10,10 +15,6 @@ from ironsbot.core.semantic_requests import (
     SemanticTarget,
     semantic_request_scope,
 )
-from pytest import MonkeyPatch
-
-from ironsbot.app.lifecycle import TaskOwner
-from ironsbot.config.models.seer import RankPageRefreshConfig
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer import rank_page_refresh
@@ -59,7 +60,11 @@ def test_headless_operation_context_includes_conversation() -> None:
 def test_headless_operation_context_captures_semantic_request() -> None:
     operations = HeadlessOperationTracker()
     request = SemanticRequest(
-        action=ActionDefinition("seer.player.collection", "收集与排行"),
+        action=ActionDefinition(
+            "seer.player.collection",
+            "收集与排行",
+            category=RequestCategory.OTHER_NETWORK,
+        ),
         target=SemanticTarget("712345678", "米米号 712345678"),
         source=SemanticRequestSource.MENU,
     )

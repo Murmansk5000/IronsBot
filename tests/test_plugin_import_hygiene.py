@@ -7,6 +7,62 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_business_plugins_delegate_menus_queries_and_delivery() -> None:
+    # Protocol-only event handlers cannot be reached through the official API.
+    event_only = {"poke.py", "red_packet.py"}
+    forbidden = {
+        "QueryOperationSpec",
+        "PortableMenuSpec",
+        "format_selection_menu",
+        "finish_event_reply",
+        "send_event_reply",
+        "chat_reply",
+        "classify_intent",
+        "search",
+        "select",
+        "query",
+        "finish",
+        "send",
+    }
+    offenders = []
+    for path in (ROOT / "ironsbot" / "plugins" / "onebot").rglob("*.py"):
+        if path.name in event_only:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else ""
+            )
+            if name in forbidden:
+                offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}: {name}")
+    assert offenders == []
+
+
+def test_business_plugins_do_not_register_legacy_prompt_loops() -> None:
+    legacy_entries = {
+        "enter_prompt_loop",
+        "enter_event_reply_conversation",
+        "begin_event_reply_conversation",
+        "enter_prompt",
+    }
+    offenders = []
+    for path in (ROOT / "ironsbot" / "plugins" / "onebot").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        offenders.extend(
+            str(path.relative_to(ROOT))
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and any(alias.name in legacy_entries for alias in node.names)
+        )
+    assert offenders == []
+
+
 def test_async_rule_checkers_are_not_hidden_by_sync_lambdas() -> None:
     offenders: list[str] = []
 

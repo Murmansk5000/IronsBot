@@ -1,12 +1,12 @@
 from pathlib import Path
 
+from ironsbot.config.message_schedule_targets import (
+    build_message_schedule_targets,
+)
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import MessageConfig, MessageScheduledAction
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.messaging_config import (
-    build_onebot_message_schedule_targets,
-)
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.identity_link_store import (
     CrossPlatformIdentityLink,
@@ -81,7 +81,7 @@ def test_private_td_time_and_preferences_follow_selected_bot(tmp_path: Path) -> 
         store,
         features,
         ScheduledMessageOutboundSender(runtime.proactive_delivery),
-        build_onebot_message_schedule_targets(config, runtime.onebot_references),
+        build_message_schedule_targets(config, runtime.qq_references),
         (extra,),
         _private_routes=routes,
     )

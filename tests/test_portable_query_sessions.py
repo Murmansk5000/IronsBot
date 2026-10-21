@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
@@ -421,9 +422,10 @@ async def test_shareable_group_choice_does_not_transfer_menu_ownership() -> None
     assert _text(result) == "selected"
     selected.assert_awaited_once_with("read-only", responder)
     assert sessions.has_active_session(owner)
-    assert not sessions.has_active_session(responder)
-    assert not sessions.recognizes_response("1", _context("responder"))
-    assert not sessions.recognizes_response("0", responder)
+    assert sessions.has_active_session(responder)
+    assert sessions.active_prompt(responder) != sessions.active_prompt(owner)
+    assert sessions.recognizes_response("1", _context("responder"))
+    assert sessions.recognizes_response("0", responder)
     assert sessions.recognizes_shared_response("1", owner, responder)
 
 
@@ -456,7 +458,8 @@ async def test_shareable_explicit_key_selects_original_value_for_responder() -> 
     assert _text(result) == "selected"
     selected.assert_awaited_once_with("rank-20", responder)
     assert sessions.has_active_session(owner)
-    assert not sessions.has_active_session(responder)
+    assert sessions.has_active_session(responder)
+    assert sessions.active_prompt(responder) != sessions.active_prompt(owner)
 
 
 @pytest.mark.asyncio
@@ -496,7 +499,9 @@ def test_menu_semantic_request_uses_responder_without_consuming_choice() -> None
     ) -> SemanticRequest:
         observed.append(context)
         return SemanticRequest(
-            ActionDefinition(value, "read only"),
+            ActionDefinition(
+                value, "read only", category=RequestCategory.OTHER_NETWORK
+            ),
             singleton_target("player", "player"),
             SemanticRequestSource.MENU,
         )

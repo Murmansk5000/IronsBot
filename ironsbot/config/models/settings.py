@@ -27,13 +27,13 @@ from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.config.models.transport import OneBotConfig
-from ironsbot.config.onebot_references import (
-    OneBotReferenceList,
-    OneBotReferenceResolver,
-)
 from ironsbot.config.platform_references import (
     PlatformReferenceResolver,
     build_platform_reference_resolver,
+)
+from ironsbot.config.qq_references import (
+    QQReferenceList,
+    QQReferenceResolver,
 )
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
@@ -361,7 +361,7 @@ class BotConfig(BaseModel):
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
     plugin_manifest: Literal["full", "core"] = "full"
     use_default_for_unconfigured_targets: StrictBool = False
-    superusers: OneBotReferenceList = Field(default_factory=list)
+    superusers: QQReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
     qq_official: QQOfficialConfig = Field(default_factory=QQOfficialConfig)
@@ -431,7 +431,7 @@ class Settings(BaseModel):
                 schedule_features=self.messaging.schedule_feature_keys,
                 qq_official=self.bot.qq_official,
             )
-            self._validate_onebot_references()
+            self._validate_qq_references()
             self._validate_promotions()
         except ValueError as exc:
             raise ValidationError.from_exception_data(
@@ -592,8 +592,8 @@ class Settings(BaseModel):
                 )
 
     @property
-    def onebot_references(self) -> OneBotReferenceResolver:
-        return OneBotReferenceResolver(
+    def qq_references(self) -> QQReferenceResolver:
+        return QQReferenceResolver(
             group_aliases={
                 alias: target.qq
                 for alias, target in self.identities.groups.items()
@@ -609,7 +609,7 @@ class Settings(BaseModel):
     @property
     def platform_references(self) -> PlatformReferenceResolver:
         return build_platform_reference_resolver(
-            self.onebot_references,
+            self.qq_references,
             self.identities,
             self.bot.qq_official.enabled_accounts,
         )
@@ -618,7 +618,7 @@ class Settings(BaseModel):
     def player_accounts(self) -> PlayerAccountRegistry:
         groups: dict[ConversationRef, list[str]] = {}
         for group_ref, account_refs in self.seer.player_account_aliases.items():
-            conversation = self.onebot_references.group_conversation_ref(
+            conversation = self.qq_references.group_conversation_ref(
                 group_ref,
                 location=f"seer.player_account_aliases.{group_ref}",
             )
@@ -650,14 +650,14 @@ class Settings(BaseModel):
     @property
     def superuser_ids(self) -> frozenset[int]:
         return frozenset(
-            self.onebot_references.resolve_users(
+            self.qq_references.resolve_users(
                 self.bot.superusers,
                 location="bot.superusers",
             )
         )
 
-    def _validate_onebot_references(self) -> None:
-        references = self.onebot_references
+    def _validate_qq_references(self) -> None:
+        references = self.qq_references
         platform_references = self.platform_references
         accounts = self.player_accounts
         _ = self.headless_accounts

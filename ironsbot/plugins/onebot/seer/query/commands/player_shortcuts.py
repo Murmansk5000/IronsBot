@@ -13,12 +13,8 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 
 from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.player_reference_commands import is_player_reference_input
-from ironsbot.core.semantic_requests import (
-    SemanticRequest,
-    SemanticRequestSource,
-)
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
+from ironsbot.integrations.onebot.matcher_support import bind_async
+from ironsbot.integrations.onebot.matchers import CommandPolicy
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import member_target_command
@@ -26,17 +22,14 @@ from ironsbot.services.player_extension_commands import build_player_extension_o
 from ironsbot.services.portable_player_commands import build_portable_player_operations
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
+    extension_action_allowed,
 )
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcut_contracts import (
-    PlayerShortcutCommand,
     PlayerShortcutTargetCommand,
     parse_player_shortcut_command,
-    player_shortcut_semantic_request,
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -61,31 +54,11 @@ class PlayerCommandDependencies:
 
 
 @dataclass(frozen=True, slots=True)
-class PlayerExtensionShortcutCommand:
-    """A validated extension action and numeric player target."""
-
-    action: PlayerDetailExtensionAction
-    player_id: int
-
-
-@dataclass(frozen=True, slots=True)
 class PlayerExtensionShortcutTargetCommand:
     """An extension action plus its unresolved player reference."""
 
     action: PlayerDetailExtensionAction
     player_reference: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class _ResolvedShortcutCommand:
-    command: PlayerShortcutCommand | None
-    error: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _ResolvedExtensionShortcutCommand:
-    command: PlayerExtensionShortcutCommand | None
-    error: str | None = None
 
 
 async def _is_player_shortcut(
@@ -103,11 +76,7 @@ async def _is_player_shortcut(
         command.player_reference, event, dependencies.player_id_resolver
     ):
         return False
-    state[_SHORTCUT_COMMAND_KEY] = _resolve_player_shortcut_command(
-        dependencies,
-        event,
-        command,
-    )
+    state[_SHORTCUT_COMMAND_KEY] = command
     return True
 
 
@@ -129,15 +98,12 @@ async def _is_player_extension_shortcut(
         player_reference, event, dependencies.player_id_resolver
     ):
         return False
-    if not event_is_feature_allowed(dependencies.features, event, action.feature):
+    if not extension_action_allowed(
+        action, message_input_context(event), dependencies.features
+    ):
         return False
-    state[_EXTENSION_SHORTCUT_COMMAND_KEY] = _resolve_extension_shortcut_command(
-        dependencies,
-        event,
-        PlayerExtensionShortcutTargetCommand(
-            action=action,
-            player_reference=player_reference or None,
-        ),
+    state[_EXTENSION_SHORTCUT_COMMAND_KEY] = PlayerExtensionShortcutTargetCommand(
+        action=action, player_reference=player_reference or None
     )
     return True
 
@@ -149,123 +115,24 @@ def _known_target(
     return is_player_reference_input(
         reference,
         command_context_from_input(context),
-        resolver.has_reference_choices
-        if resolver is not None
-        else lambda *_: False,
+        resolver.has_reference_choices if resolver is not None else lambda *_: False,
     )
 
 
-def _resolve_player_shortcut_command(
-    dependencies: PlayerCommandDependencies,
-    event: MessageEvent,
-    command: PlayerShortcutTargetCommand,
-) -> _ResolvedShortcutCommand:
-    target = resolve_player_target(
-        event,
-        player_reference=command.player_reference,
-        resolver=dependencies.player_id_resolver,
-    )
-    if target.error is not None:
-        return _ResolvedShortcutCommand(None, target.error)
-    if target.player_id is None:
-        return _ResolvedShortcutCommand(None, unbound_player_shortcut_message())
-    return _ResolvedShortcutCommand(
-        PlayerShortcutCommand(
-            kind=command.kind,
-            player_id=target.player_id,
-        )
-    )
-
-
-def _resolve_extension_shortcut_command(
-    dependencies: PlayerCommandDependencies,
-    event: MessageEvent,
-    command: PlayerExtensionShortcutTargetCommand,
-) -> _ResolvedExtensionShortcutCommand:
-    target = resolve_player_target(
-        event,
-        player_reference=command.player_reference,
-        resolver=dependencies.player_id_resolver,
-    )
-    if target.error is not None:
-        return _ResolvedExtensionShortcutCommand(None, target.error)
-    if target.player_id is None:
-        return _ResolvedExtensionShortcutCommand(
-            None,
-            unbound_player_shortcut_message(),
-        )
-    return _ResolvedExtensionShortcutCommand(
-        PlayerExtensionShortcutCommand(
-            action=command.action,
-            player_id=target.player_id,
-        )
-    )
-
-
-def _shortcut_command_id(
-    _event: Event,
-    state: T_State,
-) -> str:
+def _shortcut_command_id(_event: Event, state: T_State) -> str:
     command = state.get(_SHORTCUT_COMMAND_KEY)
-    resolved = command if isinstance(command, _ResolvedShortcutCommand) else None
-    kind = str(getattr(resolved.command, "kind", "")).strip() if resolved else ""
-    return f"seer_player_{kind}" if kind else "seer_player"
-
-
-def _shortcut_semantic_request(
-    dependencies: PlayerCommandDependencies,
-    event: MessageEvent,
-    state: T_State,
-) -> SemanticRequest | None:
-    _ = dependencies, event
-    resolved = state.get(_SHORTCUT_COMMAND_KEY)
-    if not isinstance(resolved, _ResolvedShortcutCommand):
-        return None
-    command = resolved.command
-    if command is None:
-        return None
-    return player_shortcut_semantic_request(
-        kind=command.kind,
-        player_id=command.player_id,
-        source=SemanticRequestSource.DIRECT,
+    return (
+        f"seer_player_{command.kind}"
+        if isinstance(command, PlayerShortcutTargetCommand)
+        else "seer_player"
     )
 
 
-def _extension_shortcut_command_id(
-    _event: Event,
-    state: T_State,
-) -> str:
+def _extension_shortcut_command_id(_event: Event, state: T_State) -> str:
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
-    resolved = (
-        command if isinstance(command, _ResolvedExtensionShortcutCommand) else None
-    )
-    command = resolved.command if resolved is not None else None
-    if command is None:
+    if not isinstance(command, PlayerExtensionShortcutTargetCommand):
         return "seer_player_extension"
     return command.action.action.cooldown_key or command.action.id
-
-
-def _extension_shortcut_semantic_request(
-    dependencies: PlayerCommandDependencies,
-    event: MessageEvent,
-    state: T_State,
-) -> SemanticRequest | None:
-    _ = dependencies, event
-    resolved = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
-    if not isinstance(resolved, _ResolvedExtensionShortcutCommand):
-        return None
-    command = resolved.command
-    if command is None:
-        return None
-    return SemanticRequest(
-        action=command.action.action,
-        target=player_shortcut_semantic_request(
-            kind="collection",
-            player_id=command.player_id,
-            source=SemanticRequestSource.DIRECT,
-        ).target,
-        source=SemanticRequestSource.EXTENSION,
-    )
 
 
 def install(group: SeerMatcherGroup) -> None:
@@ -279,11 +146,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command(
             _shortcut_command_id,
             help_ids=("seer.player.default",),
-            semantic_request=lambda event, state: _shortcut_semantic_request(
-                dependencies,
-                event,
-                state,
-            ),
+            semantic_request=lambda _event, _state: None,
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(bind_async(_is_player_shortcut, dependencies=dependencies))
@@ -315,11 +178,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command(
             _extension_shortcut_command_id,
             help_ids=tuple(action.command_help_id for action in extension_actions),
-            semantic_request=lambda event, state: _extension_shortcut_semantic_request(
-                dependencies,
-                event,
-                state,
-            ),
+            semantic_request=lambda _event, _state: None,
         ),
         rule=Rule(
             bind_async(

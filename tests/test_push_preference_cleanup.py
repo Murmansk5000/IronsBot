@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.config.message_schedule_targets import (
+    build_message_schedule_targets,
+)
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import (
@@ -11,9 +14,6 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.messaging_config import (
-    build_onebot_message_schedule_targets,
-)
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
@@ -83,9 +83,9 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         store,
         runtime.features,
         ScheduledMessageOutboundSender(runtime.proactive_delivery),
-        build_onebot_message_schedule_targets(
+        build_message_schedule_targets(
             config,
-            runtime.onebot_references,
+            runtime.qq_references,
         ),
         (lambda _conversation: [],),
     )

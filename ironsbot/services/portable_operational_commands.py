@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.services.about import AboutService
     from ironsbot.services.operations.data_sync import (
         DataSyncService,
         ManualDataSyncOption,
@@ -28,6 +29,14 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
+
+
+def build_portable_about_operation(service: AboutService) -> PortableOperation:
+    async def about(text: str, context: MessageInputContext) -> OutboundMessage:
+        del text, context
+        return service.message()
+
+    return about
 
 
 def build_portable_data_sync_operations(
@@ -164,19 +173,33 @@ def build_portable_server_status_operations(
 ) -> Mapping[str, PortableOperation]:
     """Bind server-status command IDs to the shared status service."""
 
+    async def usage(text: str, context: MessageInputContext) -> OutboundMessage | None:
+        del text
+        if context.text.strip() != "开服查询":
+            return None
+        return OutboundMessage.from_text(
+            "“/开服查询”仅限超级管理员。普通查询请发送“开服了吗”。"
+        )
+
     async def normal_status(
         text: str,
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text, context
-        return OutboundMessage.from_text((await server_status.query_normal()).message)
+        result = await server_status.query_normal()
+        return OutboundMessage.from_text(
+            result.message, request_succeeded=result.succeeded
+        )
 
     async def admin_status(
         text: str,
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text, context
-        return OutboundMessage.from_text((await server_status.query_admin()).message)
+        result = await server_status.query_admin()
+        return OutboundMessage.from_text(
+            result.message, request_succeeded=result.succeeded
+        )
 
     async def headless_instances(
         text: str,
@@ -184,10 +207,13 @@ def build_portable_server_status_operations(
     ) -> OutboundMessage:
         del text, context
         result = await server_status.query_headless_instances()
-        return OutboundMessage.from_text(result.message)
+        return OutboundMessage.from_text(
+            result.message, request_succeeded=result.succeeded
+        )
 
     return {
         "server_status.query": normal_status,
+        "server_status.usage": usage,
         "server_status.admin_query": admin_status,
         "server_status.headless_instances": headless_instances,
     }

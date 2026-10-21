@@ -68,6 +68,11 @@ def current_request_feedback() -> RequestFeedback | None:
     return _request_feedback.get()
 
 
+def request_is_acknowledged() -> bool:
+    feedback = current_request_feedback()
+    return _acknowledged.get() or (feedback is not None and feedback.sent)
+
+
 async def send_request_feedback(
     *,
     queued: bool,

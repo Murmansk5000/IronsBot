@@ -10,8 +10,8 @@ from ironsbot.config.models.features import (
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
-    OneBotTeamAuditPolicy,
 )
+from ironsbot.services.team.audit_policy import FeatureTeamAuditPolicy
 
 GROUP_ID = 987654321
 USER_ID = 1234567890
@@ -62,8 +62,8 @@ class FakeGroupProbe:
         return self.member_present
 
 
-def _policy() -> OneBotTeamAuditPolicy:
-    return OneBotTeamAuditPolicy(
+def _policy() -> FeatureTeamAuditPolicy:
+    return FeatureTeamAuditPolicy(
         build_feature_service(
             FeatureConfig(group_policy={str(GROUP_ID): ["team_audit"]}),
             frozenset(),

@@ -3,13 +3,13 @@ from typing import Any, cast
 
 import pytest
 import tomllib
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.config.models.identities import IdentityConfig
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.platform_references import build_platform_reference_resolver
+from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.configured_targets.bilibili import (
@@ -76,15 +76,15 @@ def _service(
                         "default_muted_categories": ["lottery"],
                     }
                 }
-            },
+            }
+            if categories
+            else {},
         }
     )
-    if not categories:
-        config.category_subscriptions.enabled = False
     conversation = ConversationRef(Platform.ONEBOT, "group", "123456")
     identities = IdentityConfig.model_validate({"groups": {"example_group": 123456}})
     references = build_platform_reference_resolver(
-        OneBotReferenceResolver({"example_group": 123456}, {}),
+        QQReferenceResolver({"example_group": 123456}, {}),
         identities,
         {},
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+from ironsbot.core.action_categories import RequestCategory
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
@@ -71,7 +72,9 @@ def test_player_detail_prompt_assigns_standard_menu_numbers_in_registration_orde
         aliases=("private",),
         command_help_id="private.action",
         query=AsyncMock(return_value=QueryReply(text="ok")),
-        action=ActionDefinition("private_action", "private action"),
+        action=ActionDefinition(
+            "private_action", "private action", category=RequestCategory.OTHER_NETWORK
+        ),
     )
 
     plan = plan_player_detail_prompt(
@@ -116,7 +119,9 @@ def test_player_detail_prompt_uses_registered_extension_actions() -> None:
         aliases=("private",),
         command_help_id="private.action",
         query=AsyncMock(return_value=QueryReply(text="ok")),
-        action=ActionDefinition("private_action", "private action"),
+        action=ActionDefinition(
+            "private_action", "private action", category=RequestCategory.OTHER_NETWORK
+        ),
     )
 
     plan = plan_player_detail_prompt(

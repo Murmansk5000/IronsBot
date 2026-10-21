@@ -102,7 +102,7 @@ def rate_metric(
 def collect_metrics(  # noqa: PLR0913
     *,
     more_info: Any,
-    unity_part_one: UnityPartOneInfo,
+    unity_part_one: UnityPartOneInfo | None,
     unity_peak: UnityPeakInfo,
     rank_summary: PlayerRankSummary,
     autocard_rank_summary: RankLookupResult | None,
@@ -130,17 +130,21 @@ def collect_metrics(  # noqa: PLR0913
             coerce_positive_int(getattr(more_info, "total_achieve", 0))
         ),
         "achievement_count": metric(
-            coerce_positive_int(unity_part_one.achievement_num)
+            coerce_positive_int(getattr(unity_part_one, "achievement_num", None))
         ),
         "pet_total_count": metric(
             coerce_positive_int(getattr(more_info, "pet_all_num", 0))
         ),
-        "pet_kind_count": metric(coerce_positive_int(unity_part_one.pet_kind_num)),
+        "pet_kind_count": metric(
+            coerce_positive_int(getattr(unity_part_one, "pet_kind_num", None))
+        ),
         "countermark_count": metric(metric_from_rank(breakdown.countermark)),
         "outfit_suit_count": metric(metric_from_rank(breakdown.outfit_suit)),
         "outfit_part_count": metric(metric_from_rank(breakdown.outfit_part)),
         "mount_count": metric(metric_from_rank(breakdown.mount)),
-        "skin_count": metric(coerce_positive_int(unity_part_one.skin_num)),
+        "skin_count": metric(
+            coerce_positive_int(getattr(unity_part_one, "skin_num", None))
+        ),
         "autocard_score": metric(metric_from_rank(autocard_rank_summary)),
         "unlocked_book_entries": metric(coerce_positive_int(breakdown.unlocked_count)),
     }

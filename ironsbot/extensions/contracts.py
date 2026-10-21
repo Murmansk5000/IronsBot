@@ -8,7 +8,10 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.core.command_catalog import CommandContext
+from ironsbot.core.command_catalog import CommandAccess, CommandContext
+from ironsbot.core.player_detail_actions import (
+    PlayerDetailActionRequest as PlayerDetailActionRequest,  # noqa: PLC0414 - public extension export
+)
 from ironsbot.services.seer.render_cache import (
     RenderCacheEntry,
 )
@@ -18,12 +21,15 @@ __all__ = [
     "AbstractContextManager",
     "Any",
     "Callable",
+    "CommandAccess",
     "CommandContext",
     "PlayerDetailActionRegistration",
     "PlayerDetailActionRequest",
     "PlayerLineupCacheFactory",
     "PlayerLineupCachePort",
     "PlayerLineupCachedReply",
+    "PlayerLineupDetailCatalog",
+    "PlayerLineupDetailResolver",
     "PlayerLineupEntryResolver",
     "PlayerLineupExtensionContext",
     "PlayerLineupImageAssets",
@@ -36,6 +42,7 @@ __all__ = [
     "PlayerLineupRenderSession",
     "PlayerLineupRenderSessionFactory",
     "PlayerLineupSlot",
+    "PlayerLineupTraitSnapshot",
     "Protocol",
     "RenderCacheEntry",
     "annotations",
@@ -43,20 +50,13 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Mapping
     from pathlib import Path
 
     from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.semantic_requests import ActionDefinition
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerDetailActionRequest:
-    """Validated player target and platform context for an extension action."""
-
-    player_id: int
-    actor: ActorRef
-    conversation: ConversationRef
+    from ironsbot.services.seer.query_result import QueryReply
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,9 +68,13 @@ class PlayerDetailActionRegistration:
     label: str
     aliases: tuple[str, ...]
     command_help_id: str
-    query: Any
-    action: Any
+    query: Callable[[PlayerDetailActionRequest], Awaitable[QueryReply]]
+    action: ActionDefinition
     work_unit: str = "lineup"
+    access: tuple[CommandAccess, ...] = (CommandAccess(),)
+    show_in_player_menu: bool = True
+    numeric_target_only: bool = False
+    offer_binding: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +110,32 @@ class PlayerLineupEntryResolver(Protocol):
         self,
         slots: tuple[PlayerLineupSlot, ...],
     ) -> tuple[PlayerLineupPetSnapshot, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupTraitSnapshot:
+    effect_id: int
+    args: tuple[int, ...]
+    name: str
+    description: str
+    star_level: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupDetailCatalog:
+    skill_names: tuple[tuple[int, str], ...] = ()
+    mintmark_names: tuple[tuple[int, str], ...] = ()
+    traits: tuple[PlayerLineupTraitSnapshot, ...] = ()
+
+
+class PlayerLineupDetailResolver(Protocol):
+    def resolve(
+        self,
+        *,
+        skill_ids: tuple[int, ...],
+        mintmark_ids: tuple[int, ...],
+        effect_ids: tuple[int, ...],
+    ) -> PlayerLineupDetailCatalog: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +192,7 @@ class PlayerLineupRenderSession:
 
     entries: PlayerLineupEntryResolver
     render: PlayerLineupRenderPort
+    details: PlayerLineupDetailResolver | None = None
 
 
 PlayerLineupRenderSessionFactory = Callable[
@@ -176,6 +207,7 @@ class PlayerLineupQueryResult:
     leading_text: str = ""
     payload: bytes | None = None
     error: str = ""
+    record_success: Callable[[], None] | None = None
     fetched_at: float | None = None
     cache_fallback_allowed: bool = False
 
@@ -191,7 +223,7 @@ class PlayerLineupPacketClient(Protocol):
         self,
         command_id: int,
         player_id: int,
-        *,
+        *body: int,
         timeout_seconds: float,
     ) -> bytes: ...
 
@@ -209,7 +241,7 @@ class PlayerLineupPacketFetcher(Protocol):
 class PlayerLineupQueryPort(Protocol):
     """Run a private lineup packet request through public player safeguards."""
 
-    async def query(
+    async def query(  # noqa: PLR0913 - guarded packet request and settlement policy
         self,
         *,
         player_id: int,
@@ -217,6 +249,8 @@ class PlayerLineupQueryPort(Protocol):
         conversation: ConversationRef,
         timeout_seconds: float,
         fetch_packet: PlayerLineupPacketFetcher,
+        defer_quota: bool = False,
+        label: str = "阵容",
     ) -> PlayerLineupQueryResult: ...
 
 
@@ -254,10 +288,17 @@ class PlayerLineupExtensionContext(Protocol):
     implementation modules to acquire those dependencies.
     """
 
-    lineup_render_session: PlayerLineupRenderSessionFactory
-    lineup_query: PlayerLineupQueryPort
-    lineup_cache: PlayerLineupCacheFactory
-    player_id_resolver: PlayerIdResolver
+    @property
+    def lineup_render_session(self) -> PlayerLineupRenderSessionFactory: ...
+
+    @property
+    def lineup_query(self) -> PlayerLineupQueryPort: ...
+
+    @property
+    def lineup_cache(self) -> PlayerLineupCacheFactory: ...
+
+    @property
+    def player_id_resolver(self) -> PlayerIdResolver: ...
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]: ...
 

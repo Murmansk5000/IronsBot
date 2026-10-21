@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -20,7 +21,7 @@ from ironsbot.services.portable_rank_commands import (
     build_portable_rank_admin_operations,
     build_portable_rank_operations,
 )
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.seer.rank_list_models import (
@@ -206,6 +207,7 @@ class _PreparedRankReply:
     message: str
     deliveries: list[tuple[str, int]]
     delivery: tuple[str, int]
+    request_succeeded: bool = True
 
     def delivered(self) -> None:
         self.deliveries.append(self.delivery)
@@ -353,6 +355,59 @@ async def test_rank_partial_alias_selects_one_player() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rank_selected_alias_and_numeric_query_share_duplicate_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ironsbot.config.models.messaging import CommandCooldownConfig
+    from ironsbot.runtime.in_flight_requests import InFlightRequestService
+
+    service = _RankQueryService()
+    spy = AsyncMock(wraps=service.prepare_player)
+    monkeypatch.setattr(service, "prepare_player", spy)
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            int(reference) if reference.isdecimal() else None
+        ),
+        lambda _actor: 600001,
+        reference_search=lambda *_: (
+            PlayerReferenceChoice(700001, "玩家甲"),
+            PlayerReferenceChoice(700002, "玩家乙"),
+        ),
+    )
+    sessions = PortableQuerySessions()
+    sessions.interactions.request_service = InFlightRequestService(
+        Mock(is_actor_superuser=Mock(return_value=False)), CommandCooldownConfig()
+    )
+    operations = build_portable_rank_operations(
+        cast("RankQueryService", service),
+        resolver,
+        sessions,
+        AsyncMock(),
+        cast("FeatureService", _Features()),
+    )
+    operation = operations["rank.global_collection"]
+    context = _context("成就榜玩家")
+    menu = await sessions.interactions.execute(operation, context.text, context)
+    assert menu is not None
+    send = AsyncMock(return_value=SendResult(delivered=True, message_id="rank-result"))
+    assert await deliver_portable_reply(menu, send)
+    send.reset_mock()
+    spy.assert_not_awaited()
+    selected = await sessions.interactions.select("2", context)
+    assert selected is not None
+    assert await deliver_portable_reply(selected, send)
+    repeated = await operation("成就榜700002", context)
+    assert isinstance(repeated, PortableReply)
+    assert "重复" in _text(repeated.message)
+    await deliver_portable_reply(repeated, send)
+    silent = await operation("成就榜700002", context)
+    assert isinstance(silent, PortableReply)
+    assert not await deliver_portable_reply(silent, send)
+    assert send.await_count == len(("result", "duplicate warning"))
+    assert spy.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_rank_menu_preserves_displayed_rank_and_opens_player_query() -> None:
     service = _RankQueryService()
     service.list_prepared = RankListPreparedReply(
@@ -439,7 +494,7 @@ async def test_rank_menu_quoted_member_uses_responder_identity() -> None:
     assert _text(selected.message) == "玩家详情"
     assert player_queries == [("米米号700011", "responder-openid")]
     assert sessions.has_active_session(owner)
-    assert not sessions.recognizes_response("0", responder)
+    assert sessions.recognizes_response("0", responder)
 
 
 @pytest.mark.asyncio
@@ -565,14 +620,8 @@ async def test_portable_rank_admin_operations_include_deferred_refresh() -> None
     assert _text(samples) == "samples:group-openid"
     assert _text(overview) == "page overview"
     assert _text(detail) == "page:图鉴积分"
-    assert _text(refresh.message) == "refreshing"
-    assert service.refresh_events == ["prepare:caller-openid"]
-
-    refresh.delivered()
-    assert refresh.follow_up is not None
-    final = await refresh.follow_up()
-
-    assert _text(final) == "refreshed"
+    assert _text(refresh.message) == "refreshed"
+    assert refresh.follow_up is None
     assert service.refresh_events == ["prepare:caller-openid", "execute"]
 
 
@@ -631,12 +680,7 @@ async def test_portable_rank_page_maintenance_uses_deferred_reply(
 
     reply = cast("PortableReply", await operation(text, _context(text)))
 
-    assert _text(reply.message) == progress_text
-    assert service.refresh_events == [events[0]]
-
-    reply.delivered()
-    assert reply.follow_up is not None
-    final = await reply.follow_up()
-
-    assert _text(final) == final_text
+    assert _text(reply.message) == final_text
+    assert _text(reply.message) != progress_text
+    assert reply.follow_up is None
     assert service.refresh_events == list(events)

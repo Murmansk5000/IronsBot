@@ -18,7 +18,7 @@ from ironsbot.services.portable_interactions import as_portable_reply
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import (
     PortableReply,
-    progress_operation_reply,
+    slow_operation_reply,
 )
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_models import (
@@ -127,7 +127,7 @@ class _PortableRankAdminOperations:
                 progress=progress,
             )
 
-        return await progress_operation_reply(refresh)
+        return await slow_operation_reply(refresh(_ignore_admin_progress))
 
     async def page_refresh(
         self,
@@ -146,7 +146,7 @@ class _PortableRankAdminOperations:
                 progress=progress,
             )
 
-        return await progress_operation_reply(refresh)
+        return await slow_operation_reply(refresh(_ignore_admin_progress))
 
     async def page_batch(
         self,
@@ -165,7 +165,11 @@ class _PortableRankAdminOperations:
                 progress=progress,
             )
 
-        return await progress_operation_reply(cache)
+        return await slow_operation_reply(cache(_ignore_admin_progress))
+
+
+async def _ignore_admin_progress(_message: str) -> None:
+    pass
 
 
 def _prefixed(text: str) -> str:
@@ -207,7 +211,9 @@ class _PortableRankOperations:
     ) -> OutboundMessage | PortableReply | None:
         player_target = parse_rank_player_target_command(text)
         if context.has_member_mentions and player_target is not None:
-            return await self._player(player_target.rank_key, None, context)
+            return await self._player(
+                player_target.rank_key, player_target.player_reference, context
+            )
 
         listed = parse_rank_list_command(
             text,
@@ -246,7 +252,9 @@ class _PortableRankOperations:
         context: MessageInputContext,
     ) -> OutboundMessage | PortableReply:
         if not result.selections:
-            return OutboundMessage.from_text(result.message)
+            return OutboundMessage.from_text(
+                result.message, request_succeeded=result.request_succeeded
+            )
 
         async def select(
             choice: RankListSelection,
@@ -316,7 +324,7 @@ class _PortableRankOperations:
             )
         )
 
-    async def _player(
+    async def _player(  # noqa: C901 - target resolution and delivery-aware admission
         self,
         rank_key: str,
         reference: str | None,
@@ -325,14 +333,56 @@ class _PortableRankOperations:
         async def prepare(
             player_id: int, selected: MessageInputContext
         ) -> PortableReply:
-            result = await self.service.prepare_player(
-                RankPlayerCommand(rank_key, player_id),
-                actor=selected.message.actor,
-                conversation=selected.message.conversation,
+            requests = self.sessions.interactions.request_service
+            decision = (
+                requests.admit(
+                    actor=selected.message.actor,
+                    conversation=selected.message.conversation,
+                    bot_id=selected.request_bot_id,
+                    request=SemanticRequest(
+                        ActionDefinition(
+                            f"seer.rank.player.{rank_key}", "榜单玩家查询"
+                        ),
+                        SemanticTarget(str(player_id), f"米米号 {player_id}"),
+                        SemanticRequestSource.DIRECT,
+                    ),
+                )
+                if requests is not None
+                else None
             )
+            if decision is not None and not decision.allowed:
+                return PortableReply(
+                    OutboundMessage.from_text(decision.feedback or "重复查询"),
+                    is_current=lambda: decision.feedback is not None,
+                )
+            token = decision.token if decision is not None else None
+            try:
+                result = await self.service.prepare_player(
+                    RankPlayerCommand(rank_key, player_id),
+                    actor=selected.message.actor,
+                    conversation=selected.message.conversation,
+                )
+            except BaseException:
+                if requests is not None:
+                    requests.release(token)
+                raise
+
+            def delivered() -> None:
+                result.delivered()
+                if requests is not None:
+                    if result.request_succeeded:
+                        requests.finish(token)
+                    else:
+                        requests.release(token)
+
             return PortableReply(
-                OutboundMessage.from_text(result.message),
-                on_delivered=result.delivered,
+                OutboundMessage.from_text(
+                    result.message, request_succeeded=result.request_succeeded
+                ),
+                on_delivered=delivered,
+                on_finished=lambda: (
+                    requests.release(token) if requests is not None else None
+                ),
             )
 
         if reference and not context.has_member_mentions:

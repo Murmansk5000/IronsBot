@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: MIT
-"""Compile OneBot-specific message configuration into typed schedule targets."""
+"""Compile configured logical groups and users into typed schedule targets."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.services.messaging.targets import MessageScheduleTargets
+from ironsbot.core.message_schedule_targets import MessageScheduleTargets
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
-    from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.qq_references import QQReferenceResolver
 
 
-def build_onebot_message_schedule_targets(
+def build_message_schedule_targets(
     config: MessageConfig,
-    references: OneBotReferenceResolver,
+    references: QQReferenceResolver,
 ) -> MessageScheduleTargets:
     """Resolve configured QQ mentions before messaging services schedule work."""
 

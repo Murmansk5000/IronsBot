@@ -7,11 +7,19 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.player_detail_actions import PlayerDetailActionRequest
+from ironsbot.core.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.player_binding_confirmation import confirm_shortcut_binding
 from ironsbot.services.player_reference_selection import select_player_target
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
-from ironsbot.services.seer.player_detail_extensions import PlayerDetailActionRequest
+from ironsbot.services.seer.player_detail_extensions import (
+    extension_action_allowed,
+)
 from ironsbot.services.seer.player_shortcut_contracts import (
     player_request_admission_message,
 )
@@ -34,12 +42,13 @@ async def query_player_extension(
     player_id: int,
     context: MessageInputContext,
     features: FeatureService,
+    sessions: PortableQuerySessions | None = None,
 ) -> PortableReply:
     message = context.message
-    if not features.is_feature_allowed(
-        message.actor, message.conversation, action.feature
-    ):
-        return PortableReply(OutboundMessage.from_text("该功能当前未对你开放。"))
+    if not extension_action_allowed(action, context, features):
+        return PortableReply(
+            OutboundMessage.from_text("该操作当前未对你开放。", request_succeeded=False)
+        )
 
     async def execute(report: ProgressReporter) -> OutboundMessage:
         async def send_status(label: str, *, queued: bool) -> None:
@@ -57,9 +66,23 @@ async def query_player_extension(
                     ),
                 ),
             )
-        return result.to_outbound()
+        return (
+            action.present(result, context, sessions)
+            if action.present is not None and sessions is not None
+            else result.to_outbound()
+        )
 
-    return await progress_operation_reply(execute)
+    if sessions is None:
+        return await progress_operation_reply(execute)
+    return await sessions.interactions.execute_request(
+        SemanticRequest(
+            action.action,
+            SemanticTarget(str(player_id), f"米米号 {player_id}"),
+            SemanticRequestSource.EXTENSION,
+        ),
+        context,
+        lambda: progress_operation_reply(execute),
+    )
 
 
 def build_player_extension_operation(
@@ -75,14 +98,22 @@ def build_player_extension_operation(
             msg = "player extension operation received an unrecognized command"
             raise ValueError(msg)
         action, reference = parsed
+        if not extension_action_allowed(action, context, features):
+            return PortableReply(
+                OutboundMessage.from_text(
+                    "该操作当前未对你开放。", request_succeeded=False
+                )
+            )
 
         async def query(player_id: int, context: MessageInputContext) -> PortableReply:
-            return await query_player_extension(action, player_id, context, features)
+            return await query_player_extension(
+                action, player_id, context, features, sessions
+            )
 
         async def confirmed_query(
             player_id: int, selected: MessageInputContext
         ) -> PortableReply:
-            if player_service is None or not reference:
+            if player_service is None or not reference or not action.offer_binding:
                 return await query(player_id, selected)
             return await confirm_shortcut_binding(
                 player_service, sessions, player_id, selected, query

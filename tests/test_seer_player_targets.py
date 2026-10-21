@@ -3,9 +3,7 @@
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.seer.query.commands.player_target import (
-    resolve_player_target,
-)
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
@@ -38,11 +36,7 @@ def test_player_target_uses_one_current_message_member_mention() -> None:
         message=Message([MessageSegment.text("收集"), MessageSegment.at(456)])
     )
 
-    target = resolve_player_target(
-        event,
-        player_reference=None,
-        resolver=_resolver(),
-    )
+    target = _resolver().resolve(message_input_context(event), None)
 
     assert target.player_id == PLAYER_ID
     assert not target.offer_binding
@@ -55,11 +49,7 @@ def test_player_target_uses_member_mention_sent_after_a_quote() -> None:
         reply_sender_user_id=789,
     )
 
-    target = resolve_player_target(
-        event,
-        player_reference=None,
-        resolver=_resolver(),
-    )
+    target = _resolver().resolve(message_input_context(event), None)
 
     assert target.player_id == PLAYER_ID
     assert not target.offer_binding
@@ -71,11 +61,7 @@ def test_player_target_member_lookup_does_not_offer_to_bind_another_person() -> 
         message=Message([MessageSegment.text("群星牌"), MessageSegment.at(456)])
     )
 
-    target = resolve_player_target(
-        event,
-        player_reference=None,
-        resolver=_resolver(),
-    )
+    target = _resolver().resolve(message_input_context(event), None)
 
     assert not target.offer_binding
 
@@ -94,16 +80,8 @@ def test_player_target_rejects_ambiguous_member_target_forms() -> None:
         message=Message([MessageSegment.text("收集712345678"), MessageSegment.at(456)])
     )
 
-    multiple = resolve_player_target(
-        two_members,
-        player_reference=None,
-        resolver=_resolver(),
-    )
-    mixed = resolve_player_target(
-        member_and_number,
-        player_reference="105023264",
-        resolver=_resolver(),
-    )
+    multiple = _resolver().resolve(message_input_context(two_members), None)
+    mixed = _resolver().resolve(message_input_context(member_and_number), "105023264")
 
     assert multiple.error == "请一次只 @ 一名成员查询其已绑定的米米号。"
     assert mixed.error == "米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。"
@@ -114,21 +92,16 @@ def test_player_target_reports_an_unbound_mentioned_member() -> None:
         message=Message([MessageSegment.text("米米号"), MessageSegment.at(789)])
     )
 
-    target = resolve_player_target(
-        event,
-        player_reference=None,
-        resolver=_resolver(),
-    )
+    target = _resolver().resolve(message_input_context(event), None)
 
     assert target.player_id is None
     assert target.error == "该成员尚未绑定米米号。"
 
 
 def test_player_target_can_require_an_explicit_reference() -> None:
-    target = resolve_player_target(
-        group_message_event("绑定米米号"),
-        player_reference=None,
-        resolver=_resolver(),
+    target = _resolver().resolve(
+        message_input_context(group_message_event("绑定米米号")),
+        None,
         allow_default_binding=False,
     )
 
@@ -154,17 +127,13 @@ def test_player_target_resolves_a_group_scoped_alias_once() -> None:
     )
     event = group_message_event("米米号示例玩家", group_id=private_group_id)
 
-    target = resolve_player_target(
-        event,
-        player_reference="示例玩家",
-        resolver=PlayerIdResolver(
-            lambda reference, conversation: accounts.resolve_player_id(
-                reference,
-                conversation=conversation,
-            ),
-            _binding_for,
+    target = PlayerIdResolver(
+        lambda reference, conversation: accounts.resolve_player_id(
+            reference,
+            conversation=conversation,
         ),
-    )
+        _binding_for,
+    ).resolve(message_input_context(event), "示例玩家")
 
     assert target.player_id == PLAYER_ID
     assert target.offer_binding

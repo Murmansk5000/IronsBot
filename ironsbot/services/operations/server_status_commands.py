@@ -10,6 +10,7 @@ from ironsbot.core.command_catalog import (
 )
 from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
+    DISABLED_BARE_ADMIN_COMMAND,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMANDS,
 )
@@ -19,6 +20,15 @@ def server_status_command_contracts() -> tuple[CommandContract, ...]:
     """Describe server-status commands for the shared command catalog."""
 
     return (
+        CommandContract(
+            id="server_status.usage",
+            plugin_id="server_status",
+            section="查询",
+            examples=(DISABLED_BARE_ADMIN_COMMAND,),
+            routing_matcher=lambda text, _context: text == DISABLED_BARE_ADMIN_COMMAND,
+            description="查看开服查询用法",
+            features_any=("server_status_query",),
+        ),
         *commands_from_rows(
             "server_status",
             "查询",

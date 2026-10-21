@@ -82,10 +82,6 @@ class AiService:
         self._history: dict[str, list[HistoryMessage]] = {}
         self._notice_limiter = SlidingWindowRateLimiter()
 
-    @property
-    def waiting_notice(self) -> bool:
-        return self._config.waiting_notice and self._config.enabled
-
     def _can_show_admin_notice(
         self,
         actor: ActorRef,

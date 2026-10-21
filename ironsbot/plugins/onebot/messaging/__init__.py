@@ -20,13 +20,14 @@ from ironsbot.services.messaging.command_contracts import messaging_command_cont
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
-    from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.qq_references import QQReferenceResolver
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="文本发送",
@@ -62,11 +63,12 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     registry: MatcherFactory,
     *,
     messaging: MessagingService,
-    references: OneBotReferenceResolver,
+    references: QQReferenceResolver,
     activity_service: ActivityService,
     scheduler: Scheduler,
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
+    query_sessions: PortableQuerySessions,
 ) -> None:
     from .matchers import install
 
@@ -82,6 +84,7 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
         references=references,
         command_help_ids=command_help_ids,
         keyword_help_ids=keyword_help_ids,
+        query_sessions=query_sessions,
     )
 
 
@@ -89,10 +92,11 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
     *,
     config: MessageConfig,
     features: FeatureService,
-    references: OneBotReferenceResolver,
+    references: QQReferenceResolver,
     service: MessagingService,
     activity_service: ActivityService,
     scheduler: Scheduler,
+    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
@@ -123,6 +127,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
             references=references,
             activity_service=activity_service,
             scheduler=scheduler,
+            query_sessions=query_sessions,
             command_help_ids=tuple(
                 f"messaging.{action.id}" for action in config.commands if action.enabled
             ),
@@ -145,9 +150,10 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             config=context.settings.messaging,
             features=context.resources.features,
-            references=context.settings.onebot_references,
+            references=context.settings.qq_references,
             service=context.resources.messaging,
             activity_service=context.resources.activity,
             scheduler=context.scheduler,
+            query_sessions=context.resources.query_sessions,
         ),
     )

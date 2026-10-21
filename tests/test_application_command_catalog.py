@@ -57,7 +57,6 @@ def test_application_validates_the_catalog_after_matcher_registration(
         file_logging=cast("Any", object()),
         http_clients=cast("Any", object()),
         databases=cast("Any", object()),
-        prompt_sessions=cast("Any", object()),
         resources=cast(
             "Any",
             SimpleNamespace(
@@ -82,7 +81,6 @@ def test_application_validates_the_catalog_after_matcher_registration(
     assert calls == [
         "plugin",
         "portable_router",
-        "queued_router",
         "validate",
         "postprocessor",
         "lifecycle",

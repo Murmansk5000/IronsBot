@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-import asyncio
-from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import Mock
 
-from ironsbot.plugins.onebot.seer.query.commands import autocard_sanctuary as plugin
+import pytest
+
+from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.platform import Platform
+from ironsbot.services.portable_autocard_commands import (
+    build_portable_autocard_operations,
+)
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.autocard_sanctuary import (
     Sanctuary,
     SanctuaryEffect,
@@ -12,17 +18,7 @@ from ironsbot.services.seer.autocard_sanctuary import (
     SanctuaryPromptValue,
     SanctuarySearchResult,
 )
-
-
-class _Service:
-    def __init__(self, result: SanctuarySearchResult) -> None:
-        self._result = result
-
-    def search(self, _arg: str) -> SanctuarySearchResult:
-        return self._result
-
-    def select(self, _value: SanctuaryPromptValue) -> SanctuarySearchResult:
-        return self._result
+from tests.test_portable_menu_navigation import context
 
 
 def _sanctuary() -> Sanctuary:
@@ -38,67 +34,32 @@ def _sanctuary() -> Sanctuary:
     )
 
 
-def test_direct_sanctuary_query_opens_its_numbered_effect_menu(
-    monkeypatch: Any,
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+async def test_sanctuary_menu_and_effect_selection_share_public_sessions(
+    platform: Platform,
 ) -> None:
-    captured: list[dict[str, object]] = []
-
-    async def enter(*_args: object, **kwargs: object) -> None:
-        captured.append(dict(kwargs))
-
-    monkeypatch.setattr(plugin, "_invalidate_sanctuary_prompt", lambda *_args: None)
-    monkeypatch.setattr(plugin, "enter_event_reply_conversation", enter)
-    matcher = SimpleNamespace(state={})
-    event = SimpleNamespace()
-    state = {"_irons_bot_command_arg": "沧岚"}
-
-    asyncio.run(
-        plugin.handle_autocard_sanctuary_query(
-            cast("Any", _Service(SanctuarySearchResult(sanctuary=_sanctuary()))),
-            cast("Any", matcher),
-            cast("Any", event),
-            cast("Any", state),
-        )
+    service = Mock(
+        search=Mock(return_value=SanctuarySearchResult(sanctuary=_sanctuary())),
+        select=Mock(
+            return_value=SanctuarySearchResult(
+                effect=SanctuaryEffectEntry(9, "潮涌", "完整祝印描述"),
+            )
+        ),
     )
-
-    assert captured[0]["namespace"] == plugin.SANCTUARY_PROMPT_NAMESPACE
-    assert captured[0]["prompt"] is not None
-    assert matcher.state[plugin.SANCTUARY_PROMPT_STATE_KEY] == (
-        SanctuaryPromptValue("effect", 2, 8),
-        SanctuaryPromptValue("effect", 2, 9),
-    )
-
-
-def test_effect_selection_sends_detail_and_keeps_the_current_menu(
-    monkeypatch: Any,
-) -> None:
-    replies: list[str] = []
-    prompts: list[dict[str, object]] = []
-
-    async def send_reply(_matcher: object, _event: object, message: str) -> None:
-        replies.append(message)
-
-    async def enter(*_args: object, **kwargs: object) -> None:
-        prompts.append(dict(kwargs))
-
-    monkeypatch.setattr(plugin, "send_event_reply", send_reply)
-    monkeypatch.setattr(plugin, "enter_event_reply_conversation", enter)
-    value = SanctuaryPromptValue("effect", 2, 9)
-    matcher = SimpleNamespace(state={plugin.SANCTUARY_PROMPT_STATE_KEY: (value,)})
-    event = SimpleNamespace(get_plaintext=lambda: "1")
-    result = SanctuarySearchResult(
-        effect=SanctuaryEffectEntry(9, "潮涌", "完整祝印描述")
-    )
-
-    asyncio.run(
-        plugin._handle_sanctuary_prompt_reply(
-            cast("Any", _Service(result)),
-            cast("Any", matcher),
-            cast("Any", event),
-            cast("Any", matcher.state),
-        )
-    )
-
-    assert replies == ["完整祝印描述"]
-    assert prompts[0]["prompt"] is None
-    assert matcher.state[plugin.SANCTUARY_PROMPT_STATE_KEY] == (value,)
+    sessions = PortableQuerySessions()
+    current = context(platform)
+    operation = build_portable_autocard_operations(
+        Mock(),
+        Mock(),
+        cast("Any", service),
+        sessions,
+    )["seer.autocard.sanctuary"]
+    menu = await operation("群星牌场地沧岚", current)
+    assert isinstance(menu, OutboundMessage) and menu.prompt is not None
+    assert [choice.id for choice in menu.prompt.choices] == ["1", "2", "0"]
+    result = await sessions.select("2", current)
+    assert isinstance(result, OutboundMessage)
+    assert result.parts == (TextPart("完整祝印描述"),)
+    service.select.assert_called_once_with(SanctuaryPromptValue("effect", 2, 9))
+    assert sessions.has_active_session(current)
