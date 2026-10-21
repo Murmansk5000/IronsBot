@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.tasks import TaskSpawner
 
 
 _SCHEMA = """
@@ -59,16 +60,17 @@ MIGRATION_NAMESPACE = "team_audit"
 
 
 class SqliteTeamAuditReminderStore:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, spawn: TaskSpawner) -> None:
         self._database = SqliteDatabase(
             path,
             migrations=_MIGRATIONS,
             migration_namespace=MIGRATION_NAMESPACE,
             row_factory=sqlite3.Row,
+            spawn=spawn,
         )
 
-    def save(self, reminder: TeamAuditPendingReminder) -> None:
-        with self._database.connect() as conn:
+    async def save(self, reminder: TeamAuditPendingReminder) -> None:
+        def write(conn: sqlite3.Connection) -> None:
             conn.execute(
                 """
                 INSERT INTO pending_team_audit_reminders (
@@ -97,12 +99,14 @@ class SqliteTeamAuditReminderStore:
                 ),
             )
 
-    def get(
+        await self._database.run_transaction(write)
+
+    async def get(
         self,
         conversation: ConversationRef,
         actor: ActorRef,
     ) -> TeamAuditPendingReminder | None:
-        with self._database.connect() as conn:
+        def read(conn: sqlite3.Connection) -> TeamAuditPendingReminder | None:
             row = conn.execute(
                 """
                 SELECT conversation_platform, conversation_account_id,
@@ -122,10 +126,12 @@ class SqliteTeamAuditReminderStore:
                     *_actor_values(actor),
                 ),
             ).fetchone()
-        return None if row is None else _row_to_reminder(row)
+            return None if row is None else _row_to_reminder(row)
 
-    def list_all(self) -> list[TeamAuditPendingReminder]:
-        with self._database.connect() as conn:
+        return await self._database.run_transaction(read)
+
+    async def list_all(self) -> list[TeamAuditPendingReminder]:
+        def read(conn: sqlite3.Connection) -> list[TeamAuditPendingReminder]:
             rows = conn.execute(
                 """
                 SELECT conversation_platform, conversation_account_id,
@@ -137,11 +143,53 @@ class SqliteTeamAuditReminderStore:
                 ORDER BY remind_at, conversation_id, actor_id
                 """
             ).fetchall()
-        return [_row_to_reminder(row) for row in rows]
+            return [_row_to_reminder(row) for row in rows]
 
-    def clear(self, conversation: ConversationRef, actor: ActorRef) -> None:
-        with self._database.connect() as conn:
-            conn.execute(
+        return await self._database.run_transaction(read)
+
+    async def transition(
+        self,
+        expected: TeamAuditPendingReminder,
+        *,
+        replacement: TeamAuditPendingReminder | None = None,
+    ) -> bool:
+        if replacement is not None and (
+            replacement.conversation != expected.conversation
+            or replacement.actor != expected.actor
+        ):
+            message = "A reminder transition cannot change its identity"
+            raise ValueError(message)
+
+        expected_values = (
+            *_conversation_values(expected.conversation),
+            *_actor_values(expected.actor),
+            _datetime_text(expected.joined_at),
+            _datetime_text(expected.remind_at),
+            expected.step,
+        )
+
+        def write(conn: sqlite3.Connection) -> bool:
+            if replacement is not None:
+                cursor = conn.execute(
+                    """
+                    UPDATE pending_team_audit_reminders
+                    SET joined_at = ?, remind_at = ?, step = ?
+                    WHERE conversation_platform = ?
+                      AND conversation_account_id = ?
+                      AND conversation_kind = ? AND conversation_id = ?
+                      AND actor_platform = ? AND actor_account_id = ?
+                      AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                      AND joined_at = ? AND remind_at = ? AND step = ?
+                    """,
+                    (
+                        _datetime_text(replacement.joined_at),
+                        _datetime_text(replacement.remind_at),
+                        replacement.step,
+                        *expected_values,
+                    ),
+                )
+                return cursor.rowcount == 1
+            cursor = conn.execute(
                 """
                 DELETE FROM pending_team_audit_reminders
                 WHERE conversation_platform = ?
@@ -149,12 +197,13 @@ class SqliteTeamAuditReminderStore:
                   AND conversation_kind = ? AND conversation_id = ?
                   AND actor_platform = ? AND actor_account_id = ?
                   AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                  AND joined_at = ? AND remind_at = ? AND step = ?
                 """,
-                (
-                    *_conversation_values(conversation),
-                    *_actor_values(actor),
-                ),
+                expected_values,
             )
+            return cursor.rowcount == 1
+
+        return await self._database.run_transaction(write)
 
 
 def _row_to_reminder(row: sqlite3.Row) -> TeamAuditPendingReminder:

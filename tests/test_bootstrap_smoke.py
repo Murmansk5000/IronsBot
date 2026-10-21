@@ -54,6 +54,14 @@ def checked_signature(call):
             registered.add(name)
     return signature
 dependencies.get_typed_signature = checked_signature
+from ironsbot.app.application import Application
+original_install = Application.install
+def checked_install(self, router):
+    assert self.resources.onebot_messenger._self_commands is (
+        self.resources.onebot_ingress.admission.self_commands
+    )
+    return original_install(self, router)
+Application.install = checked_install
 from scripts.generate_poke_command_introductions import _command_ids
 assert _command_ids()
 assert registered == {

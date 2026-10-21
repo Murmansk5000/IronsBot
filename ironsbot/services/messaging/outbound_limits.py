@@ -8,7 +8,6 @@ import logging
 import time
 from collections import defaultdict, deque
 from contextlib import suppress
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Literal
@@ -57,7 +56,6 @@ class _OutboundEvent:
 
 @dataclass(slots=True)
 class OutboundSendAttempt:
-    group_id: int | None
     cooldown_notice: str | None = None
     started: bool = False
     interrupted: bool = False
@@ -236,10 +234,6 @@ class GroupOutboundRateLimitService:
         self._spawn = spawn
         self._limiter = MultiWindowGroupRateLimiter()
         self._push_queues: dict[int, _GroupPushQueue] = {}
-        self._active_send: ContextVar[OutboundSendAttempt | None] = ContextVar(
-            "ironsbot_outbound_send_attempt",
-            default=None,
-        )
 
     def acquire_reply(
         self,
@@ -264,10 +258,6 @@ class GroupOutboundRateLimitService:
             return await self.acquire_superuser_reply(group_id)
         return self.acquire_reply(group_id)
 
-    def owns_send(self, group_id: int | None) -> bool:
-        attempt = self._active_send.get()
-        return attempt is not None and attempt.group_id == group_id
-
     async def execute_send(
         self,
         group_id: int | None,
@@ -289,23 +279,18 @@ class GroupOutboundRateLimitService:
                 failure_kind=DeliveryFailureKind.RETRYABLE,
             )
         attempt = OutboundSendAttempt(
-            group_id,
-            self.config.cooldown_message
+            cooldown_notice=self.config.cooldown_message
             if decision.permit is not None and decision.permit.append_cooldown_notice
             else None,
         )
-        token = self._active_send.set(attempt)
         try:
-            try:
-                result = await send(attempt)
-            except BaseException:
-                if not attempt.started:
-                    self.rollback(decision.permit)
-                raise
-            self.settle_send(decision.permit, result, interrupted=attempt.interrupted)
-            return result
-        finally:
-            self._active_send.reset(token)
+            result = await send(attempt)
+        except BaseException:
+            if not attempt.started:
+                self.rollback(decision.permit)
+            raise
+        self.settle_send(decision.permit, result, interrupted=attempt.interrupted)
+        return result
 
     def settle_send(
         self,
