@@ -307,15 +307,6 @@ class PortableLuckySkinCommands:
             return OutboundMessage.from_text(
                 "❌ 幸运橱窗数据暂时不可用，请稍后再试。", request_succeeded=False
             )
-        except Exception:
-            logger.exception(
-                "lucky skin window query failed: platform=%s actor=%s",
-                request.requester.platform.value,
-                reference_digest(request.requester.id),
-            )
-            return OutboundMessage.from_text(
-                "❌ 幸运橱窗查询失败，请稍后再试。", request_succeeded=False
-            )
         return await self._result_menu(context, request.owner, result)
 
     async def _watch_direct(

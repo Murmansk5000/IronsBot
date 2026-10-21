@@ -412,7 +412,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             ),
         ),
     }
-    command_catalog = CommandCatalog()
+    command_catalog = CommandCatalog(settings.bot.admin_commands_in_groups)
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
     identity_store = SqliteIdentityLinkStore(settings.paths.qq_state)

@@ -7,18 +7,33 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.core.action_categories import RequestCategory
+from ironsbot.core.command_catalog import CommandCatalog, CommandContract
+from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, SendResult
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
+from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot import portable_queries
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.plugins.onebot.seer.query.commands import player_shortcuts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.operations.request_feedback import send_request_feedback
+from ironsbot.services.player_extension_commands import build_player_extension_operation
+from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_player_commands import build_portable_player_operations
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessions,
     PortableTextInputSpec,
 )
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
+from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -30,8 +45,7 @@ from tests.helpers.onebot_events import group_message_event
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
-    from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+    from ironsbot.services.seer.player_service import PlayerService
 
 
 @pytest.mark.asyncio
@@ -132,9 +146,10 @@ async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_men
         ("档案", True),
     ],
 )
-async def test_registered_onebot_player_shortcut_runs_shared_delivery(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("platform", list(Platform))
+async def test_public_player_shortcut_runs_shared_progress_and_delivery(
     text: str,
+    platform: Platform,
     *,
     blocked: bool,
 ) -> None:
@@ -157,41 +172,88 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
             ),
         )
     )
-    matcher = Mock()
-    group = SimpleNamespace(
-        resources=SimpleNamespace(
-            player=service,
-            player_detail_extensions=extensions,
-            player_menu_actions=(),
-            player_nickname_lookup=None,
-            rank_queries=None,
+    context = MessageInputContext(
+        IncomingMessageRef(
+            platform,
+            ActorRef(platform, "caller"),
+            ConversationRef(platform, "group", "group"),
+            "1",
+            text,
         ),
-        features=Mock(
-            is_message_blocked=Mock(return_value=blocked),
-            is_feature_allowed=Mock(return_value=True),
-            is_actor_superuser=Mock(return_value=False),
-        ),
-        player_id_resolver=PlayerIdResolver(lambda *_: None, lambda _: 700001),
-        query_sessions=PortableQuerySessions(),
-        on_message=Mock(return_value=matcher),
-        matcher_priority=lambda _: 5,
+        mentions_bot=False,
     )
-    player_shortcuts.install(cast("SeerMatcherGroup", group))
-    handler = matcher.append_handler.call_args_list[int(text == "档案")].args[0]
+    features = FeatureService(
+        {
+            context.message.conversation: frozenset(
+                {"blacklist"} if blocked else {"seer_player"}
+            )
+        },
+        {},
+        frozenset(),
+    )
+    sessions = PortableQuerySessions()
+    resolver = PlayerIdResolver(lambda *_: None, lambda _: 700001)
+    operations = {
+        "seer.player.default": build_portable_player_operations(
+            cast("PlayerService", service), resolver, sessions, features, extensions
+        )["seer.player.default"],
+        "sample.detail": build_player_extension_operation(
+            extensions, resolver, features, sessions
+        ),
+    }
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="seer_query",
+                commands=tuple(
+                    command
+                    for command in seer_command_contracts(resolver)
+                    if command.id == "seer.player.default"
+                ),
+            ),
+            PluginContribution(
+                id="example",
+                commands=(
+                    CommandContract(
+                        id="sample.detail",
+                        plugin_id="example",
+                        section="详情",
+                        examples=("档案",),
+                        description="示例详情",
+                        features_all=("seer_player",),
+                        category=RequestCategory.OTHER_NETWORK,
+                    ),
+                ),
+            ),
+        ),
+        known_features=("seer_player",),
+    )
+    router = PortableCommandRouter(
+        catalog,
+        operations,
+        features,
+        ai=Mock(),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+        resolved_target_commands=frozenset({"sample.detail"}),
+    )
     send = AsyncMock(return_value=SendResult(delivered=True, message_id="sent-1"))
-    monkeypatch.setattr(portable_queries, "send_portable_event_reply", send)
-    await handler(Mock(), {}, group_message_event(text))
-    if blocked and text == "档案":
+    reply = await router.dispatch(context)
+    if blocked:
+        assert reply is None
         service.shortcut.assert_not_awaited()
-        assert send.await_args is not None
-        assert send.await_args.args[2].request_succeeded is False
+        send.assert_not_awaited()
         return
+    assert reply is not None
+    await deliver_portable_reply(reply, send)
     service.shortcut.assert_awaited_once()
     expected_sends = ("progress", "result")
     assert send.await_count == len(expected_sends)
     assert send.await_args is not None
     assert (
-        send.await_args.args[2]
+        send.await_args.args[0]
         == QueryReply(
             text="result",
             image=b"image-bytes",

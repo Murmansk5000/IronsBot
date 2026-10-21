@@ -27,19 +27,19 @@ def docker_command_contracts() -> tuple[CommandContract, ...]:
                 "docker_update.restart",
                 BOT_RESTART_COMMANDS,
                 "打开维护菜单，选择仅重启或更新镜像后重启",
-                {"access": (CommandAccess(audience="superuser"),)},
+                {"access": (CommandAccess(audience="superuser"),), "management": True},
             ),
             (
                 "docker_update.image_update",
                 DOCKER_UPDATE_COMMANDS,
                 "打开维护菜单，选择仅重启或更新镜像后重启",
-                {"access": (CommandAccess(audience="superuser"),)},
+                {"access": (CommandAccess(audience="superuser"),), "management": True},
             ),
             (
                 "docker_update.image_check",
                 DOCKER_CHECK_UPDATE_COMMANDS,
                 "只检查远端镜像，不拉取或重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
+                {"access": (CommandAccess(audience="superuser"),), "management": True},
             ),
         ),
     )

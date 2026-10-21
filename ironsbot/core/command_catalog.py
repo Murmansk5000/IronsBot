@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.action_categories import RequestCategory, category_for_action
@@ -268,6 +268,7 @@ class CommandContract:
     show_in_poke: bool = False
     visible: CommandVisibility | None = None
     category: RequestCategory | None = None
+    management: bool = False
 
     def __post_init__(self) -> None:  # noqa: C901 - one flat contract validator
         if not self.id.strip():
@@ -287,6 +288,12 @@ class CommandContract:
             raise CommandCatalogError.empty_features_any(self.id)
         if not self.access:
             raise CommandCatalogError.invalid_scope(self.id)
+        if self.management and any(
+            rule.audience != "superuser" for rule in self.access
+        ):
+            raise CommandCatalogError(
+                "management commands must require superuser access: " + self.id
+            )
         if self.interaction not in {"direct", "conversation", "passive", "automatic"}:
             raise CommandCatalogError.invalid_interaction(self.id)
         if self.help_level not in {"brief", "full"}:
@@ -449,6 +456,7 @@ def _feature_is_executable(
 class CommandCatalog:
     """Validated command descriptions for the active plugin registry."""
 
+    admin_commands_in_groups: bool = True
     _commands: tuple[CommandContract, ...] = field(default=(), init=False)
     _loaded: bool = field(default=False, init=False)
 
@@ -510,7 +518,21 @@ class CommandCatalog:
                 "command contracts reference unknown features: "
                 + ", ".join(invalid_features)
             )
-        self._commands = commands
+        self._commands = tuple(
+            replace(
+                command,
+                access=tuple(
+                    replace(
+                        rule,
+                        scope="both" if self.admin_commands_in_groups else "private",
+                    )
+                    for rule in command.access
+                ),
+            )
+            if command.management
+            else command
+            for command in commands
+        )
         self._loaded = True
 
     def available_for_context(

@@ -33,13 +33,13 @@ def data_sync_command_contracts() -> tuple[CommandContract, ...]:
                 "db_sync.update",
                 tuple(f"/{command}" for command in MANUAL_SYNC_COMMANDS),
                 "检查后选择同步已发布数据，或构建上游数据后同步",
-                {"access": (CommandAccess(audience="superuser"),)},
+                {"access": (CommandAccess(audience="superuser"),), "management": True},
             ),
             (
                 "db_sync.force_update",
                 tuple(f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS),
                 "选择第 2 项时强制重建上游数据后同步",
-                {"access": (CommandAccess(audience="superuser"),)},
+                {"access": (CommandAccess(audience="superuser"),), "management": True},
             ),
         ),
     )

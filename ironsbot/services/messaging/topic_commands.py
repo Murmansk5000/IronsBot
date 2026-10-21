@@ -99,6 +99,7 @@ def topic_command_contracts(
             examples=(example,),
             description=description,
             features_any=("push_topics",),
+            management=action in _ADMIN_ACTIONS,
             access=(CommandAccess(audience="superuser"),)
             if action in _ADMIN_ACTIONS
             else (CommandAccess("group", "group_manager"), CommandAccess("private"))

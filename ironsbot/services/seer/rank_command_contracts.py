@@ -206,19 +206,26 @@ def rank_help_command_contracts(
                     "rank.sample_status",
                     RANK_SAMPLE_STATUS_COMMANDS,
                     "查看样本缓存情况",
-                    {"access": (CommandAccess(audience="superuser"),)},
+                    {
+                        "access": (CommandAccess(audience="superuser"),),
+                        "management": True,
+                    },
                 ),
                 (
                     "rank.sample_refresh",
                     RANK_SAMPLE_REFRESH_COMMANDS,
                     "刷新样本缓存",
-                    {"access": (CommandAccess(audience="superuser"),)},
+                    {
+                        "access": (CommandAccess(audience="superuser"),),
+                        "management": True,
+                    },
                 ),
                 (
                     "rank.page_status",
                     ("/榜单情况", "/榜单情况 图鉴榜"),
                     "查看全服榜单缓存",
                     {
+                        "management": True,
                         "access": (CommandAccess(audience="superuser"),),
                         "routing_matcher": lambda text, _context: (
                             text in RANK_PAGE_OVERVIEW_COMMANDS
@@ -231,6 +238,7 @@ def rank_help_command_contracts(
                     ("/刷新榜单", "/刷新榜单 图鉴榜"),
                     "刷新全服榜单缓存",
                     {
+                        "management": True,
                         "access": (CommandAccess(audience="superuser"),),
                         "routing_matcher": parsed_command_input_matcher(
                             parse_rank_page_cache_refresh_command
@@ -242,6 +250,7 @@ def rank_help_command_contracts(
                     ("/缓存榜单 刻印榜 1-100",),
                     "缓存指定全服榜单区间",
                     {
+                        "management": True,
                         "access": (CommandAccess(audience="superuser"),),
                         "routing_matcher": parsed_command_input_matcher(
                             parse_rank_cache_batch_command

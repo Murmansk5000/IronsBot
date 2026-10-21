@@ -1,22 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
-    PluginContributionCatalog,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.matchers import CommandPolicy
-from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
-from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.help_commands import help_command_contracts
-from ironsbot.services.help_menu import build_portable_help_operation
 from ironsbot.services.help_visibility import always_help_visible
 
 __plugin_meta__ = PluginMetadata(
@@ -27,45 +20,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-if TYPE_CHECKING:
-    from ironsbot.core.command_catalog import CommandCatalog
-    from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.integrations.onebot.matchers import MatcherFactory
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
-
-
-def install(  # noqa: PLR0913 - shared help dependencies are explicit
-    registry: MatcherFactory,
-    contribution_catalog: PluginContributionCatalog,
-    features: FeatureService,
-    commands: CommandCatalog,
-    query_sessions: PortableQuerySessions,
-    *,
-    ignored_plugins: tuple[str, ...],
-) -> None:
-    operation = build_portable_help_operation(
-        contribution_catalog.contributions,
-        commands,
-        features,
-        query_sessions,
-        ignored_plugins=ignored_plugins,
-    )
-    matcher = registry.on_fullmatch(
-        "帮助",
-        policy=CommandPolicy.command("help", help_ids=("help",)),
-        rule=explicit_command(),
-        priority=registry.priority("help"),
-        block=True,
-    )
-
-    matcher.append_handler(
-        make_portable_query_handler(
-            operation,
-            query_sessions,
-        )
-    )
-
 
 def plugin_contribution() -> PluginContribution:
     """Declare the help menu against the frozen application contribution view."""

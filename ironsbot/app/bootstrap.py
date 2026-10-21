@@ -113,6 +113,7 @@ def bootstrap() -> Application:
         ai=application.resources.ai,
         ai_intent_actions=application.resources.ai_intent_actions,
         addressed_input_hints=application.resources.addressed_input_hints,
+        admin_notices=application.resources.admin_notices,
         team_resource=application.resources.team_resource,
         lucky_skin_window=application.resources.lucky_skin_window,
         activity=application.resources.activity,
