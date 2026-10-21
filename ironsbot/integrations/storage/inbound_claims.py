@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Callable
     from pathlib import Path
 
     from ironsbot.core.inbound_claims import InboundMessageKey
+    from ironsbot.core.tasks import TaskSpawner
 
 _DEFAULT_RETENTION_SECONDS = 24 * 60 * 60
 _MIGRATIONS = (
@@ -105,6 +107,7 @@ _MIGRATIONS = (
 @dataclass(slots=True)
 class SqliteInboundMessageClaims:
     path: Path
+    spawn: TaskSpawner = field(kw_only=True, repr=False, compare=False)
     retention_seconds: float = _DEFAULT_RETENTION_SECONDS
     clock: Callable[[], float] = field(default=time, repr=False, compare=False)
     _database: SqliteDatabase = field(init=False, repr=False)
@@ -117,15 +120,12 @@ class SqliteInboundMessageClaims:
             self.path,
             migrations=_MIGRATIONS,
             migration_namespace="qq_official_inbound_claims",
+            spawn=self.spawn,
         )
 
     async def claim(self, key: InboundMessageKey) -> bool:
-        async with self._claim_lock:
-            return await asyncio.to_thread(self._claim_sync, key)
-
-    def _claim_sync(self, key: InboundMessageKey) -> bool:
-        now = self.clock()
-        with self._database.connect() as connection:
+        def record(connection: sqlite3.Connection) -> bool:
+            now = self.clock()
             connection.execute(
                 "DELETE FROM inbound_message_claims WHERE claimed_at <= ?",
                 (now - self.retention_seconds,),
@@ -157,3 +157,6 @@ class SqliteInboundMessageClaims:
                 ),
             )
             return cursor.rowcount == 1
+
+        async with self._claim_lock:
+            return await self._database.run_transaction(record)

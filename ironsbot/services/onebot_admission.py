@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ironsbot.services.command_errors import CommandErrorReporter
 
 if TYPE_CHECKING:
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.own_commands import OwnAccountCommand, OwnAccountInput
     from ironsbot.services.identity_observation import (
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 
 class AdmissionRejection(str, Enum):
+    BLACKLIST = "conversation_blacklisted"
     SILENT = "transport_messages_disabled"
     OWN_MESSAGE = "own_command_not_admitted"
     ROUTING = "conversation_not_owned"
@@ -88,6 +90,7 @@ class OneBotAdmissionDecision:
 @dataclass(frozen=True, slots=True)
 class OneBotAdmissionService:
     messages_enabled: bool
+    features: FeatureService
     identity_observer: SilentIdentityObservationService | None = None
     self_commands: OwnAccountCommandPolicy | None = None
     routing: OneBotRoutingPolicy | None = None
@@ -110,13 +113,17 @@ class OneBotAdmissionService:
             await self.identity_observer.observe_onebot(incoming.observation)
         if not self.messages_enabled:
             return OneBotAdmissionDecision(AdmissionRejection.SILENT)
+        context = incoming.context
+        if context is not None and self.features.is_message_blocked(
+            context.message.actor, context.message.conversation
+        ):
+            return OneBotAdmissionDecision(AdmissionRejection.BLACKLIST)
         command = None
         if incoming.is_own_group_message:
             if self.self_commands is not None and incoming.own_input is not None:
                 command = self.self_commands.accept(incoming.own_input)
             if command is None:
                 return OneBotAdmissionDecision(AdmissionRejection.OWN_MESSAGE)
-        context = incoming.context
         if incoming.is_group_message and context is not None:
             if (
                 self.routing is not None

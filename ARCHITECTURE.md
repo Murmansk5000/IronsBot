@@ -1602,10 +1602,18 @@ rollback, and close in one worker thread. Async repositories receive an explicit
 task spawner from composition; application-owned transaction tasks drain before
 shared resources close. Caller cancellation waits for an already submitted
 transaction to finish: a cancelled caller does not imply a rolled-back write.
-The team-audit repository uses this async contract without synchronous CRUD
-aliases. Its lifecycle generation prevents old restore reads from registering
+Team-audit and inbound-claim repositories use this async contract without
+synchronous CRUD aliases. The team-audit lifecycle generation prevents old
+restore reads from registering
 jobs after stop or restart. Other repositories still require individual I/O
 audits; this is not a claim that all application storage is nonblocking.
+
+Both the shared command delivery ledger and the separate identity-observation
+ledger receive the application's draining task spawner. Cancellation retains
+the claim lock until the submitted transaction closes, and application shutdown
+waits for these transactions before resource closure. A committed claim can
+survive caller cancellation without business execution; it is an input receipt,
+not proof of business success or a guarantee of exactly-once processing.
 
 Team-audit completion uses an atomic conditional transition of the expected
 reminder, not unconditional deletion by identity. Both deletion and advancement
@@ -1658,6 +1666,12 @@ The following behavioral invariants are frozen:
   independently;
 - `blacklist` is an explicit target-policy feature and always suppresses the
   matching conversation before AI, rate controls, menus, or business matchers;
+  shared command ingress consumes blocked input before delivery claims and
+  rechecks after identity preparation. OneBot admission receives the same
+  FeatureService and stops message propagation before any native matcher
+  priority; the blacklist plugin declares ownership only and installs no
+  matcher. Passive identity observation retains its existing position before
+  numeric-account message admission, and notice events keep their own policy;
 - proactive group messages use the same outbound limit and bot routing as
   replies;
 - `admin_notice` targets only superusers and groups explicitly granted the
