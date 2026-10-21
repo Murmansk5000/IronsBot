@@ -140,17 +140,13 @@ async def test_lucky_window_chat_with_member_mention_is_not_a_query() -> None:
     )
     features = FeatureService({_GROUP: _FEATURES}, {}, frozenset())
     event = group_message_event(
-        message=Message(
-            [MessageSegment.at(456), MessageSegment.text(" 橱窗发了吗")]
-        ),
+        message=Message([MessageSegment.at(456), MessageSegment.text(" 橱窗发了吗")]),
         group_id=int(_GROUP.id),
     )
     assert not await lucky_plugin._matches_query(
         event, {}, features=features, resolver=resolver
     )
-    contract = lucky_skin_window_command_contracts(
-        resolver.has_known_reference
-    )[0]
+    contract = lucky_skin_window_command_contracts(resolver.has_known_reference)[0]
     context = CommandContext(
         _ACTOR,
         _GROUP,

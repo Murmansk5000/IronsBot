@@ -299,8 +299,10 @@ def _custom_series_ids(
         groups.setdefault(normalize_key(member.name), set()).add(member.target_id)
     rule = TextMatchRule(normalize_key)
     exact = rule.select(prefix, groups, names=lambda name: (name,), allow_partial=False)
-    matched = exact if exact.matches else rule.select(
-        prefix, groups, names=lambda name: (name,)
+    matched = (
+        exact
+        if exact.matches
+        else rule.select(prefix, groups, names=lambda name: (name,))
     )
     if matched.kind == "partial" and len(matched.matches) != 1:
         return []
@@ -424,8 +426,10 @@ class MintmarkSeriesResolver:
         exact = rule.select(
             raw_prefix, labels, names=labels.__getitem__, allow_partial=False
         )
-        result = exact if exact.matches else rule.select(
-            raw_prefix, labels, names=labels.__getitem__
+        result = (
+            exact
+            if exact.matches
+            else rule.select(raw_prefix, labels, names=labels.__getitem__)
         )
         if result.kind == "partial" and len(result.matches) != 1:
             return []

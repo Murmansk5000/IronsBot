@@ -165,9 +165,7 @@ class SqliteAiMemoryStore:
         SELECT role, content FROM messages
         WHERE principal_kind = ? AND principal_id = ?
         """
-        params: list[object] = list(
-            _principal_values(self._principal_for(actor))
-        )
+        params: list[object] = list(_principal_values(self._principal_for(actor)))
         if exclude_current_session:
             sql += "AND session_key != ? "
             params.append(current_session_key)

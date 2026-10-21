@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 PlayerReferenceAction = Callable[
-    [int, "MessageInputContext"], Awaitable["OutboundMessage | PortableReply"]
+    [int, "MessageInputContext"], Awaitable["OutboundMessage | PortableReply | None"]
 ]
 
 
@@ -99,7 +99,7 @@ async def select_player_reference(  # noqa: C901, PLR0913 - selection and access
     async def select(
         choice: PlayerReferenceChoice,
         context: MessageInputContext,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         current = resolver.reference_choices(
             reference,
             context.message.actor,

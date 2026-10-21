@@ -82,9 +82,7 @@ async def test_scheduled_update_uses_existing_docker_maintenance() -> None:
     docker_update.prepare_update_and_restart.return_value = ("checked", "none")
     restart = AsyncMock()
 
-    await scheduled_restart_runtime.update_image_and_restart(
-        docker_update, restart
-    )
+    await scheduled_restart_runtime.update_image_and_restart(docker_update, restart)
 
     docker_update.execute_restart.assert_awaited_once_with("none")
     restart.assert_not_awaited()
@@ -97,9 +95,7 @@ async def test_scheduled_update_falls_back_when_check_fails() -> None:
     docker_update.prepare_restart_only.return_value = ("restart", "docker")
     restart = AsyncMock()
 
-    await scheduled_restart_runtime.update_image_and_restart(
-        docker_update, restart
-    )
+    await scheduled_restart_runtime.update_image_and_restart(docker_update, restart)
 
     docker_update.execute_restart.assert_awaited_once_with("docker")
     restart.assert_not_awaited()
@@ -112,8 +108,6 @@ async def test_scheduled_update_falls_back_to_process_when_docker_fails() -> Non
     docker_update.prepare_restart_only.side_effect = OSError("socket unavailable")
     restart = AsyncMock()
 
-    await scheduled_restart_runtime.update_image_and_restart(
-        docker_update, restart
-    )
+    await scheduled_restart_runtime.update_image_and_restart(docker_update, restart)
 
     restart.assert_awaited_once()

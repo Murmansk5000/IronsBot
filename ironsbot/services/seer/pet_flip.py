@@ -51,9 +51,7 @@ class PetFlipService:
         del text
         members = tuple(
             dict.fromkeys(
-                actor
-                for actor in context.member_mentions
-                if actor.id != "all"
+                actor for actor in context.member_mentions if actor.id != "all"
             )
         )
         if len(members) != _PLAYER_COUNT:

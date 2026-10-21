@@ -51,8 +51,17 @@ class PortableReply:
             self.on_delivered()
 
     def delivery_failed(self) -> None:
+        self.outcome.failed = True
         if self.on_delivery_failed is not None:
             self.on_delivery_failed()
+
+    def finished(self) -> None:
+        try:
+            if self.on_finished is not None:
+                self.on_finished()
+        except BaseException:
+            self.outcome.failed = True
+            raise
 
 
 async def deliver_portable_reply(
@@ -99,8 +108,7 @@ async def deliver_portable_reply(
             if not completed:
                 reply.delivery_failed()
         finally:
-            if reply.on_finished is not None:
-                reply.on_finished()
+            reply.finished()
 
 
 async def _transmit_additional(

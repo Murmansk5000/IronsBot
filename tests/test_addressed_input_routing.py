@@ -1,15 +1,24 @@
+from nonebot.adapters.onebot.v11 import MessageEvent
+
 from ironsbot.config.models.features import FeatureConfig
-from ironsbot.core.command_catalog import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog, command_context_from_input
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.plugins.onebot.messaging.addressed_hint import _should_offer_hint
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
+
+
+def _should_offer_hint(routing: AiInputRoutingService, event: MessageEvent) -> bool:
+    context = message_input_context(event)
+    return routing.decide(
+        context, command_context_from_input(context)
+    ).offer_addressed_hint
 
 
 def _commands() -> CommandCatalog:

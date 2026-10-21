@@ -11,12 +11,12 @@ from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.plugin_install import PluginContribution, PluginContributionCatalog
 
 
-def test_application_validates_the_catalog_after_matcher_registration(
+def test_application_installs_one_shared_router_after_passive_plugins(
     monkeypatch: MonkeyPatch,
 ) -> None:
     calls: list[str] = []
     monkeypatch.setattr(
-        "ironsbot.integrations.onebot.portable_queries.install_portable_menu_router",
+        "ironsbot.integrations.onebot.command_ingress.install_command_ingress",
         lambda *_args: calls.append("portable_router"),
     )
 
@@ -75,13 +75,12 @@ def test_application_validates_the_catalog_after_matcher_registration(
     )
 
     application.configure(contributions)
-    application.install()
-    application.install()
+    router = cast("Any", object())
+    application.install(router)
+    application.install(router)
 
     assert calls == [
         "plugin",
         "portable_router",
-        "validate",
-        "postprocessor",
         "lifecycle",
     ]

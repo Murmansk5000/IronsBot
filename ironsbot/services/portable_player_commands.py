@@ -69,7 +69,7 @@ class PlayerDetailMenuAction:
     label: str
     aliases: tuple[str, ...]
     query: Callable[
-        [MessageInputContext, int], Awaitable[OutboundMessage | PortableReply]
+        [MessageInputContext, int], Awaitable[OutboundMessage | PortableReply | None]
     ]
 
     @property
@@ -168,7 +168,9 @@ class _PortablePlayerOperations:
                 return reply
             return reservation.guard(reply)
 
-        async def query(player_id: int, selected: MessageInputContext) -> PortableReply:
+        async def query(
+            player_id: int, selected: MessageInputContext
+        ) -> PortableReply | None:
             return await self.sessions.interactions.execute_request(
                 SemanticRequest(
                     ActionDefinition("seer.player.info", "米米号基础资料"),
@@ -297,7 +299,9 @@ class _PortablePlayerOperations:
                 context,
             )
 
-        async def query(player_id: int, selected: MessageInputContext) -> PortableReply:
+        async def query(
+            player_id: int, selected: MessageInputContext
+        ) -> PortableReply | None:
             return await self.sessions.interactions.execute_request(
                 player_shortcut_semantic_request(
                     kind=parsed.kind,
@@ -310,7 +314,7 @@ class _PortablePlayerOperations:
 
         async def confirmed_query(
             player_id: int, query_context: MessageInputContext
-        ) -> PortableReply:
+        ) -> PortableReply | None:
             if not parsed.player_reference:
                 return await query(player_id, query_context)
             return await confirm_shortcut_binding(
@@ -513,7 +517,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             | Literal["beast_rank", "bind", "decline"]
         ),
         context: MessageInputContext,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         error = resolver.query_access_error(
             context.message.actor, pending.player_id, target_source
         )
@@ -559,7 +563,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             | Literal["beast_rank", "bind", "decline"]
         ),
         context: MessageInputContext,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         error = resolver.query_access_error(
             context.message.actor, pending.player_id, "shared_menu"
         )
@@ -702,7 +706,7 @@ async def _select_shared_player_detail(
         | PlayerDetailMenuAction
         | Literal["beast_rank", "bind", "decline"]
     ],
-) -> OutboundMessage | PortableReply:
+) -> OutboundMessage | PortableReply | None:
     if isinstance(command, str) and command != "beast_rank":
         sessions.discard(context)
         return OutboundMessage.from_text("该选项仅限菜单发起者使用。")

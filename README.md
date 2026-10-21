@@ -89,25 +89,25 @@ WebSocket 都连接到同一个 IronsBot 地址。普通查询由收到事件的
 B站、活动、定时消息、开服与管理通知等主动推送可以按群或用户选择发送机器人：
 
 ```toml
-[messaging.bot_routing]
+[bot.onebot.routing]
 enabled = true
 default_bot = "main_bot"
 
-[messaging.bot_routing.bot_aliases]
+[bot.onebot.routing.bot_aliases]
 main_bot = 111111111
 backup_bot = 222222222
 
-[messaging.bot_routing.groups]
+[bot.onebot.routing.groups]
 group_a = "main_bot"
 group_b = "backup_bot"
 
-[messaging.bot_routing.users]
+[bot.onebot.routing.users]
 owner = "main_bot"
 user_a = "backup_bot"
 ```
 
 `group_a/group_b` 和 `owner/user_a` 统一引用 `[identities.groups]`、
-`[identities.users]`；也可以直接写群号或 QQ 号。`[messaging.bot_routing]` 中显式指定的目标机器人未连接时，主动发送明确失败并记录 warning，
+`[identities.users]`；也可以直接写群号或 QQ 号。`[bot.onebot.routing]` 中显式指定的目标机器人未连接时，主动发送明确失败并记录 warning，
 不回退到 `default_bot`，也不选择任意在线机器人。只有未配置目标且
 `bot.use_default_for_unconfigured_targets = true` 时才尝试 `default_bot`。
 群消息入站按路由归属处理；私聊仍由接收事件的机器人处理。

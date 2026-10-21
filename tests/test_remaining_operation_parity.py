@@ -16,14 +16,14 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.integrations.onebot.matcher_support import (
-    RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-    register_runtime_context,
-)
+from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.portable_queries import (
     make_portable_operation_handler,
 )
-from ironsbot.integrations.onebot.request_state import IN_FLIGHT_REQUEST_TOKEN_STATE_KEY
+from ironsbot.integrations.onebot.request_state import (
+    COMMAND_COOLDOWN_TOKEN_STATE_KEY,
+    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
+)
 from ironsbot.services.ai.chat_operation import execute_chat
 from ironsbot.services.portable_bilibili_commands import (
     build_portable_bilibili_operations,
@@ -156,20 +156,78 @@ async def test_subscription_execution_rechecks_role(platform: Platform) -> None:
 
 
 @pytest.mark.asyncio
-async def test_stateless_query_failure_releases_duplicate_admission() -> None:
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "success",
+        "business_failure",
+        "unclaimed",
+        "unavailable",
+        "send_failure",
+        "cancelled",
+    ],
+)
+async def test_onebot_settles_both_admissions_from_shared_outcome(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
     requests = Mock()
-    state = {
-        RUNTIME_CONTEXT_TOKEN_STATE_KEY: register_runtime_context(requests),
-        IN_FLIGHT_REQUEST_TOKEN_STATE_KEY: "admission",
-    }
-    matcher = Mock(state=state, send=AsyncMock(return_value={"message_id": 840001}))
-    operation = AsyncMock(side_effect=DataUnavailableError())
-    await make_portable_operation_handler(operation)(
-        matcher, state, group_message_event("数据版本")
+    cooldown = Mock()
+    postprocessors = []
+    monkeypatch.setattr(
+        "ironsbot.integrations.onebot.matchers.run_postprocessor",
+        postprocessors.append,
     )
-    matcher.send.assert_awaited_once()
-    requests.release.assert_called_once_with("admission")
+    MatcherFactory(
+        cooldown, Mock(), in_flight_requests=requests
+    ).install_postprocessor()
+    state = {
+        IN_FLIGHT_REQUEST_TOKEN_STATE_KEY: "admission",
+        COMMAND_COOLDOWN_TOKEN_STATE_KEY: "cooldown",
+    }
+    matcher = Mock(
+        state=state,
+        send=AsyncMock(
+            return_value={} if outcome == "send_failure" else {"message_id": 840001}
+        ),
+    )
+
+    async def operation(
+        text: str, context: MessageInputContext
+    ) -> PortableReply | None:
+        del text, context
+        if outcome == "unavailable":
+            raise DataUnavailableError
+        if outcome == "cancelled":
+            raise asyncio.CancelledError
+        if outcome == "unclaimed":
+            return None
+        return PortableReply(
+            OutboundMessage.from_text(
+                "result", request_succeeded=outcome != "business_failure"
+            )
+        )
+
+    handler = make_portable_operation_handler(operation)
+    if outcome == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            await handler(matcher, state, group_message_event("数据版本"))
+    else:
+        await handler(matcher, state, group_message_event("数据版本"))
+    await postprocessors[0](
+        state, exception=RuntimeError("cancelled") if outcome == "cancelled" else None
+    )
+    for service, token in ((requests, "admission"), (cooldown, "cooldown")):
+        if outcome == "success":
+            service.finish.assert_called_once_with(token)
+            service.release.assert_not_called()
+        else:
+            service.release.assert_called_once_with(token)
+            service.finish.assert_not_called()
+    await postprocessors[0](state)
+    assert requests.finish.call_count + requests.release.call_count == 1
+    assert cooldown.finish.call_count + cooldown.release.call_count == 1
     assert IN_FLIGHT_REQUEST_TOKEN_STATE_KEY not in state
+    assert COMMAND_COOLDOWN_TOKEN_STATE_KEY not in state
 
 
 @pytest.mark.asyncio

@@ -71,7 +71,10 @@ def test_chip_modifications_preview_five_and_join_autocard_menu() -> None:
         weekly_cycle="2026-09-25",
         items=tuple(
             NewContentItem(
-                "autocard_chip", index, f"芯片 {index}", index,
+                "autocard_chip",
+                index,
+                f"芯片 {index}",
+                index,
                 {
                     "rarity": 1,
                     "description": "新效果",
@@ -100,7 +103,10 @@ def test_chip_modifications_preview_five_and_join_autocard_menu() -> None:
 
 def test_chip_rarity_change_does_not_claim_effect_changed() -> None:
     item = NewContentItem(
-        "autocard_chip", 84, "星能震荡", 84,
+        "autocard_chip",
+        84,
+        "星能震荡",
+        84,
         {
             "category": "战斗输出类",
             "description": "每个战斗阶段开始时造成伤害",
@@ -130,8 +136,7 @@ def test_stale_week_notice_preserves_permission_denial() -> None:
         category_states=(),
     )
     assert plan_new_content_menu(snapshot, ("pet",)) == (
-        "当前数据版本仍为 2026-09-04 周期，"
-        "本周暂未获得可验证的新增或修改内容。"
+        "当前数据版本仍为 2026-09-04 周期，本周暂未获得可验证的新增或修改内容。"
     )
     assert plan_new_content_menu(snapshot, ("skill",), ("pet",)) == (
         "当前群未开放此新增内容分类。"
