@@ -1622,6 +1622,19 @@ waits for these transactions before resource closure. A committed claim can
 survive caller cancellation without business execution; it is an input receipt,
 not proof of business success or a guarantee of exactly-once processing.
 
+The identity-link repository also requires the application's draining spawner.
+All its async reads, verified links, Union observations, challenges and revokes
+use the same owned-blocking runner around the existing database operation.
+Cancellation holds the write lock until the worker has closed its connections.
+The composition root injects one IdentityMutationCoordinator into token linking,
+mirror observation and Union evidence handling. An accepted mutation drains both
+the store operation and principal/address publication before caller cancellation
+returns; queued cancellation does not start a mutation. Publication cannot be
+overtaken by another accepted mutation. Union handling registers principals once
+and publishes addresses through its callback, without repeating registration in
+the root. This is not a cross-resource transaction: callback failures and process
+crashes still require separate reconciliation guarantees.
+
 Team-audit completion uses an atomic conditional transition of the expected
 reminder, not unconditional deletion by identity. Both deletion and advancement
 compare the full scoped identity, join time, due time and stage; a newer pending

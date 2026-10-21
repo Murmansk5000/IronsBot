@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import Platform, reference_digest
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
         CrossPlatformIdentityLink,
         IdentityLinkStore,
     )
+    from ironsbot.services.identity_mutations import IdentityMutationCoordinator
     from ironsbot.services.identity_principals import (
         ActorPrincipalMerge,
         IdentityPrincipalService,
@@ -40,6 +42,7 @@ class OfficialUnionIdentityService:
     principals: IdentityPrincipalService
     on_merge: Callable[[ActorPrincipalMerge], None]
     on_link: Callable[[CrossPlatformIdentityLink], None]
+    mutations: IdentityMutationCoordinator = field(kw_only=True, repr=False)
     clock: Callable[[], float] = time.time
     addresses: OfficialAddressService | None = None
 
@@ -61,14 +64,22 @@ class OfficialUnionIdentityService:
             actor.scope_id or "",
         )
         try:
-            links = await self.store.observe_union_identity(
-                official=official,
-                union_identity=evidence,
-                now=self.clock(),
+            return await self.mutations.run(
+                partial(self._publish_evidence, incoming, official)
             )
         except (UnionIdentityConflictError, UnionIdentityEvidenceChangedError) as error:
             await self._report_conflict(incoming, error)
             return False
+
+    async def _publish_evidence(
+        self, incoming: IncomingMessageRef, official: OfficialIdentity
+    ) -> bool:
+        evidence = incoming.official_union_identity
+        assert evidence is not None
+        actor = incoming.actor
+        links = await self.store.observe_union_identity(
+            official=official, union_identity=evidence, now=self.clock()
+        )
         for merge in self.principals.observe_union_identity(
             actor=actor,
             evidence=evidence,
