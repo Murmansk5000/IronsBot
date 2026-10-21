@@ -113,7 +113,8 @@ def bootstrap() -> Application:
         identity_observer=application.resources.identity_observer,
         union_identity=application.resources.union_identity,
         inbound_claims=SqliteInboundMessageClaims(
-            settings.paths.cache_root / "qq_official" / "inbound.sqlite"
+            settings.paths.cache_root / "qq_official" / "inbound.sqlite",
+            spawn=application.task_owner.create_draining,
         ),
         features=application.resources.features,
         ai=application.resources.ai,

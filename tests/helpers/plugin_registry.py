@@ -400,7 +400,7 @@ def build_test_plugin_registry(
         help_plugin_contribution(),
         sendpic_plugin_contribution(service=resources.sendpic),
         meeting_plugin_contribution(commands=tuple(config.messaging.meeting.commands)),
-        blacklist_plugin_contribution(features=runtime.features),
+        blacklist_plugin_contribution(),
         red_packet_plugin_contribution(
             service=resources.red_packet_notice,
         ),
