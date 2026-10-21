@@ -6,6 +6,7 @@ from nonebot.exception import IgnoredException
 from pydantic import ValidationError
 
 from ironsbot.config.models.transport import SelfCommandsConfig
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import SendResult
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
@@ -20,6 +21,8 @@ from ironsbot.integrations.onebot.self_commands import (
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from tests.helpers.onebot_events import group_message_event, self_command_event
+
+_FEATURES = FeatureService({}, {}, frozenset())
 
 
 def _accept(policy: OwnAccountCommandPolicy, event: SelfCommandEvent) -> bool:
@@ -131,7 +134,9 @@ async def test_silent_mode_overrides_enabled_self_commands() -> None:
     event = self_command_event("demo help")
     with pytest.raises(IgnoredException):
         await OneBotEventIngress(
-            OneBotAdmissionService(messages_enabled=False, self_commands=gate)
+            OneBotAdmissionService(
+                messages_enabled=False, features=_FEATURES, self_commands=gate
+            )
         ).process(event)
     assert not event.accepted
 
@@ -141,7 +146,9 @@ async def test_self_reply_quotes_request_without_mentioning_self() -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
     event = self_command_event("demo help")
     await OneBotEventIngress(
-        OneBotAdmissionService(messages_enabled=True, self_commands=gate)
+        OneBotAdmissionService(
+            messages_enabled=True, features=_FEATURES, self_commands=gate
+        )
     ).process(event)
     message = build_event_reply_message(event, "result")
     assert [segment.type for segment in message] == ["reply", "text"]
@@ -158,6 +165,7 @@ async def test_admin_binding_passes_group_routing() -> None:
     await OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
+            features=_FEATURES,
             self_commands=gate,
             routing=router,
         )
@@ -168,6 +176,7 @@ async def test_admin_binding_passes_group_routing() -> None:
         await OneBotEventIngress(
             OneBotAdmissionService(
                 messages_enabled=True,
+                features=_FEATURES,
                 self_commands=gate,
                 routing=router,
             )

@@ -457,6 +457,9 @@ class _TransportError(RuntimeError):
 
 
 class _FailingPortableRouter:
+    def is_blocked(self, _context: MessageInputContext) -> bool:
+        return False
+
     def __init__(self) -> None:
         from ironsbot.services.command_delivery import CommandReplyDelivery
         from ironsbot.services.command_errors import CommandErrorReporter

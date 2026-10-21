@@ -231,7 +231,7 @@ class PortableCommandRouter:
         self,
         context: MessageInputContext,
     ) -> bool:
-        if self._message_is_blocked(context):
+        if self.is_blocked(context):
             return False
         raw_command = context.text
         command = _command_text(context.text)
@@ -268,7 +268,7 @@ class PortableCommandRouter:
             or context.message.conversation.kind != "group"
             or context.text.strip()
             or context.member_mentions
-            or self._message_is_blocked(context)
+            or self.is_blocked(context)
             or not self._addressed_input_hints.admit(context)
         ):
             return None
@@ -294,7 +294,7 @@ class PortableCommandRouter:
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
-        if self._message_is_blocked(context):
+        if self.is_blocked(context):
             return None
         raw_command = context.text
         command = _command_text(context.text)
@@ -462,7 +462,7 @@ class PortableCommandRouter:
             self._addressed_input_hints, self._ai_input_routing, context
         )
 
-    def _message_is_blocked(self, context: MessageInputContext) -> bool:
+    def is_blocked(self, context: MessageInputContext) -> bool:
         message = context.message
         return self._features.is_message_blocked(
             message.actor,
