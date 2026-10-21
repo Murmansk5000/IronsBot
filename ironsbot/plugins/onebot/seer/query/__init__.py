@@ -28,34 +28,7 @@ __plugin_meta__ = PluginMetadata(
 
 if TYPE_CHECKING:
     from ironsbot.app.composition import ApplicationResources
-    from ironsbot.config.models.settings import Settings
-    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import Scheduler
-
-
-def _install(
-    registry: MatcherFactory,
-    *,
-    settings: Settings,
-    resources: ApplicationResources,
-) -> None:
-    from .commands.install import install
-    from .group import SeerMatcherGroup
-
-    install(
-        SeerMatcherGroup(
-            registry,
-            resources.seer,
-            resources.features,
-            resources.commands,
-            resources.player_id_resolver,
-            resources.query_sessions,
-            resources.identity_links,
-            resources.sendpic.exact_command_texts,
-            frozenset(settings.seer.new_content.expanded_categories),
-            settings.seer.new_content.auto_expand_max_items,
-        )
-    )
 
 
 def plugin_contribution(

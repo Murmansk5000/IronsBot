@@ -25,22 +25,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.messaging.sendpic import SendpicService
-
-
-def _install(
-    registry: MatcherFactory,
-    *,
-    service: SendpicService,
-    features: FeatureService,
-) -> None:
-    """Delay OneBot/SAA matcher imports until application installation."""
-
-    from .matchers import install
-
-    install(registry, service, features)
 
 
 def plugin_contribution(*, service: SendpicService) -> PluginContribution:

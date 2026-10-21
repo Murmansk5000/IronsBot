@@ -20,14 +20,10 @@ from ironsbot.services.messaging.command_contracts import messaging_command_cont
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
-    from ironsbot.config.qq_references import QQReferenceResolver
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.integrations.onebot.matchers import MatcherFactory
-    from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="文本发送",
@@ -56,35 +52,6 @@ def help_visible(
             feature=action.feature,
         )
         for action in actions
-    )
-
-
-def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
-    registry: MatcherFactory,
-    *,
-    messaging: MessagingService,
-    references: QQReferenceResolver,
-    activity_service: ActivityService,
-    scheduler: Scheduler,
-    command_help_ids: tuple[str, ...],
-    keyword_help_ids: tuple[str, ...],
-    query_sessions: PortableQuerySessions,
-) -> None:
-    from .matchers import install
-
-    refresh_push_time_jobs = partial(
-        messaging.refresh_push_time_jobs,
-        scheduler=scheduler,
-        activity_service=activity_service,
-    )
-    install(
-        registry,
-        refresh_push_time_jobs=refresh_push_time_jobs,
-        messaging=messaging,
-        references=references,
-        command_help_ids=command_help_ids,
-        keyword_help_ids=keyword_help_ids,
-        query_sessions=query_sessions,
     )
 
 

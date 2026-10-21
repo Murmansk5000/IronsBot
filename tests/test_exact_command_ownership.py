@@ -17,7 +17,8 @@ from ironsbot.core.commands import command_text_matches
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.plugins.onebot.ai import AI_CHAT_PROMPT_KEY, _capture_ai_prompt
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot.bilibili.command_rules import matches_bilibili_command
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
@@ -133,17 +134,12 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
             event = private_message_event(text, user_id=100)
             actual = await rule(cast("Bot", None), event, {})
             assert catalog.claims_direct_input(CONTEXT, FEATURES, text) == actual
-            state = {}
             assert (
-                _capture_ai_prompt(
-                    event,
-                    state,
-                    AiInputRoutingService(FEATURES, catalog),
-                )
+                AiInputRoutingService(FEATURES, catalog)
+                .decide(message_input_context(event), command_context(event))
+                .try_chat
                 is not actual
             )
-            if not actual:
-                assert state[AI_CHAT_PROMPT_KEY] == text.strip()
 
 
 def _normalized_contracts() -> tuple[CommandContract, ...]:
