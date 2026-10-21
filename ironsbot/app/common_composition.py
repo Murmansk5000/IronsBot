@@ -105,7 +105,7 @@ def build_common_components(
         }
     )
     bot_router = BotRouter(
-        settings.messaging.bot_routing,
+        settings.bot.onebot.routing,
         settings.qq_references,
         settings.bot.use_default_for_unconfigured_targets,
     )
@@ -113,11 +113,11 @@ def build_common_components(
         {
             settings.qq_references.resolve_group(
                 target_ref,
-                location=f"messaging.bot_routing.groups.{target_ref}",
+                location=f"bot.onebot.routing.groups.{target_ref}",
             )
-            for target_ref in settings.messaging.bot_routing.groups
+            for target_ref in settings.bot.onebot.routing.groups
         }
-        if settings.messaging.bot_routing.enabled
+        if settings.bot.onebot.routing.enabled
         else set()
     )
     known_onebot_groups = {
@@ -221,12 +221,12 @@ def build_common_components(
         onebot_preferred_users=frozenset(
             str(
                 settings.qq_references.resolve_user(
-                    target, location=f"messaging.bot_routing.users.{target}"
+                    target, location=f"bot.onebot.routing.users.{target}"
                 )
             )
-            for target in settings.messaging.bot_routing.users
+            for target in settings.bot.onebot.routing.users
         )
-        if settings.messaging.bot_routing.enabled
+        if settings.bot.onebot.routing.enabled
         else frozenset(),
         group_route=lambda conversation: (
             bot_router.push_route(conversation)

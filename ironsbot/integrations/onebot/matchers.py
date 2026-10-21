@@ -37,8 +37,6 @@ from ironsbot.integrations.onebot.matcher_contracts import (
 )
 from ironsbot.integrations.onebot.matcher_support import (
     EXPLICIT_COMMAND_STATE_KEY,
-    RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-    register_runtime_context,
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.request_state import (
@@ -47,6 +45,8 @@ from ironsbot.integrations.onebot.request_state import (
 from ironsbot.integrations.onebot.request_state import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
 )
+from ironsbot.integrations.onebot.request_state import REQUEST_OUTCOME_STATE_KEY
+from ironsbot.services.portable_reply import RequestOutcome
 
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
 
@@ -126,12 +126,6 @@ class MatcherFactory:
     )
     _command_help_ids: set[str] = field(default_factory=set)
     _unclassified_command_labels: set[str] = field(default_factory=set)
-    _runtime_context_token: str | None = field(default=None, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._runtime_context_token = register_runtime_context(
-            self.in_flight_requests,
-        )
 
     def on_message(
         self,
@@ -193,15 +187,20 @@ class MatcherFactory:
     def install_postprocessor(self) -> None:
         @run_postprocessor
         async def finalize(state: T_State, exception: Exception | None = None) -> None:
-            token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
-            if token is not None and self.in_flight_requests is not None:
-                if exception is not None:
-                    self.in_flight_requests.release(token)
-                else:
-                    self.in_flight_requests.finish(token)
-            token = state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
-            if token is not None:
-                self.cooldown.finish(token)
+            outcome = state.pop(REQUEST_OUTCOME_STATE_KEY, None)
+            failed = exception is not None or (
+                isinstance(outcome, RequestOutcome) and outcome.failed
+            )
+            for service, key in (
+                (self.in_flight_requests, _IN_FLIGHT_REQUEST_TOKEN_KEY),
+                (self.cooldown, _COMMAND_COOLDOWN_TOKEN_KEY),
+            ):
+                token = state.pop(key, None)
+                if token is not None and service is not None:
+                    if failed:
+                        service.release(token)
+                    else:
+                        service.finish(token)
 
     def priority(self, name: str) -> int:
         return int(getattr(self.priorities, name))
@@ -337,12 +336,10 @@ class MatcherFactory:
         *,
         closes_active_conversation: bool = False,
     ) -> dict[str, Any]:
-        if self._runtime_context_token is None:
+        if not closes_active_conversation:
             return kwargs
         updated = dict(kwargs)
         state = dict(updated.get("state") or {})
-        state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = self._runtime_context_token
-        if closes_active_conversation:
-            state[EXPLICIT_COMMAND_STATE_KEY] = True
+        state[EXPLICIT_COMMAND_STATE_KEY] = True
         updated["state"] = state
         return updated

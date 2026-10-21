@@ -115,6 +115,35 @@ prefixes = ["演示 ", "示范 "]
 # ZH: 官方账号别名 -> NapCat 事件中看到的官方机器人数字 QQ 号。
 # example_bot = 123456789
 
+# EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
+# Group ingress and proactive pushes use these routes; private replies stay on the receiving bot.
+# ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
+# 群入站和主动推送按下面的群/用户路由选择机器人；私聊回复仍由收到事件的机器人处理。
+# 未配置群或私聊推送目标仅在 bot.use_default_for_unconfigured_targets=true 时使用 default_bot。
+# 显式路由的机器人未连接时直接跳过，不会回退到 default_bot 或任意在线机器人。
+# 私聊可使用显式用户路由；未配置且默认路由关闭时静默跳过。
+# 开启前请把示例 QQ 和目标别名换成真实配置。
+[bot.onebot.routing]
+enabled = false
+default_bot = "main_bot"
+
+# EN: Bot alias -> OneBot self_id. ZH: 机器人别名 -> OneBot self_id（机器人 QQ）。
+[bot.onebot.routing.bot_aliases]
+main_bot = 111111111
+backup_bot = 222222222
+
+# EN: Keys may be group aliases or numeric group IDs.
+# ZH: 群别名来自 [identities.groups]，也可直接把 key 写成群号。
+[bot.onebot.routing.groups]
+group_a = "main_bot"
+group_b = "backup_bot"
+
+# EN: Keys may be user aliases or numeric QQ user IDs.
+# ZH: 用户别名来自 [identities.users]，也可直接把 key 写成 QQ 号。
+[bot.onebot.routing.users]
+owner = "main_bot"
+user_a = "backup_bot"
+
 [bot.qq_official]
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
@@ -1000,35 +1029,6 @@ local_root = "sendpic"
 # [[messaging.sendpic.configs]]
 # id = "skill-stone"
 # enabled = false
-
-# EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
-# Group ingress and proactive pushes use these routes; private replies stay on the receiving bot.
-# ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
-# 群入站和主动推送按下面的群/用户路由选择机器人；私聊回复仍由收到事件的机器人处理。
-# 未配置群或私聊推送目标仅在 bot.use_default_for_unconfigured_targets=true 时使用 default_bot。
-# 显式路由的机器人未连接时直接跳过，不会回退到 default_bot 或任意在线机器人。
-# 私聊可使用显式用户路由；未配置且默认路由关闭时静默跳过。
-# 开启前请把示例 QQ 和目标别名换成真实配置。
-[messaging.bot_routing]
-enabled = false
-default_bot = "main_bot"
-
-# EN: Bot alias -> OneBot self_id. ZH: 机器人别名 -> OneBot self_id（机器人 QQ）。
-[messaging.bot_routing.bot_aliases]
-main_bot = 111111111
-backup_bot = 222222222
-
-# EN: Keys may be group aliases or numeric group IDs.
-# ZH: 群别名来自 [identities.groups]，也可直接把 key 写成群号。
-[messaging.bot_routing.groups]
-group_a = "main_bot"
-group_b = "backup_bot"
-
-# EN: Keys may be user aliases or numeric QQ user IDs.
-# ZH: 用户别名来自 [identities.users]，也可直接把 key 写成 QQ 号。
-[messaging.bot_routing.users]
-owner = "main_bot"
-user_a = "backup_bot"
 
 [messaging.command_cooldown]
 # Default: false

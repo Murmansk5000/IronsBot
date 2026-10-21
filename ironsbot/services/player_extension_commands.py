@@ -43,7 +43,7 @@ async def query_player_extension(
     context: MessageInputContext,
     features: FeatureService,
     sessions: PortableQuerySessions | None = None,
-) -> PortableReply:
+) -> PortableReply | None:
     message = context.message
     if not extension_action_allowed(action, context, features):
         return PortableReply(
@@ -105,14 +105,16 @@ def build_player_extension_operation(
                 )
             )
 
-        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+        async def query(
+            player_id: int, context: MessageInputContext
+        ) -> PortableReply | None:
             return await query_player_extension(
                 action, player_id, context, features, sessions
             )
 
         async def confirmed_query(
             player_id: int, selected: MessageInputContext
-        ) -> PortableReply:
+        ) -> PortableReply | None:
             if player_service is None or not reference or not action.offer_binding:
                 return await query(player_id, selected)
             return await confirm_shortcut_binding(

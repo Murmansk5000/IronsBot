@@ -112,7 +112,7 @@ class PortableLuckySkinCommands:
             async def execute(
                 player_id: int,
                 context: MessageInputContext,
-            ) -> OutboundMessage | PortableReply:
+            ) -> OutboundMessage | PortableReply | None:
                 return await self.query_target(context, player_id, source=source)
 
             reply = await select_player_target(
@@ -139,7 +139,7 @@ class PortableLuckySkinCommands:
         player_id: int | None,
         *,
         source: PlayerTargetSource,
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         actor = self._account_actor(context)
         if actor is None and player_id is None:
             resolution = self.resolver.resolve(context, None)
@@ -175,7 +175,7 @@ class PortableLuckySkinCommands:
         context: MessageInputContext,
         request: LuckySkinQuery,
         operation: Callable[[], Awaitable[OutboundMessage]],
-    ) -> OutboundMessage | PortableReply:
+    ) -> OutboundMessage | PortableReply | None:
         if self.sessions.interactions.request_service is None:
             return await operation()
         account = (
@@ -251,7 +251,7 @@ class PortableLuckySkinCommands:
         async def select(
             choice: _Confirmation,
             context: MessageInputContext,
-        ) -> OutboundMessage | PortableReply:
+        ) -> OutboundMessage | PortableReply | None:
             if choice == "cancel":
                 return OutboundMessage.from_text("已取消幸运橱窗查询。")
             if request.player_id is not None:

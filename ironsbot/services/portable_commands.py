@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.command_catalog import CommandContext, command_context_from_input
@@ -84,7 +83,6 @@ from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
 )
 from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_commands import is_query_input_syntax
 
@@ -135,7 +133,7 @@ class PortableCommandRouterError(ValueError):
         command_ids: set[str],
     ) -> PortableCommandRouterError:
         return cls(
-            "official-platform direct commands have no portable operation: "
+            "direct commands have no shared operation: "
             + ", ".join(sorted(command_ids))
         )
 
@@ -165,9 +163,9 @@ class PortableCommandRouter:
             )
             raise ValueError(msg)
         built_in_ids = {"ai_chat.group", "ai_chat.private"}
-        missing = set(catalog.qq_official_direct_command_ids) - (
-            set(operations) | built_in_ids
-        )
+        missing = set(
+            catalog.qq_official_direct_command_ids | catalog.onebot_direct_command_ids
+        ) - (set(operations) | built_in_ids)
         if missing:
             raise PortableCommandRouterError.missing_operations(missing)
         self._catalog = catalog
@@ -256,12 +254,6 @@ class PortableCommandRouter:
     ) -> PortableReply | None:
         if self._message_is_blocked(context):
             return None
-        if (
-            context.kind is MessageInputKind.BOT_MENTION
-            and not context.text.strip()
-            and not context.member_mentions
-        ):
-            return self.bare_mention_hint(context)
         raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
@@ -273,7 +265,9 @@ class PortableCommandRouter:
             )
         except DataUnavailableError:
             return PortableReply(
-                OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+                OutboundMessage.from_text(
+                    DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
+                )
             )
         if is_menu_reply:
             return (
@@ -306,6 +300,12 @@ class PortableCommandRouter:
                             self._identity_principals,
                         )(command, context),
                     )
+            if (
+                context.kind is MessageInputKind.BOT_MENTION
+                and not context.text.strip()
+                and not context.member_mentions
+            ):
+                return self.bare_mention_hint(context)
             return await execute_ai_fallback(
                 self._query_sessions,
                 context,
@@ -314,10 +314,9 @@ class PortableCommandRouter:
             )
         return await self._dispatch_contract(contract.id, command, context)
 
-    async def _dispatch_contract(  # noqa: C901 - admission and delivery cleanup
+    async def _dispatch_contract(
         self, command_id: str, command: str, context: MessageInputContext
     ) -> PortableReply | None:
-        request_service = self._query_sessions.interactions.request_service
         contract = self._catalog.get(command_id)
         assert contract is not None
         request = (
@@ -327,77 +326,29 @@ class PortableCommandRouter:
                 command_id, command, context, category=contract.category
             )
         )
-        admission = (
-            request_service.admit(
-                actor=context.message.actor,
-                conversation=context.message.conversation,
-                request=request,
-                bot_id=context.request_bot_id,
-            )
-            if request_service is not None and request is not None
-            else None
-        )
-        if admission is not None and not admission.allowed:
-            return (
-                PortableReply(OutboundMessage.from_text(admission.feedback))
-                if admission.feedback is not None
-                else None
-            )
-        token = admission.token if admission is not None else None
-        try:
+
+        async def execute() -> PortableReply | None:
             with semantic_request_scope(request, actor=context.message.actor):
-                result = await self._query_sessions.interactions.execute(
+                return await self._query_sessions.interactions.execute(
                     authorized_operation(
                         self._operations[command_id], contract, self._features
                     ),
                     command,
                     context,
                 )
+
+        try:
+            if request is None:
+                return await execute()
+            return await self._query_sessions.interactions.execute_request(
+                request, context, execute
+            )
         except DataUnavailableError:
-            if request_service is not None:
-                request_service.release(token)
             return PortableReply(
                 OutboundMessage.from_text(
                     DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
                 )
             )
-        except BaseException:
-            if request_service is not None:
-                request_service.release(token)
-            raise
-        if result is None:
-            if request_service is not None:
-                request_service.release(token)
-            return None
-        if isinstance(result, PortableReply):
-            reply = result
-        elif isinstance(result, OutboundMessage):
-            reply = PortableReply(result)
-        elif isinstance(result, DataQueryImageReply):
-            reply = PortableReply(result.to_outbound())
-        else:
-            reply = PortableReply(OutboundMessage.from_text(result))
-        if request_service is None or token is None:
-            return reply
-        failed = False
-
-        def delivery_failed() -> None:
-            nonlocal failed
-            failed = True
-            if reply.on_delivery_failed is not None:
-                reply.on_delivery_failed()
-
-        def finished() -> None:
-            try:
-                if reply.on_finished is not None:
-                    reply.on_finished()
-            finally:
-                if failed or reply.outcome.failed:
-                    request_service.release(token)
-                else:
-                    request_service.finish(token)
-
-        return replace(reply, on_delivery_failed=delivery_failed, on_finished=finished)
 
     def _matching_contract(
         self,

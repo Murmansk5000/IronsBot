@@ -28,10 +28,10 @@ _SessionKey = tuple["ActorRef", "ConversationRef", str]
 MenuAccess = Callable[["MessageInputContext"], bool]
 _UntypedMenuSelect = Callable[
     [object, "MessageInputContext"],
-    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
+    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply | None],
 ]
 MenuSelect = Callable[
-    [_T, "MessageInputContext"], Awaitable[OutboundMessage | PortableReply]
+    [_T, "MessageInputContext"], Awaitable[OutboundMessage | PortableReply | None]
 ]
 MenuSemanticRequest = Callable[[_T, "MessageInputContext"], "SemanticRequest | None"]
 TextSubmit = Callable[[str, "MessageInputContext"], Awaitable[OutboundMessage]]
@@ -225,8 +225,7 @@ class PortableResponseReservation:
         aborted = False
 
         def delivered() -> None:
-            if reply.on_delivered is not None:
-                reply.on_delivered()
+            reply.delivered()
             if reply.follow_up is None:
                 self.release()
 
@@ -234,17 +233,17 @@ class PortableResponseReservation:
             nonlocal aborted
             aborted = True
             try:
-                if reply.on_delivery_failed is not None:
-                    reply.on_delivery_failed()
+                reply.delivery_failed()
             finally:
                 self.cancel()
 
         def finished() -> None:
             try:
-                if reply.on_finished is not None:
-                    reply.on_finished()
+                reply.finished()
             finally:
-                if not aborted:
+                if reply.outcome.failed:
+                    self.cancel()
+                elif not aborted:
                     self.release()
 
         return replace(

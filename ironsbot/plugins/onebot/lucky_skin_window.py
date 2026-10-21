@@ -80,14 +80,11 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
+def plugin_contribution(
     service: LuckySkinWindowService,
-    pet: PetQueryService,
     features: FeatureService,
     scheduler: Scheduler,
-    sessions: PortableQuerySessions,
     resolver: PlayerIdResolver,
-    identity_principals: IdentityPrincipalService,
 ) -> PluginContribution:
     return PluginContribution(
         id="lucky_skin_window",
@@ -103,15 +100,6 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
             ),
         ),
         commands=lucky_skin_window_command_contracts(resolver.has_reference_choices),
-        install=partial(
-            _install,
-            service=service,
-            pet=pet,
-            features=features,
-            sessions=sessions,
-            resolver=resolver,
-            identity_principals=identity_principals,
-        ),
         hooks=PluginHooks(
             startup=(
                 (
@@ -388,11 +376,8 @@ if (context := active_plugin_install_context()) is not None:
         __plugin_meta__,
         plugin_contribution(
             context.resources.lucky_skin_window,
-            context.resources.seer.pet_query,
             context.resources.features,
             context.scheduler,
-            context.resources.query_sessions,
             context.resources.player_id_resolver,
-            context.resources.identity_principals,
         ),
     )

@@ -225,23 +225,23 @@ ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 
 Multiple NapCat / OneBot v11 clients may connect to the same IronsBot WebSocket
-endpoint. Configure `[messaging.bot_routing]` in `ironsbot.toml` when proactive
+endpoint. Configure `[bot.onebot.routing]` in `ironsbot.toml` when proactive
 messages should use different bot accounts for different groups or users:
 
 ```toml
-[messaging.bot_routing]
+[bot.onebot.routing]
 enabled = true
 default_bot = "main_bot"
 
-[messaging.bot_routing.bot_aliases]
+[bot.onebot.routing.bot_aliases]
 main_bot = 111111111
 backup_bot = 222222222
 
-[messaging.bot_routing.groups]
+[bot.onebot.routing.groups]
 group_a = "main_bot"
 group_b = "backup_bot"
 
-[messaging.bot_routing.users]
+[bot.onebot.routing.users]
 owner = "main_bot"
 user_a = "backup_bot"
 ```

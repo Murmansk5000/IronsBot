@@ -158,10 +158,14 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
     ]
     assert display.special_effects[0].sources == ("技能·繁苍解道",)
     assert [effect.effect_key for effect in display.special_effects] == [
-        "glossary:533", "glossary:534", "glossary:535"
+        "glossary:533",
+        "glossary:534",
+        "glossary:535",
     ]
     assert [effect.parent_effect_keys for effect in display.special_effects] == [
-        (), ("glossary:533",), ("glossary:533",)
+        (),
+        ("glossary:533",),
+        ("glossary:533",),
     ]
     assert display.soulmark_order_by_id == {
         BASE_SOULMARK_ID: 1,
@@ -183,22 +187,28 @@ def test_shared_child_keeps_each_parent_once_without_name_inference() -> None:
     engine = create_engine("sqlite://")
     with Session(engine) as session:
         _create_published_fact_tables(session)
-        session.execute(text("""
+        session.execute(
+            text("""
             INSERT INTO pet_special_effect VALUES
             (1, 'a', 10, NULL, NULL, 10, 'Same name', 'A'),
             (1, 'b', 20, NULL, NULL, 20, 'Same name', 'B'),
             (1, 'child', 30, NULL, NULL, 30, 'Child', 'C')
-        """))
-        session.execute(text("""
+        """)
+        )
+        session.execute(
+            text("""
             INSERT INTO pet_special_effect_source VALUES
             (1, 'child', 'glossary_link', 10, 'glossary_link', NULL),
             (1, 'child', 'glossary_link', 10, 'other_evidence', NULL),
             (1, 'child', 'glossary_link', 20, 'glossary_link', NULL),
             (1, 'child', 'pet_glossary', 30, 'direct_pet_glossary', NULL)
-        """))
+        """)
+        )
         display = load_pet_derived_display_data(session, pet_id=1, soulmark_ids=())
     assert [effect.effect_key for effect in display.special_effects] == [
-        "a", "b", "child"
+        "a",
+        "b",
+        "child",
     ]
     assert display.special_effects[-1].effect_key == "child"
     assert display.special_effects[-1].parent_effect_keys == ("a", "b")
@@ -209,22 +219,26 @@ def test_cyclic_parent_facts_preserve_edges_and_ignore_self_links() -> None:
     engine = create_engine("sqlite://")
     with Session(engine) as session:
         _create_published_fact_tables(session)
-        session.execute(text("""
+        session.execute(
+            text("""
             INSERT INTO pet_special_effect VALUES
             (1, 'a', 10, NULL, NULL, 10, 'A', 'A'),
             (1, 'b', 20, NULL, NULL, 20, 'B', 'B')
-        """))
-        session.execute(text("""
+        """)
+        )
+        session.execute(
+            text("""
             INSERT INTO pet_special_effect_source VALUES
             (1, 'a', 'glossary_link', 20, 'glossary_link', NULL),
             (1, 'b', 'glossary_link', 10, 'glossary_link', NULL),
             (1, 'a', 'glossary_link', 10, 'glossary_link', NULL)
-        """))
+        """)
+        )
         display = load_pet_derived_display_data(session, pet_id=1, soulmark_ids=())
-    assert [(effect.effect_key, effect.parent_effect_keys)
-            for effect in display.special_effects] == [
-        ("a", ("b",)), ("b", ("a",))
-    ]
+    assert [
+        (effect.effect_key, effect.parent_effect_keys)
+        for effect in display.special_effects
+    ] == [("a", ("b",)), ("b", ("a",))]
 
 
 def test_legacy_effect_rows_without_icon_key_still_load() -> None:

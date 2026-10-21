@@ -50,9 +50,7 @@ def install(
     )
 
 
-def plugin_contribution(
-    service: AboutService, features: FeatureService
-) -> PluginContribution:
+def plugin_contribution() -> PluginContribution:
     """Declare the complete runtime contribution owned by this top-level plugin."""
 
     return PluginContribution(
@@ -68,12 +66,11 @@ def plugin_contribution(
             *about_command_contracts(),
             *official_identity_info_command_contracts(),
         ),
-        install=lambda registry: install(registry, service, features),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(context.resources.about, context.resources.features),
+        plugin_contribution(),
     )

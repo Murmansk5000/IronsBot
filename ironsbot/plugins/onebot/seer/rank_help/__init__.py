@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
@@ -60,13 +59,8 @@ def install(
     )
 
 
-def plugin_contribution(
-    *,
-    features: FeatureService,
-    commands: CommandCatalog,
-    player_id_resolver: PlayerIdResolver,
-) -> PluginContribution:
-    """Declare rank help metadata, command contracts, and matcher installer."""
+def plugin_contribution(*, player_id_resolver: PlayerIdResolver) -> PluginContribution:
+    """Declare rank help metadata and command contracts."""
 
     return PluginContribution(
         id="rank_help",
@@ -78,16 +72,11 @@ def plugin_contribution(
             order=20,
         ),
         commands=rank_help_command_contracts(player_id_resolver),
-        install=partial(install, features=features, commands=commands),
     )
 
 
 if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
-        plugin_contribution(
-            features=context.resources.features,
-            commands=context.resources.commands,
-            player_id_resolver=context.resources.player_id_resolver,
-        ),
+        plugin_contribution(player_id_resolver=context.resources.player_id_resolver),
     )

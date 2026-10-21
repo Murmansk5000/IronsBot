@@ -44,11 +44,9 @@ if TYPE_CHECKING:
 
 def plugin_contribution(
     *,
-    service: PetConfigQueryService,
     features: FeatureService,
     config: PetConfigConfig,
     image_command_texts: frozenset[str] = frozenset(),
-    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     return PluginContribution(
         id="pet_config",
@@ -66,14 +64,6 @@ def plugin_contribution(
         ),
         commands=pet_config_command_contracts(
             enabled=config.enabled, image_commands=image_command_texts
-        ),
-        install=partial(
-            install,
-            service=service,
-            features=features,
-            enabled=config.enabled,
-            image_command_texts=image_command_texts,
-            query_sessions=query_sessions,
         ),
     )
 
@@ -126,10 +116,8 @@ if (context := active_plugin_install_context()) is not None:
     context.contribute(
         __plugin_meta__,
         plugin_contribution(
-            service=context.resources.pet_config,
             features=context.resources.features,
             config=context.settings.pet_config,
             image_command_texts=context.resources.sendpic.exact_command_texts,
-            query_sessions=context.resources.query_sessions,
         ),
     )
