@@ -270,7 +270,7 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
 
     databases.load_from_file("seerapi", str(source))
 
-    expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+    expected_version = f"{generated_at.isoformat()}:assets-v1"
     assert data.version() == expected_version
     assert observations == [(expected_version, "assets-v1")]
     categories = {
@@ -315,7 +315,7 @@ def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
 
     databases.add_load_listener("seerapi", observe_publication)
     databases.load_from_file("seerapi", str(source))
-    expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+    expected_version = f"{generated_at.isoformat()}:assets-v1"
     snapshot = data.render_asset_snapshot()
     assert snapshot is not None
 
@@ -348,7 +348,7 @@ def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
             )
         )
     databases.load_from_file("seerapi", str(source))
-    updated_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v2"
+    updated_version = f"{generated_at.isoformat()}:assets-v2"
     assert observations[-1] == (updated_version, "assets-v2")
     assert data.version() == late.version() == updated_version
     assert snapshot.manifest_revision == "assets-v1"
@@ -374,9 +374,7 @@ def test_late_publication_cached_reads_do_not_execute_sql(tmp_path: Path) -> Non
     executed = Mock()
     event.listen(active, "before_cursor_execute", executed)
     try:
-        assert data.version() == (
-            f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
-        )
+        assert data.version() == (f"{generated_at.isoformat()}:assets-v1")
         assert data.render_asset_snapshot() is not None
         assert data.render_category_available("pet_info")
         assert not data.render_category_available("type_matchup")
@@ -546,7 +544,7 @@ def test_seer_database_rejects_invalid_publication_metadata(
     databases = DatabaseManager()
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
     databases.load_from_file("seerapi", str(source))
-    expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+    expected_version = f"{generated_at.isoformat()}:assets-v1"
     original_snapshot = data.render_asset_snapshot()
     assert original_snapshot is not None
 
