@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nonebot.adapters.onebot.v11 import (
@@ -22,6 +24,7 @@ from ironsbot.core.platform import (
 )
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
+from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
 from ironsbot.services.identity_link_store import (
     GroupLinkConflictError,
     OfficialIdentity,
@@ -31,6 +34,7 @@ from ironsbot.services.identity_observation import (
     OneBotGroupMessageObservation,
     SilentIdentityObservationService,
 )
+from ironsbot.services.inbound_claims import MemoryInboundMessageClaims
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.portable_commands import DIRECT_COMMAND_HELP_HINT_TEXT
 from tests.helpers.onebot_events import group_message_event
@@ -469,6 +473,123 @@ async def test_duplicate_napcat_observation_does_not_count_twice(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("original_message", [False, True])
+@pytest.mark.parametrize("restart", [False, True])
+async def test_consumed_mirror_cannot_be_reused_for_a_later_identity(
+    tmp_path: Path, *, original_message: bool, restart: bool
+) -> None:
+    service, store = _service(tmp_path, [100.0])
+    path = tmp_path / "observations.sqlite"
+    if restart:
+        service.claims = SqliteInboundMessageClaims(path)
+    first = _incoming("first", member_openid="first-member")
+    second = _incoming("second", member_openid="second-member")
+    mirror = _observation(
+        sender=MEMBER_QQ if original_message else OFFICIAL_BOT_QQ,
+        text="帮助",
+        mentions=(str(OFFICIAL_BOT_QQ),) if original_message else (str(MEMBER_QQ),),
+    )
+
+    async def remember(incoming: IncomingMessageRef) -> None:
+        if original_message:
+            assert not await service.observe_official_message(incoming)
+        else:
+            service.record_reply(incoming, OutboundMessage.from_text("帮助"))
+
+    await remember(first)
+    assert await service.observe_onebot(mirror)
+    if restart:
+        service = replace(service, claims=SqliteInboundMessageClaims(path))
+    await remember(second)
+    assert not await service.observe_onebot(mirror)
+    assert (
+        await store.for_official(
+            OfficialIdentity(APP_ID, "member", "second-member", OFFICIAL_GROUP)
+        )
+        is None
+    )
+    fresh = replace(
+        mirror,
+        message_id="new-mirror",
+        sender_id=40004 if original_message else OFFICIAL_BOT_QQ,
+        mentioned_qq_ids=(str(OFFICIAL_BOT_QQ),) if original_message else ("40004",),
+    )
+    assert await service.observe_onebot(fresh)
+    linked = await store.for_official(
+        OfficialIdentity(APP_ID, "member", "second-member", OFFICIAL_GROUP)
+    )
+    assert linked is not None and linked.onebot_qq_id == "40004"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mirror_first", [False, True])
+async def test_replayed_evidence_does_not_extend_matching_window(
+    tmp_path: Path, *, mirror_first: bool
+) -> None:
+    clock = [100.0]
+    service, store = _service(tmp_path, clock)
+    service.claims = MemoryInboundMessageClaims(clock=lambda: clock[0])
+    incoming = _incoming("original", text="帮助")
+    mirror = _observation(
+        sender=MEMBER_QQ, text="帮助", mentions=(str(OFFICIAL_BOT_QQ),)
+    )
+    if mirror_first:
+        assert not await service.observe_onebot(mirror)
+    else:
+        assert not await service.observe_official_message(incoming)
+    clock[0] = 109.0
+    if mirror_first:
+        assert not await service.observe_onebot(mirror)
+    else:
+        assert not await service.observe_official_message(incoming)
+    clock[0] = 111.0
+    if mirror_first:
+        assert not await service.observe_official_message(incoming)
+    else:
+        assert not await service.observe_onebot(mirror)
+    assert await store.all_links() == ()
+
+
+@pytest.mark.asyncio
+async def test_consumed_official_input_cannot_reopen_identity_pairing(
+    tmp_path: Path,
+) -> None:
+    service, store = _service(tmp_path, [100.0])
+    incoming = _incoming("original", text="帮助")
+    mirror = _observation(
+        sender=MEMBER_QQ, text="帮助", mentions=(str(OFFICIAL_BOT_QQ),)
+    )
+    assert not await service.observe_official_message(incoming)
+    assert await service.observe_onebot(mirror)
+    assert not await service.observe_official_message(incoming)
+    assert not await service.observe_onebot(
+        replace(mirror, message_id="later", sender_id=40004)
+    )
+    linked = await store.for_official(
+        OfficialIdentity(APP_ID, "member", incoming.actor.id, OFFICIAL_GROUP)
+    )
+    assert linked is not None and linked.onebot_qq_id == str(MEMBER_QQ)
+
+
+@pytest.mark.asyncio
+async def test_real_observation_storage_failure_is_admin_only_without_fallback(
+    tmp_path: Path,
+) -> None:
+    service, store = _service(tmp_path, [100.0])
+    service.claims = SqliteInboundMessageClaims(tmp_path)
+    errors = Mock(report=AsyncMock())
+    ingress = OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=False, identity_observer=service, errors=errors
+        )
+    )
+    with pytest.raises(IgnoredException, match="admission_failed"):
+        await ingress.process(_observed_reply())
+    errors.report.assert_awaited_once()
+    assert await store.all_links() == ()
+
+
+@pytest.mark.asyncio
 async def test_observations_are_isolated_by_trusted_bot_and_app_id(
     tmp_path: Path,
 ) -> None:
@@ -611,6 +732,62 @@ async def test_original_command_matches_when_onebot_arrives_first(
         OfficialIdentity(APP_ID, "member", "target-openid", OFFICIAL_GROUP)
     )
     assert target is not None and target.onebot_qq_id == "50005"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_count", [1, 2])
+@pytest.mark.parametrize("mirror_first", [False, True])
+async def test_observation_message_keys_isolate_groups_and_replace_only_replays(
+    tmp_path: Path, group_count: int, *, mirror_first: bool
+) -> None:
+    service, store = _service(tmp_path, [100.0])
+    incoming = [
+        _incoming(
+            "same-official-id",
+            official_group=f"group-{index}",
+            member_openid=f"member-{index}",
+            text="帮助",
+        )
+        for index in range(group_count)
+    ]
+    mirrors = [
+        replace(
+            _observation(
+                sender=40004 + index,
+                text="帮助",
+                mentions=(str(OFFICIAL_BOT_QQ),),
+                message_id="same-mirror-id",
+            ),
+            group_id=ONEBOT_GROUP + index,
+        )
+        for index in range(group_count)
+    ]
+    service.accounts[APP_ID].groups.update(
+        {
+            item.conversation.id: mirror.group_id
+            for item, mirror in zip(incoming, mirrors, strict=True)
+        }
+    )
+    for item, mirror in zip(incoming, mirrors, strict=True):
+        # A replay replaces evidence only in its own account and conversation.
+        for _ in range(2):
+            if mirror_first:
+                assert not await service.observe_onebot(mirror)
+            else:
+                assert not await service.observe_official_message(item)
+    for item, mirror in zip(incoming, mirrors, strict=True):
+        if mirror_first:
+            assert await service.observe_official_message(item)
+        else:
+            assert await service.observe_onebot(mirror)
+    links = await store.all_links()
+    assert len(links) == group_count
+    for index, item in enumerate(incoming):
+        linked = await store.for_official(
+            OfficialIdentity(APP_ID, "member", item.actor.id, item.conversation.id)
+        )
+        assert linked is not None
+        assert linked.onebot_qq_id == str(40004 + index)
 
 
 @pytest.mark.asyncio
