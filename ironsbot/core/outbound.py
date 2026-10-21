@@ -239,13 +239,13 @@ class ReplyTemplate:
         )
         if presentation.mention_actor is None:
             return PreparedReply(message, presentation.context)
-        addressed = OutboundMessage(
-            (
+        addressed = replace(
+            message,
+            parts=(
                 MentionPart(presentation.mention_actor),
                 TextPart(presentation.mention_separator),
                 *message.parts,
             ),
-            prompt=message.prompt,
         )
         return PreparedReply(addressed, presentation.context)
 

@@ -97,6 +97,8 @@ class Application:
                 install_command_ingress,
             )
 
-            install_command_ingress(self.matcher_factory, router)
+            install_command_ingress(
+                self.matcher_factory, router, self.resources.onebot_messenger
+            )
         self.lifecycle.install()
         self._installed = True

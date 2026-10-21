@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.core.outbound import (
     COMMAND_REPLY_TEMPLATE,
     BinaryImagePart,
@@ -219,3 +220,45 @@ def test_image_reply_does_not_remove_other_explicit_recipients() -> None:
     prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, original)
 
     assert prepared.message.parts == (MentionPart(other), image)
+
+
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("private", [False, True])
+@pytest.mark.parametrize("succeeded", [False, True])
+@pytest.mark.parametrize("shape", ["text", "addressed", "image"])
+def test_reply_presentation_preserves_business_result_and_prompt(
+    platform: Platform, shape: str, *, private: bool, succeeded: bool
+) -> None:
+    conversation = ConversationRef(
+        platform,
+        "private" if private else "group",
+        "sender" if private else "group",
+        account_id="account",
+    )
+    actor = ActorRef(platform, "sender", account_id="account")
+    incoming = IncomingMessageRef(platform, actor, conversation, "source", "query")
+    prompt = PromptSession(
+        "session",
+        actor,
+        conversation,
+        "source",
+        (PromptChoice("exit", "退出", frozenset({"0"})),),
+        100.0,
+    )
+    message = OutboundMessage(
+        (MentionPart(actor), TextPart("\n"), BinaryImagePart(b"png", "image/png"))
+        if shape == "image"
+        else (MentionPart(actor), TextPart("result"))
+        if shape == "addressed"
+        else (TextPart("result"),),
+        prompt=prompt,
+        request_succeeded=succeeded,
+    )
+    prepared = COMMAND_REPLY_TEMPLATE.prepare(incoming, message)
+
+    assert prepared.message.request_succeeded is succeeded
+    assert prepared.message.prompt is prompt
+    assert prepared.context == ReplyContext.from_message(incoming)
+    assert COMMAND_REPLY_TEMPLATE.prepare(incoming, prepared.message) == prepared
+    assert message.request_succeeded is succeeded
+    assert message.prompt is prompt

@@ -81,7 +81,10 @@ class OneBotEventIngress:
             Bot.on_calling_api(observe_outbound)
 
         @event_preprocessor
-        async def enforce_onebot_ingress(event: Event) -> None:
+        async def enforce_onebot_ingress(bot: Bot, event: Event) -> None:
+            if bot.self_id != str(event.self_id):
+                msg = "Input account does not match receiving connection"
+                raise IgnoredException(msg)
             await ingress.process(event)
 
 

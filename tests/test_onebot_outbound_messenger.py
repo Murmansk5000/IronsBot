@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -19,11 +20,13 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.outbound import (
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
+from ironsbot.services.messaging.outbound_limits import (
     OutboundPermit,
     OutboundRateLimitDecision,
 )
-from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
+from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -116,6 +119,96 @@ def _messenger(bot: _Bot | None = None) -> OneBotOutboundMessenger:
         cast("Any", _Router(bot)),
         runtime.outbound,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("own", [False, True])
+@pytest.mark.parametrize("image", [False, True])
+@pytest.mark.parametrize("message_id", [-42, 0, 42])
+async def test_pinned_reply_preserves_source_account_and_signed_template(
+    *, own: bool, image: bool, message_id: int
+) -> None:
+    bot = _Bot()
+    other = _Bot(self_id="654321")
+    router = Mock(wraps=_Router(other))
+    runtime = build_test_runtime(outbound_config=OutboundRateLimitConfig(enabled=False))
+    messenger = OneBotOutboundMessenger(cast("Any", router), runtime.outbound)
+    context = message_input_context(
+        group_message_event(
+            "执行",
+            self_id=int(bot.self_id),
+            group_id=GROUP_ID,
+            user_id=int(bot.self_id) if own else MENTIONED_USER_ID,
+            message_id=message_id,
+        )
+    )
+    message = (
+        OutboundMessage((BinaryImagePart(b"png", "image/png"),))
+        if image
+        else OutboundMessage.from_text("result")
+    )
+    result = await messenger.reply_from(bot, context, message)
+    assert result.delivered
+    assert result.execution_identity is not None
+    assert result.execution_identity.account_id == bot.self_id
+    assert other.group_messages == []
+    router.for_conversation.assert_not_called()
+    rendered = bot.group_messages[0][1]
+    assert rendered[0].type == "reply"
+    assert str(rendered[0].data["id"]) == str(message_id)
+    assert (any(part.type == "at" for part in rendered)) is (not own and not image)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", [False, True])
+async def test_pinned_reply_rejects_mismatched_or_missing_source_identity(
+    *, missing: bool
+) -> None:
+    bot = _Bot()
+    context = message_input_context(
+        group_message_event("执行", self_id=int(bot.self_id))
+    )
+    assert context.execution_identity is not None
+    invalid = replace(
+        context,
+        execution_identity=None
+        if missing
+        else replace(context.execution_identity, account_id="654321"),
+    )
+    result = await _messenger(bot).reply_from(
+        bot, invalid, OutboundMessage.from_text("result")
+    )
+    assert not result.delivered
+    assert not result.attempted
+    assert result.error_code == "account_mismatch"
+    assert bot.group_messages == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [True, False, [], {}, 1.5, "abc", None])
+@pytest.mark.parametrize("proactive", [False, True])
+async def test_outbound_malformed_receipt_is_uncertain_without_automatic_retry(
+    value: object, *, proactive: bool
+) -> None:
+    bot = Mock(
+        spec=_Bot,
+        self_id="123456",
+        get_login_info=AsyncMock(return_value={"nickname": "test"}),
+        send_group_msg=AsyncMock(return_value={"message_id": value}),
+    )
+    messenger = _messenger(bot)
+    conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+    message = OutboundMessage.from_text("result")
+    result = (
+        await messenger.send(conversation, message)
+        if proactive
+        else await messenger.reply(ReplyContext(conversation, "99"), message)
+    )
+    assert not result.delivered
+    assert result.failure_kind is DeliveryFailureKind.UNCERTAIN
+    assert result.execution_identity is not None
+    assert result.execution_identity.account_id == bot.self_id
+    bot.send_group_msg.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -331,7 +424,10 @@ async def test_onebot_disconnect_after_send_started_is_uncertain() -> None:
 
 
 @pytest.mark.asyncio
-async def test_onebot_history_check_uses_receipt_account_and_message_id() -> None:
+@pytest.mark.parametrize("message_id", [-42, 0, 101])
+async def test_onebot_history_check_uses_receipt_account_and_message_id(
+    message_id: int,
+) -> None:
     @dataclass
     class HistoryBot(_Bot):
         history_ids: list[int] = field(default_factory=list)
@@ -350,7 +446,7 @@ async def test_onebot_history_check_uses_receipt_account_and_message_id() -> Non
     conversation = ConversationRef(Platform.ONEBOT, "private", "1001")
     receipt = SendResult(
         delivered=True,
-        message_id="101",
+        message_id=str(message_id),
         execution_identity=ExecutionIdentity(Platform.ONEBOT, bot.self_id),
     )
 
@@ -363,7 +459,7 @@ async def test_onebot_history_check_uses_receipt_account_and_message_id() -> Non
         await messenger.verify_history(conversation, receipt)
         is DeliveryHistoryStatus.UNSUPPORTED
     )
-    assert bot.history_ids == [101]
+    assert bot.history_ids == [message_id]
     assert other.history_ids == []
 
 

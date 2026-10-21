@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import Mock
 
 import pytest
+from nonebot.adapters.onebot.v11 import Bot
 from nonebot.exception import MockApiException
 from nonebot.matcher import current_event
 
@@ -13,13 +15,14 @@ from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
 )
-from ironsbot.integrations.onebot import outbound as outbound_rate_limit
-from ironsbot.integrations.onebot import outbound as outbound_limits
-from ironsbot.integrations.onebot.outbound import (
+from ironsbot.core.outbound import SendResult
+from ironsbot.integrations.onebot.outbound_hooks import OneBotOutboundRateLimitHooks
+from ironsbot.services.messaging import outbound_limits
+from ironsbot.services.messaging.outbound_limits import (
     GroupOutboundRateLimitService,
     MultiWindowGroupRateLimiter,
     OutboundRateLimitDecision,
-    use_preacquired_push_permit,
+    OutboundSendAttempt,
 )
 from tests.helpers.runtime import build_test_runtime
 
@@ -32,6 +35,7 @@ GROUP_ID = 100
 OTHER_GROUP_ID = 101
 ADMIN_GROUP_ID = 200
 SUPERUSER_ID = 201
+HOOK_BOT = Mock(spec=Bot)
 
 
 def _windows(
@@ -237,6 +241,7 @@ def test_superuser_group_reply_uses_priority_queue() -> None:
         windows=_windows((60.0, 1)),
         superuser_ids=(SUPERUSER_ID,),
     )
+    hooks = OneBotOutboundRateLimitHooks(service)
 
     async def run() -> None:
         first = service.acquire_reply(GROUP_ID)
@@ -249,9 +254,8 @@ def test_superuser_group_reply_uses_priority_queue() -> None:
         token = current_event.set(cast("Event", SimpleNamespace(user_id=SUPERUSER_ID)))
         try:
             queued = asyncio.create_task(
-                outbound_rate_limit._check_group_send_api(
-                    service,
-                    None,  # type: ignore[arg-type]
+                hooks.check(
+                    HOOK_BOT,
                     "send_group_msg",
                     data,
                 )
@@ -263,9 +267,8 @@ def test_superuser_group_reply_uses_priority_queue() -> None:
         assert not queued.done()
         service.rollback(first.permit)
         await queued
-        await outbound_rate_limit._finalize_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
+        await hooks.finalize(
+            HOOK_BOT,
             None,
             "send_group_msg",
             data,
@@ -280,12 +283,12 @@ def test_superuser_group_reply_uses_priority_queue() -> None:
 
 def test_api_failure_drops_pending_pushes_but_keeps_superuser_replies() -> None:
     service = _service(windows=_windows((60.0, 1)))
+    hooks = OneBotOutboundRateLimitHooks(service)
 
     async def run() -> None:
         data: dict[str, object] = {"group_id": GROUP_ID, "message": "正文"}
-        await outbound_rate_limit._check_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
+        await hooks.check(
+            HOOK_BOT,
             "send_group_msg",
             data,
         )
@@ -299,10 +302,9 @@ def test_api_failure_drops_pending_pushes_but_keeps_superuser_replies() -> None:
         )
         await asyncio.sleep(0)
 
-        await outbound_rate_limit._finalize_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
-            RuntimeError("send failed"),
+        await hooks.finalize(
+            HOOK_BOT,
+            RuntimeError("账号状态为离线"),
             "send_group_msg",
             data,
             None,
@@ -319,9 +321,8 @@ def test_api_failure_drops_pending_pushes_but_keeps_superuser_replies() -> None:
             "group_id": GROUP_ID,
             "message": "重试",
         }
-        await outbound_rate_limit._check_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
+        await hooks.check(
+            HOOK_BOT,
             "send_group_msg",
             retry_data,
         )
@@ -335,18 +336,17 @@ def test_api_failure_drops_pending_pushes_but_keeps_superuser_replies() -> None:
 
 def test_api_hook_suppresses_messages_after_group_limit() -> None:
     service = _service(windows=_windows((60.0, 1)))
+    hooks = OneBotOutboundRateLimitHooks(service)
 
     async def run() -> None:
         first: dict[str, object] = {"group_id": GROUP_ID, "message": "first"}
-        await outbound_rate_limit._check_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
+        await hooks.check(
+            HOOK_BOT,
             "send_group_msg",
             first,
         )
-        await outbound_rate_limit._finalize_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
+        await hooks.finalize(
+            HOOK_BOT,
             None,
             "send_group_msg",
             first,
@@ -354,9 +354,8 @@ def test_api_hook_suppresses_messages_after_group_limit() -> None:
         )
 
         with pytest.raises(MockApiException):
-            await outbound_rate_limit._check_group_send_api(
-                service,
-                None,  # type: ignore[arg-type]
+            await hooks.check(
+                HOOK_BOT,
                 "send_group_msg",
                 {"group_id": GROUP_ID, "message": "blocked"},
             )
@@ -367,34 +366,30 @@ def test_api_hook_suppresses_messages_after_group_limit() -> None:
         service.reset()
 
 
-def test_preacquired_push_permit_is_not_counted_twice() -> None:
+def test_managed_send_permit_is_not_counted_twice() -> None:
     service = _service(windows=_windows((60.0, 1)))
+    hooks = OneBotOutboundRateLimitHooks(service)
 
     async def run() -> None:
-        decision = await service.acquire_push(GROUP_ID, source="test push")
-        assert decision.permit is not None
-
-        data: dict[str, object] = {"group_id": GROUP_ID, "message": "push"}
-        with use_preacquired_push_permit(service, decision.permit):
-            await outbound_rate_limit._check_group_send_api(
-                service,
-                None,  # type: ignore[arg-type]
+        async def send(attempt: OutboundSendAttempt) -> SendResult:
+            assert attempt.cooldown_notice == "进入冷却"
+            data: dict[str, object] = {"group_id": GROUP_ID, "message": "push"}
+            attempt.start()
+            await hooks.check(
+                HOOK_BOT,
                 "send_group_msg",
                 data,
             )
-        await outbound_rate_limit._finalize_group_send_api(
-            service,
-            None,  # type: ignore[arg-type]
-            None,
-            "send_group_msg",
-            data,
-            {"message_id": 1},
-        )
+            await hooks.finalize(
+                HOOK_BOT, None, "send_group_msg", data, {"message_id": 1}
+            )
+            return SendResult(delivered=True, message_id="1")
+
+        assert (await service.execute_send(GROUP_ID, send, proactive=True)).delivered
 
         with pytest.raises(MockApiException):
-            await outbound_rate_limit._check_group_send_api(
-                service,
-                None,  # type: ignore[arg-type]
+            await hooks.check(
+                HOOK_BOT,
                 "send_group_msg",
                 {"group_id": GROUP_ID, "message": "blocked"},
             )
@@ -403,3 +398,28 @@ def test_preacquired_push_permit_is_not_counted_twice() -> None:
         asyncio.run(run())
     finally:
         service.reset()
+
+
+@pytest.mark.asyncio
+async def test_uncertain_hook_failure_cannot_refund_reserved_capacity() -> None:
+    service = _service(windows=_windows((60.0, 1)))
+    hooks = OneBotOutboundRateLimitHooks(service)
+    data: dict[str, object] = {"group_id": GROUP_ID, "message": "result"}
+    await hooks.check(HOOK_BOT, "send_group_msg", data)
+    await hooks.finalize(HOOK_BOT, TimeoutError(), "send_group_msg", data, None)
+    assert not service.acquire_reply(GROUP_ID).allowed
+
+
+@pytest.mark.asyncio
+async def test_native_hook_does_not_consume_other_adapters_capacity() -> None:
+    from nonebot.adapters import Bot as AdapterBot
+
+    service = _service(windows=_windows((60.0, 1)))
+    hooks = OneBotOutboundRateLimitHooks(service)
+    data: dict[str, object] = {"group_id": GROUP_ID, "message": "other adapter"}
+    bot = Mock(spec=AdapterBot)
+    await hooks.check(bot, "send_group_msg", data)
+    await hooks.finalize(
+        bot, RuntimeError("not our protocol"), "send_group_msg", data, None
+    )
+    assert service.acquire_reply(GROUP_ID).allowed

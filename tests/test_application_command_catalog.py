@@ -64,6 +64,7 @@ def test_application_installs_one_shared_router_after_passive_plugins(
                 query_sessions=object(),
                 features=object(),
                 contribution_catalog=PluginContributionCatalog(),
+                onebot_messenger=object(),
             ),
         ),
         matcher_factory=cast("Any", Matchers()),
