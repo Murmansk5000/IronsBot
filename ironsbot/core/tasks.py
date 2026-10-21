@@ -41,8 +41,22 @@ async def run_owned_blocking(
     operation: Callable[[], T], *, spawn: TaskSpawner, name: str
 ) -> T:
     """Drain a submitted worker before propagating caller cancellation."""
+    return await run_owned_operation(
+        lambda: asyncio.to_thread(operation), spawn=spawn, name=name
+    )
+
+
+async def run_owned_operation(
+    operation: Callable[[], Coroutine[Any, Any, T]], *, spawn: TaskSpawner, name: str
+) -> T:
+    """Finish an accepted operation before propagating caller cancellation."""
     await asyncio.sleep(0)
-    worker = spawn(asyncio.to_thread(operation), name=name)
+    coroutine = operation()
+    try:
+        worker = spawn(coroutine, name=name)
+    except BaseException:
+        coroutine.close()
+        raise
     cancelled = False
     while True:
         try:

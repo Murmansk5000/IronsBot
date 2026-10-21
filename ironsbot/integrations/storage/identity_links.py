@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.core.tasks import run_owned_blocking
 from ironsbot.integrations.storage.identity_link_schema import (
     IDENTITY_LINK_MIGRATIONS,
 )
@@ -30,11 +32,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.core.platform import ActorKind, OfficialUnionIdentity
+    from ironsbot.core.tasks import TaskSpawner
 
 
 @dataclass(slots=True)
 class SqliteIdentityLinkStore:
     path: Path
+    spawn: TaskSpawner = field(kw_only=True, repr=False, compare=False)
     _database: SqliteDatabase = field(init=False, repr=False)
     _write_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
@@ -53,11 +57,12 @@ class SqliteIdentityLinkStore:
         now: float,
     ) -> tuple[CrossPlatformIdentityLink, ...]:
         async with self._write_lock:
-            return await asyncio.to_thread(
-                self._observe_union_identity_sync,
-                official,
-                union_identity,
-                now,
+            return await run_owned_blocking(
+                partial(
+                    self._observe_union_identity_sync, official, union_identity, now
+                ),
+                spawn=self.spawn,
+                name="identity_storage",
             )
 
     def _observe_union_identity_sync(
@@ -184,7 +189,9 @@ class SqliteIdentityLinkStore:
             return tuple(links)
 
     async def all_union_identities(self) -> tuple[OfficialUnionObservation, ...]:
-        return await asyncio.to_thread(self._all_union_identities_sync)
+        return await run_owned_blocking(
+            self._all_union_identities_sync, spawn=self.spawn, name="identity_storage"
+        )
 
     def _all_union_identities_sync(self) -> tuple[OfficialUnionObservation, ...]:
         from ironsbot.core.platform import OfficialUnionIdentity
@@ -225,12 +232,16 @@ class SqliteIdentityLinkStore:
         now: float,
     ) -> CrossPlatformGroupLink:
         async with self._write_lock:
-            return await asyncio.to_thread(
-                self._link_group_verified_sync,
-                onebot_group_id,
-                official_app_id,
-                official_group_openid,
-                now,
+            return await run_owned_blocking(
+                partial(
+                    self._link_group_verified_sync,
+                    onebot_group_id,
+                    official_app_id,
+                    official_group_openid,
+                    now,
+                ),
+                spawn=self.spawn,
+                name="identity_storage",
             )
 
     def _link_group_verified_sync(
@@ -275,7 +286,9 @@ class SqliteIdentityLinkStore:
         )
 
     async def all_group_links(self) -> tuple[CrossPlatformGroupLink, ...]:
-        return await asyncio.to_thread(self._all_group_links_sync)
+        return await run_owned_blocking(
+            self._all_group_links_sync, spawn=self.spawn, name="identity_storage"
+        )
 
     def _all_group_links_sync(self) -> tuple[CrossPlatformGroupLink, ...]:
         with self._database.connect() as connection:
@@ -307,13 +320,17 @@ class SqliteIdentityLinkStore:
         expires_at: float,
     ) -> None:
         async with self._write_lock:
-            await asyncio.to_thread(
-                self._issue_sync,
-                token_hash,
-                onebot_qq_id,
-                official_app_id,
-                created_at,
-                expires_at,
+            await run_owned_blocking(
+                partial(
+                    self._issue_sync,
+                    token_hash,
+                    onebot_qq_id,
+                    official_app_id,
+                    created_at,
+                    expires_at,
+                ),
+                spawn=self.spawn,
+                name="identity_storage",
             )
 
     def _issue_sync(
@@ -366,11 +383,10 @@ class SqliteIdentityLinkStore:
         now: float,
     ) -> CrossPlatformIdentityLink:
         async with self._write_lock:
-            return await asyncio.to_thread(
-                self._consume_sync,
-                token_hash,
-                official,
-                now,
+            return await run_owned_blocking(
+                partial(self._consume_sync, token_hash, official, now),
+                spawn=self.spawn,
+                name="identity_storage",
             )
 
     def _consume_sync(
@@ -450,7 +466,11 @@ class SqliteIdentityLinkStore:
         self,
         onebot_qq_id: str,
     ) -> tuple[CrossPlatformIdentityLink, ...]:
-        return await asyncio.to_thread(self._for_onebot_sync, onebot_qq_id)
+        return await run_owned_blocking(
+            partial(self._for_onebot_sync, onebot_qq_id),
+            spawn=self.spawn,
+            name="identity_storage",
+        )
 
     async def link_verified(
         self,
@@ -460,11 +480,10 @@ class SqliteIdentityLinkStore:
         now: float,
     ) -> CrossPlatformIdentityLink:
         async with self._write_lock:
-            return await asyncio.to_thread(
-                self._link_verified_sync,
-                onebot_qq_id,
-                official,
-                now,
+            return await run_owned_blocking(
+                partial(self._link_verified_sync, onebot_qq_id, official, now),
+                spawn=self.spawn,
+                name="identity_storage",
             )
 
     def _link_verified_sync(
@@ -552,10 +571,16 @@ class SqliteIdentityLinkStore:
         self,
         official: OfficialIdentity,
     ) -> CrossPlatformIdentityLink | None:
-        return await asyncio.to_thread(self._for_official_sync, official)
+        return await run_owned_blocking(
+            partial(self._for_official_sync, official),
+            spawn=self.spawn,
+            name="identity_storage",
+        )
 
     async def all_links(self) -> tuple[CrossPlatformIdentityLink, ...]:
-        return await asyncio.to_thread(self._all_links_sync)
+        return await run_owned_blocking(
+            self._all_links_sync, spawn=self.spawn, name="identity_storage"
+        )
 
     def _all_links_sync(self) -> tuple[CrossPlatformIdentityLink, ...]:
         with self._database.connect() as connection:
@@ -607,7 +632,11 @@ class SqliteIdentityLinkStore:
 
     async def revoke_onebot(self, onebot_qq_id: str, *, now: float) -> int:
         async with self._write_lock:
-            return await asyncio.to_thread(self._revoke_onebot_sync, onebot_qq_id, now)
+            return await run_owned_blocking(
+                partial(self._revoke_onebot_sync, onebot_qq_id, now),
+                spawn=self.spawn,
+                name="identity_storage",
+            )
 
     def _revoke_onebot_sync(self, onebot_qq_id: str, now: float) -> int:
         links = self._for_onebot_sync(onebot_qq_id)
@@ -631,7 +660,11 @@ class SqliteIdentityLinkStore:
 
     async def revoke_official(self, official: OfficialIdentity, *, now: float) -> bool:
         async with self._write_lock:
-            return await asyncio.to_thread(self._revoke_official_sync, official, now)
+            return await run_owned_blocking(
+                partial(self._revoke_official_sync, official, now),
+                spawn=self.spawn,
+                name="identity_storage",
+            )
 
     def _revoke_official_sync(self, official: OfficialIdentity, now: float) -> bool:
         official = canonical_official_identity(official)
