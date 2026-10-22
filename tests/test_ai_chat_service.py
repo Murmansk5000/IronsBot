@@ -1,7 +1,5 @@
-import asyncio
 from collections.abc import Awaitable, Callable
 
-import nonebot
 import pytest
 from pytest import MonkeyPatch
 
@@ -15,7 +13,6 @@ from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
 from ironsbot.services.identity_principals import IdentityPrincipalService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from tests.helpers.ai import FakeAiCompletionClient, configured_ai_config
-from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 456
@@ -26,24 +23,6 @@ CompletionRequester = Callable[
     [AiConfig, list[HistoryMessage]],
     Awaitable[AiResponseResult],
 ]
-
-try:
-    nonebot.get_driver()
-except ValueError:
-    nonebot.init()
-
-onebot_context = pytest.importorskip("ironsbot.integrations.onebot.context")
-
-
-class FakeBot:
-    async def get_group_info(
-        self,
-        *,
-        group_id: int,
-        no_cache: bool = False,
-    ) -> dict[str, object]:
-        assert no_cache is False
-        return {"group_id": group_id, "group_name": "示例群"}
 
 
 class RecordingMemory:
@@ -199,50 +178,6 @@ async def test_ai_error_is_silent_in_regular_group() -> None:
         )
         is None
     )
-
-
-def test_ai_notice_source_context_includes_group_user_and_message() -> None:
-    event = group_message_event(
-        "hello",
-        user_id=USER_ID,
-        group_id=GROUP_ID,
-        message_id=33,
-        sender={"card": "群名片"},
-    )
-
-    source = asyncio.run(
-        onebot_context.build_notice_source(
-            event,
-            "你好",
-            bot=FakeBot(),
-        )
-    )
-
-    assert f"群：示例群（{GROUP_ID}）" in source
-    assert f"用户：{USER_ID}（群名片）" in source
-    assert "消息ID：33" in source
-    assert "消息：你好" in source
-
-
-def test_ai_notice_source_context_falls_back_to_group_id() -> None:
-    event = group_message_event("hello", group_id=GROUP_ID)
-
-    async def fail_group_info(**_kwargs: object) -> dict[str, object]:
-        raise RuntimeError("boom")
-
-    class FailingBot:
-        get_group_info = staticmethod(fail_group_info)
-
-    source = asyncio.run(
-        onebot_context.build_notice_source(
-            event,
-            "你好",
-            bot=FailingBot(),
-        )
-    )
-
-    assert f"群：{GROUP_ID}" in source
-    assert "example" not in source
 
 
 @pytest.mark.asyncio

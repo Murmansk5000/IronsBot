@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from nonebot.log import logger
+from loguru import logger
 
 if TYPE_CHECKING:
     from pathlib import Path

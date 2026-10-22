@@ -10,7 +10,8 @@ from typing import Any, Protocol
 class OneBotConnection(Protocol):
     """Return successful action data; raise protocol or transport failures."""
 
-    self_id: str
+    @property
+    def self_id(self) -> str: ...
 
     async def call_api(self, api: str, **data: Any) -> object: ...
 

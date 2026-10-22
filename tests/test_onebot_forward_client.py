@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nonebot.adapters.onebot.utils import WSUrl
-from nonebot.drivers import URL
 
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.integrations.onebot import transport as transport_host
 from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.forward_client import OneBotForwardClient
 from tests.test_onebot_native_reverse import _reverse_message_case
@@ -23,7 +23,7 @@ from tests.test_onebot_reverse_server import Socket
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+    from ironsbot.integrations.onebot.transport import OneBotTransport
 
 pytest_plugins = ("tests.test_onebot_native_reverse",)
 
@@ -298,7 +298,7 @@ async def test_forward_close_during_connector_cannot_publish_late_connection(
 @pytest.mark.parametrize("wire_format", ["array", "cq"])
 async def test_native_forward_binding_uses_shared_business_and_connection_receipt(  # noqa: PLR0913 - source and wire-format fixture matrix
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
     source: str,
     wire_format: str,
@@ -308,10 +308,11 @@ async def test_native_forward_binding_uses_shared_business_and_connection_receip
     socket = Socket()
 
     @asynccontextmanager
-    async def connect(_url: URL) -> AsyncIterator[Socket]:
+    async def connect(_url: str, *, access_token: str | None) -> AsyncIterator[Socket]:
+        assert access_token == adapter.onebot_config.onebot_access_token
         yield socket
 
-    monkeypatch.setattr(adapter, "_open_forward", connect)
+    monkeypatch.setattr(transport_host, "open_onebot_socket", connect)
     adapter.onebot_config.onebot_ws_urls = {WSUrl("ws://test/onebot")}
     await socket.incoming.put(json.dumps(_connect_event()))
     await socket.incoming.put(json.dumps(payload))
@@ -353,15 +354,15 @@ async def test_native_forward_binding_uses_shared_business_and_connection_receip
         runtime.ai.chat_reply.assert_not_awaited()
         assert client.session is not None and client.session.pending_count == 0
     finally:
-        await adapter._stop()
-    assert adapter.bots == {}
+        await adapter.close()
+    assert adapter.accounts.snapshot() == ()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("same_actor", [False, True])
 async def test_multiple_forward_connections_keep_account_and_receipt_ownership(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -376,10 +377,11 @@ async def test_multiple_forward_connections_keep_account_and_receipt_ownership(
     )
 
     @asynccontextmanager
-    async def connect(url: URL) -> AsyncIterator[Socket]:
-        yield sockets[str(url)]
+    async def connect(url: str, *, access_token: str | None) -> AsyncIterator[Socket]:
+        assert access_token == adapter.onebot_config.onebot_access_token
+        yield sockets[url]
 
-    monkeypatch.setattr(adapter, "_open_forward", connect)
+    monkeypatch.setattr(transport_host, "open_onebot_socket", connect)
     adapter.onebot_config.onebot_ws_urls = {WSUrl(url) for url in sockets}
     for index, socket in enumerate(sockets.values(), start=1):
         await socket.incoming.put(json.dumps(_connect_event(self_id=index)))
@@ -421,35 +423,28 @@ async def test_multiple_forward_connections_keep_account_and_receipt_ownership(
         raw_path.native_conversion.assert_not_called()
         raw_path.native_dispatch.assert_not_awaited()
     finally:
-        await adapter._stop()
-    assert adapter.bots == {}
+        await adapter.close()
+    assert adapter.accounts.snapshot() == ()
 
 
-@pytest.mark.asyncio
-async def test_forward_opener_uses_existing_token_without_accepting_server_socket(
-    adapter: SelfCommandAdapter,
+def test_forward_setup_does_not_require_a_framework_websocket_client(
+    adapter: OneBotTransport,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    socket = Mock(
-        receive=AsyncMock(side_effect=ConnectionError),
-        send=AsyncMock(),
-        close=AsyncMock(),
-        accept=AsyncMock(),
-    )
-    requests = []
-
-    @asynccontextmanager
-    async def connect(request: Any) -> AsyncIterator[Any]:
-        requests.append(request)
-        yield socket
-
-    monkeypatch.setattr(adapter, "websocket", connect)
-    adapter.onebot_config.onebot_access_token = "test-token"
-    async with adapter._open_forward(URL("ws://test/onebot")) as wire:
-        with pytest.raises(ConnectionError):
-            await wire.receive()
-    assert requests[0].headers["Authorization"] == "Bearer test-token"
-    socket.accept.assert_not_awaited()
+    ready = Mock()
+    monkeypatch.setattr(adapter.driver._lifespan, "on_ready", ready)
+    http, websocket = Mock(), Mock()
+    monkeypatch.setattr(adapter.driver, "setup_http_server", http)
+    monkeypatch.setattr(adapter.driver, "setup_websocket_server", websocket)
+    adapter.onebot_config.onebot_ws_urls = {WSUrl("ws://test/onebot")}
+    adapter._setup()
+    ready.assert_called_once_with(adapter._start_forward)
+    assert {str(call.args[0].path) for call in http.call_args_list} == {
+        "/onebot/v11/", "/onebot/v11/http", "/onebot/v11/http/"
+    }
+    assert {str(call.args[0].path) for call in websocket.call_args_list} == {
+        "/onebot/v11/", "/onebot/v11/ws", "/onebot/v11/ws/"
+    }
 
 
 def test_forward_lifecycle_is_independent_of_nonebot() -> None:

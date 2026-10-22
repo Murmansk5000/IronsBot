@@ -15,6 +15,7 @@ from ironsbot.integrations.htmlkit import (
 )
 from ironsbot.integrations.htmlkit_resources import HtmlkitResources
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
+from ironsbot.integrations.litehtml import SOURCE_PATH as LITEHTML_SOURCE_PATH
 from ironsbot.integrations.project_metadata import current_project_url
 from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
 from ironsbot.integrations.storage.render_cache import FileRenderCache
@@ -34,6 +35,7 @@ FINAL_RENDER_CACHE_INPUTS = (
     SEER_DATA_RENDERERS_PATH,
     HTML_TEMPLATE_RENDERER_SOURCE_PATH,
     HTML_TEMPLATE_RENDERER_SOURCE_PATH.with_name("htmlkit_resources.py"),
+    LITEHTML_SOURCE_PATH,
 )
 
 if TYPE_CHECKING:

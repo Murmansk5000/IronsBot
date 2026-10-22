@@ -23,7 +23,6 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.core.text_matching import TextMatchRule
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -39,6 +38,7 @@ from ironsbot.services.portable_query_sessions import (
 from ironsbot.services.seer.query_commands import AUTOCARD_QUERY
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 from tests.helpers.runtime import build_test_runtime
 
 
