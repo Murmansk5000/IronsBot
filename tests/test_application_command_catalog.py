@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 from ironsbot.app.application import Application
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.plugin_install import PluginContribution, PluginContributionCatalog
+from ironsbot.integrations.onebot.connections import OneBotConnections
 
 
 def test_application_installs_one_shared_router_after_passive_plugins(
@@ -65,6 +66,7 @@ def test_application_installs_one_shared_router_after_passive_plugins(
                 features=object(),
                 contribution_catalog=PluginContributionCatalog(),
                 onebot_messenger=object(),
+                onebot_connections=OneBotConnections(),
             ),
         ),
         matcher_factory=cast("Any", Matchers()),

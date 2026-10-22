@@ -98,12 +98,13 @@ async def test_observation_precedes_silence_and_only_group_messages_check_routes
 
     observer = Mock(observe_onebot=AsyncMock(side_effect=observe))
     routing = Mock(allows_incoming=Mock(side_effect=route))
+    incoming = _input(source)
     decision = await OneBotAdmissionService(
         messages_enabled=enabled,
         features=_FEATURES,
         identity_observer=observer,
         routing=routing,
-    ).decide(_input(source))
+    ).decide(incoming)
     expected = ["observe"] if source in {"group", "sent"} else []
     if enabled and source == "group":
         expected.append("route")
@@ -114,6 +115,9 @@ async def test_observation_precedes_silence_and_only_group_messages_check_routes
         else AdmissionRejection.ROUTING
         if source == "group" and not allowed
         else None
+    )
+    assert decision.context is (
+        incoming.context if decision.rejection is None else None
     )
 
 
@@ -217,6 +221,12 @@ def test_admission_runs_without_nonebot_imports() -> None:
 import sys, asyncio
 sys.modules['nonebot'] = None
 from ironsbot.core.feature_policy import FeatureService
+from ironsbot.config.models.transport import SelfCommandsConfig
+from ironsbot.core.own_commands import OwnAccountInput
+from ironsbot.integrations.onebot.message_facts import (
+    OneBotMessageFacts, decode_onebot_message,
+)
+from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from ironsbot.services.onebot_admission import (
     OneBotAdmissionService, OneBotAdmissionInput,
 )
@@ -226,6 +236,24 @@ result = asyncio.run(
     ).decide(OneBotAdmissionInput())
 )
 assert result.rejection is None
+context = decode_onebot_message(OneBotMessageFacts(
+    account_id='1', user_id='1', message_id='own', group_id='456',
+    text='demo help',
+))
+decision = asyncio.run(OneBotAdmissionService(
+    messages_enabled=True, features=FeatureService({}, {}, frozenset()),
+    self_commands=OwnAccountCommandPolicy(
+        SelfCommandsConfig(enabled=True, prefixes=['demo '])
+    ),
+).decide(OneBotAdmissionInput(
+    context=context, is_group_message=True,
+    own_input=OwnAccountInput('1', context.message.conversation,
+        is_own_message=True, text='demo help'),
+)))
+assert decision.rejection is None
+assert decision.context.text == 'help'
+assert context.text == 'demo help'
+assert decision.context.message.actor == context.message.actor
 """,
         ],
         capture_output=True,

@@ -75,7 +75,6 @@ async def test_audit_startup_owns_scan_and_connections_only_restore(
     audit: SimpleNamespace,
 ) -> None:
     lifecycle = ApplicationLifecycle.from_contributions(
-        Mock(),
         (plugin_contribution(scheduler=audit.scheduler, service=audit.service),),
         task_owner=TaskOwner(),
     )

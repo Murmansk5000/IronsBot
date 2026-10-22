@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+import nonebot
 import pytest
 
 from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.config.qq_references import QQReferenceError, QQReferenceResolver
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.integrations.onebot import router as bot_router
+from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.services.onebot_routing import OneBotRoutingPolicy
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+    from ironsbot.integrations.onebot.connections import OneBotConnection
 
 
 @dataclass(frozen=True)
@@ -34,18 +38,15 @@ def _routing_config(**overrides: object) -> OneBotRoutingConfig:
 
 
 def _patch_router(
-    monkeypatch: MonkeyPatch,
+    _monkeypatch: MonkeyPatch,
     *,
     config: OneBotRoutingConfig,
     connected: list[FakeBot],
     use_default_for_unconfigured_targets: bool = False,
 ) -> BotRouter:
-    monkeypatch.setattr(bot_router, "Bot", FakeBot)
-    monkeypatch.setattr(
-        bot_router,
-        "get_bots",
-        lambda: {str(bot.self_id): bot for bot in connected},
-    )
+    connections = OneBotConnections()
+    for bot in connected:
+        connections.connect(cast("OneBotConnection", bot))
     return BotRouter(
         OneBotRoutingPolicy(
             config,
@@ -55,6 +56,7 @@ def _patch_router(
             ),
             use_default_for_unconfigured_targets,
         ),
+        connections,
     )
 
 
@@ -158,7 +160,7 @@ def test_bot_router_unavailable_logs_use_identity_digests(
     monkeypatch.setattr(
         bot_router.logger,
         "warning",
-        lambda message, *args: messages.append(message.format(*args)),
+        lambda message, *args: messages.append(message % args),
     )
     router = _patch_router(
         monkeypatch,
@@ -226,7 +228,7 @@ def test_shared_routing_matrix_does_not_access_connection_registry(
     def forbidden_lookup() -> None:
         pytest.fail("shared routing must not access NoneBot connections")
 
-    monkeypatch.setattr(bot_router, "get_bots", forbidden_lookup)
+    monkeypatch.setattr(nonebot, "get_bots", forbidden_lookup)
     main = 111111111
     configured_bot = 222222222
     config = _routing_config(
@@ -296,28 +298,22 @@ def test_account_display_name_uses_the_same_authoritative_configuration() -> Non
     assert policy.account_name("333333333") == "333333333"
 
 
-def test_connection_lookup_error_does_not_expose_source_exception(
+def test_connection_lookup_never_uses_framework_registry(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    messages: list[str] = []
-
     def unavailable() -> None:
-        raise RuntimeError("private-registry-detail")
+        pytest.fail("application connection lookup must not use framework globals")
 
-    monkeypatch.setattr(bot_router, "get_bots", unavailable)
-    monkeypatch.setattr(
-        bot_router.logger,
-        "warning",
-        lambda message, *args: messages.append(message.format(*args)),
-    )
+    monkeypatch.setattr(nonebot, "get_bots", unavailable)
     policy = OneBotRoutingPolicy(
         _routing_config(groups={}),
         QQReferenceResolver({}, {}),
         use_default_for_unconfigured_targets=True,
     )
-    assert BotRouter(policy).for_conversation(_group(987654321)) is None
-    assert "RuntimeError" in "\n".join(messages)
-    assert "private-registry-detail" not in "\n".join(messages)
+    assert (
+        BotRouter(policy, OneBotConnections()).for_conversation(_group(987654321))
+        is None
+    )
 
 
 @pytest.mark.parametrize(

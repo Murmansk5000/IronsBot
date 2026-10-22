@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, replace
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Protocol, cast
-
-from nonebot.adapters.onebot.v11 import MessageSegment
-from nonebot.log import logger
+from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import (
     COMMAND_REPLY_TEMPLATE,
@@ -27,25 +25,26 @@ from ironsbot.core.platform import (
     is_supported_message_actor,
     reference_digest,
 )
+from ironsbot.integrations.onebot.execution_identity import (
+    OneBotExecutionIdentityResolver,
+)
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     render_onebot_outbound_message,
 )
+from ironsbot.integrations.onebot.message_segments import onebot_own_account_input
 from ironsbot.integrations.onebot.receipts import (
     onebot_result_message_id,
     onebot_send_failure,
     onebot_send_result,
 )
-from ironsbot.integrations.onebot.self_commands import outbound_own_account_input
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from nonebot.adapters.onebot.v11 import Message
-
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
+    from ironsbot.integrations.onebot.connections import OneBotConnection
+    from ironsbot.integrations.onebot.message_segments import OneBotMessage
     from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.services.messaging.outbound_limits import (
         GroupOutboundRateLimitService,
@@ -53,6 +52,8 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.own_commands import OwnAccountCommandPolicy, OwnAccountEcho
 
+
+logger = logging.getLogger(__name__)
 
 _ONEBOT_CAPABILITIES = DeliveryCapabilities(
     can_reply_to_event=True,
@@ -73,19 +74,9 @@ _UNSUPPORTED_CAPABILITIES = DeliveryCapabilities(
 _HISTORY_TIMEOUT_SECONDS = 5.0
 
 
-class OneBotMessageSender(Protocol):
-    """Minimal OneBot send API required by the platform outbound adapter."""
-
-    self_id: str
-
-    async def send_private_msg(self, *, user_id: int, message: Message) -> object: ...
-
-    async def send_group_msg(self, *, group_id: int, message: Message) -> object: ...
-
-
 @dataclass(frozen=True, slots=True)
 class _ReplySource:
-    bot: OneBotMessageSender
+    bot: OneBotConnection
     identity: ExecutionIdentity
     actor: ActorRef
 
@@ -106,30 +97,14 @@ class OneBotOutboundMessenger:
         self._outbound = outbound
         self._enabled = enabled
         self._self_commands = self_commands
-        self._identities: dict[str, ExecutionIdentity] = {}
+        self.identity_resolver = OneBotExecutionIdentityResolver(
+            router.connections, router.policy.account_name
+        )
         self._push_locks: dict[str, asyncio.Lock] = {}
         self._transport_unavailable_until: dict[str, float] = {}
         self._transport_failure_cooldown_seconds = max(
             0.0, transport_failure_cooldown_seconds
         )
-
-    async def _identity(self, bot: Any) -> ExecutionIdentity:
-        account_id = str(bot.self_id).strip()
-        if account_id in self._identities:
-            return self._identities[account_id]
-        nickname = ""
-        try:
-            response = await asyncio.wait_for(bot.get_login_info(), timeout=2)
-            if isinstance(response, dict):
-                nickname = str(response.get("nickname") or "").strip()
-        except Exception:  # noqa: BLE001 - nickname lookup must not block delivery
-            pass
-        if not nickname:
-            nickname = self._router.policy.account_name(account_id)
-        identity = ExecutionIdentity(Platform.ONEBOT, account_id, nickname)
-        if account_id:
-            self._identities[account_id] = identity
-        return identity
 
     def capabilities_for(
         self,
@@ -164,7 +139,7 @@ class OneBotOutboundMessenger:
 
     async def reply_from(
         self,
-        bot: OneBotMessageSender,
+        bot: OneBotConnection,
         incoming: MessageInputContext,
         message: OutboundMessage,
     ) -> SendResult:
@@ -199,7 +174,7 @@ class OneBotOutboundMessenger:
 
     async def send_from(
         self,
-        bot: OneBotMessageSender,
+        bot: OneBotConnection,
         context: CommandContext,
         message: OutboundMessage,
     ) -> SendResult:
@@ -249,18 +224,14 @@ class OneBotOutboundMessenger:
         bot = self._router.for_conversation(conversation)
         if bot is None or str(bot.self_id) != receipt.execution_identity.account_id:
             return DeliveryHistoryStatus.UNSUPPORTED
-        get_msg = getattr(bot, "get_msg", None)
-        if not callable(get_msg):
-            return DeliveryHistoryStatus.UNSUPPORTED
         try:
-            get_msg_call = cast("Callable[..., Awaitable[object]]", get_msg)
             result = await asyncio.wait_for(
-                get_msg_call(message_id=int(message_id)),
+                bot.call_api("get_msg", message_id=int(message_id)),
                 timeout=_HISTORY_TIMEOUT_SECONDS,
             )
         except Exception as error:  # noqa: BLE001 - optional history lookup
             logger.warning(
-                "OneBot history verification failed: error_type={}",
+                "OneBot history verification failed: error_type=%s",
                 type(error).__name__,
             )
             return DeliveryHistoryStatus.ERROR
@@ -319,7 +290,7 @@ class OneBotOutboundMessenger:
     async def _send_rendered(
         self,
         conversation: ConversationRef,
-        rendered: Message,
+        rendered: OneBotMessage,
         *,
         proactive: bool,
         source: _ReplySource | None,
@@ -337,7 +308,13 @@ class OneBotOutboundMessenger:
                 error_message="No connected OneBot bot can deliver this message",
                 failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
-        identity = source.identity if source is not None else await self._identity(bot)
+        identity = (
+            source.identity
+            if source is not None
+            else await self.identity_resolver.resolve(
+                ExecutionIdentity(Platform.ONEBOT, str(bot.self_id))
+            )
+        )
         assert identity is not None
         account_key = identity.account_id
 
@@ -378,9 +355,9 @@ class OneBotOutboundMessenger:
 
     async def _send_to_bot(  # noqa: PLR0913
         self,
-        bot: Any,
+        bot: OneBotConnection,
         conversation: ConversationRef,
-        rendered: Message,
+        rendered: OneBotMessage,
         *,
         identity: ExecutionIdentity,
         attempt: OutboundSendAttempt,
@@ -403,13 +380,19 @@ class OneBotOutboundMessenger:
         receipt: SendResult | None = None
         try:
             message = (
-                rendered + MessageSegment.text(f"\n\n{attempt.cooldown_notice}")
+                [
+                    *rendered,
+                    {
+                        "type": "text",
+                        "data": {"text": f"\n\n{attempt.cooldown_notice}"},
+                    },
+                ]
                 if attempt.cooldown_notice
                 else rendered
             )
             if self._self_commands is not None:
-                outgoing = outbound_own_account_input(
-                    identity.account_id, conversation, message
+                outgoing = onebot_own_account_input(
+                    identity.account_id, conversation, message, is_own_message=True
                 )
                 if outgoing is not None:
                     echo = self._self_commands.begin_outbound(outgoing)
@@ -422,7 +405,7 @@ class OneBotOutboundMessenger:
             kind = failure.result.failure_kind
             attempt.interrupted = failure.interrupted or probing
             logger.warning(
-                "OneBot outbound delivery failed: kind={} ref={} error_type={}",
+                "OneBot outbound delivery failed: kind=%s ref=%s error_type=%s",
                 conversation.kind,
                 reference_digest(conversation.id),
                 type(error).__name__,
@@ -465,11 +448,13 @@ def _group_id(conversation: ConversationRef) -> int | None:
 
 
 async def _send_onebot_message(
-    bot: OneBotMessageSender,
+    bot: OneBotConnection,
     conversation: ConversationRef,
-    message: Message,
+    message: OneBotMessage,
 ) -> object:
     target_id = int(conversation.id)
     if conversation.kind == "private":
-        return await bot.send_private_msg(user_id=target_id, message=message)
-    return await bot.send_group_msg(group_id=target_id, message=message)
+        return await bot.call_api(
+            "send_private_msg", user_id=target_id, message=message
+        )
+    return await bot.call_api("send_group_msg", group_id=target_id, message=message)

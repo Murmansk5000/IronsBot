@@ -4,7 +4,6 @@ import asyncio
 import sqlite3
 import threading
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
 
 import pytest
 
@@ -71,7 +70,6 @@ async def test_commit_publishes_before_cancel(  # noqa: PLR0915 - real lifecycle
         closed_resources.append(True)
 
     lifecycle = ApplicationLifecycle(
-        Mock(),
         task_owner=owner,
         resource_shutdown_hooks=(("resource", close_resource),),
     )

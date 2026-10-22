@@ -4,8 +4,7 @@
 from __future__ import annotations
 
 from base64 import b64encode
-
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import (
     BinaryImagePart,
@@ -15,6 +14,12 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ConversationRef, Platform
+
+if TYPE_CHECKING:
+    from ironsbot.integrations.onebot.message_segments import (
+        OneBotMessage,
+        OneBotSegment,
+    )
 
 
 class OneBotOutboundMessageError(ValueError):
@@ -36,27 +41,42 @@ def render_onebot_outbound_message(
     *,
     conversation: ConversationRef | None = None,
     reply_to_id: str | None = None,
-) -> Message:
+) -> OneBotMessage:
     """Render core message parts after the caller has selected a OneBot target."""
 
-    rendered = Message()
+    rendered: OneBotMessage = []
     if reply_to_id is not None:
-        rendered += MessageSegment.reply(parse_reply_message_id(reply_to_id))
+        rendered.append(
+            {"type": "reply", "data": {"id": str(parse_reply_message_id(reply_to_id))}}
+        )
     for part in message.parts:
         if isinstance(part, TextPart):
-            rendered += MessageSegment.text(part.text)
+            rendered.append({"type": "text", "data": {"text": part.text}})
         elif isinstance(part, BinaryImagePart):
             encoded = b64encode(part.content).decode("ascii")
-            rendered += MessageSegment.image(f"base64://{encoded}")
+            rendered.append(_image_segment(f"base64://{encoded}"))
         elif isinstance(part, RemoteImagePart):
-            rendered += MessageSegment.image(part.url)
+            rendered.append(_image_segment(part.url))
         elif isinstance(part, MentionPart):
             if not _supports_group_mention(conversation, part):
                 raise OneBotOutboundMessageError.unsupported_mention()
-            rendered += MessageSegment.at(int(part.actor.id))
+            rendered.append({"type": "at", "data": {"qq": str(int(part.actor.id))}})
         else:
             raise OneBotOutboundMessageError.unsupported_part(part)
     return rendered
+
+
+def _image_segment(file: str) -> OneBotSegment:
+    return {
+        "type": "image",
+        "data": {
+            "file": file,
+            "type": None,
+            "cache": "true",
+            "proxy": "true",
+            "timeout": None,
+        },
+    }
 
 
 def _supports_group_mention(

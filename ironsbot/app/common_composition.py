@@ -13,6 +13,7 @@ from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.core.push_routing import PushRouteDecision
 from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
+from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -54,6 +55,7 @@ class CommonComponents:
     features: FeatureService
     promotions: PromotionCatalog
     subscriptions: PushUnsubscribeStore
+    onebot_connections: OneBotConnections
     bot_router: BotRouter
     own_commands: OwnAccountCommandPolicy
     onebot_messenger: OneBotOutboundMessenger
@@ -96,12 +98,14 @@ def build_common_components(
         settings.paths.qq_state,
         principal_for=identity_principals.conversation_principal,
     )
+    onebot_connections = OneBotConnections()
     bot_router = BotRouter(
         OneBotRoutingPolicy(
             settings.bot.onebot.routing,
             settings.qq_references,
             settings.bot.use_default_for_unconfigured_targets,
         ),
+        onebot_connections,
     )
     routed_onebot_groups = (
         {
@@ -266,6 +270,7 @@ def build_common_components(
         features=features,
         promotions=promotions,
         subscriptions=subscriptions,
+        onebot_connections=onebot_connections,
         bot_router=bot_router,
         own_commands=own_commands,
         onebot_messenger=onebot_messenger,

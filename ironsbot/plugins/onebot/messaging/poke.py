@@ -7,7 +7,6 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
-    ActionFailed,
     Bot,
     NoticeEvent,
     PokeNotifyEvent,
@@ -20,6 +19,7 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
@@ -53,7 +53,7 @@ async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
             user_id=event.user_id,
             no_cache=True,
         )
-    except ActionFailed:  # pragma: no cover - adapter failures fall back safely
+    except OneBotActionError:  # pragma: no cover - action rejection falls back safely
         return None
     role = info.get("role")
     return str(role) if role is not None else None

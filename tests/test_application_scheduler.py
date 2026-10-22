@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
-from unittest.mock import Mock
 
 import pytest
 
@@ -79,7 +78,6 @@ async def test_application_owns_scheduler_start_and_shutdown_order() -> None:
             calls.append("task_stop")
 
     lifecycle = ApplicationLifecycle(
-        Mock(),
         task_owner=owner,
         scheduler=scheduler,
         resource_startup_hooks=(("resource", lambda: calls.append("resource_start")),),

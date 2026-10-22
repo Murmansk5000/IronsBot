@@ -5,7 +5,6 @@ import sqlite3
 import threading
 from dataclasses import replace
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
 
 import pytest
 
@@ -138,7 +137,6 @@ async def test_cancelled_claim_waits_for_committed_connection_to_close(
         closed_resources.append(True)
 
     lifecycle = ApplicationLifecycle(
-        Mock(),
         task_owner=owner,
         resource_shutdown_hooks=(("resource", close_resource),),
     )
