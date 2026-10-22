@@ -2,7 +2,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.integrations.onebot import portable_queries
@@ -78,7 +78,13 @@ async def test_subscription_menu_keeps_reply_reference_and_sender(
         from ironsbot.integrations.onebot.replies import build_event_reply_message
 
         sent.append(
-            build_event_reply_message(current, render_onebot_outbound_message(message))
+            build_event_reply_message(
+                current,
+                Message(
+                    MessageSegment(**segment)
+                    for segment in render_onebot_outbound_message(message)
+                ),
+            )
         )
         return SendResult(delivered=True, message_id="menu-result")
 

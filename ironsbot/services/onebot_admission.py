@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -85,6 +85,7 @@ class OneBotAdmissionInput:
 class OneBotAdmissionDecision:
     rejection: AdmissionRejection | None = None
     own_command: OwnAccountCommand | None = None
+    context: MessageInputContext | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,18 +104,27 @@ class OneBotAdmissionService:
                 None if self.messages_enabled else AdmissionRejection.SILENT
             )
         try:
-            return await self._decide(incoming)
+            decision = await self._decide(incoming, context)
+            if decision.own_command is not None:
+                context = replace(
+                    context,
+                    message=replace(context.message, text=decision.own_command.text),
+                    mentions_bot=False,
+                )
+                decision = replace(decision, context=context)
         except Exception as error:  # noqa: BLE001 - no framework exception details or replies
             await self.errors.report(context, error)
             return OneBotAdmissionDecision(AdmissionRejection.FAILURE)
+        return decision
 
-    async def _decide(self, incoming: OneBotAdmissionInput) -> OneBotAdmissionDecision:
+    async def _decide(
+        self, incoming: OneBotAdmissionInput, context: MessageInputContext
+    ) -> OneBotAdmissionDecision:
         if self.identity_observer is not None and incoming.observation is not None:
             await self.identity_observer.observe_onebot(incoming.observation)
         if not self.messages_enabled:
             return OneBotAdmissionDecision(AdmissionRejection.SILENT)
-        context = incoming.context
-        if context is not None and self.features.is_message_blocked(
+        if self.features.is_message_blocked(
             context.message.actor, context.message.conversation
         ):
             return OneBotAdmissionDecision(AdmissionRejection.BLACKLIST)
@@ -124,7 +134,7 @@ class OneBotAdmissionService:
                 command = self.self_commands.accept(incoming.own_input)
             if command is None:
                 return OneBotAdmissionDecision(AdmissionRejection.OWN_MESSAGE)
-        if incoming.is_group_message and context is not None:
+        if incoming.is_group_message:
             if (
                 self.routing is not None
                 and not (command is not None and command.admin_binding)
@@ -135,4 +145,4 @@ class OneBotAdmissionService:
                 return OneBotAdmissionDecision(AdmissionRejection.ROUTING)
             if context.mentions_everyone:
                 return OneBotAdmissionDecision(AdmissionRejection.EVERYONE)
-        return OneBotAdmissionDecision(own_command=command)
+        return OneBotAdmissionDecision(own_command=command, context=context)

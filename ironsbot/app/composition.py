@@ -299,6 +299,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         common.private_routes,
         common.onebot_messenger.verify_history,
         image_collage,
+        common.onebot_connections,
+        common.onebot_messenger.identity_resolver,
     )
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -618,6 +620,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         identity_observer=identity_observer,
         union_identity=union_identity,
         onebot_ingress=onebot_ingress,
+        onebot_connections=common.onebot_connections,
         command_errors=command_errors,
         private_extensions=private_extensions,
     )
@@ -661,6 +664,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ("file_logging", file_logging.close),
         ("http_clients", http_clients.close),
         ("databases", databases.close),
+        ("onebot_connections", common.onebot_connections.clear),
     ]
     if common.qq_official is not None:
         resource_startup_hooks.append(("qq_official", common.qq_official.start))

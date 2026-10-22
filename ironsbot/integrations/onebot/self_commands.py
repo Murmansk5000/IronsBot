@@ -5,43 +5,42 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from nonebot.adapters.onebot.v11 import Adapter, Event, GroupMessageEvent, Message
-from pydantic import PrivateAttr
+from nonebot.adapters.onebot.v11 import Adapter, Bot, Event, GroupMessageEvent
+from nonebot.adapters.onebot.v11.exception import (
+    ActionFailed,
+    ApiNotAvailable,
+    NetworkError,
+)
 
-from ironsbot.core.own_commands import OwnAccountInput
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.errors import (
+    OneBotActionError,
+    OneBotTransportError,
+)
+from ironsbot.integrations.onebot.message_segments import onebot_own_account_input
 
 if TYPE_CHECKING:
-    from ironsbot.core.own_commands import OwnAccountCommand
+    from ironsbot.core.own_commands import OwnAccountInput
 
 
-class SelfCommandEvent(GroupMessageEvent):
-    _accepted: bool = PrivateAttr(default=False)
-    _admin_binding: bool = PrivateAttr(default=False)
-
-    def apply_command(self, command: OwnAccountCommand) -> None:
-        references = Message(
-            segment
-            for segment in (self.original_message or self.message)
-            if segment.type in {"reply", "at"}
-        )
-        self.message = references + Message(command.text)
-        self.original_message = self.message.copy()
-        self.raw_message = command.text
-        self.to_me = False
-        self._accepted = True
-        self._admin_binding = command.admin_binding
-
-    @property
-    def accepted(self) -> bool:
-        return self._accepted
-
-    @property
-    def admin_binding(self) -> bool:
-        return self._admin_binding
+class SentGroupMessageEvent(GroupMessageEvent):
+    """Tag an own-account sent event while the native host uses message matchers."""
 
 
 class SelfCommandAdapter(Adapter):
+    async def _call_api(self, bot: Bot, api: str, **data: Any) -> Any:
+        try:
+            return await super()._call_api(bot, api, **data)
+        except ActionFailed as error:
+            retcode = error.info.get("retcode")
+            raise OneBotActionError(
+                retcode if type(retcode) is int else None
+            ) from None
+        except ApiNotAvailable:
+            raise OneBotTransportError(definitely_not_sent=True) from None
+        except NetworkError:
+            raise OneBotTransportError from None
+
     @classmethod
     def json_to_event(cls, json_data: Any) -> Event | None:
         if (
@@ -50,51 +49,21 @@ class SelfCommandAdapter(Adapter):
             and json_data.get("message_type") == "group"
             and json_data.get("user_id") == json_data.get("self_id")
         ):
-            return SelfCommandEvent.model_validate(
+            return SentGroupMessageEvent.model_validate(
                 {**json_data, "post_type": "message"}
             )
         return super().json_to_event(json_data)
 
 
-def is_unaccepted_self_message(event: GroupMessageEvent | Event) -> bool:
-    return getattr(event, "user_id", None) == event.self_id and not (
-        isinstance(event, SelfCommandEvent) and event.accepted
-    )
-
-
-def own_account_input(event: SelfCommandEvent) -> OwnAccountInput:
-    return _snapshot(
+def own_account_input(event: SentGroupMessageEvent) -> OwnAccountInput:
+    result = onebot_own_account_input(
         str(event.self_id),
         ConversationRef(Platform.ONEBOT, "group", str(event.group_id)),
-        event.original_message or event.message,
+        [
+            {"type": segment.type, "data": segment.data}
+            for segment in (event.original_message or event.message)
+        ],
         is_own_message=event.user_id == event.self_id,
     )
-
-
-def outbound_own_account_input(
-    account_id: str, conversation: ConversationRef, message: Message
-) -> OwnAccountInput | None:
-    if conversation.platform is not Platform.ONEBOT or conversation.kind != "group":
-        return None
-    return _snapshot(account_id, conversation, message, is_own_message=True)
-
-
-def _snapshot(
-    account_id: str,
-    conversation: ConversationRef,
-    message: Message,
-    *,
-    is_own_message: bool,
-) -> OwnAccountInput:
-    return OwnAccountInput(
-        account_id,
-        conversation,
-        is_own_message,
-        message.extract_plain_text(),
-        tuple(
-            str(segment.data.get("qq", ""))
-            for segment in message
-            if segment.type == "at"
-        ),
-        any(segment.type not in {"text", "reply", "at"} for segment in message),
-    )
+    assert result is not None
+    return result
