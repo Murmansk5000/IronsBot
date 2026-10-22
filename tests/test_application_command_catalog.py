@@ -7,9 +7,13 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 from ironsbot.app.application import Application
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.plugin_install import PluginContribution, PluginContributionCatalog
 from ironsbot.integrations.onebot.connections import OneBotConnections
+from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
+from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
+from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 
 
 def test_application_installs_one_shared_router_after_passive_plugins(
@@ -33,6 +37,24 @@ def test_application_installs_one_shared_router_after_passive_plugins(
             calls.append("queued_router")
 
     class Driver:
+        config = SimpleNamespace(nickname=frozenset())
+
+        def register_adapter(self, adapter: type, **options: Any) -> None:
+            calls.append("adapter")
+            assert adapter is SelfCommandAdapter
+            received = options["received"].__self__
+            assert isinstance(received, OneBotReceivedMessages)
+            assert received.admission is application.resources.onebot_ingress.admission
+            assert received.router is router
+            assert received.messenger is application.resources.onebot_messenger
+            assert received.red_packets is None
+            notices = options["notices"].__self__
+            assert isinstance(notices, OneBotNoticeIngress)
+            assert notices.admission is received.admission
+            assert notices.messenger is received.messenger
+            assert notices.poke is notices.audit is notices.red_packets is None
+            assert options["spawn"] == application.task_owner.create
+
         def on_startup(self, _callback: Any) -> None:
             calls.append("lifecycle")
 
@@ -51,7 +73,14 @@ def test_application_installs_one_shared_router_after_passive_plugins(
     commands = CommandCatalog()
     contributions = (PluginContribution(id="example", install=install_plugin),)
     application = Application(
-        settings=cast("Any", object()),
+        settings=cast(
+            "Any",
+            SimpleNamespace(
+                bot=SimpleNamespace(
+                    matcher_priority=SimpleNamespace(red_packet_notice=0)
+                )
+            ),
+        ),
         driver=cast("Any", Driver()),
         asgi=cast("Any", object()),
         scheduler=cast("Any", object()),
@@ -66,12 +95,13 @@ def test_application_installs_one_shared_router_after_passive_plugins(
                 features=object(),
                 contribution_catalog=PluginContributionCatalog(),
                 onebot_messenger=object(),
+                onebot_ingress=SimpleNamespace(admission=object()),
                 onebot_connections=OneBotConnections(),
             ),
         ),
         matcher_factory=cast("Any", Matchers()),
         extension_contexts={},
-        task_owner=cast("Any", object()),
+        task_owner=TaskOwner(),
         known_features=(),
         required_plugin_features=frozenset(),
         contributions=(),
@@ -83,6 +113,7 @@ def test_application_installs_one_shared_router_after_passive_plugins(
     application.install(router)
 
     assert calls == [
+        "adapter",
         "plugin",
         "portable_router",
         "lifecycle",

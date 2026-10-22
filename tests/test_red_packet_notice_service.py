@@ -2,13 +2,13 @@ import asyncio
 from typing import Any
 from unittest.mock import Mock
 
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.messaging import RedPacketNoticeConfig
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.messaging.red_packet import (
+from ironsbot.integrations.onebot.message_segments import decode_onebot_segments
+from ironsbot.integrations.onebot.red_packet import (
     is_red_packet_message,
     is_red_packet_payload,
     summarize_red_packet_message,
@@ -22,20 +22,22 @@ from tests.helpers.runtime import build_test_runtime
 
 
 def test_red_packet_segment_is_detected() -> None:
-    message = Message([MessageSegment("redbag", {"title": "恭喜发财"})])
+    message = decode_onebot_segments(
+        [{"type": "redbag", "data": {"title": "恭喜发财"}}]
+    )
 
     assert is_red_packet_message(message)
     assert summarize_red_packet_message(message) == "恭喜发财"
 
 
 def test_qq_red_packet_system_text_is_detected() -> None:
-    message = Message("[QQ红包]恭喜发财，大吉大利")
+    message = decode_onebot_segments("[QQ红包]恭喜发财，大吉大利")
 
     assert is_red_packet_message(message)
 
 
 def test_plain_red_packet_chat_is_not_detected() -> None:
-    message = Message("谁发个红包")
+    message = decode_onebot_segments("谁发个红包")
 
     assert not is_red_packet_message(message)
 
