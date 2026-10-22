@@ -10,13 +10,13 @@ from ironsbot.core.outbound import (
     OutboundMessage,
     TextPart,
 )
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     render_onebot_outbound_message,
 )
 from ironsbot.integrations.onebot.receipts import onebot_result_message_id
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from types import SimpleNamespace

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from nonebot.log import logger
+from loguru import logger
 from pydantic import ValidationError
 
 from ironsbot.app.log_privacy import LogPrivacyRedactor, configure_log_privacy

@@ -16,8 +16,6 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -29,6 +27,7 @@ from ironsbot.services.seer.lucky_skin_commands import (
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 
 _ACTOR = ActorRef(Platform.ONEBOT, "100")
 _GROUP = ConversationRef(Platform.ONEBOT, "group", "200")

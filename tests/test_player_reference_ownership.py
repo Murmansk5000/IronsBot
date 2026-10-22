@@ -21,8 +21,6 @@ from ironsbot.core.platform import (
 )
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -56,6 +54,7 @@ from ironsbot.services.seer.rank_command_contracts import rank_help_command_cont
 from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 from ironsbot.services.seer.rank_queries import RankQueryService
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 from tests.test_portable_player_commands import _PlayerService
 from tests.test_portable_rank_commands import _RankQueryService
 
@@ -105,9 +104,21 @@ def test_player_prefix_chat_is_not_claimed_with_member_mention() -> None:
 
 
 def _runtime(
-    context: MessageInputContext, resolver: PlayerIdResolver, *, enabled: bool
+    context: MessageInputContext,
+    resolver: PlayerIdResolver,
+    *,
+    enabled: bool,
+    granted_features: frozenset[str] | None = None,
 ) -> SimpleNamespace:
-    granted = frozenset({"seer_player", "seer_rank"}) if enabled else frozenset()
+    granted = (
+        (
+            granted_features
+            if granted_features is not None
+            else frozenset({"seer_player", "seer_rank"})
+        )
+        if enabled
+        else frozenset()
+    )
     features = FeatureService(
         {context.message.conversation: granted},
         {context.message.actor: granted},
@@ -126,7 +137,13 @@ def _runtime(
     )
     operations.update(
         build_portable_rank_operations(
-            rank, resolver, sessions, operations["seer.player.query"], features, player_shortcut=operations["seer.player.default"])
+            rank,
+            resolver,
+            sessions,
+            operations["seer.player.query"],
+            features,
+            player_shortcut=operations["seer.player.default"],
+        )
     )
     catalog = CommandCatalog()
     catalog.load(
@@ -167,6 +184,7 @@ def _runtime(
         cooldown=cooldown,
         service=service,
         rank=rank,
+        sessions=sessions,
     )
 
 
@@ -203,7 +221,17 @@ def test_group_alias_is_visible_to_linked_official_group_only() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "prefix", ["米米号", "绑定米米号", "收集", "巅峰", "群星牌", "成就榜"]
+    "prefix",
+    [
+        "米米号",
+        "绑定米米号",
+        "收集",
+        "巅峰",
+        "群星牌",
+        "群星榜",
+        "群星之巅榜",
+        "成就榜",
+    ],
 )
 @pytest.mark.parametrize("reference", ["123456", "示例玩家"])
 @pytest.mark.parametrize("enabled", [False, True])
@@ -256,6 +284,8 @@ async def test_public_player_route_matches_catalog_and_admits_once(
             "收集": runtime.service.shortcut,
             "巅峰": runtime.service.shortcut,
             "群星牌": runtime.service.shortcut,
+            "群星榜": runtime.service.shortcut,
+            "群星之巅榜": runtime.service.shortcut,
             "成就榜": runtime.rank.prepare_player,
         }[prefix]
         expected.assert_awaited_once()
@@ -369,7 +399,16 @@ def test_player_ownership_preserves_literal_command_prefix(
 
 @pytest.mark.parametrize(
     "prefix",
-    ["绑定米米号", "米米号", "收集", "巅峰", "群星牌", "成就榜"],
+    [
+        "绑定米米号",
+        "米米号",
+        "收集",
+        "巅峰",
+        "群星牌",
+        "成就榜",
+        "群星榜",
+        "群星之巅榜",
+    ],
 )
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize(
@@ -417,20 +456,21 @@ def test_public_player_contracts_preserve_member_targets_and_feature_policy(
     )
     if not enabled or prefix in {"绑定米米号", "米米号"}:
         return
-    if target == "bot" and prefix == "成就榜":
+    rank_prefix = prefix in {"成就榜", "群星榜", "群星之巅榜"}
+    if target == "bot" and rank_prefix:
         # Mentioning the entry bot requests the list, not a member's rank.
         assert not context.member_mentions
         return
     parsed = (
         parse_rank_player_target_command(context.text)
-        if prefix == "成就榜"
+        if rank_prefix
         else parse_player_shortcut_command(context.text)
     )
     assert parsed is not None
     resolved = resolver.resolve(
         context,
         parsed.player_reference,
-        allow_default_binding=prefix != "成就榜",
+        allow_default_binding=not rank_prefix,
     )
     player_id = resolved.player_id
     if target in {"mixed", "multiple", "unbound"}:

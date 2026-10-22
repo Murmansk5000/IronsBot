@@ -16,7 +16,7 @@ from ironsbot.integrations.onebot.ingress_facts import (
     OneBotMessageOrigin,
     onebot_admission_input,
 )
-from ironsbot.integrations.onebot.message_input import message_input_facts
+from tests.helpers.onebot_inputs import message_input_facts
 
 if TYPE_CHECKING:
     from ironsbot.core.own_commands import OwnAccountInput

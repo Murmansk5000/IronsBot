@@ -19,7 +19,6 @@ from ironsbot.core.platform import (
 )
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.operations.request_feedback import send_request_feedback
@@ -41,6 +40,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.command_execution import operation_router
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_service import PlayerService

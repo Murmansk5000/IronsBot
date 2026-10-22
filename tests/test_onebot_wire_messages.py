@@ -18,11 +18,11 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 from tests.test_onebot_outbound_messenger import _messenger
 
 if TYPE_CHECKING:

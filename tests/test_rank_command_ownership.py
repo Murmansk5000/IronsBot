@@ -8,14 +8,13 @@ from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_catalog import RANK_COMMAND_MAP
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, LOCAL_RANKS
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 
 _ACTOR = ActorRef(Platform.ONEBOT, "100")
 _GROUP = ConversationRef(Platform.ONEBOT, "group", "200")
@@ -114,7 +113,7 @@ def test_ai_leaves_valid_rank_commands_to_the_catalog(
         "专家榜是什么",
         "专家榜第0页",
         "皮肤榜0-1",
-        "样本群星榜3149分",
+        "样本群星之巅榜3149分",
         "样本成就榜123456",
         "群星之巅榜未知玩家",
         "/专家榜",
@@ -173,7 +172,7 @@ def test_disabled_rank_feature_does_not_claim_parameterized_queries(
     )
 
 
-@pytest.mark.parametrize("prefix", ["成就榜", "专家榜"])
+@pytest.mark.parametrize("prefix", ["群星之巅榜", "成就榜", "专家榜"])
 @pytest.mark.parametrize(
     "reference,group,privileged,expected",
     [

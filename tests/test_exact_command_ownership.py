@@ -23,7 +23,6 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.about import about_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -42,6 +41,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot

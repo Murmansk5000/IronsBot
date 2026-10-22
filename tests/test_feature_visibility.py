@@ -20,10 +20,10 @@ from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.context import command_context
 from ironsbot.services.help_menu import visible_help_entries
 from tests.helpers.ai import configured_ai_config
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import command_context
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
 DEFINITIONS = {definition.id: definition for definition in build_test_plugin_registry()}
