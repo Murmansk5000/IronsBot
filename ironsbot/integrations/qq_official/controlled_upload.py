@@ -13,6 +13,7 @@ from qqbot_agent_sdk.media_loader import ChunkedUploader, MediaUploader
 from typing_extensions import override
 
 from ironsbot.core.delivery_attempt import controlled_delivery, delivery_unit
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.delivery_diagnostics import delivery_phase
 from ironsbot.integrations.qq_official.media_diagnostics import (
     log_media_metadata,
@@ -74,6 +75,13 @@ class _SingleAttemptChunked(ChunkedUploader):
                 chat_type, target_id, file_type, file_name, file_size, hashes
             )
             log_upload_parts(file_size, prepared)
+            logger.info(
+                "QQ upload session prepared: unit=%s session=%s scope=%s target=%s",
+                delivery_unit.get(),
+                reference_digest(prepared.upload_id),
+                chat_type,
+                reference_digest(target_id),
+            )
             return prepared
 
     @override
@@ -130,6 +138,17 @@ class _SingleAttemptChunked(ChunkedUploader):
         retry_timeout: float,
     ) -> None:
         async with delivery_phase("upload_confirm"):
+            logger.info(
+                "QQ upload session confirming: unit=%s session=%s scope=%s "
+                "target=%s part=%d bytes=%d checksum=%s",
+                delivery_unit.get(),
+                reference_digest(upload_id),
+                chat_type,
+                reference_digest(target_id),
+                part_index,
+                block_size,
+                reference_digest(md5),
+            )
             if chat_type == "c2c":
                 await self._api.upload_c2c_part_finish(
                     target_id, upload_id, part_index, block_size, md5
@@ -141,6 +160,13 @@ class _SingleAttemptChunked(ChunkedUploader):
 
     async def _complete(self, chat_type: str, target_id: str, upload_id: str) -> Any:
         async with delivery_phase("upload_complete"):
+            logger.info(
+                "QQ upload session completing: unit=%s session=%s scope=%s target=%s",
+                delivery_unit.get(),
+                reference_digest(upload_id),
+                chat_type,
+                reference_digest(target_id),
+            )
             if chat_type == "c2c":
                 return await self._api.complete_c2c_upload(target_id, upload_id)
             return await self._api.complete_group_upload(target_id, upload_id)
