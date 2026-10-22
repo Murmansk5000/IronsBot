@@ -11,6 +11,7 @@ RUN python -m pip install --user uv
 COPY ./pyproject.toml \
   ./uv.lock \
   /wheel/
+COPY packages/litehtml_core /wheel/packages/litehtml_core
 
 RUN set -eu; \
     extra_args=""; \
@@ -35,7 +36,14 @@ RUN set -eu; \
     model_version="${model_wheel#seerapi_models-}"; \
     model_version="${model_version%%-*}"; \
     sed -i "s|^seerapi-models @ git+.*$|seerapi-models==${model_version}|" /wheel/requirements.txt; \
-    grep -Fx "seerapi-models==${model_version}" /wheel/requirements.txt
+    grep -Fx "seerapi-models==${model_version}" /wheel/requirements.txt; \
+    native_wheel="$(find /wheel -maxdepth 1 -type f -name 'ironsbot_litehtml_core-*.whl' -printf '%f\n')"; \
+    test -n "$native_wheel"; \
+    test "$(printf '%s\n' "$native_wheel" | wc -l)" -eq 1; \
+    native_version="${native_wheel#ironsbot_litehtml_core-}"; \
+    native_version="${native_version%%-*}"; \
+    sed -i "s|^\./packages/litehtml_core$|ironsbot-litehtml-core==${native_version}|" /wheel/requirements.txt; \
+    grep -Fx "ironsbot-litehtml-core==${native_version}" /wheel/requirements.txt
 
 RUN python - <<'PY'
 import io
@@ -107,12 +115,7 @@ RUN apt-get update \
 # Mount wheels for installation; copying then deleting them retains a large layer.
 RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
     pip install --no-deps --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
-    && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pygments \
-        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pygments-*.dist-info \
-        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pymdownx \
-        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pymdown_extensions-*.dist-info \
-        /usr/local/bin/pygmentize \
-        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
+    && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip-*.dist-info \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools-*.dist-info \
