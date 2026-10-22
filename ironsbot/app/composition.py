@@ -5,7 +5,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import nonebot
+from fastapi import FastAPI
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.ai_health import check_configured_ai_api
@@ -215,7 +215,6 @@ async def _load_identity_links(  # noqa: PLR0913
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
-    driver = nonebot.get_driver()
     task_owner = TaskOwner()
     scheduler = SchedulerFacade(
         timezone="Asia/Shanghai", spawn=task_owner.create_draining
@@ -659,8 +658,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     return Application(
         settings=settings,
-        driver=driver,
-        asgi=nonebot.get_asgi(),
+        asgi=FastAPI(openapi_url=None, docs_url=None, redoc_url=None),
         scheduler=scheduler,
         file_logging=file_logging,
         http_clients=http_clients,

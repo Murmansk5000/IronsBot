@@ -1,70 +1,68 @@
 import asyncio
-from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from functools import partial
 
 import pytest
-from nonebot.dependencies.utils import get_typed_signature
+from fastapi import FastAPI
 
+from ironsbot.app.host import application_lifespan
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.core.platform import BotAccountRef, Platform
-from ironsbot.integrations.nonebot_host import NoneBotHostBinding
-
-if TYPE_CHECKING:
-    from nonebot.internal.driver import Driver
-
-
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[Callable[..., object]] = []
-        self.shutdown_handlers: list[Callable[..., object]] = []
-        self.bot_connect_handlers: list[Callable[..., object]] = []
-        self.bot_disconnect_handlers: list[Callable[..., object]] = []
-
-    def on_startup(self, handler: Callable[..., object]) -> Callable[..., object]:
-        self.startup_handlers.append(handler)
-        return handler
-
-    def on_shutdown(self, handler: Callable[..., object]) -> Callable[..., object]:
-        self.shutdown_handlers.append(handler)
-        return handler
-
-    def on_bot_connect(
-        self,
-        handler: Callable[..., object],
-    ) -> Callable[..., object]:
-        self.bot_connect_handlers.append(handler)
-        return handler
-
-    def on_bot_disconnect(
-        self,
-        handler: Callable[..., object],
-    ) -> Callable[..., object]:
-        self.bot_disconnect_handlers.append(handler)
-        return handler
 
 
 class _ResourceUnavailableError(RuntimeError):
     pass
 
 
-def test_host_installs_only_startup_and_shutdown_hooks_once() -> None:
-    driver = FakeDriver()
-    lifecycle = ApplicationLifecycle()
-    binding = NoneBotHostBinding(
-        cast("Driver", driver), lifecycle
+@pytest.mark.asyncio
+async def test_host_runs_one_lifespan_for_startup_and_shutdown() -> None:
+    calls: list[str] = []
+    lifecycle = ApplicationLifecycle(
+        startup_hooks=(("start", lambda: calls.append("started")),),
+        shutdown_hooks=(("stop", lambda: calls.append("stopped")),),
     )
+    app = FastAPI(lifespan=partial(application_lifespan, lifecycle))
+    async with app.router.lifespan_context(app):
+        assert calls == ["started"]
+    assert calls == ["started", "stopped"]
 
-    binding.install()
-    binding.install()
 
-    assert len(driver.startup_handlers) == 1
-    assert len(driver.shutdown_handlers) == 1
-    assert driver.bot_connect_handlers == []
-    assert driver.bot_disconnect_handlers == []
-    connect_signature = get_typed_signature(lifecycle.bot_connect)
-    disconnect_signature = get_typed_signature(lifecycle.bot_disconnect)
-    assert connect_signature.parameters["account"].annotation is BotAccountRef
-    assert disconnect_signature.parameters["account"].annotation is BotAccountRef
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_startup", [False, True])
+async def test_host_always_drains_tasks_before_closing_resources(
+    *, fail_startup: bool
+) -> None:
+    calls: list[str] = []
+    entered = asyncio.Event()
+    owner = TaskOwner()
+
+    async def pending() -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            calls.append("cancelled")
+
+    async def opening() -> None:
+        owner.create(pending(), name="host.acceptance")
+        await entered.wait()
+        calls.append("opened")
+        if fail_startup:
+            raise _ResourceUnavailableError
+
+    def closing() -> None:
+        assert not owner.tasks
+        calls.append("closed")
+
+    lifecycle = ApplicationLifecycle(
+        task_owner=owner,
+        resource_startup_hooks=(("open", opening),),
+        resource_shutdown_hooks=(("close", closing),),
+    )
+    app = FastAPI(lifespan=partial(application_lifespan, lifecycle))
+    with pytest.raises(_ResourceUnavailableError):
+        async with app.router.lifespan_context(app):
+            raise _ResourceUnavailableError
+    assert calls == ["opened", "cancelled", "closed"]
 
 
 def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:

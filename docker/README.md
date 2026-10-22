@@ -4,15 +4,15 @@
 
 # IronsBot Docker Image
 
-Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer queries and Unraid deployment.
+Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), supporting OneBot v11 and QQ Official bots for Seer queries and Unraid deployment.
 
-Built-in plugins are discovered from the standard NoneBot TOML manifest. Each
-plugin exposes `PluginMetadata` and contributes matchers, command contracts and
-lifecycle work through `PluginContribution`; `CommandCatalog` is the only
-authority for direct user-command semantics. The temporary private-extension
-bootstrap only adapts configured external extensions and is not a second plugin
-registry. Upstream-derived code is retained only where it is still required for
-data, rendering, or protocol support.
+The application owns FastAPI/Uvicorn and both transport lifecycles. Built-in
+factories contribute command contracts and lifecycle work through
+`PluginContribution`; `CommandCatalog` is the only authority for command
+semantics. Private extensions use explicit factory entry points rather than
+NoneBot manifests or import-time registration. The old `bot.driver` setting is
+removed; listening host/port, OneBot endpoints and deployment variables are
+unchanged. See the [host migration notes](../docs/operations-guide.md#运行宿主).
 
 ## Images
 
@@ -162,7 +162,7 @@ Watchtower updater and keeps the old container from starting the bot. By default
 `config.example.toml` checks the target image on startup and before a manual
 restart.
 The recreated container verifies that it is running the expected image before
-it starts NoneBot, data sync, or startup notifications. If Watchtower fails,
+it starts the application host, data sync, or startup notifications. If Watchtower fails,
 the old container stays in the handoff state and its Watchtower container is
 kept for log inspection. When the image is already current and Docker socket is
 mounted, `/重启机器人` restarts the current Docker container through the Docker
@@ -294,6 +294,11 @@ DOCKER_REGISTRY_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
+| `ONEBOT_SECRET` | Optional masked HTTP event signature secret; never store it in TOML. |
+| `ONEBOT_WS_URLS` | Optional JSON array overriding `bot.onebot.ws_urls` (forward WS). |
+| `ONEBOT_API_ROOTS` | Optional JSON object overriding `bot.onebot.api_roots`, keyed by numeric bot account. |
+| `API_TIMEOUT` | Optional positive finite action timeout overriding `bot.onebot.api_timeout`; default 30 seconds. |
+| `NICKNAME` | Optional JSON array overriding `bot.onebot.nicknames`; no additional permissions are granted. |
 | `ONEBOT_ENABLED` | Optional deployment override for `bot.onebot.enabled`. |
 | `ONEBOT_SEND_MESSAGES` | Optional deployment override for OneBot outbound. It is ignored when official credentials are active because NapCat is then forced silent. |
 | `ONEBOT_IDENTITY_VERIFICATION` | Optional deployment override for silent group identity observation through official source-message references seen by NapCat. |

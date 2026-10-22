@@ -5,7 +5,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    AnyWebsocketUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from typing_extensions import Self
 
 BotReference = str | int
@@ -86,9 +94,35 @@ class OneBotConfig(BaseModel):
     enabled: bool = True
     send_messages: bool = True
     identity_verification: bool = False
+    api_timeout: float | None = Field(default=30.0, gt=0, allow_inf_nan=False)
+    ws_urls: set[AnyWebsocketUrl] = Field(default_factory=set)
+    api_roots: dict[str, AnyHttpUrl] = Field(default_factory=dict)
+    nicknames: set[str] = Field(default_factory=set)
+    http_secret: str = Field(default="", exclude=True, repr=False)
     routing: OneBotRoutingConfig = Field(default_factory=OneBotRoutingConfig)
     self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
     trusted_official_bots: dict[str, int] = Field(default_factory=dict)
+
+    @field_validator("nicknames")
+    @classmethod
+    def validate_nicknames(cls, value: set[str]) -> set[str]:
+        if any(not name.strip() for name in value):
+            msg = "bot.onebot.nicknames must contain non-whitespace names"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("api_roots")
+    @classmethod
+    def validate_api_accounts(
+        cls, value: dict[str, AnyHttpUrl]
+    ) -> dict[str, AnyHttpUrl]:
+        if any(
+            not account.isascii() or not account.isdecimal() or int(account) <= 0
+            for account in value
+        ):
+            msg = "bot.onebot.api_roots keys must be positive numeric OneBot accounts"
+            raise ValueError(msg)
+        return value
 
     @field_validator("trusted_official_bots", mode="before")
     @classmethod

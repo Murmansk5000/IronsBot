@@ -3,13 +3,12 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
-from types import SimpleNamespace
-from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 
 from ironsbot.app.lifecycle import ApplicationLifecycle
+from ironsbot.config.models.transport import OneBotConfig
 from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.core.platform import BotAccountRef, Platform
 from ironsbot.integrations.onebot.connections import OneBotConnections
@@ -94,10 +93,8 @@ async def test_transport_publishes_before_business_and_ignores_stale_disconnect(
         resource_shutdown_hooks=(("connections", connections.clear),),
     )
     transport = OneBotTransport(
-        cast(
-            "Any",
-            SimpleNamespace(config=SimpleNamespace(model_dump=dict, api_timeout=1)),
-        ),
+        config=OneBotConfig(api_timeout=1),
+        access_token=None,
         spawn=lifecycle.task_owner.create,
         connections=connections,
         observer=lifecycle,

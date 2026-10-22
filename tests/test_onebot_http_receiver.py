@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nonebot.drivers import Request
 
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.integrations.onebot.asgi import OneBotASGI
 from ironsbot.integrations.onebot.http_receiver import OneBotHttpReceiver
+from tests.helpers.asgi import http_request
 from tests.test_onebot_native_reverse import _reverse_message_case
 
 if TYPE_CHECKING:
@@ -180,8 +181,8 @@ async def test_http_reaches_same_business_and_receipt_without_native_dispatch(
     payload, private, own = _reverse_message_case(runtime, adapter, source, wire_format)
     adapter.http_receiver.secret = "test-secret"
     body = json.dumps(payload)
-    result = await adapter._handle_http(
-        Request(
+    result = await OneBotASGI(adapter).http(
+        http_request(
             "POST", "http://test/onebot/v11/http", headers=_headers(body), content=body
         )
     )
@@ -211,8 +212,8 @@ async def test_http_notice_uses_same_injected_notice_port(
 ) -> None:
     body = _body(notice_type="notify", sub_type="poke", target_id=1, user_id=101)
     adapter.http_receiver.secret = "test-secret"
-    result = await adapter._handle_http(
-        Request(
+    result = await OneBotASGI(adapter).http(
+        http_request(
             "POST", "http://test/onebot/v11/http", headers=_headers(body), content=body
         )
     )
@@ -235,11 +236,11 @@ async def test_http_concurrent_replay_claims_business_once(
     payload, _, _ = _reverse_message_case(runtime, adapter, "group", "array")
     adapter.http_receiver.secret = "test-secret"
     body = json.dumps(payload)
-    request = Request(
+    request = http_request(
         "POST", "http://test/onebot/v11/http", headers=_headers(body), content=body
     )
     first, replay = await asyncio.gather(
-        adapter._handle_http(request), adapter._handle_http(request)
+        OneBotASGI(adapter).http(request), OneBotASGI(adapter).http(request)
     )
     assert first.status_code == replay.status_code == HTTPStatus.NO_CONTENT
     await asyncio.gather(*tuple(adapter.tasks))
@@ -260,8 +261,8 @@ async def test_http_failure_uses_shared_release_and_management_only_error_detail
     adapter.http_receiver.secret = "test-secret"
     runtime.execute.side_effect = RuntimeError("private-marker")
     body = json.dumps(payload)
-    await adapter._handle_http(
-        Request(
+    await OneBotASGI(adapter).http(
+        http_request(
             "POST", "http://test/onebot/v11/http", headers=_headers(body), content=body
         )
     )
@@ -272,8 +273,8 @@ async def test_http_failure_uses_shared_release_and_management_only_error_detail
     runtime.execute.side_effect = None
     payload["message_id"] += 1
     body = json.dumps(payload)
-    await adapter._handle_http(
-        Request(
+    await OneBotASGI(adapter).http(
+        http_request(
             "POST", "http://test/onebot/v11/http", headers=_headers(body), content=body
         )
     )
@@ -301,8 +302,8 @@ async def test_http_silent_mode_never_executes_business_or_sends(
     payload, _, _ = _reverse_message_case(runtime, adapter, "group", "cq")
     adapter.http_receiver.secret = "test-secret"
     body = json.dumps(payload)
-    await adapter._handle_http(
-        Request(
+    await OneBotASGI(adapter).http(
+        http_request(
             "POST", "http://test/onebot/v11/http", headers=_headers(body), content=body
         )
     )
