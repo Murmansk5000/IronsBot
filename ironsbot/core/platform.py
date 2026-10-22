@@ -126,6 +126,21 @@ def _required_id(
 
 
 @dataclass(frozen=True, slots=True)
+class BotAccountRef:
+    """A connected application account, never a user or sending endpoint."""
+
+    platform: Platform
+    id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "id",
+            _required_id(self.id, error=PlatformReferenceError.empty_account_id),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ActorRef:
     platform: Platform
     id: str

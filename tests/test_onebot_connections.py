@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11 import Adapter, Bot
 
 from ironsbot.app.lifecycle import ApplicationLifecycle
 from ironsbot.core.outbound import ExecutionIdentity
-from ironsbot.core.platform import Platform
+from ironsbot.core.platform import BotAccountRef, Platform
 from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
 from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.execution_identity import (
@@ -81,10 +81,11 @@ async def test_driver_hooks_publish_before_business_and_ignore_stale_disconnect(
     disconnected = AsyncMock()
     seen: list[Bot] = []
 
-    async def connected(bot: object) -> None:
-        assert isinstance(bot, Bot)
-        assert connections.get(bot.self_id) is bot
-        seen.append(bot)
+    async def connected(account: BotAccountRef) -> None:
+        assert account.platform is Platform.ONEBOT
+        connection = connections.get(account.id)
+        assert isinstance(connection, Bot)
+        seen.append(connection)
 
     lifecycle = ApplicationLifecycle(
         bot_connect_hooks=(("observer", connected),),
@@ -92,6 +93,7 @@ async def test_driver_hooks_publish_before_business_and_ignore_stale_disconnect(
         resource_shutdown_hooks=(("connections", connections.clear),),
     )
     NoneBotLifecycleBinding(driver, lifecycle, connections).install()
+    await lifecycle.startup()
     connect = driver.on_bot_connect.call_args.args[0]
     disconnect = driver.on_bot_disconnect.call_args.args[0]
     old, current = _bot(), _bot()
@@ -100,12 +102,13 @@ async def test_driver_hooks_publish_before_business_and_ignore_stale_disconnect(
     assert seen == [old, current]
     await disconnect(old)
     assert connections.get("111") is current
-    assert lifecycle.connected_bot_ids == {111}
+    account = BotAccountRef(Platform.ONEBOT, "111")
+    assert lifecycle.connected_accounts == {account}
     disconnected.assert_not_awaited()
     await disconnect(current)
     assert connections.get("111") is None
-    assert lifecycle.connected_bot_ids == set()
-    disconnected.assert_awaited_once_with(current)
+    assert lifecycle.connected_accounts == set()
+    disconnected.assert_awaited_once_with(account)
     await connect(current)
     await lifecycle.shutdown()
     assert connections.snapshot() == ()

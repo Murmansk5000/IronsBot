@@ -15,6 +15,7 @@ from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage, SendResult, TextPart
 from ironsbot.core.platform import (
     ActorRef,
+    BotAccountRef,
     ConversationRef,
     IncomingMessageRef,
     OfficialUnionIdentity,
@@ -224,6 +225,157 @@ def _bind(runtime: QQOfficialRuntime) -> None:
         cast("PortableCommandRouter", object()),
         cast("OutboundMessenger", object()),
     )
+
+
+@pytest.mark.parametrize("ready", [True, False])
+def test_sdk_ready_events_join_shared_lifecycle_on_application_loop(  # noqa: PLR0915 - full SDK startup/recovery/shutdown acceptance
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, ready: bool
+) -> None:
+    from threading import get_ident
+
+    from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+
+    async def run() -> None:  # noqa: PLR0915 - complete owned-runtime lifecycle
+        _install_fake_sdk(monkeypatch, ready=ready)
+        main_thread = get_ident()
+        first: list[BotAccountRef] = []
+        connected: list[BotAccountRef] = []
+        plugins_ready = False
+
+        def initialize_plugins() -> None:
+            nonlocal plugins_ready
+            plugins_ready = True
+
+        async def on_first(account: BotAccountRef) -> None:
+            assert get_ident() == main_thread and plugins_ready
+            first.append(account)
+
+        async def on_connect(account: BotAccountRef) -> None:
+            assert get_ident() == main_thread and plugins_ready
+            connected.append(account)
+
+        async def flush() -> None:
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            if owner.tasks:
+                await asyncio.gather(*tuple(owner.tasks))
+
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (
+                    QQOfficialRuntimeAccount("app-a", "secret-a"),
+                    QQOfficialRuntimeAccount("app-b", "secret-b"),
+                ),
+                http_client=client,
+                session_root=tmp_path,
+                startup_timeout_seconds=0.01,
+            )
+            _bind(runtime)
+            owner = TaskOwner()
+            lifecycle = ApplicationLifecycle(
+                task_owner=owner,
+                resource_startup_hooks=(("sdk", runtime.start),),
+                resource_shutdown_hooks=(("sdk", runtime.stop),),
+                startup_hooks=(("plugins", initialize_plugins),),
+                first_bot_connect_hooks=(("first", on_first),),
+                bot_connect_hooks=(("connect", on_connect),),
+                first_connection_platforms=frozenset({Platform.QQ_OFFICIAL}),
+            )
+            runtime.bind_lifecycle(lifecycle, spawn=owner.create)
+            helper = BotAccountRef(Platform.ONEBOT, "helper")
+            await lifecycle.bot_connect(helper)
+            await lifecycle.startup()
+            await flush()
+            assert len(first) == (1 if ready else 0)
+            if not ready:
+                assert lifecycle.connected_accounts == {helper}
+                for socket in _FakeWebSocket.instances:
+                    await asyncio.to_thread(socket.callbacks.on_connected)
+                await flush()
+            official = {
+                BotAccountRef(Platform.QQ_OFFICIAL, account)
+                for account in ("app-a", "app-b")
+            }
+            assert lifecycle.connected_accounts == {helper, *official}
+            assert len(first) == 1 and first[0] in official
+            initial_connections = len(official) + 1
+            assert len(connected) == initial_connections
+            callbacks = _FakeWebSocket.instances[0].callbacks
+            await asyncio.to_thread(callbacks.on_connected)
+            await flush()
+            assert len(connected) == initial_connections
+            await asyncio.to_thread(callbacks.on_disconnected)
+            await flush()
+            assert BotAccountRef(Platform.QQ_OFFICIAL, "app-a") not in (
+                lifecycle.connected_accounts
+            )
+            await asyncio.to_thread(callbacks.on_connected)
+            await flush()
+            assert len(first) == 1 and len(connected) == initial_connections + 1
+            await asyncio.to_thread(callbacks.on_fatal_error, "failure", "test")
+            await flush()
+            assert BotAccountRef(Platform.QQ_OFFICIAL, "app-a") not in (
+                lifecycle.connected_accounts
+            )
+            await lifecycle.shutdown()
+            await flush()
+            for socket in _FakeWebSocket.instances:
+                await asyncio.to_thread(socket.callbacks.on_connected)
+            await flush()
+            assert not lifecycle.connected_accounts
+            assert not owner.tasks
+            assert len(first) == 1 and len(connected) == initial_connections + 1
+
+    asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_required_sdk_failure_discards_other_accounts_pending_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+
+    _install_fake_sdk(monkeypatch, ready=False)
+
+    def start(
+        socket: _FakeWebSocket,
+        _gateway: str,
+        _loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        if socket.log_tag == "IronsBot:ready":
+            socket.callbacks.on_connected()
+
+    monkeypatch.setattr(_FakeWebSocket, "start", start)
+    observed: list[BotAccountRef] = []
+    async with httpx.AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (
+                QQOfficialRuntimeAccount("ready-app", "secret", label="ready"),
+                QQOfficialRuntimeAccount("failed-app", "secret", required=True),
+            ),
+            http_client=client,
+            session_root=tmp_path,
+            startup_timeout_seconds=0.01,
+        )
+        _bind(runtime)
+        owner = TaskOwner()
+        lifecycle = ApplicationLifecycle(
+            task_owner=owner,
+            resource_startup_hooks=(("sdk", runtime.start),),
+            resource_shutdown_hooks=(("sdk", runtime.stop),),
+            first_bot_connect_hooks=(("first", observed.append),),
+            bot_connect_hooks=(("connect", observed.append),),
+        )
+        runtime.bind_lifecycle(lifecycle, spawn=owner.create)
+        with pytest.raises(QQOfficialStartupError):
+            await lifecycle.startup()
+        await asyncio.sleep(0)
+        await lifecycle.shutdown()
+        await asyncio.sleep(0)
+        assert not observed
+        assert not lifecycle.connected_accounts
+        assert not lifecycle._pending_connections
+        assert all(socket.stopped for socket in _FakeWebSocket.instances)
 
 
 def test_official_sdk_parser_feeds_opaque_group_identity() -> None:

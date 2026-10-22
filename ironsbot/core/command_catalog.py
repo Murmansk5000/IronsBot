@@ -211,7 +211,7 @@ class CommandAccess:
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
-        return self._is_allowed(context, features, feature_is_visible_in_help)
+        return self._is_allowed(context, features, feature_is_visible)
 
     def is_executable(
         self,
@@ -320,9 +320,7 @@ class CommandContract:
         access_check = (
             CommandAccess.is_executable if execution else CommandAccess.is_available
         )
-        feature_check = (
-            _feature_is_executable if execution else feature_is_visible_in_help
-        )
+        feature_check = _feature_is_executable if execution else feature_is_visible
         if not any(access_check(rule, context, features) for rule in self.access):
             return False
         if self.features_any and not any(
@@ -418,7 +416,7 @@ def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
     return context.conversation.kind == "private"
 
 
-def feature_is_visible_in_help(
+def feature_is_visible(
     features: CommandFeaturePolicy,
     context: CommandContext,
     feature: str,

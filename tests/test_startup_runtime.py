@@ -2,9 +2,10 @@ import asyncio
 
 from pytest import MonkeyPatch
 
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.operations import StartupConfig
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, BotAccountRef, Platform
 from ironsbot.plugins.onebot import startup_notice as startup_notice_runtime
 from ironsbot.services.messaging.admin_notice import (
     AdminNoticeSendSummary,
@@ -139,12 +140,22 @@ def test_official_startup_send_is_not_repeated_on_onebot_connect(
     config = StartupConfig(enabled=True, message="机器人已开启。", delay=0)
 
     async def run() -> None:
-        await startup_notice_runtime.send_startup_notice(service, config)
-        await startup_notice_runtime.send_startup_notice_on_bot_connect(
-            object(),
-            service=service,
-            config=config,
+        contribution = startup_notice_runtime.plugin_contribution(
+            service=service, config=config
         )
+        lifecycle = ApplicationLifecycle.from_contributions(
+            (contribution,),
+            task_owner=TaskOwner(),
+        )
+        lifecycle.first_connection_platforms = frozenset({Platform.QQ_OFFICIAL})
+        await lifecycle.startup()
+        await lifecycle.bot_connect(BotAccountRef(Platform.ONEBOT, "test-helper"))
+        assert not sent_messages
+        official = BotAccountRef(Platform.QQ_OFFICIAL, "test-app")
+        await lifecycle.bot_connect(official)
+        await lifecycle.bot_disconnect(official)
+        await lifecycle.bot_connect(official)
+        await lifecycle.shutdown()
 
     asyncio.run(run())
 

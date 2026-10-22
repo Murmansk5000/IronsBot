@@ -75,6 +75,7 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
                 onebot_messenger=object(),
                 onebot_admission=object(),
                 onebot_connections=OneBotConnections(),
+                qq_official=None,
             ),
         ),
         extension_contexts={},
