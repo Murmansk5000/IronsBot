@@ -126,7 +126,7 @@ class Application:
             self.resources.onebot_admission,
             self.resources.onebot_messenger,
             self.scheduler,
-            self.settings.bot.matcher_priority,
+            self.settings.bot.onebot.notice_priority,
             spawn=self.task_owner.create,
             poke=self.resources.poke_reply if "poke_reply" in installed else None,
             audit=self.resources.team_audit if "team_audit" in installed else None,

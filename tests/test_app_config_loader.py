@@ -37,8 +37,11 @@ from ironsbot.config.models.seer import (
     TeamResourceConfig,
 )
 from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
-from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
-from ironsbot.config.models.transport import OneBotRoutingConfig
+from ironsbot.config.models.settings import Settings
+from ironsbot.config.models.transport import (
+    OneBotNoticePriorityConfig,
+    OneBotRoutingConfig,
+)
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
@@ -46,7 +49,6 @@ from ironsbot.core.rank_exclusions import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
 ADDITIONAL_HEADLESS_USER_ID = 23456789
 PRIVATE_ALIAS_PLAYER_ID = 34567890
@@ -84,7 +86,6 @@ DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
-DEFAULT_SEER_PLAYER_PRIORITY = 10
 LUCKY_SKIN_WINDOW_OWNER_ID = 123456789
 LUCKY_SKIN_WINDOW_PLAYER_ID = 712345678
 DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
@@ -205,25 +206,6 @@ def _assert_default_team_audit_welcome(config: Settings) -> None:
     assert config.paths.runtime_state == Path("data/state/runtime_state.sqlite")
 
 
-def _assert_default_matcher_priorities(
-    matcher_priority: MatcherPriorityConfig,
-) -> None:
-    assert matcher_priority.seer_query < matcher_priority.ai_chat
-    assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
-    assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
-    assert matcher_priority.sendpic < matcher_priority.seer_pet
-    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
-    assert matcher_priority.seer_pet > matcher_priority.seer_rank
-    assert matcher_priority.pet_config < matcher_priority.seer_pet
-    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
-    assert matcher_priority.lucky_skin_window < matcher_priority.seer_pet
-    assert matcher_priority.seer_query < matcher_priority.mention_reply
-    assert matcher_priority.mention_reply < matcher_priority.ai_chat
-    priorities = matcher_priority.model_dump()
-    non_negative_priorities = [value for value in priorities.values() if value >= 0]
-    assert len(non_negative_priorities) == len(set(non_negative_priorities))
-
-
 def _assert_example_rank_exclusions(config: Settings) -> None:
     exclusions = config.seer.rank.exclusions
     assert exclusions.taomee_internal_user_ids == DEFAULT_TAOMEE_INTERNAL_USER_IDS
@@ -336,7 +318,7 @@ def test_example_config_parses() -> None:
     assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
     _assert_default_file_logging(config)
     _assert_default_player_request_protection(config.seer.player.request_protection)
-    _assert_default_matcher_priorities(config.bot.matcher_priority)
+    assert config.bot.onebot.notice_priority == OneBotNoticePriorityConfig()
     remote_build_steps = config.operations.data_sync.sources[
         "seerapi"
     ].remote_build.steps
@@ -647,12 +629,31 @@ mention_initial_max_responses = 3
 
     config = load_settings(config_path)
 
-    assert config.bot.matcher_priority == MatcherPriorityConfig()
+    assert config.bot.onebot.notice_priority == OneBotNoticePriorityConfig()
     assert config.messaging.command_cooldown == CommandCooldownConfig()
-    assert "bot.matcher_priority.ai_group_at" in caplog.text
-    assert "bot.matcher_priority.bot_mention_block" in caplog.text
+    assert "bot.matcher_priority" in caplog.text
     assert "messaging.command_cooldown.mention_initial_window_seconds" in caplog.text
     assert "messaging.command_cooldown.mention_initial_max_responses" in caplog.text
+
+
+def test_notice_priorities_preserve_explicit_order_and_ties(tmp_path: Path) -> None:
+    config_path = tmp_path / "notice.toml"
+    config_path.write_text(
+        "[bot.onebot.notice_priority]\npoke_reply=2\nred_packet_notice=2\nteam_audit=1\n",
+        encoding="utf-8",
+    )
+    priorities = load_settings(config_path).bot.onebot.notice_priority
+    assert priorities.model_dump() == {
+        "poke_reply": 2,
+        "red_packet_notice": 2,
+        "team_audit": 1,
+    }
+
+
+@pytest.mark.parametrize("field", ["poke_reply", "red_packet_notice", "team_audit"])
+def test_notice_priorities_reject_negative_values(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        OneBotNoticePriorityConfig.model_validate({field: -1})
 
 
 def test_unknown_fields_do_not_hide_invalid_known_fields(
