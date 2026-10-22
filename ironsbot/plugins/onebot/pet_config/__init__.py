@@ -4,26 +4,11 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.pet_config_commands import (
     pet_config_command_contracts,
-)
-
-__plugin_meta__ = PluginMetadata(
-    name="精灵配置",
-    description="查询本地收录的精灵配置图。",
-    usage="发送“精灵名配置”或“配置精灵名”。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
 )
 
 if TYPE_CHECKING:
@@ -69,15 +54,4 @@ def _is_visible(
         features=features,
         feature=Feature.PET_CONFIG.value,
         enabled=enabled,
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(
-            features=context.resources.features,
-            config=context.settings.pet_config,
-            image_command_texts=context.resources.sendpic.exact_command_texts,
-        ),
     )

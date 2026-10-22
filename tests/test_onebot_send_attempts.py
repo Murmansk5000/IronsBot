@@ -42,7 +42,7 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     )
 
     async def api(
-        _adapter: SelfCommandAdapter, request: OneBotHttpRequest
+        request: OneBotHttpRequest,
     ) -> OneBotHttpResponse:
         name = request.url.rsplit("/", 1)[-1]
         data = json.loads(request.body)
@@ -71,7 +71,6 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             200, '{"status":"ok","retcode":0,"data":{"message_id":123}}'
         )
 
-    monkeypatch.setattr(SelfCommandAdapter, "_request_http", api)
     runtime = build_test_runtime(
         outbound_config=OutboundRateLimitConfig(
             enabled=True,
@@ -80,7 +79,11 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         )
     )
     adapter = SelfCommandAdapter(
-        driver, spawn=TaskOwner().create, received=AsyncMock(), notices=AsyncMock()
+        driver,
+        spawn=TaskOwner().create,
+        received=AsyncMock(),
+        notices=AsyncMock(),
+        request_http=api,
     )
     adapter.http_api.api_roots["1"] = "http://test/"
     bot = Bot(adapter, "1")

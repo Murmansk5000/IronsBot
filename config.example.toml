@@ -67,10 +67,10 @@ log_level = "INFO"
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
 # Default: "full"
-# EN: Bundled NoneBot plugin profile. full loads every bundled plugin. core
+# EN: Explicit business-factory profile. full loads every bundled plugin. core
 #     loads only Seer queries, rank help, help, and about with runtime support.
 #     With core, policies must enable only features provided by that profile.
-# ZH: 内置 NoneBot 插件配置；full 加载全部插件。core 只加载赛尔查询、榜单
+# ZH: 内置业务工厂配置；full 加载全部插件。core 只加载赛尔查询、榜单
 #     帮助、帮助、关于和必要运行支撑；使用 core 时，权限策略只能启用该配置
 #     已加载插件提供的功能，否则启动会明确报错。
 plugin_manifest = "full"
@@ -1711,7 +1711,7 @@ fallback_to_current_image_on_handoff_failure = true
 [operations.private_extensions]
 # Optional private extension package. The main Unraid/Docker image remains
 # murmansk5000/ironsbot:latest; when enabled, startup pulls this package through
-# the mounted Docker socket, validates its standard NoneBot manifest, and installs it under /app/data.
+# the mounted Docker socket, validates its Python factory entry points, and installs it under /app/data.
 # Default: false; EN: Enable the private extension package. ZH: 启用私有扩展包。
 enabled = false
 # Default: "murmansk5000/ironsbot-private:latest"; EN: Private extension package image.

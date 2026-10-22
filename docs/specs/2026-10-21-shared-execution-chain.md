@@ -476,11 +476,33 @@ SDK 回调契约回放使用合成 WebSocket 和工作线程触发 READY、重�
 
 第七十六步最终验证：公共全量 6350 passed / 8 skipped，较上步新增十一项公共生命周期及 SDK 回调回放（含双平台首连取消矩阵）；公共 Ruff、生产及测试 BasedPyright、compileall、静态仓库和 diff 检查通过。私有 main 49 passed / 1 skipped、details 71 passed / 1 skipped；两套私有类型检查通过，仍为当前本地源码组合，不更新发布配对引用。测试中的一个旧 FakeApi 属性与真实 SDK 不一致，初轮类型检查已发现，关闭按连接字典的 AppID 处理，不访问 SDK 私有属性或新增兼容字段。私有并发文件、配置、生产数据、保护刻印文件和历史备份未改。上一步字体缓存残留仍未暂存。连接生命周期门槛完成，整体约 95%；插件发现、应用及字体宿主尚未完成，目标保持 active。未推送、未部署。
 
+第七十七步在用户明确授权后，先将 details 当前有效重构单独提交为 a1b2e4e，再调整注册入口。原 details HEAD 仍是旧 matcher；不能只暂存新入口而把依赖留在未提交区，也不能把它误称为已发布配对。完整旧 HEAD bundle、工作树 binary diff 和运行源码/素材归档保留在 E:/IronsBot-history-validation/step77-details-before-registration，bundle verify 通过。tools 本地预览脚本未运行、未暂存；没有迁往其他仓库或分支。
+
+第七十七步验证：details 71 passed / 1 skipped，另开原生阵容渲染验收 1 passed；公共扩展契约 116 passed，私有 Ruff、BasedPyright、compileall 和 diff 检查通过。该提交的 public-runtime.json 记录当时已验证的本地公共 c7d7f89c，不宣称远端或镜像已有此版本。原生测试明确将字体缓存写入 E 盘。
+
+第七十八步将私有 main/details 同步改为 Python 标准 entry-point 工厂，公共组合根显式传入 ExtensionServices 的 player_lineup 和 scheduled_messages 字段。删除两个私有包的 NoneBot 元数据、导入即注册代码和旧 tool.nonebot 清单；公共安装上下文删除 extension_contexts 字典、字符串查找方法及无消费者异常。不保留旧私有清单双读或代理，部署必须使用配对验证的主程序与扩展。内置插件仍有过渡加载 scope，本步不宣称全部宿主已经移除。
+
+装载测试在新进程中先导入真实阵容/倒计时模块，断言动作与渲染器均未注册，再显式调用工厂，并验证双平台命令及权限。公共安装测试继续覆盖安全解包、切换失败/回滚备份和旧包保留，新增旧清单拒绝、非法入口、非 callable、错误返回值和跨包缓存模块拒绝。错误工厂不能作为成功贡献交给 Application.configure；临时 sys.path 始终恢复。
+
+本步期间电脑蓝屏后公共索引损坏，经用户再次授权，将损坏索引保存在 E 盘并从当前 HEAD 重建索引，没有还原工作文件；git fsck --full 通过。另一任务已提交的媒体上传工作保留在当前基线 14a866a7，不重置或混入本步。公共全量 6363 passed / 8 skipped；私有 main 49 passed / 1 skipped、details 71 passed / 1 skipped；公共及两套私有 Ruff、BasedPyright、compileall、静态仓库检查和 diff 检查通过。未推送、未部署，未动生产配置/数据库、保护刻印文件及历史备份。整体仍约 95%，内置插件组合、应用宿主及字体初始化仍是剩余门槛。
+
+第七十九步先用真实隔离 bootstrap 复现 core 装载泄漏：清单未声明 messaging，但加载 messaging.poke 会导入父包并注册 messaging；实际贡献列表还受导入顺序影响。现在内置 27 项由 app/plugin_composition.py 的唯一有序工厂目录显式装配，core 只构建声明的五项。full 保持完整领域范围及声明顺序，缺少已启用 Feature 所有者仍明确报错，不把超管绕过当成已加载功能。
+
+删除全部内置 PluginMetadata、导入即注册尾部、两份内置 NoneBot TOML、路径解析器，以及 core.plugin_install 的安装 ContextVar、Any 依赖包、LoadedPluginContribution 和只维持旧 scope 的测试。保留真正的命令/帮助/Feature/生命周期贡献契约；测试辅助也调用生产目录，不再维护漏掉时钟检查的第二套装配。启动当前仅为 htmlkit 字体前置调用 NoneBot load_plugin，应用及字体宿主仍未独立。
+
+测试覆盖 full 的 27 项、core 的明确五项且不构建其他依赖、生命周期顺序、全插件禁止框架导入；独立进程安装 NoneBot 导入拦截器后，真实 core 工厂仍能构建命令和生命周期。初轮测试辅助 return 缩进错误已修正，不放宽生产规则。公共全量 6359 passed / 8 skipped；较上步净减四项，是旧清单/scope 测试被实际装配测试替代。相关工厂、真实 bootstrap 和卫生检查 42 项通过，公共及私有两套 BasedPyright、Ruff、compileall、静态仓库和 diff 检查通过；私有 main 49 passed / 1 skipped、details 71 passed / 1 skipped。临时文件仍在 E 盘；生产配置、数据库、保护刻印文件和历史备份未改。装配门槛完成，整体约 96%；应用宿主、字体初始化与最终三模式复验仍待完成，不推送、不部署。
+
+第八十步移除 OneBot HTTP 发送对 NoneBot HTTPClientMixin/driver.request 的依赖。组合根将同一个 HttpClients.origin 显式注入 HttpxOneBotExchange，协议层继续使用唯一的 OneBotHttpApi，原生适配器不再创建或选择 HTTP 会话。借用端口不关闭客户端，仍由应用反序关闭共享资源；保持重定向、请求级超时、Bearer/JSON、严格回执、不确定结果不盲重发及取消传播。
+
+旧原生 Response/驱动替身改为 HTTPX 响应和公共端口，缺地址仍在提交前判定未发送；已提交的网络异常保持 uncertain，未知异常/取消不按文本猜测。相关实际接收、正反向 WS、HTTP、结算及组合根 116 项通过；原生 HTTPX MockTransport 验证重定向、正文、凭据、超时与共享客户端所有权，独立进程禁止 NoneBot 后仍完成 HTTP 调用。公共全量 6363 passed / 8 skipped，本步 Ruff、公共类型和静态检查通过。全仓 Ruff 曾因并发榜单文件的未完格式失败，未修改这些文件或把该次结果写成全仓通过；只显式提交 HTTP 资源文件与测试。整体仍约 96%，未更改 TOML/env/部署或数据库。
+
+用户选择在主仓库维护去框架渲染所需的最小源码，不新建依赖仓库、不发布 PyPI。已核验同一个 htmlkit 原生 ABI 可以在不初始化 nonebot_plugin_htmlkit 父包的子进程加载；这是可行性证据，不是渲染与字体迁移已完成。接管时须记录二进制来源、许可证和依赖打包，不使用隐藏 NoneBot 桩或旧接口回退冒充去框架化。
+
 ## NoneBot 移除评估
 
 结论：不把保留 NoneBot/matcher 作为设计条件。可以移除，但不能只替换 WebSocket 接收函数就宣称完成。
 
-基线 AST 检索发现 71 个生产模块直接导入 NoneBot：根入口 1、app 6、integrations 22、plugins 42。这是当时的依赖分布证据，不是当前文件数或运行时注册数量。基线中的 scheduler 生命周期依赖已于第四十步移除；htmlkit 及私有插件的 PluginMetadata 等框架依赖仍存在。
+基线 AST 检索发现 71 个生产模块直接导入 NoneBot：根入口 1、app 6、integrations 22、plugins 42。这是当时的依赖分布证据，不是当前文件数或运行时注册数量。基线中的 scheduler 生命周期依赖已于第四十步移除，私有插件依赖于第七十八步移除，内置插件依赖于第七十九步移除；htmlkit 和应用宿主的框架依赖仍存在。
 
 替换必须覆盖：
 

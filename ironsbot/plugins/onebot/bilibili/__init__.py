@@ -1,20 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""OneBot Bilibili command, monitor, and manifest integration."""
+"""Bilibili command and monitor contributions for shared composition."""
 
 from __future__ import annotations
 
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
@@ -22,15 +15,6 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import BotAccountRef
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.operations.scheduler import Scheduler
-
-__plugin_meta__ = PluginMetadata(
-    name="B站动态",
-    description="查询、刷新和自动推送已订阅 UID 的 Bilibili 动态。",
-    usage="发送“动态”查询已订阅账号的动态。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 
 async def _check_on_connect(
@@ -67,14 +51,5 @@ def plugin_contribution(
                     partial(_check_on_connect, monitor=monitor),
                 ),
             ),
-        ),
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(
-            monitor=context.resources.bilibili_monitor, scheduler=context.scheduler
         ),
     )
