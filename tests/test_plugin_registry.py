@@ -22,6 +22,9 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.config.models.settings import Settings
+from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
@@ -33,10 +36,6 @@ from ironsbot.services.ai.command_contracts import (
     ai_chat_command_contracts,
     ai_intent_command_contracts,
 )
-
-from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
-from ironsbot.config.models.settings import Settings
-from ironsbot.core.features import Feature
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
 DEFINITIONS = build_test_plugin_registry()
@@ -431,8 +430,4 @@ def test_internal_plugins_have_no_framework_imports_or_native_handlers() -> None
 
 def test_pyproject_does_not_define_plugin_loading_lists() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    nonebot_config = pyproject["tool"]["nonebot"]
-
-    assert nonebot_config.get("plugin_dirs") == []
-    assert nonebot_config.get("builtin_plugins") == []
-    assert "plugins" not in nonebot_config
+    assert "nonebot" not in pyproject["tool"]

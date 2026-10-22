@@ -11,10 +11,13 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nonebot.adapters.onebot.utils import WSUrl
+from fastapi import FastAPI
+from pydantic import AnyWebsocketUrl
+from starlette.routing import WebSocketRoute
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.onebot import transport as transport_host
+from ironsbot.integrations.onebot.asgi import OneBotASGI
 from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.forward_client import OneBotForwardClient
 from tests.test_onebot_native_reverse import _reverse_message_case
@@ -309,15 +312,15 @@ async def test_native_forward_binding_uses_shared_business_and_connection_receip
 
     @asynccontextmanager
     async def connect(_url: str, *, access_token: str | None) -> AsyncIterator[Socket]:
-        assert access_token == adapter.onebot_config.onebot_access_token
+        assert access_token == adapter.access_token
         yield socket
 
     monkeypatch.setattr(transport_host, "open_onebot_socket", connect)
-    adapter.onebot_config.onebot_ws_urls = {WSUrl("ws://test/onebot")}
+    adapter.config.ws_urls = {AnyWebsocketUrl("ws://test/onebot")}
     await socket.incoming.put(json.dumps(_connect_event()))
     await socket.incoming.put(json.dumps(payload))
-    await adapter._start_forward()
-    await adapter._start_forward()
+    await adapter.start()
+    await adapter.start()
     assert len(adapter.forward_clients) == 1
     try:
         sent = await asyncio.wait_for(socket.sent.get(), timeout=2)
@@ -378,11 +381,11 @@ async def test_multiple_forward_connections_keep_account_and_receipt_ownership(
 
     @asynccontextmanager
     async def connect(url: str, *, access_token: str | None) -> AsyncIterator[Socket]:
-        assert access_token == adapter.onebot_config.onebot_access_token
+        assert access_token == adapter.access_token
         yield sockets[url]
 
     monkeypatch.setattr(transport_host, "open_onebot_socket", connect)
-    adapter.onebot_config.onebot_ws_urls = {WSUrl(url) for url in sockets}
+    adapter.config.ws_urls = {AnyWebsocketUrl(url) for url in sockets}
     for index, socket in enumerate(sockets.values(), start=1):
         await socket.incoming.put(json.dumps(_connect_event(self_id=index)))
         payload = group_message_event(
@@ -393,7 +396,7 @@ async def test_multiple_forward_connections_keep_account_and_receipt_ownership(
         ).model_dump()
         payload.pop("original_message", None)
         await socket.incoming.put(json.dumps(payload))
-    await adapter._start_forward()
+    await adapter.start()
     try:
         echoes = []
         for index, socket in enumerate(sockets.values(), start=1):
@@ -427,24 +430,19 @@ async def test_multiple_forward_connections_keep_account_and_receipt_ownership(
     assert adapter.accounts.snapshot() == ()
 
 
-def test_forward_setup_does_not_require_a_framework_websocket_client(
+def test_asgi_registration_keeps_the_existing_paths(
     adapter: OneBotTransport,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ready = Mock()
-    monkeypatch.setattr(adapter.driver._lifespan, "on_ready", ready)
-    http, websocket = Mock(), Mock()
-    monkeypatch.setattr(adapter.driver, "setup_http_server", http)
-    monkeypatch.setattr(adapter.driver, "setup_websocket_server", websocket)
-    adapter.onebot_config.onebot_ws_urls = {WSUrl("ws://test/onebot")}
-    adapter._setup()
-    ready.assert_called_once_with(adapter._start_forward)
-    assert {str(call.args[0].path) for call in http.call_args_list} == {
-        "/onebot/v11/", "/onebot/v11/http", "/onebot/v11/http/"
-    }
-    assert {str(call.args[0].path) for call in websocket.call_args_list} == {
-        "/onebot/v11/", "/onebot/v11/ws", "/onebot/v11/ws/"
-    }
+    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+    OneBotASGI(adapter).install(app)
+    assert {
+        getattr(route, "path", None)
+        for route in app.routes
+        if "POST" in getattr(route, "methods", ())
+    } == {"/onebot/v11/", "/onebot/v11/http", "/onebot/v11/http/"}
+    assert {
+        route.path for route in app.routes if isinstance(route, WebSocketRoute)
+    } == {"/onebot/v11/", "/onebot/v11/ws", "/onebot/v11/ws/"}
 
 
 def test_forward_lifecycle_is_independent_of_nonebot() -> None:

@@ -433,10 +433,7 @@ def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
     main = (root / "ironsbot" / "__main__.py").read_text(encoding="utf-8")
 
     dependencies = project["project"]["dependencies"]
-    assert "nonebot2[httpx]>=2.4.4" in dependencies
-    assert not any(
-        dependency.startswith("nonebot2[fastapi") for dependency in dependencies
-    )
+    assert not any(dependency.startswith("nonebot2") for dependency in dependencies)
     assert "fastapi>=0.93.0,<1.0.0" in dependencies
     assert "uvicorn>=0.20.0,<1.0.0" in dependencies
     assert "websockets>=15.0" in dependencies

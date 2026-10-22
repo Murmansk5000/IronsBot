@@ -5,7 +5,7 @@ import json
 import subprocess
 import sys
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -15,6 +15,7 @@ from ironsbot.config.models.features import HelpConfig
 from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.asgi import OneBotASGI
 from ironsbot.integrations.onebot.notice_events import decode_notice
 from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
 from ironsbot.services.command_errors import CommandErrorReporter
@@ -29,7 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from types import SimpleNamespace
 
-    from nonebot.drivers import WebSocket
     from pytest import LogCaptureFixture
 
     from ironsbot.integrations.onebot.transport import OneBotTransport
@@ -350,7 +350,7 @@ async def test_reverse_poke_uses_real_shared_send_and_receipts_without_native_di
     )
     adapter.notices = ingress.handle
     socket = Socket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     try:
         await socket.accepted.wait()
         await socket.incoming.put(json.dumps(_poke()))

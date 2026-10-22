@@ -7,8 +7,6 @@ import time
 from functools import partial
 from typing import TYPE_CHECKING
 
-import nonebot
-
 from ironsbot.app.application_logging import configure_application_logging
 from ironsbot.app.composition import build_application
 from ironsbot.app.log_privacy import configure_log_privacy
@@ -20,7 +18,6 @@ APPLICATION_TIMEZONE = "Asia/Shanghai"
 
 if TYPE_CHECKING:
     from ironsbot.app.application import Application
-    from ironsbot.config.models.settings import Settings
 
 
 def configure_third_party_logging() -> None:
@@ -37,40 +34,12 @@ def configure_process_timezone() -> None:
         tzset()
 
 
-def initialize_nonebot(settings: Settings) -> None:
-    """Initialize NoneBot with the environment selected by the TOML root."""
-
-    variable = "ENVIRONMENT"
-    previous = os.environ.get(variable)
-    os.environ[variable] = settings.bot.environment
-    try:
-        nonebot.init(
-            _env_file=(),
-            environment=settings.bot.environment,
-            driver=settings.bot.driver,
-            host=settings.bot.host,
-            port=settings.bot.port,
-            log_level=settings.bot.log_level,
-            command_start=set(settings.bot.command_start),
-            superusers={str(value) for value in settings.superuser_ids},
-            onebot_access_token=settings.bot.onebot_token or None,
-        )
-    finally:
-        if previous is None:
-            os.environ.pop(variable, None)
-        else:
-            os.environ[variable] = previous
-
-
 def bootstrap() -> Application:
     configure_third_party_logging()
     load_runtime_environment()
     configure_process_timezone()
     configure_log_privacy(os.environ)
     settings = load_settings()
-    initialize_nonebot(settings)
-    # NoneBot reconfigures Loguru during initialization, so restore the patcher.
-    configure_log_privacy(os.environ)
     configure_application_logging(settings.bot.log_level)
     application = build_application(settings)
     contributions = build_builtin_contributions(

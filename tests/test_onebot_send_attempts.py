@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-import nonebot
 import pytest
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
@@ -14,6 +13,7 @@ from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
 )
+from ironsbot.config.models.transport import OneBotConfig
 from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage, ReplyContext
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.connections import OneBotConnections
@@ -26,11 +26,6 @@ from tests.helpers.runtime import build_test_runtime
 
 @pytest.fixture
 def transport() -> SimpleNamespace:
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init(_env_file=None)
-        driver = nonebot.get_driver()
     state = SimpleNamespace(
         error=None,
         block=False,
@@ -78,7 +73,8 @@ def transport() -> SimpleNamespace:
     )
     owner = TaskOwner()
     adapter = OneBotTransport(
-        driver,
+        config=OneBotConfig(),
+        access_token=None,
         spawn=owner.create,
         received=AsyncMock(),
         notices=AsyncMock(),

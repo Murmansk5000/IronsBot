@@ -22,7 +22,8 @@ The package and exact native version are intentionally fixed together.
 The upstream distribution currently remains a binary carrier and still declares
 NoneBot as a transitive install dependency. Removing runtime imports is not a
 claim that all installed NoneBot dependencies have been removed. Independent
-native artifact packaging and the application host are separate remaining gates.
+native artifact packaging remains a separate gate; the application host itself
+now runs without NoneBot.
 
 Application startup explicitly initializes fonts using FONTCONFIG/FC process
 environment variables. HTTP image/CSS callbacks borrow the application's client;

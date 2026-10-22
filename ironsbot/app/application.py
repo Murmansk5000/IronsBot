@@ -4,14 +4,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.app.host import application_lifespan
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.core.platform import Platform
-from ironsbot.integrations.nonebot_host import NoneBotHostBinding
 
 if TYPE_CHECKING:
-    from nonebot.internal.driver import Driver
+    from fastapi import FastAPI
 
     from ironsbot.app.file_logging import FileLogging
     from ironsbot.app.resources import ApplicationResources
@@ -31,8 +32,7 @@ class Application:
     """Own process resources and explicitly composed business contributions."""
 
     settings: Settings
-    driver: Driver
-    asgi: Any
+    asgi: FastAPI
     scheduler: SchedulerFacade
     file_logging: FileLogging
     http_clients: HttpClients
@@ -48,7 +48,6 @@ class Application:
     resource_startup_hooks: tuple[tuple[str, Any], ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
     lifecycle: ApplicationLifecycle | None = None
-    host_lifecycle: NoneBotHostBinding | None = None
     onebot_transport: OneBotTransport | None = None
     _configured: bool = field(default=False, init=False)
     _installed: bool = field(default=False, init=False)
@@ -92,6 +91,17 @@ class Application:
         if not self._configured or self.lifecycle is None:
             msg = "application must be configured before installation"
             raise RuntimeError(msg)
+        if self.settings.bot.onebot.enabled:
+            self._install_onebot(router, self.lifecycle)
+        self.asgi.router.lifespan_context = partial(
+            application_lifespan, self.lifecycle
+        )
+        self._installed = True
+
+    def _install_onebot(
+        self, router: PortableCommandRouter, lifecycle: ApplicationLifecycle
+    ) -> None:
+        from ironsbot.integrations.onebot.asgi import OneBotASGI
         from ironsbot.integrations.onebot.httpx_exchange import HttpxOneBotExchange
         from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
         from ironsbot.integrations.onebot.received_messages import (
@@ -103,7 +113,7 @@ class Application:
             self.resources.onebot_admission,
             router,
             self.resources.onebot_messenger,
-            nicknames=frozenset(self.driver.config.nickname),
+            nicknames=frozenset(self.settings.bot.onebot.nicknames),
             red_packets=(
                 self.resources.red_packet_notice
                 if self.onebot_message_handling_enabled
@@ -123,18 +133,21 @@ class Application:
             red_packets=received.red_packets,
         )
         self.onebot_transport = OneBotTransport(
-            self.driver,
+            config=self.settings.bot.onebot,
+            access_token=self.settings.bot.onebot_token or None,
             spawn=self.task_owner.create,
             received=received.handle,
             notices=notices.handle,
             request_http=HttpxOneBotExchange(self.http_clients.origin),
             connections=self.resources.onebot_connections,
-            observer=self.lifecycle,
+            observer=lifecycle,
         )
-        self.lifecycle.shutdown_hooks = (
-            *self.lifecycle.shutdown_hooks,
+        OneBotASGI(self.onebot_transport).install(self.asgi)
+        lifecycle.resource_startup_hooks = (
+            *lifecycle.resource_startup_hooks,
+            ("onebot_transport", self.onebot_transport.start),
+        )
+        lifecycle.shutdown_hooks = (
+            *lifecycle.shutdown_hooks,
             ("onebot_transport", self.onebot_transport.close),
         )
-        self.host_lifecycle = NoneBotHostBinding(self.driver, self.lifecycle)
-        self.host_lifecycle.install()
-        self._installed = True

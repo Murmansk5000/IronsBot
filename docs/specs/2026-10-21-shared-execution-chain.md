@@ -538,6 +538,30 @@ SDK 回调契约回放使用合成 WebSocket 和工作线程触发 READY、重�
 
 整体仍约 97%；下一关键门槛为应用配置和 ASGI 宿主迁移、原生分发依赖及最终三模式核验。测试数量减少来自两个无运行时调用的旧 formatter 测试删除，不代表删掉真实通知失败或来源行为的覆盖。
 
+第八十六步将 OneBot 隐式驱动配置收回唯一应用模型。bot.onebot 新增 api_timeout（30 秒）、ws_urls（空集合）、api_roots（空字典）、nicknames（空集合）；HTTP 签名字段 http_secret 只由 ONEBOT_SECRET 注入，不能写 TOML，repr/model_dump 均不暴露密钥。地址协议、数字账号、JSON 形状、非空昵称与正数有限超时由模型校验。传输显式接收模型和 Access Token，昵称也由组合根传入，不读 driver.config 或 SDK Config；原有开关、路由、身份、命令和超时默认语义保持。
+
+现有 canonical 变量 ONEBOT_ACCESS_TOKEN、ONEBOT_SECRET、ONEBOT_WS_URLS、ONEBOT_API_ROOTS、API_TIMEOUT、NICKNAME 名称保持；数组/字典按 JSON 解析，环境覆盖优先于 TOML。SDK 的 ONEBOT_V11_ACCESS_TOKEN/SECRET/WS_URLS/API_ROOTS 不再兼容；非空旧变量启动报错，只显示变量名，不输出值，防止旧鉴权配置被无声丢弃。普通反向 WS 无新必填项；仅使用旧别名者在之后部署时去掉 V11_，HTTP 上报按需配置新加的加密 ONEBOT_SECRET。Docker 端口/卷、官方凭据及其他字段不更名。
+
+移除生产 OneBot SDK 依赖及废弃 tool.nonebot 元数据；SDK 只留在 dev 供历史协议测试模型使用。离线运行依赖树确认不含 nonebot-adapter-onebot；两项真实 bootstrap/生成器子进程通过导入阻断器禁止 SDK 后仍完成初始化。全 OneBot 协议目录的适配器导入门槛也移除 Config 例外。NoneBot 宿主和 htmlkit 原生载体仍是当前运行依赖，未宣称整个框架已经删除。
+
+配置/部署/分层专项 200 passed，既有传输/启动/工厂专项 106 passed；最终公共全量 6427 passed / 9 skipped，Ruff、公共及私有类型、compileall、静态和 diff 检查通过，私有 main/details 原生开启 50/72 passed。README、完整 TOML、.env.example、Docker 和 Unraid 中文说明已同步，Unraid 增加可选加密 HTTP 签名项；仓库不存在受管 dev/prod TOML，未创建替代或读取/修改真实配置。本步不 push、不部署、不改数据库，备份及并发内容保留；整体约 97%，下步接管 ASGI/进程宿主，随后关闭原生分发与最终三模式门槛。
+
+第八十七步由应用直接持有 FastAPI/Uvicorn。OneBotASGI 只转换 HTTP 原始字节、响应与 WebSocket 帧，认证、来源校验、连接保留、RPC 回声、重连和命令/通知处理继续使用既有权威实现。三个 HTTP POST 与三个反向 WS 入口路径保持不变，文本和二进制帧均进入同一协议接收层；正向 WS 启动成为统一资源钩子，不另建接收服务或平台业务编排。
+
+删除 NoneBotHostBinding、initialize_nonebot、Application.driver、旧驱动端点包装和 bot.driver 配置。唯一 ASGI lifespan 在启动成功、必需资源启动失败及上下文异常时均调用统一关闭流程，保持 scheduler、OneBot 连接、业务任务及逆序资源关闭顺序。进程仍固定 asyncio/h11/websockets-sansio，不引入可选原生加速器。Loguru 级别转换采用数字，保留 TRACE/SUCCESS 等配置值；没有为兼容旧驱动重新解析表达式。
+
+生产全仓 AST 门槛禁止 NoneBot 导入与驱动钩子注册；真实 bootstrap/贡献生成子进程使用导入阻断器，实际本机进程通过 WebSocket 完成普通及自身指令与 API 回执。新增 ASGI 测试通过真实 FastAPI 路由和 Starlette 状态机验证原始字节 HMAC、全部路径、文本/二进制帧、拒绝鉴权不进入业务及关闭后连接/任务清理。失败用例中原断言仍要求 nonebot2[httpx]，已改为核验应用直接声明的协议依赖，未放宽鉴权、命令或副作用断言。
+
+README、架构、运维和 Docker 说明同步移除当前宿主的旧描述；示例删除 bot.driver。旧 TOML 字段按既有未知字段策略警告并忽略，不保留兼容执行入口。host/port、连接路径、官方凭据和 OneBot 鉴权变量不变；Unraid 没有 DRIVER 项，不新增部署变量，不读写生产配置/数据库，不推送或部署。原生载体仍间接安装框架，独立原生分发与最终三模式复验保持未完成，不能据此宣称完整安装依赖已移除。
+
+第八十七步最终验证：公共全量 6439 passed / 9 skipped；真实接口及进程专项 16 passed，相关启动/接收/日志专项 48 passed，原生渲染专项 60 passed。9 项跳过是默认未启用的 2 项原生测试和缺少发布数据库的 7 项真实图片样例，不冒充已验；本步额外显式开启原生测试，其对应专项通过。私有 main/details 全量原生开启分别 50/72 passed，两套类型检查通过，公共 Ruff、生产与测试类型、compileall、静态仓库及 diff 检查通过。两个私有仓库只保留原有未跟踪内容，无新增修改或提交；接口未变，不无意义重写配对元数据。此完整步骤验证并提交后整体约 98%，原生独立分发与最终三模式验收仍未完成。
+
+第八十八步补齐三模式的资源开关边界。核查发现 bot.onebot.enabled=false 只关闭了业务回复，仍构造 OneBot 接收、注册 HTTP/WS 并可启动配置中的正向连接。新增回归在修复前失败（仍创建 adapter）；应用现在只在启用时构造并挂接该资源，统一 ASGI lifespan 不受影响。静默辅助观察仍要求 enabled=true，不改官方唯一出站选择、身份关联、群权限和推送策略；无新配置或变量。
+
+三个真实 bootstrap 子进程在禁止网络及 NoneBot 导入下验证 OneBot 单独、官方单独和双平台：资源有无、六个端点、官方资源、启动钩子及出站选择均符合配置。注册开关测试还配置了正向地址并验证关闭时根本不构造/启动该传输，安装两次不重复挂接。相关模式/生命周期/官方业务专项 134 passed，三模式 bootstrap 与注册专项 7 passed；公共全量 6443 passed / 9 skipped，Ruff、公共生产/测试类型、compileall、静态仓库和 diff 检查通过。相同业务扩展接口不变，不重排私有分支或覆盖未跟踪内容。本步不推送、不部署，整体保持 98%；原生独立分发、发布数据真实图片样例及最终跨仓配对收口仍保持未完成。
+
+原生分发审查补充：已从锁文件固定 URL 获取 0.1.0rc5 源码归档，在 E 盘核验 SHA256=5c9fc3ed1d1cbf95711006761d19e7a1dc0d0e8b7989c2e806a2bff3aeff7b17。源码中 core C++ 与 Python 插件可分离，但独立构建还依赖 xmake、litehtml、Pango/Cairo 和多种图片解码库；本机 PATH 未发现 xmake/CMake/cl/ninja。尚未复制整套上游、安装编译器、重建或更换原生二进制，不能把源码审查当成独立分发已完成。
+
 ## NoneBot 移除评估
 
 结论：不把保留 NoneBot/matcher 作为设计条件。可以移除，但不能只替换 WebSocket 接收函数就宣称完成。

@@ -354,7 +354,6 @@ class BotConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     environment: str = "prod"
-    driver: str = "~fastapi+~httpx"
     host: str = "0.0.0.0"  # nosec B104
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
@@ -370,7 +369,7 @@ class BotConfig(BaseModel):
     )
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
-    @field_validator("environment", "driver", "host")
+    @field_validator("environment", "host")
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
         normalized = value.strip()

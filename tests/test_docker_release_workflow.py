@@ -411,7 +411,8 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
     assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
-    assert "import nonebot, qqbot_agent_sdk, seerapi_models" in smoke["run"]
+    assert "sys.modules['nonebot'] = None" in smoke["run"]
+    assert "import fastapi, uvicorn, qqbot_agent_sdk, seerapi_models" in smoke["run"]
     assert "QQOfficialRuntime" in smoke["run"]
 
 

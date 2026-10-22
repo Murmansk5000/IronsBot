@@ -10,9 +10,8 @@ every migration must be a small, independently verifiable change that
 preserves current OneBot behaviour unless an explicit product decision says
 otherwise.
 
-The current production shape is NoneBot2 + OneBot v11 + NapCat, usually in
-Docker/Unraid. The long-term target is to support three deployment shapes with
-one business core:
+The current host is application-owned FastAPI/Uvicorn, usually in Docker/Unraid.
+It supports three deployment shapes with one business core:
 
 1. OneBot only;
 2. QQ Official Bot only; and
@@ -20,7 +19,7 @@ one business core:
 
 QQ Official Bot now has a deliberately small production transport for passive
 group/C2C commands. It uses Tencent's `qqbot-agent-sdk` as an application-owned
-resource alongside, but not inside, the NoneBot OneBot host. Both transports
+resource alongside the application-owned OneBot transport. Both transports
 share opaque platform identities, business services, and the platform-neutral
 outbound message model. This first slice is not permission to copy OneBot
 plugins or to pretend unsupported identity and proactive-delivery capabilities
@@ -59,6 +58,14 @@ OneBot HTTP action delivery uses `HttpxOneBotExchange` over the root-owned
 `HttpClients.origin`, not a NoneBot driver HTTP session. The shared OneBot HTTP
 protocol still owns timeout and receipt interpretation; the transport only maps
 HTTPX I/O and known network failures. It borrows, never closes, the client.
+
+OneBot endpoint, action deadline and nickname settings are owned by the typed
+`bot.onebot` model and application loader. Transport construction receives that
+model and the access token explicitly; it never reads driver configuration or
+SDK config aliases. Canonical deployment variables remain available as parsed,
+validated overrides; the HTTP signature secret is environment-only. The OneBot
+SDK is a development dependency for historical test fixtures, not a runtime
+dependency or plugin-loading manifest.
 
 Extension help visibility accepts the shared `CommandContext` and uses the same
 `feature_is_visible` policy as the command catalog. Composition must not narrow
@@ -226,8 +233,11 @@ handshakes. Forward connections use `websocket_client.open_onebot_socket` over
 the existing websockets library, not a framework WebSocket client mixin. The
 connector only owns I/O and bounded open/close; `OneBotForwardClient` remains
 the sole handshake/reconnect/session owner. HTTP and WebSocket protocol paths
-are independent, but configuration parsing, endpoint hosting and the ASGI host
-still depend on the framework; this is not a claim of complete NoneBot removal.
+are hosted by `OneBotASGI` on FastAPI. The process runs Uvicorn directly, using
+the same HTTP and reverse-WebSocket paths, authentication and action sessions.
+FastAPI lifespan invokes the sole application lifecycle, including cleanup after
+failed startup. No production import requires NoneBot. The native rendering
+wheel still declares it transitively; independent binary packaging remains open.
 The composition root constructs and retains `Application.onebot_transport`
 directly, not through the framework's global adapter registry. Its shutdown is
 an application lifecycle hook, before owned-task cancellation and shared-resource
@@ -372,14 +382,13 @@ Remaining native reply-format test helpers and framework resource ownership
 still require cleanup.
 `ApplicationLifecycle` and `TaskOwner` do not import or hold a NoneBot driver,
 native bot type or logger. They execute explicit contribution/resource hooks,
-scheduler ownership and task draining directly. The sole native host binding is
-`integrations.nonebot_host.NoneBotHostBinding`, constructed by the
-application after configuration; it only installs startup/shutdown hooks.
+scheduler ownership and task draining directly. `app.host.application_lifespan`
+binds startup and shutdown to FastAPI; the former NoneBot host binding is deleted.
 OneBot and QQ Official publish through the same `BotConnectionObserver` port,
 without driver Bot callbacks. It does not duplicate resource start/stop logic.
 Independent execution is tested in a process that rejects every NoneBot import;
-the complete application still uses the native ASGI/configuration host; plugin
-composition and litehtml Python/font startup have already been made explicit.
+bootstrap and process tests also exercise the application-owned ASGI host;
+plugin composition and litehtml Python/font startup are explicit.
 OneBot routing and notice-source enrichment use one application-owned connection
 directory rather than NoneBot's global bot registry. The transport
 publishes a connection before business connect hooks, removes only that exact
@@ -973,9 +982,9 @@ both, or neither; an adapter must not emulate an unavailable action by silently
 falling back to a OneBot-only operation.
 
 QQ Official Bot uses Tencent's `qqbot-agent-sdk`; it is not a NoneBot adapter.
-NoneBot owns only the OneBot/NapCat transport. The application composition root
+The application owns the OneBot/NapCat transport. Its composition root
 starts and stops each official AppID as an independent SDK resource alongside
-the NoneBot host. Official-specific protocol and asset code belongs in
+the FastAPI host. Official-specific protocol and asset code belongs in
 `integrations.qq_official`. New commands must first expose a platform-neutral
 service operation and outbound result.
 
@@ -1114,13 +1123,13 @@ The first verified migrations are `ironsbot.plugins.onebot.about`,
 `ironsbot.plugins.onebot.headless_seer_notice`,
 `ironsbot.plugins.onebot.headless_seer_runtime`,
 and the messaging `blacklist`, `meeting`,
-`red_packet`, and `onebot.scheduled_restart` modules: the manifest loads them
-directly, and each package supplies its own metadata and contribution. Seer rank
+`red_packet`, and `onebot.scheduled_restart` modules: composition calls their
+factories explicitly, and each supplies a typed contribution. Seer rank
 refresh job registration is application service code in
 `services.seer.rank_refresh_scheduler`, not a OneBot event adapter. The standard
-manifest loads the HTML rendering integration; `nonebot_plugin_htmlkit`,
-`nonebot_plugin_localstore`, and `nonebot_plugin_saa` still have framework
-resource ownership pending migration. Scheduling is not a NoneBot plugin:
+composition owns the HTML renderer and font startup; no framework plugin owns
+these resources. Only the pinned native binary carrier retains a transitive
+framework install dependency. Scheduling is not a NoneBot plugin:
 composition creates a private APScheduler instance for each application.
 ApplicationLifecycle starts it after resource and service registration, then
 stops it and awaits running jobs before service shutdown, owned-task draining
@@ -1130,9 +1139,8 @@ same owned-worker cancellation contract used by SQLite, including keyword
 `func` registrations. No global scheduler binding or old plugin import remains.
 `fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,
 `meeting`, `rank_help`, and `onebot.team_resource` also own the command contracts
-for the matchers they install.
-Every subsequent private extension follows the same manifest and narrow-context
-pattern.
+for the shared router. Every subsequent private extension follows the explicit
+factory and narrow-port pattern.
 
 The target system must not retain an adapter merely to keep the old registry
 alive. A phase may use a short-lived migration tool, but ordinary runtime must
@@ -1534,15 +1542,14 @@ creates a process-wide infrastructure client.
 ## Application Composition
 
 `app.composition.build_application(settings)` is the only composition root.
-Standard NoneBot TOML selects and loads the configured plugin profile first;
-scoped manifest-loaded built-in contributions are then passed to composition.
-The temporary private-extension adapter may add configured external
-contributions, but it is not a second discovery path. Composition:
+`app.plugin_composition` calls the built-in factories selected by the plugin
+profile. Configured private entry points receive typed extension ports and
+return contributions without import-time registration. Composition:
 
 1. creates infrastructure resources;
 2. creates repositories and service objects with explicit constructor
    dependencies;
-3. validates manifest contributions and freezes the command catalog;
+3. validates factory contributions and freezes the command catalog;
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
@@ -1606,7 +1613,7 @@ module-level values.
 
 `app.lifecycle.ApplicationLifecycle` is the only lifecycle owner.
 
-Bootstrap registers exactly these driver hooks:
+The ASGI lifespan and transport observers invoke these application hooks:
 
 - `startup`: start resources, migrate stores, start configured services,
   install scheduled jobs, and deliver the startup notice after a selected QQ
@@ -1629,14 +1636,14 @@ a name, an owner, cancellation on shutdown, and observable failure logging.
 ## Private Extension Loading
 
 `PluginContribution` is the current plugin-local runtime contribution carrier.
-Every built-in plugin is a top-level manifest-loaded package and submits its
-own contribution during the scoped loading window. `PluginContribution` is not
+Every built-in plugin returns its contribution through an explicit factory.
+`PluginContribution` is not
 the semantic authority for commands, permissions, help layout, or lifecycle
 policy; it carries declared command
-descriptors and hooks to their respective owners. The public bootstrap validates
-the private package's standard NoneBot TOML and invokes `nonebot.load_from_toml`
-inside the same scoped install window as built-in plugins. It is not a plugin
-registry, command directory, or second discovery mechanism. Do not add built-in
+descriptors and hooks to their respective owners. The public bootstrap resolves
+only configured `ironsbot.extensions` Python entry points, validates factories,
+and passes `ExtensionServices`. Importing the package registers nothing.
+This is not a command directory or second semantic authority. Do not add built-in
 feature ownership, command metadata, help metadata, lifecycle concepts, or
 plugin families to this loading boundary.
 
@@ -1655,12 +1662,12 @@ class PluginContribution:
 The application no longer invokes opaque native installation callbacks or
 constructs a matcher factory. The unused install callback fields have been
 deleted after public and private tests moved to command and hook contracts.
-Remaining test-only native query APIs are an unfinished cleanup gate, not a
-supported second installation path. Contributions declare commands and hooks.
+The old test-only native query APIs are also deleted. Contributions declare
+commands and hooks.
 
-The standard manifests discover built-in and private packages directly. Private
-modules can append only configured external contributions during the scoped
-loading window. The package loader must not become an additional authority over
+Built-in factories and configured private entry points return contributions
+without a scoped global loading window. The package loader must not become an
+additional authority over
 the target contracts:
 
 - plugin installation order;
@@ -1668,12 +1675,11 @@ the target contracts:
 - legacy help grouping, ordering, and visibility;
 - legacy lifecycle contributions.
 
-Those are not permissions to add a second source of truth. The private
-extension migration must move each responsibility to the target authority in
-the ownership table and then delete this adapter.
+Those are not permissions to add a second source of truth. Each responsibility
+belongs to the target authority in the ownership table.
 
-The standard NoneBot TOML manifest is the sole built-in plugin discovery
-source. A configuration value may select a named, declared manifest profile
+The explicit built-in directory is the sole built-in composition source.
+A configuration value may select a named, declared profile
 such as `full` or `core`, but it cannot list modules itself. There is no
 parallel application manifest, help layout map, feature-to-module map, runtime
 setup string list, or reflective `module:function` lookup.
@@ -1682,8 +1688,7 @@ Production bootstrap installs no message/notice matchers or native event
 preprocessors. Commands enter the shared command ingress after protocol
 conversion; passive notices enter their existing shared services. Cooldown,
 claiming and completion remain owned by public execution, not registration.
-Native factories and event helpers still used by legacy private test consumers
-are transitional and must not be used for new registrations.
+Private main/details tests use the same shared ingress and no legacy matcher API.
 
 ## Message Input Routing
 

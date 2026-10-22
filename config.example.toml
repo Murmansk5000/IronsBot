@@ -46,10 +46,6 @@ use_default_for_unconfigured_targets = false
 # EN: Runtime environment label.
 # ZH: 运行环境标签。
 environment = "prod"
-# Default: "~fastapi+~httpx"
-# EN: NoneBot driver expression.
-# ZH: NoneBot 驱动器表达式。
-driver = "~fastapi+~httpx"
 # Default: "0.0.0.0"
 # EN: HTTP/WebSocket listen address.
 # ZH: HTTP/WebSocket 监听地址。
@@ -99,6 +95,20 @@ send_messages = true
 # ZH: 由普通命令回复自动学习官方群 OpenID，并由 NapCat 读取回复所引用的原消息发送者，
 #     静默关联群 member_openid 与 QQ 号；候选数字群来自 identities.groups。
 identity_verification = false
+# Default: 30.0 seconds. One deadline for OneBot HTTP actions and WS receipts.
+# OneBot HTTP action 与 WebSocket 回执超时；必须大于零且为有限数值。
+api_timeout = 30.0
+# Optional forward WS endpoints; reverse WS remains available at /onebot/v11/ws.
+# 可选的正向 WebSocket 地址（ws/wss）；留空只使用既有反向接入。
+ws_urls = []
+# Numeric OneBot account -> HTTP API root, e.g. { "123456789" = "http://napcat:3000" }.
+# 数字机器人账号 -> HTTP API 根地址；HTTP 上报模式需配置实际发送地址。
+api_roots = {}
+# Optional OneBot nickname addressing; does not grant AI or command permissions.
+# 可选的 OneBot 昵称寻址；不会额外开放 AI 或命令权限。
+nicknames = []
+# HTTP event signature secret is environment-only: ONEBOT_SECRET. Never put it here.
+# HTTP 上报签名密钥仅使用 ONEBOT_SECRET 环境变量，不写入 TOML。
 
 [bot.onebot.self_commands]
 # EN: Optional own-account group commands; requires NapCat reportSelfMessage.

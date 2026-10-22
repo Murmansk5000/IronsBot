@@ -51,7 +51,6 @@ DRIVER_HOOKS = {
     "on_bot_disconnect",
 }
 LIFECYCLE_PATH = PACKAGE / "app" / "lifecycle.py"
-NATIVE_LIFECYCLE_PATH = PACKAGE / "integrations" / "nonebot_host.py"
 SQLITE_PATH = PACKAGE / "integrations" / "storage" / "sqlite.py"
 SCHEDULER_PATH = PACKAGE / "integrations" / "scheduler" / "facade.py"
 SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "onebot" / "scheduler" / "__init__.py"
@@ -249,10 +248,10 @@ def test_seer_data_does_not_hide_publication_failures_with_broad_catches() -> No
     assert sorted(handlers) == list(ALLOWED_SEER_DATA_BROAD_EXCEPTION_HANDLERS)
 
 
-def test_core_does_not_import_the_nonebot_framework() -> None:
+def test_production_does_not_import_the_nonebot_framework() -> None:
     offenders = [
         f"{_relative(path)} imports {module}"
-        for path in _files(PACKAGE / "core")
+        for path in _files()
         for module in _imports(path)
         if module.startswith("nonebot")
     ]
@@ -278,12 +277,7 @@ def test_onebot_protocol_does_not_import_native_events_bots_or_adapters() -> Non
         for node in ast.walk(_tree(path))
         if isinstance(node, ast.ImportFrom)
         and (node.module or "").startswith("nonebot.adapters")
-        and not (
-            node.module == "nonebot.adapters.onebot.v11.config"
-            and {alias.name for alias in node.names} == {"Config"}
-        )
     ]
-    # The remaining native parser belongs to the configuration/host migration.
     assert offenders == []
 
 
@@ -360,21 +354,13 @@ def test_production_has_no_star_imports_or_historical_modules() -> None:
     assert [*star_imports, *historical, *explicit_exports] == []
 
 
-def test_only_native_binding_registers_driver_hooks() -> None:
+def test_production_does_not_register_framework_driver_hooks() -> None:
     offenders = [
         f"{_relative(path)}:{node.lineno}"
         for path, node in _calls()
-        if path != NATIVE_LIFECYCLE_PATH and _call_name(node) in DRIVER_HOOKS
+        if _call_name(node) in DRIVER_HOOKS
     ]
     assert offenders == []
-    registrations = [
-        name
-        for path, node in _calls()
-        if path == NATIVE_LIFECYCLE_PATH
-        and (name := _call_name(node)) is not None
-        and name in DRIVER_HOOKS
-    ]
-    assert sorted(registrations) == ["on_shutdown", "on_startup"]
 
 
 def test_only_task_owner_creates_background_tasks() -> None:
