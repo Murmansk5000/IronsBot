@@ -4,7 +4,7 @@ import asyncio
 import os
 from base64 import b64decode
 from contextlib import contextmanager
-from dataclasses import asdict, replace
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from io import BytesIO
@@ -624,19 +624,15 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
                         PublishedPlayerLineupEntryResolver,
                     )
 
-                    models = import_module("ironsbot_private_lineup.models")
                     adapter = import_module("ironsbot_private_lineup.renderer_adapter")
                     with sessions.open() as inputs:
                         slots = tuple(
                             PlayerLineupSlot(id_, 100, 1)
                             for id_ in (3549, 3407, 70, 4554, 5000, 4903)
                         )
-                        entries = tuple(
-                            models.PlayerLineupEntry(**asdict(entry))
-                            for entry in PublishedPlayerLineupEntryResolver(
-                                inputs.data
-                            ).resolve(slots)
-                        )
+                        entries = PublishedPlayerLineupEntryResolver(
+                            inputs.data
+                        ).resolve(slots)
                         result = await adapter.render_player_lineup(
                             PlayerLineupRenderServices(
                                 inputs.images, inputs.cache, coordinator.render
