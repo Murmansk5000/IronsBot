@@ -49,7 +49,12 @@ def install_command_ingress(
             and frame.context.message.actor == onebot_actor_ref(event.user_id)
             and frame.context.message.conversation
             == onebot_conversation_ref(
-                event.user_id, group_id=getattr(event, "group_id", None)
+                event.user_id,
+                group_id=(
+                    getattr(event, "group_id", None)
+                    if event.message_type == "group"
+                    else None
+                ),
             )
         )
 

@@ -14,6 +14,7 @@ from nonebot.adapters.onebot.v11.exception import (
     NetworkError,
 )
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.core.outbound import DeliveryFailureKind
 from ironsbot.integrations.onebot.errors import (
     OneBotActionError,
@@ -54,7 +55,7 @@ async def test_native_api_normalizes_only_structured_protocol_errors(
         driver = nonebot.get_driver()
     api = AsyncMock(side_effect=source)
     monkeypatch.setattr(Adapter, "_call_api", api)
-    adapter = SelfCommandAdapter(driver)
+    adapter = SelfCommandAdapter(driver, spawn=TaskOwner().create)
     bot = Bot(adapter, "1")
     with pytest.raises(expected) as caught:
         await adapter._call_api(bot, "send_group_msg", group_id=456, message=[])
@@ -87,7 +88,7 @@ async def test_native_api_does_not_reclassify_unknown_errors_or_cancellation(
         nonebot.init(_env_file=None)
         driver = nonebot.get_driver()
     monkeypatch.setattr(Adapter, "_call_api", AsyncMock(side_effect=source))
-    adapter = SelfCommandAdapter(driver)
+    adapter = SelfCommandAdapter(driver, spawn=TaskOwner().create)
     with pytest.raises(type(source)) as caught:
         await adapter._call_api(Bot(adapter, "1"), "send_group_msg")
     assert caught.value is source

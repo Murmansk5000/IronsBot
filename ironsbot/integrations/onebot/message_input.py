@@ -3,14 +3,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
-
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from ironsbot.integrations.onebot.message_facts import (
     OneBotMessageFacts,
     decode_onebot_message,
 )
+from ironsbot.integrations.onebot.message_segments import onebot_message_text
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -40,42 +40,54 @@ def message_input_context(event: Event) -> MessageInputContext:
     segments deliberately never participate here.
     """
 
+    return decode_onebot_message(message_input_facts(event))
+
+
+def message_input_facts(event: Event) -> OneBotMessageFacts:
     to_me = getattr(event, "is_tome", False)
-    try:
-        text = event.get_plaintext()
-    except Exception:  # noqa: BLE001
-        text = ""
-    group_id = getattr(event, "group_id", None)
+    segments = _segments(getattr(event, "message", None))
+    original_segments = _segments(getattr(event, "original_message", None))
+    text = onebot_message_text(segments)
+    group_id = (
+        getattr(event, "group_id", None)
+        if getattr(event, "message_type", None) == "group"
+        else None
+    )
     sender = getattr(event, "sender", None)
     role = getattr(sender, "role", None)
     reply = getattr(event, "reply", None)
     reply_id = getattr(reply, "message_id", None)
     if reply is not None and reply_id is None:
         raise OneBotMessageInputError.missing_reply_message_id()
-    return decode_onebot_message(
-        OneBotMessageFacts(
-            account_id=str(getattr(event, "self_id", "") or "").strip(),
-            user_id=_event_user_id(event),
-            message_id=_message_id(event),
-            text=text,
-            segments=_segments(getattr(event, "message", None)),
-            original_segments=_segments(getattr(event, "original_message", None)),
-            group_id=str(group_id) if group_id is not None else None,
-            group_role=str(role) if group_id is not None and role is not None else None,
-            reply_to_id=str(reply_id) if reply_id is not None else None,
-            raw_message=str(getattr(event, "raw_message", "") or ""),
-            addressed_to_bot=isinstance(event, GroupMessageEvent)
-            and bool(to_me() if callable(to_me) else to_me),
-            actor_display_name=str(
-                getattr(sender, "nickname", "") or getattr(sender, "card", "") or ""
-            ),
-        )
+    reply_sender = getattr(getattr(reply, "sender", None), "user_id", None)
+    return OneBotMessageFacts(
+        account_id=str(getattr(event, "self_id", "") or "").strip(),
+        user_id=_event_user_id(event),
+        message_id=_message_id(event),
+        text=text,
+        segments=segments,
+        original_segments=original_segments,
+        group_id=str(group_id) if group_id is not None else None,
+        group_role=str(role) if group_id is not None and role is not None else None,
+        reply_to_id=str(reply_id) if reply_id is not None else None,
+        reply_sender_id=str(reply_sender) if reply_sender is not None else None,
+        raw_message=str(getattr(event, "raw_message", "") or ""),
+        addressed_to_bot=group_id is not None
+        and bool(to_me() if callable(to_me) else to_me),
+        actor_display_name=str(
+            getattr(sender, "nickname", "") or getattr(sender, "card", "") or ""
+        ),
     )
 
 
 def _segments(message: Any) -> tuple[OneBotSegment, ...]:
     return tuple(
-        {"type": getattr(segment, "type", ""), "data": getattr(segment, "data", {})}
+        {"type": segment["type"], "data": segment["data"]}
+        if isinstance(segment, Mapping)
+        else {
+            "type": getattr(segment, "type", ""),
+            "data": getattr(segment, "data", {}),
+        }
         for segment in (message or ())
     )
 
