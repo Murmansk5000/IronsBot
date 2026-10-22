@@ -9,6 +9,11 @@ from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import now
 from ironsbot.services.seer.observation_cache import CachedObservation
 from ironsbot.services.seer.rank_models import RankLookupCost
+from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    rank_conflict_retry_used,
+)
+from ironsbot.services.seer.rank_visibility import uses_filtered_prefix
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessGame
@@ -36,9 +41,9 @@ async def find_confirmed_rank(  # noqa: PLR0913
     identity = (user_id, key, sub_key)
     ttl = service.config.player_lookup.recent_cache_max_age_seconds
     cached = service._confirmed.get(identity, ttl)
-    if cached is not None and not service.exclusion_policy.excludes_from_public_rank(
-        rank_key,
-        user_id,
+    if cached is not None and (
+        uses_filtered_prefix(rank_key)
+        or not service.exclusion_policy.excludes_from_public_rank(rank_key, user_id)
     ):
         result = deepcopy(cached.value)
         score_matches = target_score is None or result.score == target_score
@@ -62,17 +67,33 @@ async def find_confirmed_rank(  # noqa: PLR0913
         service._confirmed.discard(identity)
 
     async def load() -> CachedObservation:
-        result = await service._find_rank_uncached(
-            game,
-            user_id=user_id,
-            title=title,
-            score_name=score_name,
-            key=key,
-            sub_key=sub_key,
-            target_score=target_score,
-            search_limit=search_limit,
-            anchor_only=anchor_only,
-        )
+        async def attempt() -> RankLookupResult:
+            return await service._find_rank_uncached(
+                game,
+                user_id=user_id,
+                title=title,
+                score_name=score_name,
+                key=key,
+                sub_key=sub_key,
+                target_score=target_score,
+                search_limit=search_limit,
+                anchor_only=anchor_only,
+            )
+
+        result = await attempt()
+        if (
+            result.failure == str(RankPageConflictError())
+            and not result.cost.conflict_retries
+        ):
+            logger.warning(
+                "player rank conflict retry: key=%s sub_key=%s", key, sub_key
+            )
+            token = rank_conflict_retry_used.set(True)
+            try:
+                result = await attempt()
+                result.cost.conflict_retries = 1
+            finally:
+                rank_conflict_retry_used.reset(token)
         if (
             result.failure is None
             and not result.cost.restricted_miss

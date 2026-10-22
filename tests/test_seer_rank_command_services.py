@@ -189,7 +189,10 @@ async def test_prepared_local_rank_keeps_rendered_rank_player_mapping(
 
 
 @pytest.mark.asyncio
-async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> None:
+@pytest.mark.parametrize("listed_rank", [11, 13])
+async def test_prepared_global_and_score_ranks_keep_only_rendered_players(
+    listed_rank: int,
+) -> None:
     missing_score = 99
     spec = GlobalRankSpec("成就点数榜", key=1, sub_key=2, unit="点")
 
@@ -210,6 +213,7 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> N
                 items=[SimpleNamespace(id=700011, nick="Alice", score=100)],
                 fetched_at=None,
                 incomplete_reason=None,
+                ranks=[listed_rank],
             )
 
         @staticmethod
@@ -311,7 +315,10 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> N
         conversation=None,
     )
 
-    assert [(item.rank, item.player_id) for item in listed.selections] == [(11, 700011)]
+    assert [(item.rank, item.player_id) for item in listed.selections] == [
+        (listed_rank, 700011)
+    ]
+    assert f"{listed_rank}. Alice" in listed.message
     assert [(item.rank, item.player_id) for item in scored.selections] == [
         (21, 700021),
         (22, 700022),
@@ -427,9 +434,9 @@ async def test_rank_batch_reports_progress_before_starting_headless_request() ->
             return False
 
         @staticmethod
-        async def fetch_range(*_args: object, **kwargs: object) -> list[object]:
+        async def fetch_visible_range_result(*_args: object, **kwargs: object) -> object:
             events.append(f"fetch:{kwargs['count']}")
-            return [object()] * 20
+            return SimpleNamespace(items=[object()] * 20)
 
     class Operations:
         @staticmethod

@@ -38,6 +38,12 @@ class FakeRankCache:
     def miss(self, **_kwargs: object) -> None:
         return None
 
+    def score_indexes(self, **_kwargs: object) -> list[int]:
+        return []
+
+    def summary(self, **_kwargs: object) -> list[object]:
+        return []
+
     def save(
         self,
         *,
@@ -126,7 +132,8 @@ def test_beiming_rank_filters_internal_accounts_with_ascending_times() -> None:
             count=2,
         )
     )
-    assert [item.id for item in visible.items] == [700001, 700002]
+    assert [item.id for item in visible.items] == [700001]
+    assert visible.ranks == [2]
 
     player = asyncio.run(
         rank.find_rank(
@@ -139,7 +146,7 @@ def test_beiming_rank_filters_internal_accounts_with_ascending_times() -> None:
             search_limit=10,
         )
     )
-    assert (player.rank, player.score, player.failure) == (2, 1_790_233_077, None)
+    assert (player.rank, player.score, player.failure) == (3, 1_790_233_077, None)
 
 
 def test_beiming_player_lookup_scans_beyond_thousand() -> None:
@@ -192,8 +199,8 @@ def test_pet_kind_score_lookup_filters_only_that_rank() -> None:
     assert (result.start_rank, result.end_rank, result.total_count) == (1, 1, 1)
 
 
-def test_excluded_player_is_marked_without_querying_rank_pages() -> None:
-    rank = _rank([])
+def test_collection_exclusion_requires_confirming_raw_position() -> None:
+    rank = _rank([RankEntry(960649568, "异常精灵图鉴", PET_KIND_SCORE)])
 
     result = asyncio.run(
         rank.find_pet_kind_rank(

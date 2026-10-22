@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from collections.abc import Iterable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
+
+rank_conflict_retry_used: ContextVar[bool] = ContextVar(
+    "rank_conflict_retry_used", default=False
+)
 
 
 class RankPageConflictError(ValueError):
     def __init__(self) -> None:
+        self.page_start: int | None = None
         super().__init__("榜单在查询期间发生变化，暂时无法确认排名。")
 
 
