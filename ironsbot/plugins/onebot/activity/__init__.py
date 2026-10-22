@@ -4,29 +4,13 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.operations.scheduler import Scheduler
-
-__plugin_meta__ = PluginMetadata(
-    name="活动结束提醒",
-    description="查询活动结束时间，并自动提醒即将结束的活动。",
-    usage="发送“快结束活动”查看即将结束的活动。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 
 def plugin_contribution(
@@ -52,14 +36,5 @@ def plugin_contribution(
                     partial(service.register_jobs, scheduler),
                 ),
             ),
-        ),
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(
-            service=context.resources.activity, scheduler=context.scheduler
         ),
     )

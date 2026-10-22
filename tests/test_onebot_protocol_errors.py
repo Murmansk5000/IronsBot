@@ -7,19 +7,17 @@ import sys
 from unittest.mock import AsyncMock, Mock
 
 import httpx
-import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.drivers import HTTPClientMixin, Response
+from httpx import Response
 
-from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.core.outbound import DeliveryFailureKind
 from ironsbot.integrations.onebot.errors import (
     OneBotActionError,
     OneBotTransportError,
 )
+from ironsbot.integrations.onebot.http_api import OneBotHttpApi
+from ironsbot.integrations.onebot.httpx_exchange import HttpxOneBotExchange
 from ironsbot.integrations.onebot.receipts import onebot_send_failure
-from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 
 
 @pytest.mark.asyncio
@@ -52,42 +50,35 @@ from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
     ],
 )
 async def test_http_api_normalizes_only_structured_protocol_errors(
-    monkeypatch: pytest.MonkeyPatch,
     source: Response | Exception | None,
     expected: type[Exception],
     retcode: int | None,
     *,
     not_sent: bool,
 ) -> None:
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init(_env_file=None)
-        driver = nonebot.get_driver()
     api = (
         AsyncMock(side_effect=source)
         if isinstance(source, Exception)
         else AsyncMock(return_value=source)
     )
-    adapter = SelfCommandAdapter(
-        driver, spawn=TaskOwner().create, received=AsyncMock(), notices=AsyncMock()
+    client = Mock(spec=httpx.AsyncClient, request=api)
+    transport = OneBotHttpApi(
+        api_roots={"1": "http://test/"} if source is not None else {},
+        access_token=None,
+        timeout=1,
+        request=HttpxOneBotExchange(client),
     )
-    adapter.http_api.api_roots["1"] = "http://test/"
-    monkeypatch.setattr(
-        adapter,
-        "driver",
-        Mock(spec=HTTPClientMixin, request=api) if source is not None else None,
-    )
-    bot = Bot(adapter, "1")
     with pytest.raises(expected) as caught:
-        await adapter._call_api(bot, "send_group_msg", group_id=456, message=[])
+        await transport.call("1", "send_group_msg", group_id=456, message=[])
     if source is None:
         api.assert_not_awaited()
     else:
         api.assert_awaited_once()
-        request = api.call_args.args[0]
-        assert str(request.url) == "http://test/send_group_msg"
-        assert json.loads(request.content) == {"group_id": 456, "message": []}
+        assert api.call_args.args == ("POST", "http://test/send_group_msg")
+        assert json.loads(api.call_args.kwargs["content"]) == {
+            "group_id": 456,
+            "message": [],
+        }
     error = caught.value
     assert "private-detail" not in str(error)
     assert "private-detail" not in repr(error)
@@ -108,24 +99,18 @@ async def test_http_api_normalizes_only_structured_protocol_errors(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", [RuntimeError("offline"), asyncio.CancelledError()])
 async def test_http_api_does_not_reclassify_unknown_errors_or_cancellation(
-    monkeypatch: pytest.MonkeyPatch, source: BaseException
+    source: BaseException,
 ) -> None:
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init(_env_file=None)
-        driver = nonebot.get_driver()
-    adapter = SelfCommandAdapter(
-        driver, spawn=TaskOwner().create, received=AsyncMock(), notices=AsyncMock()
-    )
-    adapter.http_api.api_roots["1"] = "http://test/"
-    monkeypatch.setattr(
-        adapter,
-        "driver",
-        Mock(spec=HTTPClientMixin, request=AsyncMock(side_effect=source)),
+    transport = OneBotHttpApi(
+        api_roots={"1": "http://test/"},
+        access_token=None,
+        timeout=1,
+        request=HttpxOneBotExchange(
+            Mock(spec=httpx.AsyncClient, request=AsyncMock(side_effect=source))
+        ),
     )
     with pytest.raises(type(source)) as caught:
-        await adapter._call_api(Bot(adapter, "1"), "send_group_msg")
+        await transport.call("1", "send_group_msg")
     assert caught.value is source
 
 

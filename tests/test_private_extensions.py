@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import io
+import sys
 import tarfile
 from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING, cast
 
-import nonebot
 import pytest
 
 from ironsbot.app import private_extensions
@@ -20,25 +22,27 @@ from ironsbot.config.models.operations import (
     DockerUpdateConfig,
     PrivateExtensionsConfig,
 )
-from ironsbot.core.plugin_install import scoped_plugin_install_context
+from ironsbot.core.schedule_rendering import ScheduleRendererRegistry
+from ironsbot.extensions.registration import ExtensionServices
 from ironsbot.services.operations.docker_models import (
     DockerImageArchive,
     DockerImageArchiveRequest,
     DockerImageInfo,
 )
 
+if TYPE_CHECKING:
+    from ironsbot.extensions.contracts import PlayerLineupExtensionContext
+
 
 def _package_archive(
     *,
     module: str = "ironsbot_private_lineup.plugin",
     include_source: bool = True,
-    plugin_dirs: tuple[str, ...] = (),
+    factory: str = "plugin_contribution",
 ) -> bytes:
     manifest = (
-        "[tool.nonebot]\n"
-        f"plugin_dirs = {list(plugin_dirs)!r}\n\n"
-        "[tool.nonebot.plugins]\n"
-        f'"@private" = ["{module}"]\n'
+        '[project.entry-points."ironsbot.extensions"]\n'
+        f'lineup = "{module}:{factory}"\n'
     ).encode()
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode="w") as archive:
@@ -55,18 +59,12 @@ def _package_archive(
                 archive,
                 f"{PRIVATE_EXTENSIONS_ROOT}/{package_path}/{leaf}.py",
                 (
-                    b"from nonebot.plugin import PluginMetadata\n"
-                    b"from ironsbot.core.plugin_install import (\n"
-                    b"    PluginContribution, active_plugin_install_context\n"
-                    b")\n"
-                    b"__plugin_meta__ = PluginMetadata(\n"
-                    b"    name='Private test', description='test', usage='test'\n"
-                    b")\n"
-                    b"context = active_plugin_install_context()\n"
-                    b"if context is not None:\n"
-                    b"    context.contribute(\n"
-                    b"        __plugin_meta__, PluginContribution(id='private_test')\n"
-                    b"    )\n"
+                    b"from ironsbot.core.plugin_install import PluginContribution\n"
+                    b"received = None\n"
+                    b"def plugin_contribution(services):\n"
+                    b"    global received\n"
+                    b"    received = services\n"
+                    b"    return PluginContribution(id='private_test')\n"
                 ),
             )
     return result.getvalue()
@@ -96,16 +94,20 @@ class _Docker:
         )
 
 
-def test_install_private_extension_archive_writes_a_nonebot_manifest(
+def test_install_private_extension_archive_writes_factory_entry_points(
     tmp_path: Path,
 ) -> None:
     manifest = install_private_extension_archive(_package_archive(), tmp_path)
 
-    assert manifest.plugin_modules == ("ironsbot_private_lineup.plugin",)
+    assert tuple(entry.value for entry in manifest.entry_points) == (
+        "ironsbot_private_lineup.plugin:plugin_contribution",
+    )
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
-    assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
+    assert tuple(entry.value for entry in catalog.entry_points) == (
+        "ironsbot_private_lineup.plugin:plugin_contribution",
+    )
     assert (tmp_path / "current" / "pyproject.toml").is_file()
 
 
@@ -121,7 +123,9 @@ def test_invalid_new_archive_preserves_last_valid_package(tmp_path: Path) -> Non
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
-    assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
+    assert tuple(entry.value for entry in catalog.entry_points) == (
+        "ironsbot_private_lineup.plugin:plugin_contribution",
+    )
 
 
 def test_valid_new_archive_replaces_the_current_package(tmp_path: Path) -> None:
@@ -132,11 +136,15 @@ def test_valid_new_archive_replaces_the_current_package(tmp_path: Path) -> None:
         tmp_path,
     )
 
-    assert manifest.plugin_modules == ("ironsbot_private_replacement.plugin",)
+    assert tuple(entry.value for entry in manifest.entry_points) == (
+        "ironsbot_private_replacement.plugin:plugin_contribution",
+    )
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
-    assert catalog.plugin_modules == ("ironsbot_private_replacement.plugin",)
+    assert tuple(entry.value for entry in catalog.entry_points) == (
+        "ironsbot_private_replacement.plugin:plugin_contribution",
+    )
 
 
 @pytest.mark.parametrize("fail_backup", [False, True])
@@ -166,7 +174,9 @@ def test_directory_switch_failure_preserves_current_package(
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
-    assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
+    assert tuple(entry.value for entry in catalog.entry_points) == (
+        "ironsbot_private_lineup.plugin:plugin_contribution",
+    )
     assert not list(tmp_path.glob(".previous-*"))
 
 
@@ -245,10 +255,10 @@ def test_directory_move_has_bounded_permission_retries(
     assert len(waits) == len(attempts) - 1
 
 
-def test_private_manifest_rejects_plugin_directory_discovery(tmp_path: Path) -> None:
-    with pytest.raises(PrivateExtensionError, match="must not declare plugin_dirs"):
+def test_private_manifest_rejects_invalid_factory_reference(tmp_path: Path) -> None:
+    with pytest.raises(PrivateExtensionError, match="module:function"):
         install_private_extension_archive(
-            _package_archive(plugin_dirs=("plugins",)),
+            _package_archive(factory="plugin.invalid"),
             tmp_path,
         )
 
@@ -284,7 +294,9 @@ def test_installer_reuses_registry_credentials_and_preserves_old_package(
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
-    assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
+    assert tuple(entry.value for entry in catalog.entry_points) == (
+        "ironsbot_private_lineup.plugin:plugin_contribution",
+    )
 
 
 def test_disabled_private_extensions_do_not_load_a_cached_package(
@@ -296,11 +308,11 @@ def test_disabled_private_extensions_do_not_load_a_cached_package(
         PrivateExtensionsConfig(enabled=False, data_path=str(tmp_path))
     )
 
-    assert catalog.plugin_modules == ()
-    assert catalog.manifest_path is None
+    assert catalog.entry_points == ()
+    assert catalog.contributions(_services()) == ()
 
 
-def test_private_manifest_is_loaded_by_nonebot_inside_scoped_context(
+def test_private_factories_receive_explicit_services_without_native_loading(
     tmp_path: Path,
 ) -> None:
     install_private_extension_archive(
@@ -310,29 +322,85 @@ def test_private_manifest_is_loaded_by_nonebot_inside_scoped_context(
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
-    if not _nonebot_is_initialized():
-        nonebot.init()
-    manifest_path = catalog.manifest_path
-    assert manifest_path is not None
+    from importlib import import_module
 
-    with (
-        scoped_plugin_install_context(
-            settings=object(),  # type: ignore[arg-type]
-            resources=object(),  # type: ignore[arg-type]
-            scheduler=object(),  # type: ignore[arg-type]
-        ) as context,
-        catalog.plugin_import_path(),
-    ):
-        nonebot.load_from_toml(str(manifest_path))
-
-    assert tuple(contribution.id for contribution in context.contributions) == (
+    services = _services()
+    with catalog.plugin_import_path():
+        module = import_module("ironsbot_private_test_plugin.plugin")
+    assert module.received is None
+    contributions = catalog.contributions(services)
+    assert module.received is services
+    assert tuple(contribution.id for contribution in contributions) == (
         "private_test",
     )
 
 
-def _nonebot_is_initialized() -> bool:
-    try:
-        nonebot.get_driver()
-    except ValueError:
-        return False
-    return True
+def _services() -> ExtensionServices:
+    return ExtensionServices(
+        cast("PlayerLineupExtensionContext", object()), ScheduleRendererRegistry()
+    )
+
+
+def test_old_native_manifest_is_not_accepted(tmp_path: Path) -> None:
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as output:
+        _add_tar_file(
+            output,
+            f"{PRIVATE_EXTENSIONS_ROOT}/pyproject.toml",
+            b'[tool.nonebot.plugins]\n"@private" = ["ironsbot_private_test.plugin"]',
+        )
+    with pytest.raises(PrivateExtensionError, match="no project table"):
+        install_private_extension_archive(archive.getvalue(), tmp_path)
+    assert not (tmp_path / "current").exists()
+
+
+@pytest.mark.parametrize("factory", [42, lambda _: None])
+def test_invalid_factories_fail_before_application_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, factory: object
+) -> None:
+    module_name = "ironsbot_private_invalid.plugin"
+    install_private_extension_archive(_package_archive(module=module_name), tmp_path)
+    root = tmp_path / "current"
+    module = ModuleType(module_name)
+    module.__file__ = str(root / "ironsbot_private_invalid" / "plugin.py")
+    monkeypatch.setattr(module, "plugin_contribution", factory, raising=False)
+    monkeypatch.setitem(sys.modules, module_name, module)
+    catalog = PrivateExtensionCatalog.from_config(
+        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+    )
+    before = sys.path[:]
+    with pytest.raises(PrivateExtensionError, match=r"not callable|invalid data"):
+        catalog.contributions(_services())
+    assert sys.path == before
+
+
+def test_cached_module_from_another_package_root_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module_name = "ironsbot_private_foreign.plugin"
+    install_private_extension_archive(_package_archive(module=module_name), tmp_path)
+    module = ModuleType(module_name)
+    module.__file__ = str(tmp_path / "another-package" / "plugin.py")
+    monkeypatch.setitem(sys.modules, module_name, module)
+    catalog = PrivateExtensionCatalog.from_config(
+        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+    )
+    with pytest.raises(PrivateExtensionError, match="outside package"):
+        catalog.contributions(_services())
+
+
+@pytest.mark.parametrize(
+    "target", ["external.plugin:factory", "ironsbot_private_test.plugin", "bad:path:x"]
+)
+def test_manifest_rejects_nonlocal_or_malformed_entry_points(
+    tmp_path: Path, target: str
+) -> None:
+    root = tmp_path / "current"
+    root.mkdir()
+    (root / "pyproject.toml").write_text(
+        '[project.entry-points."ironsbot.extensions"]\n' + f'test = "{target}"\n',
+        encoding="utf-8",
+    )
+    assert PrivateExtensionCatalog.from_config(
+        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+    ).reason == "private extension package is invalid"
