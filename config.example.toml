@@ -71,8 +71,8 @@ command_start = ["/", ""]
 #     已加载插件提供的功能，否则启动会明确报错。
 plugin_manifest = "full"
 # Default: []
-# EN: NoneBot superuser QQ IDs or user aliases.
-# ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
+# EN: Application superuser QQ IDs or user aliases.
+# ZH: 应用超级管理员 QQ 号或用户别名列表。
 superusers = []
 # 超管权限只用于主动操作；通知必须在 features.user_policy / group_policy
 # 中显式授予 admin_notice，all 和 superuser_bypass 均不会自动订阅通知或推送。
@@ -109,6 +109,14 @@ api_roots = {}
 nicknames = []
 # HTTP event signature secret is environment-only: ONEBOT_SECRET. Never put it here.
 # HTTP 上报签名密钥仅使用 ONEBOT_SECRET 环境变量，不写入 TOML。
+
+[bot.onebot.notice_priority]
+# EN: OneBot notice order only; equal priorities run concurrently.
+# ZH: 仅控制 OneBot 非命令通知的先后；数字越小越先处理，相同数字并发。
+#     指令、菜单和 AI 的执行顺序由公共命令路由负责，不在这里配置。
+poke_reply = 0
+red_packet_notice = 5
+team_audit = 90
 
 [bot.onebot.self_commands]
 # EN: Optional own-account group commands; requires NapCat reportSelfMessage.
@@ -207,45 +215,6 @@ custom_keyboards = false
 # EN: Grant business features through features.group_policy / user_policy only.
 # ZH: 业务功能只通过 features.group_policy / user_policy 授权，与机器人账号无关。
 
-[bot.matcher_priority]
-# EN: NoneBot matcher priority. Smaller numbers run first.
-# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
-poke_reply = 0
-server_status = 1
-server_status_admin = 2
-bilibili = 3
-sendpic = 4
-red_packet_notice = 5
-seer_player = 10
-seer_team = 11
-seer_rank = 12
-seer_rank_help = 13
-seer_autocard = 14
-lucky_skin_window = 15
-seer_type = 20
-seer_equipment = 21
-seer_peak = 22
-seer_data = 23
-team_resource_subscription = 24
-help = 30
-about = 31
-message_commands = 40
-ai_intent = 50
-meeting = 60
-activity = 70
-db_sync = 80
-team_audit = 90
-# EN: Broad fuzzy Seer matchers are intentionally late.
-# ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢配置的图片/文本指令。
-seer_mintmark = 100
-pet_config = 109
-seer_pet = 110
-seer_query = 120
-# EN: Configured user mention replies run after all commands and before AI chat.
-# ZH: 指定用户提及回复在全部命令之后、AI 聊天之前执行。
-mention_reply = 190
-ai_chat = 200
-
 [bot.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
 file_enabled = false
@@ -298,7 +267,7 @@ user_a = { qq = 2345678901 }
 
 [features]
 # Default: true
-# EN: Let NoneBot superusers bypass feature restrictions.
+# EN: Let application superusers bypass feature restrictions.
 # ZH: 是否允许超级管理员绕过功能策略限制。
 # Example: false
 superuser_bypass = true

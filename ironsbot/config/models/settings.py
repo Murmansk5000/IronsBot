@@ -145,52 +145,6 @@ def _command_starts(value: object) -> list[str]:
     return result
 
 
-class MatcherPriorityConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    poke_reply: int = Field(default=0, ge=0)
-    server_status: int = Field(default=1, ge=0)
-    server_status_admin: int = Field(default=2, ge=0)
-    bilibili: int = Field(default=3, ge=0)
-    sendpic: int = Field(default=4, ge=0)
-    red_packet_notice: int = Field(default=5, ge=0)
-    seer_player: int = Field(default=10, ge=0)
-    seer_team: int = Field(default=11, ge=0)
-    seer_rank: int = Field(default=12, ge=0)
-    seer_rank_help: int = Field(default=13, ge=0)
-    seer_autocard: int = Field(default=14, ge=0)
-    lucky_skin_window: int = Field(default=15, ge=0)
-    seer_type: int = Field(default=20, ge=0)
-    seer_equipment: int = Field(default=21, ge=0)
-    seer_peak: int = Field(default=22, ge=0)
-    seer_data: int = Field(default=23, ge=0)
-    team_resource_subscription: int = Field(default=24, ge=0)
-    help: int = Field(default=30, ge=0)
-    about: int = Field(default=31, ge=0)
-    message_commands: int = Field(default=40, ge=0)
-    ai_intent: int = Field(default=50, ge=0)
-    meeting: int = Field(default=60, ge=0)
-    activity: int = Field(default=70, ge=0)
-    db_sync: int = Field(default=80, ge=0)
-    team_audit: int = Field(default=90, ge=0)
-    seer_mintmark: int = Field(default=100, ge=0)
-    pet_config: int = Field(default=109, ge=0)
-    seer_pet: int = Field(default=110, ge=0)
-    seer_query: int = Field(default=120, ge=0)
-    mention_reply: int = Field(default=190, ge=0)
-    ai_chat: int = Field(default=200, ge=0)
-
-    @model_validator(mode="after")
-    def validate_mention_reply_order(self) -> MatcherPriorityConfig:
-        if not self.seer_query < self.mention_reply < self.ai_chat:
-            msg = (
-                "bot.matcher_priority.mention_reply must run after seer_query "
-                "and before ai_chat"
-            )
-            raise ValueError(msg)
-        return self
-
-
 class LoggingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -364,9 +318,6 @@ class BotConfig(BaseModel):
     onebot_token: str = Field(default="", exclude=True, repr=False)
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
     qq_official: QQOfficialConfig = Field(default_factory=QQOfficialConfig)
-    matcher_priority: MatcherPriorityConfig = Field(
-        default_factory=MatcherPriorityConfig
-    )
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @field_validator("environment", "host")

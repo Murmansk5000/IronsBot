@@ -9,7 +9,7 @@ from nonebot.adapters.onebot.v11 import Adapter, Bot, PokeNotifyEvent
 from nonebot.matcher import Matcher
 
 from ironsbot.config.models.features import HelpConfig
-from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.transport import OneBotNoticePriorityConfig
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import (
@@ -134,7 +134,7 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         poke=service,
         spawn=asyncio.create_task,
     )
