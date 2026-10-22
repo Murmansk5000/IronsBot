@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nonebot.adapters.onebot.v11 import ActionFailed, Adapter, Bot, PokeNotifyEvent
+from nonebot.adapters.onebot.v11 import Adapter, Bot, PokeNotifyEvent
 from nonebot.matcher import Matcher
 from nonebot.message import handle_event
 
@@ -19,6 +19,7 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.plugins.onebot.messaging.poke import install
 from ironsbot.services.messaging.poke_reply import PokeReplyService
 
@@ -107,7 +108,7 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
         calls.append((name, data))
         if name == "get_group_member_info":
             if role_failure:
-                raise ActionFailed(retcode=1200, wording="sensitive")
+                raise OneBotActionError(retcode=1200)
             return {"role": "admin"}
         assert name == ("send_private_msg" if private else "send_group_msg")
         return {"message_id": -42}
@@ -128,10 +129,14 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
     )
     await handle_event(runtime.bot, event)
 
-    expected = DIRECT_COMMAND_HELP_HINT_TEXT
+    expected = [{"type": "text", "data": {"text": DIRECT_COMMAND_HELP_HINT_TEXT}}]
     if not private:
-        expected = "[CQ:at,qq=101] " + expected
-    assert str(calls[-1][1]["message"]) == expected
+        expected = [
+            {"type": "at", "data": {"qq": "101"}},
+            {"type": "text", "data": {"text": " "}},
+            *expected,
+        ]
+    assert calls[-1][1]["message"] == expected
     assert calls[-1][1]["user_id" if private else "group_id"] == (
         101 if private else 456
     )

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.outbound import DeliveryFailureKind, SendResult
+from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.message_rendering import (
     OneBotOutboundMessageError,
     parse_reply_message_id,
@@ -25,30 +26,17 @@ class OneBotSendFailure:
 def onebot_send_failure(
     error: Exception, *, execution_identity: ExecutionIdentity | None = None
 ) -> OneBotSendFailure:
-    text = " ".join((type(error).__name__, str(error), repr(error))).casefold()
-    offline = any(
-        marker in text for marker in ("1006514", "账号状态为离线", "账号已离线")
+    not_sent = (
+        isinstance(error, OneBotTransportError) and error.definitely_not_sent
     )
-    interrupted = (
-        offline
-        or isinstance(error, ConnectionError)
-        or any(
-            marker in text
-            for marker in (
-                "connection closed",
-                "connection reset",
-                "websocket is closed",
-                "网络连接异常",
-            )
-        )
-    )
+    interrupted = not_sent or isinstance(error, ConnectionError)
     return OneBotSendFailure(
         SendResult(
             delivered=False,
             error_code="delivery_failed",
             error_message=type(error).__name__,
             failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE
-            if offline
+            if not_sent
             else DeliveryFailureKind.UNCERTAIN,
             execution_identity=execution_identity,
         ),

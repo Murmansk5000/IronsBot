@@ -51,6 +51,7 @@ DRIVER_HOOKS = {
     "on_bot_disconnect",
 }
 LIFECYCLE_PATH = PACKAGE / "app" / "lifecycle.py"
+NATIVE_LIFECYCLE_PATH = PACKAGE / "integrations" / "nonebot_lifecycle.py"
 SQLITE_PATH = PACKAGE / "integrations" / "storage" / "sqlite.py"
 SCHEDULER_PATH = PACKAGE / "integrations" / "scheduler" / "facade.py"
 SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "onebot" / "scheduler" / "__init__.py"
@@ -343,13 +344,21 @@ def test_production_has_no_star_imports_or_historical_modules() -> None:
     assert [*star_imports, *historical, *explicit_exports] == []
 
 
-def test_only_lifecycle_registers_driver_hooks() -> None:
+def test_only_native_binding_registers_driver_hooks() -> None:
     offenders = [
         f"{_relative(path)}:{node.lineno}"
         for path, node in _calls()
-        if path != LIFECYCLE_PATH and _call_name(node) in DRIVER_HOOKS
+        if path != NATIVE_LIFECYCLE_PATH and _call_name(node) in DRIVER_HOOKS
     ]
     assert offenders == []
+    registrations = [
+        name
+        for path, node in _calls()
+        if path == NATIVE_LIFECYCLE_PATH
+        and (name := _call_name(node)) is not None
+        and name in DRIVER_HOOKS
+    ]
+    assert sorted(registrations) == sorted(DRIVER_HOOKS)
 
 
 def test_only_task_owner_creates_background_tasks() -> None:

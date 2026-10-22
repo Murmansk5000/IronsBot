@@ -19,6 +19,7 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.response_admission import ResponseAdmissionDecision
 from ironsbot.core.text_matching import TextMatchRule
+from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
@@ -26,6 +27,7 @@ from ironsbot.integrations.onebot.portable_queries import (
     install_portable_menu_router,
     make_portable_query_handler,
 )
+from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.portable_query_operations import build_query_operation
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
@@ -373,7 +375,7 @@ async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
     )
     assert len(ingress.sends) == 1
     sent = ingress.sends[0]["message"]
-    assert [part.data["qq"] for part in sent if part.type == "at"] == [
+    assert [part["data"]["qq"] for part in sent if part["type"] == "at"] == [
         "303" if explicit else "304"
     ]
 
@@ -481,6 +483,10 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     cooldown.admit.return_value = ResponseAdmissionDecision(allowed=True)
     factory = MatcherFactory(cast("CommandCooldown", cooldown), SimpleNamespace())
     features = FeatureService({}, {}, frozenset())
+    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
+    OneBotEventIngress(
+        OneBotAdmissionService(messages_enabled=True, features=features)
+    ).install()
     install_portable_menu_router(factory, sessions, features)
     selected: list[tuple[str, int]] = []
     gate = asyncio.Event()

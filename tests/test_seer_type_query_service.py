@@ -711,7 +711,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
             assert transport.uploads[0].content == image_bytes
             onebot = render_onebot_outbound_message(message)
             assert (
-                b64decode(onebot[0].data["file"].removeprefix("base64://"))
+                b64decode(onebot[0]["data"]["file"].removeprefix("base64://"))
                 == image_bytes
             )
     finally:

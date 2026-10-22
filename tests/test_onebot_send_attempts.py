@@ -15,8 +15,10 @@ from ironsbot.config.models.messaging import (
 )
 from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage, ReplyContext
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
+from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
@@ -57,7 +59,7 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             cooldown_message="limit reached",
         )
     )
-    bot = Bot(Adapter(driver), "1")
+    bot = Bot(SelfCommandAdapter(driver), "1")
     messenger = OneBotOutboundMessenger(
         cast("Any", Mock(for_conversation=Mock(return_value=bot))), runtime.outbound
     )
@@ -93,7 +95,7 @@ async def test_actual_sdk_failures_use_shared_uncertain_settlement(
     assert str(transport.calls[0]["message"]).count("limit reached") == 1
     if isinstance(error, ActionFailed):
         passive = await send_portable_event_reply(
-            Mock(send=AsyncMock(side_effect=error)),
+            Mock(send=AsyncMock(side_effect=OneBotActionError(1200))),
             group_message_event("help"),
             message,
         )

@@ -1,14 +1,18 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.adapters import Bot
 from nonebot.dependencies.utils import get_typed_signature
-from nonebot.internal.driver import Driver
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
+from ironsbot.integrations.onebot.connections import OneBotConnections
+
+if TYPE_CHECKING:
+    from nonebot.internal.driver import Driver
 
 
 class FakeDriver:
@@ -50,16 +54,15 @@ class _ResourceUnavailableError(RuntimeError):
     pass
 
 
-def fake_driver() -> Driver:
-    return cast("Driver", FakeDriver())
-
-
 def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
     driver = FakeDriver()
-    lifecycle = ApplicationLifecycle(cast("Driver", driver))
+    lifecycle = ApplicationLifecycle()
+    binding = NoneBotLifecycleBinding(
+        cast("Driver", driver), lifecycle, OneBotConnections()
+    )
 
-    lifecycle.install()
-    lifecycle.install()
+    binding.install()
+    binding.install()
 
     assert len(driver.startup_handlers) == 1
     assert len(driver.shutdown_handlers) == 1
@@ -85,7 +88,6 @@ def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:
         calls.append("second")
 
     lifecycle = ApplicationLifecycle(
-        fake_driver(),
         startup_hooks=(("first", first), ("second", second)),
         shutdown_hooks=(("first", first), ("second", second)),
     )
@@ -99,7 +101,6 @@ def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:
 def test_lifecycle_starts_resources_before_contributions() -> None:
     calls: list[str] = []
     lifecycle = ApplicationLifecycle(
-        fake_driver(),
         resource_startup_hooks=(("resource", lambda: calls.append("resource")),),
         startup_hooks=(("plugin", lambda: calls.append("plugin")),),
     )
@@ -117,7 +118,6 @@ def test_resource_startup_failure_prevents_application_startup() -> None:
         raise _ResourceUnavailableError
 
     lifecycle = ApplicationLifecycle(
-        fake_driver(),
         resource_startup_hooks=(("resource", failing_resource),),
         startup_hooks=(("plugin", lambda: calls.append("plugin")),),
     )
@@ -145,7 +145,6 @@ def test_lifecycle_cancels_tasks_before_resources() -> None:
         task = owner.create(background(), name="test-background")
         await asyncio.sleep(0)
         lifecycle = ApplicationLifecycle(
-            fake_driver(),
             task_owner=owner,
             resource_shutdown_hooks=(("resource", close_resource),),
         )
@@ -168,7 +167,6 @@ def test_lifecycle_isolates_hook_failure() -> None:
         calls.append("healthy")
 
     lifecycle = ApplicationLifecycle(
-        fake_driver(),
         startup_hooks=(("failing", failing), ("healthy", healthy)),
     )
 
@@ -187,7 +185,6 @@ def test_lifecycle_tracks_connected_bots_and_runs_connection_hooks() -> None:
         calls.append(("disconnect", cast("FakeBot", bot).self_id))
 
     lifecycle = ApplicationLifecycle(
-        fake_driver(),
         bot_connect_hooks=(("connect", on_connect),),
         bot_disconnect_hooks=(("disconnect", on_disconnect),),
     )
@@ -211,7 +208,6 @@ def test_lifecycle_runs_first_connection_hooks_only_once() -> None:
         calls.append("connect")
 
     lifecycle = ApplicationLifecycle(
-        fake_driver(),
         first_bot_connect_hooks=(("first", on_first_connect),),
         bot_connect_hooks=(("connect", on_connect),),
     )
