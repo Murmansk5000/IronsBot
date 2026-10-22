@@ -44,13 +44,14 @@ def format_completion_time(score: int) -> str:
         return "未知"
 
 
-def format_global_rank_message(
+def format_global_rank_message(  # noqa: PLR0913 - optional explicit server positions
     spec: GlobalRankSpec,
     items: Sequence[Any],
     *,
     timestamp: str,
     start_rank: int = 1,
     requested_count: int = RANK_LIST_SIZE,
+    ranks: Sequence[int] | None = None,
 ) -> str:
     if not items:
         return f"❌找不到{spec.title}数据。"
@@ -58,6 +59,10 @@ def format_global_rank_message(
     from ironsbot.services.seer.rank_list_formatting import format_rank_window
 
     range_text = format_rank_window(start_rank, len(items), requested_count)
+    if ranks and ranks != list(range(start_rank, start_rank + len(items))):
+        range_text = (
+            f"第 {ranks[0]}-{ranks[-1]} 名" if len(ranks) > 1 else f"第 {ranks[0]} 名"
+        )
     if range_text:
         lines = [f"{spec.title}（{range_text}，截至{timestamp}）"]
     else:
@@ -65,7 +70,7 @@ def format_global_rank_message(
     lines.extend(
         format_global_rank_line(
             item,
-            index=start_rank - 1 + index,
+            index=ranks[index] - 1 if ranks is not None else start_rank - 1 + index,
             spec=spec,
         )
         for index, item in enumerate(items)

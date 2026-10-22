@@ -33,6 +33,8 @@ CACHE_TTL_SECONDS = 3600
 CONFIRMED_SCORE = 101
 TIE_START = 20
 TIE_END = 40
+CLOSED_COUNT = 3
+MAX_CONFLICT_ATTEMPTS = 2
 
 
 @pytest.mark.asyncio
@@ -76,7 +78,7 @@ async def test_range_rejects_moving_pages_before_numbering(
             start_rank=1,
             count=PAGE_SIZE + 1,
         )
-    assert calls == [0, PAGE_SIZE]
+    assert calls == [0, PAGE_SIZE, 0, PAGE_SIZE]
 
 
 @pytest.mark.asyncio
@@ -107,7 +109,7 @@ async def test_conflicting_linear_scan_does_not_save_missing_player(
     )
     assert result.rank is None
     assert result.failure is not None and "发生变化" in result.failure
-    assert calls == [0, PAGE_SIZE]
+    assert calls == [0, PAGE_SIZE, 0, PAGE_SIZE]
     assert (
         rank.cache.miss(key=17, sub_key=0, user_id=PLAYER_ID, minimum_limit=1) is None
     )
@@ -238,6 +240,7 @@ async def test_empty_request_has_no_page_observation(
 async def test_cached_window_uses_only_supporting_pages_including_exclusion_prefix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, excluded: bool
 ) -> None:
+    monkeypatch.setattr("time.time", lambda: SOURCE_TIME + 100)
     rank = replace(
         _service(tmp_path),
         exclusions=RankExclusionPolicy(
@@ -339,6 +342,7 @@ async def test_score_segment_keeps_probe_and_neighbor_times(
 async def test_score_samples_retain_undisplayed_boundary_page_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
 ) -> None:
+    monkeypatch.setattr("time.time", lambda: SOURCE_TIME + 100)
     rank = _service(tmp_path)
     for start in range(0, 60, PAGE_SIZE):
         rank.cache.save(
@@ -392,7 +396,7 @@ async def test_score_samples_retain_undisplayed_boundary_page_time(
     assert result.fetched_at == SOURCE_TIME + 10
     assert PAGE_SIZE in calls
     if route == "excluded":
-        assert calls[0] == 0
+        assert 0 in calls
         assert (result.start_rank, result.end_rank) == (20, 39)
     else:
         assert [item.rank_index for item in result.items] == [20, 39]
@@ -485,13 +489,18 @@ async def test_excluded_score_query_respects_bounds_and_consistency(
         _self: Any, _game: Any, *, start: int, end: int, **_: Any
     ) -> RankPageResult:
         calls.append(start)
-        items = [RankEntry(i, "player", 150) for i in range(start, end + 1)]
+        items = [
+            RankEntry(
+                i, "player", 100 if kind == "closed" and i >= CLOSED_COUNT else 150
+            )
+            for i in range(start, end + 1)
+        ]
         if kind == "duplicate" and start == PAGE_SIZE:
             items[0] = RankEntry(0, "moved", 150)
         if kind == "short":
-            items = items[:3]
+            items = items[:3] if start == 0 else []
         if kind == "closed":
-            items[3:] = [RankEntry(item.id, item.nick, 100) for item in items[3:]]
+            items = items[:PAGE_SIZE]
         return RankPageResult(items, SOURCE_TIME + start)
 
     monkeypatch.setattr(RankService, "fetch_page_result", page)
@@ -515,7 +524,7 @@ async def test_excluded_score_query_respects_bounds_and_consistency(
     if kind == "duplicate":
         with pytest.raises(RankPageConflictError):
             await query()
-        assert calls == [0, PAGE_SIZE]
+        assert calls.count(0) == calls.count(PAGE_SIZE) == MAX_CONFLICT_ATTEMPTS * 2
     else:
         result = await query()
         expected = {
@@ -523,15 +532,16 @@ async def test_excluded_score_query_respects_bounds_and_consistency(
             "rank_limit": 5,
             "short": 3,
             "exact_limit": PAGE_SIZE,
-            "filtered": 5,
+            "filtered": 4,
             "closed": 3,
         }[kind]
         assert result.total_count == expected
         assert len(result.items) == expected
         assert result.truncated is (kind not in {"short", "closed"})
         if kind == "filtered":
-            assert [item.id for item in result.items] == [1, 2, 3, 4, 5]
-        assert calls == [0]
+            assert [item.id for item in result.items] == [1, 2, 3, 4]
+        assert max(calls.count(start) for start in calls) <= MAX_CONFLICT_ATTEMPTS
+        assert max(calls) < LIMIT
 
 
 @pytest.mark.asyncio
@@ -768,7 +778,7 @@ async def test_persisted_linear_miss_keeps_oldest_page_time(
 @pytest.mark.parametrize(
     "change", ["replacement", "empty", "duplicate", "score", "stable"]
 )
-async def test_rank_adjustment_requires_player_and_complete_prefix(
+async def test_official_rank_does_not_read_exclusion_prefix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     change: str,
@@ -818,18 +828,14 @@ async def test_rank_adjustment_requires_player_and_complete_prefix(
         key=240,
         sub_key=1,
     )
-    if change == "stable":
-        assert result.rank == TARGET_INDEX + 1
-        assert result.failure is None
-    else:
-        assert result.rank is None
-        assert result.failure is not None and "发生变化" in result.failure
-        assert result.score == LIMIT - TARGET_INDEX
-    assert calls == ([PAGE_SIZE, 0] if change == "empty" else [PAGE_SIZE, 0, PAGE_SIZE])
+    assert result.rank == TARGET_INDEX + 1
+    assert result.failure is None
+    assert result.score == LIMIT - TARGET_INDEX
+    assert calls == [PAGE_SIZE]
 
 
 @pytest.mark.asyncio
-async def test_visible_rank_includes_adjustment_page_time(
+async def test_official_rank_timestamp_uses_only_target_page(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -869,6 +875,6 @@ async def test_visible_rank_includes_adjustment_page_time(
         key=240,
         sub_key=1,
     )
-    assert result.rank == TARGET_INDEX
-    assert result.fetched_at == SOURCE_TIME
+    assert result.rank == TARGET_INDEX + 1
+    assert result.fetched_at == SOURCE_TIME + PAGE_SIZE
     assert result.cost.lightweight_confirmed  # Existing anchor quota classification.

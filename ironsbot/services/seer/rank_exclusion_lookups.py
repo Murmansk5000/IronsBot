@@ -1,32 +1,31 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Public-rank views layered over raw official leaderboard pages."""
+"""Public leaderboard numbering shared by lists, score searches and players."""
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-from ironsbot.core.rank_lookup_context import RankPagePolicy, rank_page_policy
-from ironsbot.core.time import ObservationTime
-from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
+from ironsbot.core.rank_lookup_context import rank_page_policy
 from ironsbot.services.seer.rank_models import (
     RankLookupResult,
+    RankPageResult,
     RankRangeResult,
-    RankScoreGap,
-    RankScoreSearchItem,
     RankScoreSearchResult,
 )
-from ironsbot.services.seer.rank_pagination import (
-    RankPageConflictError,
-    RankPageSequence,
-)
-
-_LOGGER = logging.getLogger(__name__)
+from ironsbot.services.seer.rank_pagination import RankPageConflictError
+from ironsbot.services.seer.rank_visibility import EXCLUSION_PREFIX_SIZE
+from ironsbot.services.seer.rank_visibility_queries import RankVisibilityQuery
 
 
-def _rank_page_sequence(rank_key: str | None) -> RankPageSequence:
-    spec = GLOBAL_RANKS.get(rank_key) if rank_key is not None else None
-    return RankPageSequence(ascending=spec.ascending if spec is not None else False)
+def _validate_prefix_player(
+    prefix: list[Any], index: int, result: RankLookupResult, user_id: int
+) -> None:
+    if len(prefix) < min(index + 1, EXCLUSION_PREFIX_SIZE):
+        raise RankPageConflictError
+    if index < len(prefix):
+        item = prefix[index]
+        if int(item.id) != user_id or int(item.score) != result.score:
+            raise RankPageConflictError
 
 
 async def fetch_visible_rank_range(  # noqa: PLR0913
@@ -39,57 +38,8 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
     start_rank: int,
     count: int,
 ) -> RankRangeResult:
-    """Read raw pages until the requested public-rank window is complete."""
-
-    safe_start = max(1, start_rank)
-    safe_count = max(0, count)
-    if safe_count == 0:
-        return RankRangeResult(items=[], fetched_at=None)
-    excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
-    if not excluded_ids:
-        return await service.fetch_range_result(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=safe_start - 1,
-            count=safe_count,
-        )
-
-    visible_until = safe_start - 1 + safe_count
-    visible_items: list[Any] = []
-    observation = ObservationTime()
-    from_cache = True
-    sequence = _rank_page_sequence(rank_key)
-    page_size = service.page_size()
-    raw_start = 0
-    while len(visible_items) < visible_until:
-        page = await service.fetch_page_result(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=raw_start,
-            end=raw_start + page_size - 1,
-            use_cache=False,
-        )
-        sequence.include((int(item.id), int(item.score)) for item in page.items)
-        observation.include(page.fetched_at)
-        from_cache = from_cache and page.from_cache
-        visible_items.extend(
-            item
-            for item in page.items
-            if not service.exclusion_policy.excludes_from_public_rank(
-                rank_key,
-                int(item.id),
-            )
-        )
-        if len(page.items) < page_size:
-            break
-        raw_start += page_size
-    return RankRangeResult(
-        visible_items[safe_start - 1 : visible_until],
-        observation.fetched_at,
-        from_cache=from_cache,
-    )
+    query = RankVisibilityQuery(service, game, rank_key, key, sub_key)
+    return await query.range(start_rank, count)
 
 
 async def finalize_visible_lookup(  # noqa: PLR0913
@@ -104,88 +54,28 @@ async def finalize_visible_lookup(  # noqa: PLR0913
 ) -> RankLookupResult:
     if result.rank is None:
         return result
+    query = RankVisibilityQuery(service, game, rank_key, key, sub_key)
     try:
-        result.rank = await visible_rank_for_raw_rank(
-            service,
-            game,
-            rank_key=rank_key,
-            key=key,
-            sub_key=sub_key,
-            raw_rank=result.rank,
-            result=result,
-            user_id=user_id,
-        )
+        visibility = await query.visibility(raw_until=result.rank)
+        for page in query.pages.values():
+            result.include_observation(page.fetched_at)
+        raw_index = result.rank - 1
+        if visibility.filtered_prefix and visibility.excluded_ids:
+            _validate_prefix_player(query.prefix, raw_index, result, user_id)
+        if visibility.hides(raw_index, user_id):
+            result.rank = None
+            result.excluded = True
+        else:
+            result.rank = visibility.public_index(raw_index) + 1
+        query.log_complete(visibility, start_rank=result.rank, count=1)
     except RankPageConflictError as error:
         result.rank = None
         result.failure = str(error)
+    result.cost.conflict_retries = int(query.retried)
     return result
 
 
-async def visible_rank_for_raw_rank(  # noqa: PLR0913
-    service: Any,
-    game: Any,
-    *,
-    rank_key: str | None,
-    key: int,
-    sub_key: int,
-    raw_rank: int,
-    result: RankLookupResult,
-    user_id: int,
-) -> int:
-    excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
-    if not excluded_ids or raw_rank <= 0:
-        return raw_rank
-
-    raw_target_index = raw_rank - 1
-    sequence = _rank_page_sequence(rank_key)
-    remaining_ids = set(excluded_ids)
-    visible_count = 0
-    page_size = service.page_size()
-    raw_start = 0
-    _LOGGER.info(
-        "player rank exclusion prefix started: key=%s raw_rank=%s excluded_count=%s",
-        key,
-        raw_rank,
-        len(excluded_ids),
-    )
-    while raw_start <= raw_target_index:
-        token = rank_page_policy.set(RankPagePolicy("exclusion_prefix"))
-        try:
-            page = await service.fetch_page_result(
-                game,
-                key=key,
-                sub_key=sub_key,
-                start=raw_start,
-                end=raw_start + page_size - 1,
-                use_cache=False,
-            )
-        finally:
-            rank_page_policy.reset(token)
-        result.include_observation(page.fetched_at)
-        page_items = page.items
-        sequence.include((int(item.id), int(item.score)) for item in page_items)
-        for offset, item in enumerate(page_items):
-            raw_index = raw_start + offset
-            if raw_index > raw_target_index:
-                break
-            item_id = int(item.id)
-            if item_id in excluded_ids:
-                remaining_ids.discard(item_id)
-            else:
-                visible_count += 1
-            if raw_index == raw_target_index:
-                if item_id != user_id or int(item.score) != result.score:
-                    raise RankPageConflictError
-                return visible_count
-        if len(page_items) < page_size:
-            break
-        if not remaining_ids:
-            return raw_rank - (raw_start + page_size - visible_count)
-        raw_start += page_size
-    raise RankPageConflictError
-
-
-async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
+async def fetch_visible_score_segment(  # noqa: PLR0913
     service: Any,
     game: Any,
     *,
@@ -196,116 +86,57 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     score_name: str,
     target_score: int,
     search_limit: int | None,
+    start_index: int = 0,
+    sample_limit: int | None = None,
 ) -> RankScoreSearchResult:
-    """Search a score segment while numbering only visible accounts."""
+    query = RankVisibilityQuery(service, game, rank_key, key, sub_key)
 
-    limit = service._score_search_limit(rank_key, search_limit)
-    result = RankScoreSearchResult(
-        title=title,
-        score_name=score_name,
-        target_score=target_score,
-        searched_limit=limit,
-        queried=limit > 0,
-    )
-    if target_score <= 0 or limit <= 0:
-        return result
+    async def fetch_page(
+        _game: Any, *, start: int, end: int, **_kwargs: Any
+    ) -> RankPageResult:
+        policy = rank_page_policy.get()
+        if policy is not None and policy.phase == "score_tie":
+            size = service.page_size()
+            for page_start in range(start // size * size, end + 1, size):
+                query.pages.pop(page_start, None)
+        window = await query.raw_range(start, end - start + 1)
+        return RankPageResult(window.items, window.fetched_at or 0.0, window.from_cache)
 
-    page_size = service.page_size()
-    tie_page_limit = service._tie_page_limit()
-    excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
-    visible_rank = 0
-    raw_start = 0
-    observation = ObservationTime()
-    last_raw_score: int | None = None
-    higher_items: list[RankScoreSearchItem] = []
-    lower_items: list[RankScoreSearchItem] = []
-    matches: list[RankScoreSearchItem] = []
-    higher_score: int | None = None
-    lower_score: int | None = None
-    match_pages = 0
-    sequence = RankPageSequence()
-
-    def make_gap(items: list[RankScoreSearchItem]) -> RankScoreGap | None:
-        if not items:
-            return None
-        return RankScoreGap(
-            score=items[0].score,
-            start_rank=items[0].rank_index + 1,
-            end_rank=items[-1].rank_index + 1,
-            total_count=len(items),
-            items=items,
-        )
-
-    while visible_rank < limit:
-        page = await service.fetch_page_result(
+    async def read() -> RankScoreSearchResult:
+        return await service._fetch_raw_score_segment(
             game,
+            rank_key=rank_key,
             key=key,
             sub_key=sub_key,
-            start=raw_start,
-            end=raw_start + page_size - 1,
-            use_cache=False,
+            title=title,
+            score_name=score_name,
+            target_score=target_score,
+            search_limit=search_limit,
+            start_index=start_index,
+            sample_limit=None
+            if rank_key is not None
+            and service.exclusion_policy.excluded_user_ids(rank_key)
+            else sample_limit,
+            fetch_page=fetch_page,
         )
-        observation.include(page.fetched_at)
-        page_has_match = False
-        stop_after_page = False
-        sequence.include((int(item.id), int(item.score)) for item in page.items)
-        for item in page.items:
-            if visible_rank >= limit:
-                stop_after_page = True
-                break
-            score = int(item.score)
-            last_raw_score = score
-            if int(item.id) in excluded_ids:
-                continue
-            visible_rank += 1
-            public_item = RankScoreSearchItem(
-                id=int(item.id),
-                nick=str(item.nick),
-                score=score,
-                rank_index=visible_rank - 1,
-            )
-            if score > target_score:
-                if higher_score != score:
-                    higher_score = score
-                    higher_items = []
-                higher_items.append(public_item)
-                continue
-            if score == target_score:
-                matches.append(public_item)
-                page_has_match = True
-                continue
 
-            if lower_score is None:
-                lower_score = score
-            if score == lower_score:
-                lower_items.append(public_item)
-                continue
-            stop_after_page = True
-            break
-
-        if page_has_match:
-            match_pages += 1
-        if match_pages >= tie_page_limit or visible_rank >= limit:
-            result.truncated = bool(
-                matches
-                and lower_score is None
-                and (len(page.items) == page_size or stop_after_page)
-            )
-            break
-        if stop_after_page or len(page.items) < page_size:
-            break
-        raw_start += page_size
-
-    result.fetched_at = observation.fetched_at
-    result.scanned_count = len(matches)
-    if matches:
-        result.items = matches
-        result.start_rank = matches[0].rank_index + 1
-        result.end_rank = matches[-1].rank_index + 1
-        result.total_count = len(matches)
-        return result
-
-    result.boundary_score = last_raw_score
-    result.higher_gap = make_gap(higher_items)
-    result.lower_gap = make_gap(lower_items)
+    result = await query.recover("target", read)
+    last_rank = max(
+        result.end_rank or 0,
+        *(
+            gap.end_rank if gap is not None else 0
+            for gap in (result.higher_gap, result.lower_gap)
+        ),
+    )
+    visibility = await query.visibility(raw_until=last_rank)
+    for page in query.pages.values():
+        result.fetched_at = (
+            min(result.fetched_at, page.fetched_at)
+            if result.fetched_at is not None
+            else page.fetched_at
+        )
+    result = visibility.apply_score_result(result)
+    query.log_complete(
+        visibility, start_rank=result.start_rank, count=len(result.items)
+    )
     return result

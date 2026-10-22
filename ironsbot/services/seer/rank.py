@@ -62,6 +62,7 @@ from ironsbot.services.seer.rank_score_segments import (
 from ironsbot.services.seer.rank_score_segments import (
     fetch_rank_score_segment as fetch_rank_score_segment_online,
 )
+from ironsbot.services.seer.rank_visibility import uses_filtered_prefix
 from ironsbot.services.seer.rank_work_cache import record_rank_page_work
 
 if TYPE_CHECKING:
@@ -438,7 +439,9 @@ class RankService(RankCacheQueryMixin):
             searched_limit=limit,
             queried=limit > 0,
         )
-        if self.exclusion_policy.excludes_from_public_rank(rank_key, user_id):
+        if not uses_filtered_prefix(
+            rank_key
+        ) and self.exclusion_policy.excludes_from_public_rank(rank_key, user_id):
             result.excluded = True
             result.score = score_target
             return result
@@ -519,18 +522,36 @@ class RankService(RankCacheQueryMixin):
         start_index: int = 0,
         sample_limit: int | None = None,
     ) -> RankScoreSearchResult:
-        if rank_key is not None and self.exclusion_policy.excluded_user_ids(rank_key):
-            return await fetch_visible_score_segment(
-                self,
-                game,
-                rank_key=rank_key,
-                key=key,
-                sub_key=sub_key,
-                title=title,
-                score_name=score_name,
-                target_score=target_score,
-                search_limit=search_limit,
-            )
+        return await fetch_visible_score_segment(
+            self,
+            game,
+            rank_key=rank_key,
+            key=key,
+            sub_key=sub_key,
+            title=title,
+            score_name=score_name,
+            target_score=target_score,
+            search_limit=search_limit,
+            start_index=start_index,
+            sample_limit=sample_limit,
+        )
+
+    async def _fetch_raw_score_segment(  # noqa: PLR0913
+        self,
+        game: HeadlessGame,
+        *,
+        rank_key: str | None,
+        key: int,
+        sub_key: int,
+        title: str,
+        score_name: str,
+        target_score: int,
+        search_limit: int | None,
+        start_index: int,
+        sample_limit: int | None,
+        fetch_page: Callable[..., Awaitable[RankPageResult]] | None = None,
+    ) -> RankScoreSearchResult:
+        read_page = fetch_page or self.fetch_page_result
         dependencies = RankScoreSegmentDependencies(
             score_search_limit=partial(self._score_search_limit, rank_key),
             rank_page_size=self.page_size,
@@ -546,11 +567,11 @@ class RankService(RankCacheQueryMixin):
                 rank_page_size=self.page_size,
                 rank_page_start=self.page_start,
                 score_search_tie_page_limit=self._tie_page_limit,
-                fetch_rank_page_result=self.fetch_page_result,
+                fetch_rank_page_result=read_page,
             ),
             score_search_probe_limit=self._probe_limit,
             score_search_tie_page_limit=self._tie_page_limit,
-            fetch_rank_page_result=self.fetch_page_result,
+            fetch_rank_page_result=read_page,
             score_miss_proof_from_page=score_miss_proof_from_page,
             parallelism=self.page_parallelism,
         )

@@ -53,6 +53,7 @@ class GlobalRankSpec:
     score_format: str = ""
     ascending: bool = False
     beast_metric: str = ""
+    numbering: Literal["official", "filtered_prefix"] = "official"
 
     @property
     def season_limited(self) -> bool:
@@ -128,26 +129,61 @@ class RankPageCacheRefreshCommand:
 
 
 GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
-    "图鉴积分": GlobalRankSpec("图鉴积分榜", BOOK_RANK_KEY, BOOK_RANK_SUB_KEY, "分"),
+    "图鉴积分": GlobalRankSpec(
+        "图鉴积分榜",
+        BOOK_RANK_KEY,
+        BOOK_RANK_SUB_KEY,
+        "分",
+        numbering="filtered_prefix",
+    ),
     "成就点数": GlobalRankSpec(
-        "成就点数榜", ACHIEVE_RANK_KEY, ACHIEVE_RANK_SUB_KEY, "点"
+        "成就点数榜",
+        ACHIEVE_RANK_KEY,
+        ACHIEVE_RANK_SUB_KEY,
+        "点",
+        numbering="filtered_prefix",
     ),
     "精灵图鉴": GlobalRankSpec(
         "精灵图鉴榜",
         PET_KIND_RANK_KEY,
         PET_KIND_RANK_SUB_KEY,
         "项",
+        numbering="filtered_prefix",
     ),
-    "皮肤图鉴": GlobalRankSpec("皮肤图鉴榜", SKIN_RANK_KEY, SKIN_RANK_SUB_KEY, "款"),
+    "皮肤图鉴": GlobalRankSpec(
+        "皮肤图鉴榜",
+        SKIN_RANK_KEY,
+        SKIN_RANK_SUB_KEY,
+        "款",
+        numbering="filtered_prefix",
+    ),
     "套装图鉴": GlobalRankSpec(
-        "套装图鉴榜", OUTFIT_RANK_KEY, OUTFIT_SUIT_RANK_SUB_KEY, "套"
+        "套装图鉴榜",
+        OUTFIT_RANK_KEY,
+        OUTFIT_SUIT_RANK_SUB_KEY,
+        "套",
+        numbering="filtered_prefix",
     ),
     "部件图鉴": GlobalRankSpec(
-        "部件图鉴榜", OUTFIT_RANK_KEY, OUTFIT_PART_RANK_SUB_KEY, "件"
+        "部件图鉴榜",
+        OUTFIT_RANK_KEY,
+        OUTFIT_PART_RANK_SUB_KEY,
+        "件",
+        numbering="filtered_prefix",
     ),
-    "座驾图鉴": GlobalRankSpec("座驾图鉴榜", OUTFIT_RANK_KEY, MOUNT_RANK_SUB_KEY, "个"),
+    "座驾图鉴": GlobalRankSpec(
+        "座驾图鉴榜",
+        OUTFIT_RANK_KEY,
+        MOUNT_RANK_SUB_KEY,
+        "个",
+        numbering="filtered_prefix",
+    ),
     "刻印图鉴": GlobalRankSpec(
-        "刻印图鉴榜", COUNTERMARK_RANK_KEY, COUNTERMARK_RANK_SUB_KEY, "枚"
+        "刻印图鉴榜",
+        COUNTERMARK_RANK_KEY,
+        COUNTERMARK_RANK_SUB_KEY,
+        "枚",
+        numbering="filtered_prefix",
     ),
     "群星牌": GlobalRankSpec(
         "群星之巅榜", AUTOCARD_RANK_KEY, AUTOCARD_RANK_SUB_KEY, "分"

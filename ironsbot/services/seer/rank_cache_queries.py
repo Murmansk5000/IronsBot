@@ -5,18 +5,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankLookupCost,
     RankLookupResult,
     RankPageResult,
-    RankRangeResult,
     RankScoreSearchItem,
     RankScoreSearchResult,
-)
-from ironsbot.services.seer.rank_pagination import (
-    RankPageConflictError,
-    RankPageSequence,
 )
 from ironsbot.services.seer.rank_score_cache import (
     cached_score_candidate_page_starts,
@@ -25,75 +19,12 @@ from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page,
     score_segment_coverage,
 )
+from ironsbot.services.seer.rank_visibility import EXCLUSION_PREFIX_SIZE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection
 
     from ironsbot.services.seer.rank_page_cache_models import CachedRankLookup
-
-
-def fetch_cached_visible_rank_range(  # noqa: PLR0913
-    cache: Any,
-    *,
-    key: int,
-    sub_key: int,
-    start_rank: int,
-    count: int,
-    page_size: int,
-    excluded_user_ids: Collection[int],
-    ascending: bool = False,
-) -> RankRangeResult | None:
-    """Return a complete requested public window without opening a game socket."""
-
-    if count <= 0:
-        return RankRangeResult(items=[], fetched_at=None, from_cache=True)
-
-    requested_start = max(1, start_rank)
-    requested_end = requested_start + count - 1
-    if not excluded_user_ids:
-        return _fetch_cached_raw_range(
-            cache,
-            key=key,
-            sub_key=sub_key,
-            start_index=requested_start - 1,
-            count=count,
-            page_size=page_size,
-            ascending=ascending,
-        )
-
-    visible_items: list[Any] = []
-    sequence = RankPageSequence(ascending=ascending)
-    observation = ObservationTime()
-    raw_start = 0
-    while len(visible_items) < requested_end:
-        page = _cached_page(
-            cache,
-            key=key,
-            sub_key=sub_key,
-            start=raw_start,
-            page_size=page_size,
-        )
-        if page is None:
-            return None
-        try:
-            sequence.include((int(item.id), int(item.score)) for item in page.items)
-        except RankPageConflictError:
-            return None
-        observation.include(page.fetched_at)
-        visible_items.extend(
-            item for item in page.items if int(item.id) not in excluded_user_ids
-        )
-        if len(page.items) < page_size:
-            break
-        raw_start += page_size
-
-    if len(visible_items) < requested_end:
-        return None
-    return RankRangeResult(
-        items=visible_items[requested_start - 1 : requested_end],
-        fetched_at=observation.fetched_at,
-        from_cache=True,
-    )
 
 
 def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913
@@ -261,6 +192,7 @@ def cached_player_lookup(  # noqa: PLR0913
     title: str,
     score_name: str,
     search_limit: int,
+    allow_stale: bool = True,
 ) -> tuple[CachedRankLookup | None, RankLookupResult] | None:
     """Return a cached player fact or a cached complete miss proof."""
 
@@ -268,7 +200,7 @@ def cached_player_lookup(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         user_id=user_id,
-        allow_stale=True,
+        allow_stale=allow_stale,
     )
     if cached is not None:
         return cached, RankLookupResult(
@@ -300,46 +232,6 @@ def cached_player_lookup(  # noqa: PLR0913
     )
 
 
-def _fetch_cached_raw_range(  # noqa: PLR0913
-    cache: Any,
-    *,
-    key: int,
-    sub_key: int,
-    start_index: int,
-    count: int,
-    page_size: int,
-    ascending: bool = False,
-) -> RankRangeResult | None:
-    request_end = start_index + count - 1
-    first_page_start = start_index // page_size * page_size
-    last_page_start = request_end // page_size * page_size
-    items: list[Any] = []
-    observation = ObservationTime()
-    sequence = RankPageSequence(ascending=ascending)
-    for page_start in range(first_page_start, last_page_start + 1, page_size):
-        page = _cached_page(
-            cache,
-            key=key,
-            sub_key=sub_key,
-            start=page_start,
-            page_size=page_size,
-        )
-        if page is None:
-            return None
-        try:
-            sequence.include((int(item.id), int(item.score)) for item in page.items)
-        except RankPageConflictError:
-            return None
-        observation.include(page.fetched_at)
-        for offset, item in enumerate(page.items):
-            rank_index = page_start + offset
-            if start_index <= rank_index <= request_end:
-                items.append(item)
-    return RankRangeResult(
-        items=items, fetched_at=observation.fetched_at, from_cache=True
-    )
-
-
 def _cached_page(
     cache: Any,
     *,
@@ -353,7 +245,7 @@ def _cached_page(
         sub_key=sub_key,
         start=start,
         end=start + page_size - 1,
-        allow_stale=True,
+        allow_stale=False,
     )
     if cached is None:
         return None
@@ -375,14 +267,15 @@ def _visible_match_indexes(  # noqa: PLR0913
 ) -> list[int] | None:
     if not excluded_user_ids:
         return matches
-    last_page_start = page_start(matches[-1])
+    last_page_start = page_start(min(matches[-1], EXCLUSION_PREFIX_SIZE - 1))
     for current_start in range(0, last_page_start + 1, page_size):
         if read_page(current_start) is None:
             return None
     return [
         index
         for index in matches
-        if int(pages[page_start(index)].items[index - page_start(index)].id)
+        if index >= EXCLUSION_PREFIX_SIZE
+        or int(pages[page_start(index)].items[index - page_start(index)].id)
         not in excluded_user_ids
     ]
 
@@ -400,12 +293,14 @@ def _visible_rank_indexes(
         }
 
     visible: dict[int, int] = {}
+    hidden_count = 0
     for page_start, page in sorted(pages.items()):
         for offset, item in enumerate(page.items):
             rank_index = page_start + offset
-            if int(item.id) in excluded_user_ids:
+            if rank_index < EXCLUSION_PREFIX_SIZE and int(item.id) in excluded_user_ids:
+                hidden_count += 1
                 continue
-            visible[rank_index] = len(visible)
+            visible[rank_index] = rank_index - hidden_count
     return visible
 
 

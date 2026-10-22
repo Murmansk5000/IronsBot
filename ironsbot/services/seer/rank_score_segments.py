@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.time import ObservationTime
@@ -178,6 +178,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if score_range.last_index is None:
         return result
 
+    request_end_index = end_index
     end_index = score_range.last_index + 1
     result.searched_limit = min(result.searched_limit, end_index - start_index)
     if score_range.match_start is None or score_range.match_end is None:
@@ -198,6 +199,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     first_same_or_lower = score_range.match_start
     tie_end = score_range.match_end
+    if tie_end == request_end_index:
+        score_range = replace(score_range, truncated=True)
     result.truncated = score_range.truncated
     result.start_rank = first_same_or_lower + 1
     result.end_rank = tie_end
@@ -216,6 +219,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         page_starts = sorted({deps.rank_page_start(index) for index in sample_indexes})
 
     max_pages = deps.score_search_tie_page_limit()
+    if sample_indexes is None and len(page_starts) > max_pages:
+        result.truncated = True
     fetched_pages = 0
     sequence = RankPageSequence()
 

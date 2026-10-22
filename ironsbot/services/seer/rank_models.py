@@ -29,6 +29,7 @@ class RankLookupCost:
     online_page_fetches: int = 0
     restricted_miss: bool = False
     reused_successful_observation: bool = False
+    conflict_retries: int = 0
 
     @property
     def lightweight_confirmed(self) -> bool:
@@ -132,6 +133,7 @@ class RankRangeResult:
     items: list[Any]
     fetched_at: float | None
     from_cache: bool = False
+    ranks: list[int] | None = None
 
 
 @dataclass(slots=True)

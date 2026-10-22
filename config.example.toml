@@ -1291,11 +1291,13 @@ max_display_limit = 100
 display_limits = {}
 
 [seer.rank.exclusions]
-# Taomee 内部号会从所有官方榜单和机器人本地样本中隐藏。
+# 巅峰、群星牌和神兽榜隐藏配置账号，但保留官方原始名次（编号可有空缺）。
+# 收集类仅过滤原始前 1000 名中的配置账号，之后名次扣除前缀已隐藏人数。
+# 原始第 1001 名起不再排除；Taomee 内部号仍不计入机器人本地样本。
 # 这里填入已确认的米米号；列表会自动去重。
 # Default: built-in confirmed Taomee internal accounts.
-# EN: Accounts hidden from every official rank and the local sample.
-# ZH: 已确认的淘米内部号；所有官方榜单与本地样本都会过滤。
+# EN: Official ranks follow the rules above; local samples always exclude these accounts.
+# ZH: 已确认的淘米内部号；官方榜单按上述规则过滤，本地样本始终过滤。
 taomee_internal_user_ids = [
     389438787, 963527044, 961510772, 914692158, 962236717,
     960755946, 930395179, 964791989, 960957048, 962883553,
