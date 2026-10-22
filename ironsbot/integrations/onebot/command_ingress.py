@@ -22,6 +22,7 @@ from ironsbot.integrations.onebot.identity import (
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.matchers import CommandPolicy
+from ironsbot.integrations.onebot.received_messages import COMMAND_INGRESS_PRIORITY
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
@@ -73,7 +74,7 @@ def install_command_ingress(
     matcher = factory.on_message(
         policy=CommandPolicy.exempt("shared command runtime"),
         rule=Rule(accepts),
-        priority=-31,
+        priority=COMMAND_INGRESS_PRIORITY,
         block=False,
     )
     matcher.append_handler(handle)

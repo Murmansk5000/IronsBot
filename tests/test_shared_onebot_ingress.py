@@ -80,9 +80,8 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         frozenset(),
     )
     monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-    OneBotEventIngress(
-        OneBotAdmissionService(messages_enabled=True, features=features)
-    ).install()
+    admission = OneBotAdmissionService(messages_enabled=True, features=features)
+    OneBotEventIngress(admission).install()
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -162,6 +161,8 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
             notices=notices,
             errors=router.delivery.errors,
             messenger=messenger,
+            router=router,
+            admission=admission,
             limits=limits,
         )
     finally:

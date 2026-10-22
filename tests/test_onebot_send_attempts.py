@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import ActionFailed, Adapter, Bot
+from nonebot.adapters.onebot.v11 import Bot
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
@@ -17,6 +18,7 @@ from ironsbot.config.models.messaging import (
 from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage, ReplyContext
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.errors import OneBotActionError
+from ironsbot.integrations.onebot.http_api import OneBotHttpRequest, OneBotHttpResponse
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
 from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
@@ -41,18 +43,37 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         calls=[],
     )
 
-    async def api(_adapter: Adapter, _bot: Bot, name: str, **data: Any) -> object:
+    async def api(
+        _adapter: SelfCommandAdapter, request: OneBotHttpRequest
+    ) -> OneBotHttpResponse:
+        name = request.url.rsplit("/", 1)[-1]
+        data = json.loads(request.body)
         if name == "get_login_info":
-            return {"nickname": "test"}
+            return OneBotHttpResponse(
+                200, '{"status":"ok","retcode":0,"data":{"nickname":"test"}}'
+            )
         state.calls.append(data)
         state.entered.set()
         if state.block:
             await state.release.wait()
         if state.error is not None:
+            if isinstance(state.error, OneBotActionError):
+                return OneBotHttpResponse(
+                    200,
+                    json.dumps(
+                        {
+                            "status": "failed",
+                            "retcode": state.error.retcode,
+                            "wording": "private-detail",
+                        }
+                    ),
+                )
             raise state.error
-        return {"message_id": 123}
+        return OneBotHttpResponse(
+            200, '{"status":"ok","retcode":0,"data":{"message_id":123}}'
+        )
 
-    monkeypatch.setattr(Adapter, "_call_api", api)
+    monkeypatch.setattr(SelfCommandAdapter, "_request_http", api)
     runtime = build_test_runtime(
         outbound_config=OutboundRateLimitConfig(
             enabled=True,
@@ -60,7 +81,11 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             cooldown_message="limit reached",
         )
     )
-    bot = Bot(SelfCommandAdapter(driver, spawn=TaskOwner().create), "1")
+    adapter = SelfCommandAdapter(
+        driver, spawn=TaskOwner().create, received=AsyncMock(), notices=AsyncMock()
+    )
+    adapter.http_api.api_roots["1"] = "http://test/"
+    bot = Bot(adapter, "1")
     messenger = OneBotOutboundMessenger(
         cast("Any", Mock(for_conversation=Mock(return_value=bot))), runtime.outbound
     )
@@ -75,10 +100,10 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     "error",
     [
         TimeoutError("private-detail"),
-        ActionFailed(retcode=1200, wording="private-detail"),
+        OneBotActionError(1200),
     ],
 )
-async def test_actual_sdk_failures_use_shared_uncertain_settlement(
+async def test_http_failures_use_shared_uncertain_settlement(
     transport: SimpleNamespace, error: Exception, *, proactive: bool
 ) -> None:
     transport.error = error
@@ -94,7 +119,7 @@ async def test_actual_sdk_failures_use_shared_uncertain_settlement(
     assert not transport.service.acquire_reply(100).allowed
     assert len(transport.calls) == 1
     assert str(transport.calls[0]["message"]).count("limit reached") == 1
-    if isinstance(error, ActionFailed):
+    if isinstance(error, OneBotActionError):
         passive = await send_portable_event_reply(
             Mock(send=AsyncMock(side_effect=OneBotActionError(1200))),
             group_message_event("help"),
@@ -105,7 +130,7 @@ async def test_actual_sdk_failures_use_shared_uncertain_settlement(
 
 
 @pytest.mark.asyncio
-async def test_actual_sdk_cancellation_after_submit_preserves_capacity(
+async def test_http_cancellation_after_submit_preserves_capacity(
     transport: SimpleNamespace,
 ) -> None:
     transport.block = True

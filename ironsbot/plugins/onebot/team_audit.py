@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -14,13 +13,12 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import (
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.matcher_support import bind_async
+from ironsbot.integrations.onebot.notice_events import welcome_onebot_member
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
@@ -41,31 +39,6 @@ def _is_group_increase(event: NoticeEvent) -> bool:
     return isinstance(event, GroupIncreaseNoticeEvent)
 
 
-async def handle_team_audit_welcome(
-    event: GroupIncreaseNoticeEvent,
-    *,
-    scheduler: Scheduler,
-    service: TeamAuditService,
-) -> None:
-    if event.user_id == event.self_id:
-        return
-    await service.welcome(
-        conversation=ConversationRef(
-            Platform.ONEBOT,
-            "group",
-            str(event.group_id),
-        ),
-        actor=ActorRef(
-            Platform.ONEBOT,
-            str(event.user_id),
-            kind="member",
-            scope_id=str(event.group_id),
-        ),
-        joined_at=datetime.now(timezone.utc),
-        scheduler=scheduler,
-    )
-
-
 async def restore_team_audit_followups(
     _bot: Bot,
     *,
@@ -82,18 +55,21 @@ def install(
     scheduler: Scheduler,
     service: TeamAuditService,
 ) -> None:
+    async def handle(event: GroupIncreaseNoticeEvent) -> None:
+        await welcome_onebot_member(
+            event.self_id,
+            event.user_id,
+            event.group_id,
+            scheduler=scheduler,
+            service=service,
+        )
+
     matcher = registry.on_notice(
         rule=Rule(_is_group_increase),
         priority=registry.priority("team_audit"),
         block=False,
     )
-    matcher.append_handler(
-        bind_async(
-            handle_team_audit_welcome,
-            scheduler=scheduler,
-            service=service,
-        )
-    )
+    matcher.append_handler(handle)
 
 
 def plugin_contribution(

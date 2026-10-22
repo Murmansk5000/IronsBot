@@ -46,9 +46,6 @@ from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.matchers import MatcherFactory
-from ironsbot.integrations.onebot.self_commands import (
-    SelfCommandAdapter,
-)
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
@@ -220,7 +217,6 @@ async def _load_identity_links(  # noqa: PLR0913
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     task_owner = TaskOwner()
-    driver.register_adapter(SelfCommandAdapter, spawn=task_owner.create)
     scheduler = SchedulerFacade(
         timezone="Asia/Shanghai", spawn=task_owner.create_draining
     )

@@ -10,13 +10,14 @@ from pathlib import PurePath
 from traceback import extract_tb
 from typing import TYPE_CHECKING, Literal
 
+from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
-    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.command_catalog import CommandContext
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.portable_reply import ExecutionFailureStage
 
@@ -45,9 +46,9 @@ class CommandErrorReporter:
 
     async def report(
         self,
-        context: MessageInputContext,
+        context: MessageInputContext | CommandContext,
         error: Exception,
-        stage: ExecutionFailureStage | Literal["operation"] = "operation",
+        stage: ExecutionFailureStage | Literal["operation", "notice"] = "operation",
     ) -> None:
         frames = extract_tb(error.__traceback__)
         frame = frames[-1] if frames else None
@@ -56,8 +57,16 @@ class CommandErrorReporter:
             if frame is not None
             else "unknown"
         )
-        platform = context.message.platform.value
-        kind = context.message.conversation.kind
+        platform = (
+            context.message.platform
+            if isinstance(context, MessageInputContext)
+            else context.conversation.platform
+        ).value
+        kind = (
+            context.message.conversation
+            if isinstance(context, MessageInputContext)
+            else context.conversation
+        ).kind
         error_type = type(error).__name__
         logger.error(
             "Command failed: platform=%s kind=%s stage=%s error_type=%s location=%s",

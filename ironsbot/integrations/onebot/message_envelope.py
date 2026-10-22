@@ -3,40 +3,37 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+import logging
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
-    BeforeValidator,
     ConfigDict,
+    ValidationError,
     field_validator,
     model_validator,
 )
-from pydantic_core import PydanticCustomError
+from typing_extensions import Self
 
 from ironsbot.integrations.onebot.message_segments import (
     OneBotMessage,
+    OneBotMessageDecodeError,
     decode_onebot_segments,
 )
+from ironsbot.integrations.onebot.wire_fields import (
+    OneBotInteger,  # noqa: TC001 - Pydantic field resolution
+)
 
-
-def _integer(value: Any) -> Any:
-    if isinstance(value, bool):
-        message = "OneBot integer field cannot be boolean"
-        raise PydanticCustomError("onebot_integer", message)
-    return value
-
-
-_WireInteger = Annotated[int, BeforeValidator(_integer)]
+logger = logging.getLogger(__name__)
 
 
 class OneBotSender(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    user_id: _WireInteger | None = None
+    user_id: OneBotInteger | None = None
     nickname: str | None = None
     sex: str | None = None
-    age: _WireInteger | None = None
+    age: OneBotInteger | None = None
     card: str | None = None
     area: str | None = None
     level: str | None = None
@@ -47,10 +44,10 @@ class OneBotSender(BaseModel):
 class OneBotReplyEnvelope(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    time: _WireInteger
+    time: OneBotInteger
     message_type: str
-    message_id: _WireInteger
-    real_id: _WireInteger
+    message_id: OneBotInteger
+    real_id: OneBotInteger
     sender: OneBotSender
     message: OneBotMessage
 
@@ -63,33 +60,71 @@ class OneBotReplyEnvelope(BaseModel):
 class _Anonymous(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    id: _WireInteger
+    id: OneBotInteger
     name: str
     flag: str
 
 
-class OneBotMessageEnvelope(BaseModel):
+class _MessageFields(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    time: _WireInteger
-    self_id: _WireInteger
-    post_type: Literal["message"]
+    time: OneBotInteger
+    self_id: OneBotInteger
     message_type: Literal["group", "private"]
-    sub_type: str
-    user_id: _WireInteger
-    message_id: _WireInteger
+    user_id: OneBotInteger
+    message_id: OneBotInteger
     message: OneBotMessage
-    raw_message: str
-    font: _WireInteger
-    sender: OneBotSender
-    group_id: _WireInteger | None = None
+    group_id: OneBotInteger | None = None
     anonymous: _Anonymous | None = None
     to_me: bool = False
     reply: OneBotReplyEnvelope | None = None
 
     @model_validator(mode="after")
-    def require_group_identity(self) -> OneBotMessageEnvelope:
+    def require_group_identity(self) -> Self:
         if self.message_type == "group" and self.group_id is None:
             message = "OneBot group message requires group_id"
             raise ValueError(message)
         return self
+
+
+class OneBotMessageEnvelope(_MessageFields):
+    post_type: Literal["message"]
+    sub_type: str
+    raw_message: str
+    font: OneBotInteger
+    sender: OneBotSender
+
+
+class OneBotSentMessageEnvelope(_MessageFields):
+    post_type: Literal["message_sent"]
+    sub_type: str | None = None
+    raw_message: str = ""
+    font: OneBotInteger | None = None
+    sender: OneBotSender | None = None
+
+
+def decode_received_message(
+    payload: dict[str, Any],
+) -> OneBotMessageEnvelope | OneBotSentMessageEnvelope | None:
+    try:
+        canonical = {
+            **payload,
+            "message": decode_onebot_segments(payload.get("message")),
+        }
+        if "original_message" in payload:
+            canonical["original_message"] = decode_onebot_segments(
+                payload["original_message"]
+            )
+    except OneBotMessageDecodeError:
+        logger.warning("OneBot message rejected: invalid message segments")
+        return None
+    try:
+        model = (
+            OneBotSentMessageEnvelope
+            if payload.get("post_type") == "message_sent"
+            else OneBotMessageEnvelope
+        )
+        return model.model_validate(canonical)
+    except ValidationError:
+        logger.warning("OneBot message rejected: invalid message envelope")
+        return None

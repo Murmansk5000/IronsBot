@@ -14,16 +14,11 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.errors import OneBotActionError
-from ironsbot.integrations.onebot.identity import (
-    onebot_actor_ref,
-    onebot_conversation_ref,
-)
+from ironsbot.integrations.onebot.notice_events import poke_onebot_member
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
@@ -44,21 +39,6 @@ async def _is_poke_at_bot(event: NoticeEvent) -> bool:
     return isinstance(event, PokeNotifyEvent) and event.target_id == event.self_id
 
 
-async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
-    if event.group_id is None:
-        return None
-    try:
-        info = await bot.get_group_member_info(
-            group_id=event.group_id,
-            user_id=event.user_id,
-            no_cache=True,
-        )
-    except OneBotActionError:  # pragma: no cover - action rejection falls back safely
-        return None
-    role = info.get("role")
-    return str(role) if role is not None else None
-
-
 def install(
     registry: MatcherFactory,
     service: PokeReplyService,
@@ -68,16 +48,12 @@ def install(
         bot: Bot,
         event: PokeNotifyEvent,
     ) -> None:
-        context = CommandContext(
-            actor=onebot_actor_ref(event.user_id),
-            conversation=onebot_conversation_ref(
-                event.user_id, group_id=event.group_id
-            ),
-        )
-        await service.handle(
-            context,
-            partial(messenger.send_from, bot, context),
-            group_role=partial(_group_role, bot, event),
+        await poke_onebot_member(
+            bot,
+            event.user_id,
+            event.group_id,
+            service=service,
+            messenger=messenger,
         )
 
     matcher = registry.on_notice(
