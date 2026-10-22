@@ -3,15 +3,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.help_visibility import feature_help_visible
 
@@ -20,16 +13,6 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
-
-
-__plugin_meta__ = PluginMetadata(
-    name="AI聊天",
-    description="接入 OpenAI-compatible API 的自定义聊天插件。",
-    usage="群聊中 @机器人后输入问题，或在私聊中直接输入问题。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 
 def plugin_contribution(
@@ -63,16 +46,5 @@ def plugin_contribution(
             )
             if enabled
             else PluginHooks()
-        ),
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(
-            settings=context.settings,
-            features=context.resources.features,
-            startup_check=context.resources.ai_startup_check,
         ),
     )

@@ -77,7 +77,7 @@ def checked_install(self, router):
     features = self.resources.features
     assert isinstance(features.group_features, dict)
     assert isinstance(features.actor_features, dict)
-    extension = self.extension_contexts["player_lineup"]
+    extension = self.extension_services.player_lineup
     for platform in Platform:
         account = "test-account" if platform is Platform.QQ_OFFICIAL else None
         actor = ActorRef(platform, "910001", account_id=account)

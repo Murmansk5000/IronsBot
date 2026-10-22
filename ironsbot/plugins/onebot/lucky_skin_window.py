@@ -4,15 +4,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.operations.scheduler import JobRegistry
@@ -28,15 +21,6 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 _JOB_PREFIX = "lucky_skin_window:"
-
-__plugin_meta__ = PluginMetadata(
-    name="幸运橱窗",
-    description="查询和订阅绑定米米号的每日幸运橱窗皮肤。",
-    usage="发送“橱窗”查询；可用“关注橱窗”管理关注皮肤。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 
 def plugin_contribution(
@@ -112,16 +96,4 @@ def _register_schedule(
         clock_time=daily_time,
         job_id="daily",
         timezone=config.timezone,
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(
-            context.resources.lucky_skin_window,
-            context.resources.features,
-            context.scheduler,
-            context.resources.player_id_resolver,
-        ),
     )

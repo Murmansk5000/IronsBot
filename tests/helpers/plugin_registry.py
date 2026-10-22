@@ -4,6 +4,7 @@ from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.app.plugin_composition import build_builtin_contributions
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.messaging import PicConfig
@@ -13,82 +14,6 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
-from ironsbot.plugins.onebot.about import (
-    plugin_contribution as about_plugin_contribution,
-)
-from ironsbot.plugins.onebot.activity import (
-    plugin_contribution as activity_plugin_contribution,
-)
-from ironsbot.plugins.onebot.ai import (
-    plugin_contribution as ai_chat_plugin_contribution,
-)
-from ironsbot.plugins.onebot.ai.intent import (
-    plugin_contribution as ai_intent_plugin_contribution,
-)
-from ironsbot.plugins.onebot.bilibili import (
-    plugin_contribution as bilibili_plugin_contribution,
-)
-from ironsbot.plugins.onebot.fire_manual_ad import (
-    plugin_contribution as fire_manual_ad_plugin_contribution,
-)
-from ironsbot.plugins.onebot.headless_seer_notice import (
-    plugin_contribution as headless_notice_plugin_contribution,
-)
-from ironsbot.plugins.onebot.headless_seer_runtime import (
-    plugin_contribution as headless_runtime_plugin_contribution,
-)
-from ironsbot.plugins.onebot.help import plugin_contribution as help_plugin_contribution
-from ironsbot.plugins.onebot.lucky_skin_window import (
-    plugin_contribution as lucky_skin_window_plugin_contribution,
-)
-from ironsbot.plugins.onebot.messaging import (
-    plugin_contribution as messaging_plugin_contribution,
-)
-from ironsbot.plugins.onebot.messaging.blacklist import (
-    plugin_contribution as blacklist_plugin_contribution,
-)
-from ironsbot.plugins.onebot.messaging.meeting import (
-    plugin_contribution as meeting_plugin_contribution,
-)
-from ironsbot.plugins.onebot.messaging.poke import (
-    plugin_contribution as poke_reply_plugin_contribution,
-)
-from ironsbot.plugins.onebot.messaging.red_packet import (
-    plugin_contribution as red_packet_plugin_contribution,
-)
-from ironsbot.plugins.onebot.operations.db_sync import (
-    plugin_contribution as db_sync_plugin_contribution,
-)
-from ironsbot.plugins.onebot.operations.docker_update import (
-    plugin_contribution as docker_update_plugin_contribution,
-)
-from ironsbot.plugins.onebot.operations.server_status import (
-    plugin_contribution as server_status_plugin_contribution,
-)
-from ironsbot.plugins.onebot.pet_config import (
-    plugin_contribution as pet_config_plugin_contribution,
-)
-from ironsbot.plugins.onebot.scheduled_restart import (
-    plugin_contribution as scheduled_restart_plugin_contribution,
-)
-from ironsbot.plugins.onebot.seer.query import (
-    plugin_contribution as seer_query_plugin_contribution,
-)
-from ironsbot.plugins.onebot.seer.rank_help import (
-    plugin_contribution as rank_help_plugin_contribution,
-)
-from ironsbot.plugins.onebot.sendpic import (
-    plugin_contribution as sendpic_plugin_contribution,
-)
-from ironsbot.plugins.onebot.startup_notice import (
-    plugin_contribution as startup_notice_plugin_contribution,
-)
-from ironsbot.plugins.onebot.team_audit import (
-    plugin_contribution as team_audit_plugin_contribution,
-)
-from ironsbot.plugins.onebot.team_resource import (
-    plugin_contribution as team_resource_plugin_contribution,
-)
 from ironsbot.services.about import AboutService
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_principals import IdentityPrincipalService
@@ -346,7 +271,8 @@ def build_test_plugin_registry(
             ai=object(),
             ai_intent_actions=object(),
             ai_input_routing=AiInputRoutingService(runtime.features, commands),
-            ai_startup_check=_noop_startup,
+            ai_startup_check=partial(_noop_startup, scheduler),
+            clock_startup_check=partial(_noop_startup, scheduler),
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
@@ -371,68 +297,5 @@ def build_test_plugin_registry(
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
-    return (
-        seer_query_plugin_contribution(resources=resources, scheduler=scheduler),
-        bilibili_plugin_contribution(
-            monitor=resources.bilibili_monitor, scheduler=scheduler
-        ),
-        messaging_plugin_contribution(
-            config=config.messaging,
-            features=runtime.features,
-            service=resources.messaging,
-            scheduler=scheduler,
-        ),
-        ai_chat_plugin_contribution(
-            settings=config,
-            features=runtime.features,
-            startup_check=resources.ai_startup_check,
-        ),
-        ai_intent_plugin_contribution(settings=config, features=runtime.features),
-        server_status_plugin_contribution(),
-        docker_update_plugin_contribution(
-            features=runtime.features, startup_notice=resources.startup_notice
-        ),
-        db_sync_plugin_contribution(features=runtime.features),
-        about_plugin_contribution(),
-        help_plugin_contribution(),
-        sendpic_plugin_contribution(service=resources.sendpic),
-        meeting_plugin_contribution(commands=tuple(config.messaging.meeting.commands)),
-        blacklist_plugin_contribution(),
-        red_packet_plugin_contribution(),
-        fire_manual_ad_plugin_contribution(),
-        poke_reply_plugin_contribution(),
-        rank_help_plugin_contribution(player_id_resolver=resources.player_id_resolver),
-        pet_config_plugin_contribution(
-            features=runtime.features, config=config.pet_config
-        ),
-        lucky_skin_window_plugin_contribution(
-            resources.lucky_skin_window,
-            runtime.features,
-            scheduler,
-            resources.player_id_resolver,
-        ),
-        team_audit_plugin_contribution(
-            scheduler=scheduler,
-            service=resources.team_audit,
-        ),
-        team_resource_plugin_contribution(
-            config=config.seer.team_resource,
-            features=runtime.features,
-            scheduler=scheduler,
-            service=resources.team_resource,
-        ),
-        activity_plugin_contribution(service=resources.activity, scheduler=scheduler),
-        startup_notice_plugin_contribution(
-            service=resources.startup_notice,
-            config=config.operations.startup_notice,
-        ),
-        headless_notice_plugin_contribution(
-            scheduler=scheduler,
-            service=headless,
-        ),
-        headless_runtime_plugin_contribution(service=headless),
-        scheduled_restart_plugin_contribution(
-            scheduler=scheduler,
-            service=resources.scheduled_restart,
-        ),
-    )
+
+    return build_builtin_contributions(config, resources, scheduler)

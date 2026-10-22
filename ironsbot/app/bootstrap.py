@@ -12,10 +12,9 @@ from nonebot.log import LoguruHandler
 
 from ironsbot.app.composition import build_application
 from ironsbot.app.log_privacy import configure_log_privacy
-from ironsbot.app.nonebot_manifest import nonebot_manifest_path
+from ironsbot.app.plugin_composition import build_builtin_contributions
 from ironsbot.config.environment import load_runtime_environment
 from ironsbot.config.loader import load_settings
-from ironsbot.core.plugin_install import scoped_plugin_install_context
 
 APPLICATION_TIMEZONE = "Asia/Shanghai"
 
@@ -85,17 +84,16 @@ def bootstrap() -> Application:
     configure_log_privacy(os.environ)
     configure_application_logging(settings.bot.log_level)
     application = build_application(settings)
-    with scoped_plugin_install_context(
-        settings=settings,
-        resources=application.resources,
-        scheduler=application.scheduler,
-        extension_contexts=application.extension_contexts,
-    ) as context:
-        nonebot.load_from_toml(str(nonebot_manifest_path(settings.bot.plugin_manifest)))
-        if manifest_path := application.resources.private_extensions.manifest_path:
-            with application.resources.private_extensions.plugin_import_path():
-                nonebot.load_from_toml(str(manifest_path))
-    application.configure(context.contributions)
+    if nonebot.load_plugin("nonebot_plugin_htmlkit") is None:
+        msg = "the HTML rendering prerequisite could not be initialized"
+        raise RuntimeError(msg)
+    contributions = build_builtin_contributions(
+        settings, application.resources, application.scheduler
+    )
+    private_contributions = application.resources.private_extensions.contributions(
+        application.extension_services
+    )
+    application.configure(contributions + private_contributions)
     from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
     from ironsbot.services.portable_commands import build_portable_command_router
 

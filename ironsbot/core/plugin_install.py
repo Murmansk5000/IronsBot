@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator, Mapping
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 from ironsbot.core.features import Feature
 
@@ -46,9 +44,9 @@ class PluginHooks:
 class PluginContribution:
     """One plugin's explicit runtime contributions during installation.
 
-    This is deliberately not plugin discovery metadata. Standard NoneBot TOML
-    remains responsible for discovering top-level plugins; the scoped install
-    context collects these contributions after their modules are loaded.
+    Composition invokes built-in and private factories explicitly. This value
+    declares business ownership, commands and lifecycle hooks, not discovery
+    metadata or a framework installation callback.
     """
 
     id: str
@@ -56,32 +54,6 @@ class PluginContribution:
     help: HelpEntry | None = None
     commands: tuple[CommandContract, ...] = ()
     hooks: PluginHooks = PluginHooks()
-
-
-@dataclass(frozen=True, slots=True)
-class LoadedPluginContribution:
-    """A contribution paired with its NoneBot top-level plugin metadata."""
-
-    metadata: Any
-    contribution: PluginContribution
-
-
-class PluginInstallContextError(RuntimeError):
-    """Raised when a plugin tries to access scoped install dependencies late."""
-
-    @classmethod
-    def unavailable(cls) -> PluginInstallContextError:
-        return cls(
-            "plugin install context is only available while NoneBot loads plugins"
-        )
-
-
-class PluginExtensionContextError(RuntimeError):
-    """Raised when an extension requests a context it was not declared for."""
-
-    @classmethod
-    def unavailable(cls, extension_id: str) -> PluginExtensionContextError:
-        return cls(f"plugin extension context is unavailable: {extension_id}")
 
 
 class PluginContributionError(ValueError):
@@ -127,93 +99,6 @@ class PluginContributionCatalog:
     @property
     def contributions(self) -> tuple[PluginContribution, ...]:
         return self._contributions
-
-
-_INSTALL_CONTEXT: ContextVar[PluginInstallContext | None] = ContextVar(
-    "ironsbot_plugin_install_context",
-    default=None,
-)
-
-
-@dataclass(slots=True)
-class PluginInstallContext:
-    """Explicit dependencies available only while NoneBot loads local plugins.
-
-    The context exists to bridge declarative NoneBot module loading and the
-    already-built application resources. It is reset immediately after module
-    loading, so it cannot become a runtime service locator.
-    """
-
-    settings: Any
-    resources: Any
-    scheduler: Any
-    extension_contexts: Mapping[str, object]
-    _loaded: list[LoadedPluginContribution]
-
-    def contribute(
-        self,
-        metadata: Any,
-        *contributions: PluginContribution,
-    ) -> None:
-        self._loaded.extend(
-            LoadedPluginContribution(metadata=metadata, contribution=contribution)
-            for contribution in contributions
-        )
-
-    @property
-    def contributions(self) -> tuple[PluginContribution, ...]:
-        return tuple(item.contribution for item in self._loaded)
-
-    @property
-    def loaded_contributions(self) -> tuple[LoadedPluginContribution, ...]:
-        return tuple(self._loaded)
-
-    def extension_context(self, extension_id: str) -> object:
-        """Return the narrow contract declared for one external extension."""
-
-        try:
-            return self.extension_contexts[extension_id]
-        except KeyError as error:
-            raise PluginExtensionContextError.unavailable(extension_id) from error
-
-
-@contextmanager
-def scoped_plugin_install_context(
-    *,
-    settings: Any,
-    resources: Any,
-    scheduler: Any,
-    extension_contexts: Mapping[str, object] | None = None,
-) -> Iterator[PluginInstallContext]:
-    """Expose composition dependencies while `nonebot.load_from_toml()` runs."""
-
-    context = PluginInstallContext(
-        settings=settings,
-        resources=resources,
-        scheduler=scheduler,
-        extension_contexts=extension_contexts or {},
-        _loaded=[],
-    )
-    token = _INSTALL_CONTEXT.set(context)
-    try:
-        yield context
-    finally:
-        _INSTALL_CONTEXT.reset(token)
-
-
-def current_plugin_install_context() -> PluginInstallContext:
-    """Return the active install context or fail outside the loading window."""
-
-    context = _INSTALL_CONTEXT.get()
-    if context is None:
-        raise PluginInstallContextError.unavailable()
-    return context
-
-
-def active_plugin_install_context() -> PluginInstallContext | None:
-    """Return the scoped install context when a top-level plugin is loading."""
-
-    return _INSTALL_CONTEXT.get()
 
 
 def validate_plugin_contributions(
