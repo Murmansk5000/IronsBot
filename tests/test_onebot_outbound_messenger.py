@@ -20,6 +20,8 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.connections import OneBotConnections
+from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.services.messaging.outbound_limits import (
@@ -30,7 +32,7 @@ from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Message
+    from ironsbot.integrations.onebot.message_segments import OneBotMessage
 
 
 GROUP_ID = 1001
@@ -43,17 +45,31 @@ RECOVERY_ATTEMPTS = 3
 @dataclass
 class _Bot:
     self_id: str = "123456"
-    private_messages: list[tuple[int, Message]] = field(default_factory=list)
-    group_messages: list[tuple[int, Message]] = field(default_factory=list)
+    private_messages: list[tuple[int, OneBotMessage]] = field(default_factory=list)
+    group_messages: list[tuple[int, OneBotMessage]] = field(default_factory=list)
 
     async def get_login_info(self) -> dict[str, str]:
         return {"nickname": "执行机器人"}
 
-    async def send_private_msg(self, *, user_id: int, message: Message) -> object:
+    async def call_api(self, api: str, **data: Any) -> object:
+        if api == "send_group_msg":
+            return await self.send_group_msg(**data)
+        if api == "send_private_msg":
+            return await self.send_private_msg(**data)
+        if api == "get_login_info":
+            return await self.get_login_info()
+        if api == "get_msg":
+            return await self.get_msg(**data)
+        raise AssertionError(api)
+
+    async def get_msg(self, *, message_id: int) -> object:
+        raise NotImplementedError
+
+    async def send_private_msg(self, *, user_id: int, message: OneBotMessage) -> object:
         self.private_messages.append((user_id, message))
         return {"message_id": 101}
 
-    async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+    async def send_group_msg(self, *, group_id: int, message: OneBotMessage) -> object:
         self.group_messages.append((group_id, message))
         return {"message_id": 202}
 
@@ -63,7 +79,7 @@ class _FlakyBot(_Bot):
     failure: Exception | None = None
     attempts: int = 0
 
-    async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+    async def send_group_msg(self, *, group_id: int, message: OneBotMessage) -> object:
         self.attempts += 1
         if self.failure is not None:
             error = self.failure
@@ -77,7 +93,7 @@ class _ConcurrentBot(_Bot):
     active: int = 0
     max_active: int = 0
 
-    async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+    async def send_group_msg(self, *, group_id: int, message: OneBotMessage) -> object:
         self.active += 1
         self.max_active = max(self.max_active, self.active)
         try:
@@ -102,6 +118,11 @@ class _RoutingPolicy:
 class _Router:
     bot: _Bot | None
     allowed: bool = True
+    connections: OneBotConnections = field(default_factory=OneBotConnections)
+
+    def __post_init__(self) -> None:
+        if self.bot is not None:
+            self.connections.connect(cast("Any", self.bot))
 
     @property
     def policy(self) -> _RoutingPolicy:
@@ -154,9 +175,9 @@ async def test_pinned_reply_preserves_source_account_and_signed_template(
     assert other.group_messages == []
     router.for_conversation.assert_not_called()
     rendered = bot.group_messages[0][1]
-    assert rendered[0].type == "reply"
-    assert str(rendered[0].data["id"]) == str(message_id)
-    assert (any(part.type == "at" for part in rendered)) is (not own and not image)
+    assert rendered[0]["type"] == "reply"
+    assert rendered[0]["data"]["id"] == str(message_id)
+    assert (any(part["type"] == "at" for part in rendered)) is (not own and not image)
 
 
 @pytest.mark.asyncio
@@ -194,7 +215,7 @@ async def test_outbound_malformed_receipt_is_uncertain_without_automatic_retry(
         spec=_Bot,
         self_id="123456",
         get_login_info=AsyncMock(return_value={"nickname": "test"}),
-        send_group_msg=AsyncMock(return_value={"message_id": value}),
+        call_api=AsyncMock(return_value={"message_id": value}),
     )
     messenger = _messenger(bot)
     conversation = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
@@ -208,7 +229,10 @@ async def test_outbound_malformed_receipt_is_uncertain_without_automatic_retry(
     assert result.failure_kind is DeliveryFailureKind.UNCERTAIN
     assert result.execution_identity is not None
     assert result.execution_identity.account_id == bot.self_id
-    bot.send_group_msg.assert_awaited_once()
+    assert [call.args[0] for call in bot.call_api.await_args_list] == [
+        "get_login_info",
+        "send_group_msg",
+    ]
 
 
 @pytest.mark.asyncio
@@ -231,10 +255,11 @@ async def test_onebot_outbound_messenger_sends_group_message_with_mention() -> N
     assert result.execution_identity.account_id == bot.self_id
     assert result.execution_identity.display_name == "执行机器人"
     assert bot.group_messages[0][0] == GROUP_ID
-    assert str(bot.group_messages[0][1]).startswith(
-        f"[CQ:at,qq={MENTIONED_USER_ID}]hello"
-    )
-    assert "base64://cG5n" in str(bot.group_messages[0][1])
+    assert bot.group_messages[0][1][:2] == [
+        {"type": "at", "data": {"qq": str(MENTIONED_USER_ID)}},
+        {"type": "text", "data": {"text": "hello"}},
+    ]
+    assert bot.group_messages[0][1][2]["data"]["file"] == "base64://cG5n"
 
 
 @pytest.mark.asyncio
@@ -246,7 +271,10 @@ async def test_onebot_outbound_messenger_replies_with_message_reference() -> Non
     )
 
     assert result.delivered
-    assert str(bot.private_messages[0][1]).startswith("[CQ:reply,id=99]hello")
+    assert bot.private_messages[0][1] == [
+        {"type": "reply", "data": {"id": "99"}},
+        {"type": "text", "data": {"text": "hello"}},
+    ]
 
 
 @pytest.mark.asyncio
@@ -343,7 +371,9 @@ async def test_onebot_outbound_messenger_drops_rate_limited_proactive_send(
 @pytest.mark.asyncio
 async def test_onebot_outbound_messenger_requires_message_receipt() -> None:
     class NoReceiptBot(_Bot):
-        async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+        async def send_group_msg(
+            self, *, group_id: int, message: OneBotMessage
+        ) -> object:
             self.group_messages.append((group_id, message))
             return {}
 
@@ -376,7 +406,7 @@ async def test_onebot_timeout_is_uncertain_without_opening_circuit() -> None:
 
 @pytest.mark.asyncio
 async def test_onebot_transport_circuit_is_per_account_and_reply_can_recover() -> None:
-    bot = _FlakyBot(failure=RuntimeError("账号状态为离线"))
+    bot = _FlakyBot(failure=OneBotTransportError(definitely_not_sent=True))
     other = _FlakyBot(self_id="654321")
     router = _Router(bot)
     runtime = build_test_runtime(
@@ -475,14 +505,16 @@ async def test_onebot_half_open_circuit_allows_one_probe_per_cooldown(
     class OfflineProbeBot(_Bot):
         attempts: int = 0
 
-        async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+        async def send_group_msg(
+            self, *, group_id: int, message: OneBotMessage
+        ) -> object:
             self.attempts += 1
             if self.attempts == 1:
-                raise RuntimeError("账号状态为离线")
+                raise OneBotTransportError(definitely_not_sent=True)
             if self.attempts == TIMEOUT_ATTEMPTS:
                 probe_entered.set()
                 await release_probe.wait()
-                raise RuntimeError("账号状态为离线")
+                raise OneBotTransportError(definitely_not_sent=True)
             return await super().send_group_msg(group_id=group_id, message=message)
 
     monkeypatch.setattr(
@@ -625,7 +657,9 @@ async def test_onebot_cancel_before_api_send_releases_rate_limit_permit(
     second_permit = asyncio.Event()
 
     class BlockingBot(_Bot):
-        async def send_group_msg(self, *, group_id: int, message: Message) -> object:
+        async def send_group_msg(
+            self, *, group_id: int, message: OneBotMessage
+        ) -> object:
             entered.set()
             await release.wait()
             return await super().send_group_msg(group_id=group_id, message=message)

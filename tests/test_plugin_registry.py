@@ -11,7 +11,6 @@ import nonebot
 import tomllib
 
 if TYPE_CHECKING:
-    from nonebot.internal.driver import Driver
 
     from ironsbot.config.models.operations import StartupConfig
     from ironsbot.services.operations.startup import StartupNoticeService
@@ -365,7 +364,6 @@ def test_manifest_contributions_follow_the_legacy_bridge() -> None:
 
 def test_contributions_define_the_lifecycle_order() -> None:
     lifecycle = ApplicationLifecycle.from_contributions(
-        cast("Driver", object()),
         DEFINITIONS,
         task_owner=TaskOwner(),
     )
@@ -403,7 +401,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
 
 def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
     lifecycle = ApplicationLifecycle.from_contributions(
-        cast("Driver", object()),
         DEFINITIONS,
         task_owner=TaskOwner(),
     )

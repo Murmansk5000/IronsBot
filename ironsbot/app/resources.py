@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
+    from ironsbot.integrations.onebot.connections import OneBotConnections
     from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
     from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
@@ -103,5 +104,6 @@ class ApplicationResources:
     identity_observer: SilentIdentityObservationService | None
     union_identity: OfficialUnionIdentityService | None
     onebot_ingress: OneBotEventIngress
+    onebot_connections: OneBotConnections
     command_errors: CommandErrorReporter
     private_extensions: PrivateExtensionCatalog

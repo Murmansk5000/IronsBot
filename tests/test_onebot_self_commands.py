@@ -11,11 +11,11 @@ from ironsbot.core.outbound import SendResult
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.message_segments import onebot_own_account_input
 from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
-    SelfCommandEvent,
-    outbound_own_account_input,
+    SentGroupMessageEvent,
     own_account_input,
 )
 from ironsbot.services.onebot_admission import OneBotAdmissionService
@@ -25,11 +25,8 @@ from tests.helpers.onebot_events import group_message_event, self_command_event
 _FEATURES = FeatureService({}, {}, frozenset())
 
 
-def _accept(policy: OwnAccountCommandPolicy, event: SelfCommandEvent) -> bool:
-    command = policy.accept(own_account_input(event))
-    if command is not None:
-        event.apply_command(command)
-    return command is not None
+def _accept(policy: OwnAccountCommandPolicy, event: SentGroupMessageEvent) -> bool:
+    return policy.accept(own_account_input(event)) is not None
 
 
 @pytest.mark.parametrize("text", ["demo help", "demo 1", "demo 0"])
@@ -37,9 +34,10 @@ def test_self_commands_require_prefix_and_preserve_actor(text: str) -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
     event = self_command_event(text)
     assert _accept(gate, event)
-    assert event.get_plaintext() == text.removeprefix("demo ")
+    command = gate.accept(own_account_input(event))
+    assert command is not None and command.text == text.removeprefix("demo ")
+    assert event.get_plaintext() == text
     assert event.user_id == event.self_id == 1
-    assert event.accepted
     assert _accept(gate, self_command_event(text))
 
 
@@ -58,7 +56,9 @@ def test_self_commands_default_disabled_and_longest_prefix_wins() -> None:
     )
     event = self_command_event("demo long help")
     assert _accept(gate, event)
-    assert event.get_plaintext() == "help"
+    command = gate.accept(own_account_input(event))
+    assert command is not None and command.text == "help"
+    assert event.get_plaintext() == "demo long help"
 
 
 @pytest.mark.parametrize("prefixes", [[], [""], ["  "], ["demo ", ""]])
@@ -72,8 +72,11 @@ def test_self_command_prefix_configuration_rejects_empty_values(
 @pytest.mark.asyncio
 async def test_outbound_echo_cannot_trigger_self_command() -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
-    echo = outbound_own_account_input(
-        "1", ConversationRef(Platform.ONEBOT, "group", "456"), Message("demo help")
+    echo = onebot_own_account_input(
+        "1",
+        ConversationRef(Platform.ONEBOT, "group", "456"),
+        [{"type": "text", "data": {"text": "demo help"}}],
+        is_own_message=True,
     )
     assert echo is not None
     token = gate.begin_outbound(echo)
@@ -96,7 +99,7 @@ def test_self_admin_binding_keeps_one_member_mention() -> None:
     event.original_message = Message("绑定米米号123456") + MessageSegment.at(42)
     assert _accept(gate, event)
     assert event.get_plaintext() == "绑定米米号123456"
-    assert [segment.type for segment in event.message] == ["at", "text"]
+    assert [segment.type for segment in event.original_message] == ["text", "at"]
     targets = message_input_context(event).member_mentions
     assert tuple(actor.id for actor in targets) == ("42",)
     assert _accept(gate, event)
@@ -125,7 +128,7 @@ def test_self_admin_binding_requires_exactly_one_other_member() -> None:
 def test_other_senders_are_not_converted_to_self_commands() -> None:
     data = group_message_event("demo help").model_dump()
     data["post_type"] = "message_sent"
-    assert not isinstance(SelfCommandAdapter.json_to_event(data), SelfCommandEvent)
+    assert not isinstance(SelfCommandAdapter.json_to_event(data), SentGroupMessageEvent)
 
 
 @pytest.mark.asyncio
@@ -138,7 +141,30 @@ async def test_silent_mode_overrides_enabled_self_commands() -> None:
                 messages_enabled=False, features=_FEATURES, self_commands=gate
             )
         ).process(event)
-    assert not event.accepted
+    assert event.get_plaintext() == "demo help"
+
+
+@pytest.mark.asyncio
+async def test_own_normalization_does_not_reparse_literal_cq() -> None:
+    gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
+    literal = "demo 米米号[CQ:at,qq=777]"
+    event = self_command_event("demo help")
+    event.message = Message(MessageSegment.text(literal))
+    event.original_message = event.message.copy()
+    event.raw_message = str(event.message)
+    event.to_me = True
+    context = await OneBotEventIngress(
+        OneBotAdmissionService(
+            messages_enabled=True, features=_FEATURES, self_commands=gate
+        )
+    ).process(event)
+    assert context is not None
+    assert context.text == "米米号[CQ:at,qq=777]"
+    assert context.member_mentions == ()
+    assert not context.mentions_bot
+    assert event.get_plaintext() == literal
+    assert event.to_me
+    assert [segment.type for segment in event.message] == ["text"]
 
 
 @pytest.mark.asyncio
@@ -162,7 +188,7 @@ async def test_admin_binding_passes_group_routing() -> None:
     router.allows_incoming.return_value = False
     event = self_command_event("绑定米米号123456")
     event.original_message = Message("绑定米米号123456") + MessageSegment.at(42)
-    await OneBotEventIngress(
+    context = await OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
             features=_FEATURES,
@@ -170,7 +196,8 @@ async def test_admin_binding_passes_group_routing() -> None:
             routing=router,
         )
     ).process(event)
-    assert event.admin_binding
+    assert context is not None and context.text == "绑定米米号123456"
+    assert tuple(actor.id for actor in context.member_mentions) == ("42",)
     router.allows_incoming.assert_not_called()
     with pytest.raises(IgnoredException):
         await OneBotEventIngress(
