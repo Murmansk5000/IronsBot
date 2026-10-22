@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from nonebot.matcher import Matcher
 
 from ironsbot.config.models.messaging import TeamAuditWelcomeConfig
-from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.transport import OneBotNoticePriorityConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import MentionPart, SendResult
 from ironsbot.core.platform import ConversationRef, Platform
@@ -64,7 +64,7 @@ async def test_real_group_increase_uses_public_service_and_policy(
             runtime.admission,
             runtime.messenger,
             scheduler,
-            MatcherPriorityConfig(),
+            OneBotNoticePriorityConfig(),
             audit=service,
             spawn=asyncio.create_task,
         )

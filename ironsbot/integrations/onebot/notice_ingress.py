@@ -23,7 +23,7 @@ from ironsbot.services.onebot_admission import OneBotAdmissionInput
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Coroutine
 
-    from ironsbot.config.models.settings import MatcherPriorityConfig
+    from ironsbot.config.models.transport import OneBotNoticePriorityConfig
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.onebot.connections import OneBotConnection
     from ironsbot.integrations.onebot.notice_events import OneBotNoticeEnvelope
@@ -49,7 +49,7 @@ class OneBotNoticeIngress:
     admission: OneBotAdmissionService
     messenger: OneBotOutboundMessenger
     scheduler: Scheduler
-    priorities: MatcherPriorityConfig
+    priorities: OneBotNoticePriorityConfig
     spawn: TaskSpawner
     poke: PokeReplyService | None = None
     audit: TeamAuditService | None = None

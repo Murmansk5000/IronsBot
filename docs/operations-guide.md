@@ -295,6 +295,20 @@ Python 标准入口点声明工厂，只能取得公共代码声明的窄契约�
 反向 WebSocket 保留 `/onebot/v11/`、`/onebot/v11/ws`、`/onebot/v11/ws/`；
 HTTP POST 保留 `/onebot/v11/`、`/onebot/v11/http`、`/onebot/v11/http/`。
 
+旧 `[bot.matcher_priority]` 已删除，命令与 AI 顺序由同一个公共路由决定，
+不要继续配置旧的命令优先级。若此前自定义了非命令通知顺序，只需把三项值移到：
+
+```toml
+[bot.onebot.notice_priority]
+poke_reply = 0
+red_packet_notice = 5
+team_audit = 90
+```
+
+以上是默认值；已有自定义值可原样移动，同优先级仍并发，数字较小的先处理。
+其余旧优先级字段已无执行用途，直接删除；旧表按未知字段策略警告并忽略，
+不自动迁移、不保留双读。没有对应的 env、Docker 或 Unraid 变量变化。
+
 ## 原生图片渲染
 
 图片继续使用同一个 litehtml 原生引擎，不需要浏览器。主仓库维护最小 Python 绑定，

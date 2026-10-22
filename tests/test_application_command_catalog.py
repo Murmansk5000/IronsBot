@@ -60,7 +60,6 @@ def test_application_binds_shared_ingress_once_without_native_installation(
             "Any",
             SimpleNamespace(
                 bot=SimpleNamespace(
-                    matcher_priority=SimpleNamespace(red_packet_notice=0),
                     onebot=OneBotConfig(
                         enabled=onebot_enabled,
                         nicknames={"example nickname"},

@@ -54,7 +54,7 @@ warning 后忽略且不会生效；普通功能组合及群／用户策略中的
 错误时阻止启动。真实 env 文件包含密钥，不纳入仓库；
 使用 Docker Compose 时可参考 [.env.example](../.env.example) 手动创建。
 
-改动 TOML 或环境变量后，可以只执行配置校验，不启动 NoneBot、QQ 官方连接、
+改动 TOML 或环境变量后，可以只执行配置校验，不启动 ASGI 宿主、QQ 官方连接、
 调度器、数据库或其他网络客户端：
 
 ```bash

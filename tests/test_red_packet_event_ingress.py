@@ -14,7 +14,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from ironsbot.config.models.messaging import RedPacketNoticeConfig
-from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.transport import OneBotNoticePriorityConfig
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -213,7 +213,7 @@ async def test_actual_dual_sources_send_only_to_configured_admin_targets(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         red_packets=service,
         spawn=asyncio.create_task,
     )

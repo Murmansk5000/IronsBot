@@ -33,7 +33,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Validate IronsBot TOML and deployment variables without starting "
-            "NoneBot, QQ Official, schedulers, databases, or network clients."
+            "the ASGI host, QQ Official, schedulers, databases, or network clients."
         )
     )
     parser.add_argument(
