@@ -243,7 +243,7 @@ class _Connection:
 class QQOfficialRuntime:
     """Own one official SDK connection and token cache per configured AppID."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - transport and task ownership stay explicit
         self,
         accounts: tuple[QQOfficialRuntimeAccount, ...],
         *,
@@ -251,6 +251,7 @@ class QQOfficialRuntime:
         session_root: Path,
         startup_timeout_seconds: float = 15.0,
         recipient_state: QQOfficialRecipientStateStore | None = None,
+        upload_spawn: TaskSpawner | None = None,
     ) -> None:
         if startup_timeout_seconds <= 0:
             msg = "QQ Official startup timeout must be positive"
@@ -298,6 +299,8 @@ class QQOfficialRuntime:
                             log_tag=f"IronsBot:{label}",
                         ),
                         session_root / "media",
+                        account_id=account.app_id,
+                        spawn=upload_spawn,
                     ),
                     custom_keyboards=account.custom_keyboards,
                     token_observer=tokens,
