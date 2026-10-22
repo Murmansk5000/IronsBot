@@ -12,7 +12,7 @@ from nonebot.typing import T_State  # noqa: TC002 - preprocessor injection
 from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.integrations.onebot import event_ingress
+from ironsbot.integrations.onebot import ingress_facts
 from ironsbot.integrations.onebot.event_ingress import (
     ADMITTED_MESSAGE_KEY,
     AdmittedOneBotMessage,
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from types import SimpleNamespace
 
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.integrations.onebot.message_facts import OneBotMessageFacts
 
 pytest_plugins = ("tests.test_shared_onebot_ingress",)
 
@@ -50,12 +51,12 @@ async def test_admitted_context_is_decoded_once_and_shared_through_delivery(
     decoded: list[MessageInputContext] = []
     received: list[MessageInputContext] = []
     sent: list[MessageInputContext] = []
-    original_decode = event_ingress.message_input_context
+    original_decode = ingress_facts.decode_onebot_message
     original_handle = CommandIngress.handle
     original_reply = OneBotOutboundMessenger.reply_from
 
-    def decode(event: Event) -> MessageInputContext:
-        context = original_decode(event)
+    def decode(facts: OneBotMessageFacts) -> MessageInputContext:
+        context = original_decode(facts)
         decoded.append(context)
         return context
 
@@ -74,7 +75,7 @@ async def test_admitted_context_is_decoded_once_and_shared_through_delivery(
         sent.append(context)
         return await original_reply(self, bot, context, message)
 
-    monkeypatch.setattr(event_ingress, "message_input_context", decode)
+    monkeypatch.setattr(ingress_facts, "decode_onebot_message", decode)
     monkeypatch.setattr(CommandIngress, "handle", handle)
     monkeypatch.setattr(OneBotOutboundMessenger, "reply_from", reply)
     if private:
@@ -120,10 +121,10 @@ async def test_missing_or_mismatched_frame_never_decodes_or_runs_business(
 ) -> None:
     monkeypatch.setattr("nonebot.message._event_preprocessors", set())
 
-    def forbidden_decode(_event: Event) -> MessageInputContext:
+    def forbidden_decode(_facts: OneBotMessageFacts) -> MessageInputContext:
         pytest.fail("command matcher must not decode unadmitted events")
 
-    monkeypatch.setattr(event_ingress, "message_input_context", forbidden_decode)
+    monkeypatch.setattr(ingress_facts, "decode_onebot_message", forbidden_decode)
 
     @event_preprocessor
     async def corrupt(event: Event, state: T_State) -> None:
@@ -192,14 +193,14 @@ async def test_own_command_normalizes_public_context_without_decoding_again(
         )
     ).install()
     contexts: list[MessageInputContext] = []
-    original_decode = event_ingress.message_input_context
+    original_decode = ingress_facts.decode_onebot_message
 
-    def decode(event: Event) -> MessageInputContext:
-        context = original_decode(event)
+    def decode(facts: OneBotMessageFacts) -> MessageInputContext:
+        context = original_decode(facts)
         contexts.append(context)
         return context
 
-    monkeypatch.setattr(event_ingress, "message_input_context", decode)
+    monkeypatch.setattr(ingress_facts, "decode_onebot_message", decode)
     event = self_command_event("demo 执行")
     await handle_event(runtime.bot, event)
     assert [context.text for context in contexts] == ["demo 执行"]

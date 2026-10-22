@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
@@ -12,13 +12,29 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.adapters.onebot.v11.event import Reply, Sender
 
+from ironsbot.integrations.onebot.ingress_facts import (
+    OneBotMessageOrigin,
+    onebot_admission_input,
+)
+from ironsbot.integrations.onebot.message_input import message_input_facts
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
     SentGroupMessageEvent,
 )
 
+if TYPE_CHECKING:
+    from ironsbot.core.own_commands import OwnAccountInput
+
 GroupMemberRole = Literal["owner", "admin", "member"]
 SenderInput = Sender | Mapping[str, Any] | None
+
+
+def own_account_input(event: SentGroupMessageEvent) -> OwnAccountInput:
+    incoming = onebot_admission_input(
+        message_input_facts(event), OneBotMessageOrigin.SENT_GROUP
+    )
+    assert incoming.own_input is not None
+    return incoming.own_input
 
 
 def _sender_model(sender: SenderInput, *, user_id: int) -> Sender:

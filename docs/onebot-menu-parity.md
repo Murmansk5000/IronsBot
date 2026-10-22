@@ -1,5 +1,17 @@
 # 双平台菜单与入口核对
 
+消息正文由无 NoneBot 依赖的 `decode_onebot_segments` 唯一解码：CQ 字符串只在分段时解码转义一次，数组文字不反转义、不按 CQ 重解析，嵌套自定义数据保留；规范允许的非文字空参数对象转为空字典。坏消息段和非字符串 post_type 在原生模型之前拒绝，固定日志不输出消息内容。命令、观察和自身回声共用消息段文字提取，不调用原生 get_plaintext 或异常兜底。接收消息的必要字段、发送者及引用元数据由框架无关的 message_envelope 在原生模型前校验；保留扩展字段，整数拒绝布尔值，不输出坏字段内容。发送事件与通知仍使用原生校验，不能据此宣称全部输入已去框架化。
+
+临时私聊即使带来源 group_id 或 sender.role，仍以 message_type=private 构造会话和交接帧，不取得来源群权限或群角色，不切成群回复。实际反向 WebSocket 的 CQ/数组回放覆盖私聊权限、同连接私聊发送及回执结算；来源群已开放功能但私聊未开放时，不执行业务或 AI。
+
+正文协议依据：[CQ 字符串](https://github.com/botuniverse/onebot-11/blob/master/message/string.md)和[消息段数组](https://github.com/botuniverse/onebot-11/blob/master/message/array.md)。20 个样例与当前 SDK 的既有分段结果逐例对照；有效命令、转义字面量、提及、引用和畸形 CQ 的行为保留，不引入业务兼容路径。
+
+命令、后台身份观察与自身指令现从同一份 OneBotMessageFacts 投影，原生入口不再重复读取消息段。普通群、私聊、自身发送及其他账号发送的来源分类仍明确区分：其他账号发送只产生观察，不成为自身口令。命令使用处理后的文本与去重后的直接目标，观察使用原始当前消息文本及数字提及；引用作者仅在没有显式数字提及时补充观察，绝不成为命令目标。删除无生产消费者的原生 own_account_input，不保留测试专用生产 API；测试改走真实投影。当前已有正式 CQ/数组正文解析，但仍未替换完整原始事件模型。
+
+反向 WebSocket 的 API 等待现由无框架依赖的 `OneBotWebSocketSession` 持有，每连接独立 echo 与等待表，不再进入 SDK 的全局回执等待表。并发回执可乱序，超时、取消、断线均清理等待者；迟到和未知 echo 只消费、不派发命令。旧 Bot 对象仍绑定旧的已关闭会话，不能借重连后的新连接发送。原生桥在现有路径执行恒定时间令牌核验、账号校验与重复连接防护，事件任务由组合根注入的 TaskOwner 创建。停止时关闭等待调用与 socket，拒绝新握手，accept 中途停止不发布 Bot。事件转换、非命令注册及 ASGI 宿主仍使用 NoneBot；HTTP/正向 WebSocket 路径尚未替换，不宣称接收层迁移完成。
+
+协议依据：[OneBot v11 WebSocket](https://github.com/botuniverse/onebot-11/blob/master/communication/ws.md)、[反向连接](https://github.com/botuniverse/onebot-11/blob/master/communication/ws-reverse.md)及 [API 状态](https://github.com/botuniverse/onebot-11/blob/master/communication/http.md)（本轮核对）。`async/1` 只表示提交异步处理，不产生成功消息回执，即使响应错误附带 message_id 也不采信。未增加业务重试、权限或配置字段。
+
 本轮将菜单返回和独立会话放入公共服务。OneBot 的 TD、推送时间及维护操作不再创建临时 Prompt；两端仍分别负责事件解析、平台发送和回执。
 
 OneBot 出站路由、执行账号昵称及管理通知来源补充共用应用持有的连接目录，不再读取 NoneBot 全局连接表。连接登记先于业务连接回调，断线仅移除对应连接对象，重连后的迟到旧断线不清除新连接或重复触发断线业务。正常关闭在服务和任务结束后清空目录；昵称解析与缓存由出站回执和素材失败报告共享，按实际连接及 600 秒有效期隔离，迟到旧响应不能覆盖新连接昵称。没有连接仍跳过发送，不改群/私聊路由与备用账号策略。这不是 OneBot 接收服务已脱离 NoneBot 的声明。

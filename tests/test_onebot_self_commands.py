@@ -16,11 +16,14 @@ from ironsbot.integrations.onebot.replies import build_event_reply_message
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
     SentGroupMessageEvent,
-    own_account_input,
 )
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
-from tests.helpers.onebot_events import group_message_event, self_command_event
+from tests.helpers.onebot_events import (
+    group_message_event,
+    own_account_input,
+    self_command_event,
+)
 
 _FEATURES = FeatureService({}, {}, frozenset())
 
