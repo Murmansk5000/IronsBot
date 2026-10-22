@@ -11,8 +11,6 @@ from ironsbot.core.platform import Platform
 from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from nonebot.internal.driver import Driver
 
     from ironsbot.app.file_logging import FileLogging
@@ -20,6 +18,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import Feature
     from ironsbot.core.plugin_install import PluginContribution
+    from ironsbot.extensions.registration import ExtensionServices
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class Application:
-    """Own process resources after a NoneBot manifest supplies contributions."""
+    """Own process resources and explicitly composed business contributions."""
 
     settings: Settings
     driver: Driver
@@ -38,7 +37,7 @@ class Application:
     http_clients: HttpClients
     databases: DatabaseManager
     resources: ApplicationResources
-    extension_contexts: Mapping[str, object]
+    extension_services: ExtensionServices
     task_owner: TaskOwner
     known_features: tuple[str, ...]
     required_plugin_features: frozenset[Feature]
@@ -53,7 +52,7 @@ class Application:
     _installed: bool = field(default=False, init=False)
 
     def configure(self, contributions: tuple[PluginContribution, ...]) -> None:
-        """Finalize application wiring after standard NoneBot plugin loading."""
+        """Finalize application wiring after all contributions are composed."""
 
         if self._configured:
             msg = "application plugin contributions are already configured"
@@ -91,6 +90,7 @@ class Application:
         if not self._configured or self.lifecycle is None:
             msg = "application must be configured before installation"
             raise RuntimeError(msg)
+        from ironsbot.integrations.onebot.httpx_exchange import HttpxOneBotExchange
         from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
         from ironsbot.integrations.onebot.received_messages import (
             OneBotReceivedMessages,
@@ -125,6 +125,7 @@ class Application:
             spawn=self.task_owner.create,
             received=received.handle,
             notices=notices.handle,
+            request_http=HttpxOneBotExchange(self.http_clients.origin),
         )
         self.host_lifecycle = NoneBotLifecycleBinding(
             self.driver, self.lifecycle, self.resources.onebot_connections

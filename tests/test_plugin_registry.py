@@ -11,7 +11,6 @@ import nonebot
 import tomllib
 
 if TYPE_CHECKING:
-
     from ironsbot.config.models.operations import StartupConfig
     from ironsbot.services.operations.startup import StartupNoticeService
 
@@ -339,10 +338,10 @@ def test_manifest_scheduled_restart_owns_its_lifecycle() -> None:
     ]
 
 
-def test_manifest_contributions_follow_the_legacy_bridge() -> None:
+def test_contributions_follow_the_production_factory_order() -> None:
     plugin_ids = tuple(definition.id for definition in DEFINITIONS)
 
-    assert plugin_ids[0] == "seer_query"
+    assert plugin_ids[:2] == ("clock_startup_check", "seer_query")
     assert plugin_ids.index("seer_query") < plugin_ids.index("bilibili")
     assert plugin_ids.index("bilibili") < plugin_ids.index("messaging")
     assert plugin_ids.index("messaging") < plugin_ids.index("ai_chat")
@@ -379,6 +378,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "headless_seer",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
+        "clock_startup_check",
         "render_crash_report",
         "bilibili_check",
         "startup_notice",
@@ -410,172 +410,22 @@ def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
     ]
 
 
-def test_internal_plugins_do_not_register_native_handlers() -> None:
-    forbidden_imports = {
-        "MatcherGroup",
-        "PluginMetadata",
-        "on_command",
-        "on_fullmatch",
-        "on_message",
-        "on_notice",
-    }
+def test_internal_plugins_have_no_framework_imports_or_native_handlers() -> None:
     violations: list[str] = []
-
     for path in sorted((ROOT / "ironsbot" / "plugins").rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module in {
-                "nonebot",
-                "nonebot.plugin",
-                "nonebot.plugin.on",
-            }:
-                imported = forbidden_imports.intersection(
-                    alias.name for alias in node.names
-                )
-                if path in {
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "about" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "help" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "help" / "hint.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "sendpic"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "pet_config"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "messaging"
-                    / "blacklist.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "messaging"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "messaging"
-                    / "meeting.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "messaging"
-                    / "red_packet.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "messaging" / "poke.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "bilibili"
-                    / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "ai" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "ai" / "intent.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "fire_manual_ad"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "seer"
-                    / "rank_help"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "seer"
-                    / "query"
-                    / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "lucky_skin_window.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "team_audit.py",
-                    ROOT / "ironsbot" / "plugins" / "onebot" / "team_resource.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "activity"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "operations"
-                    / "db_sync.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "operations"
-                    / "docker_update.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "operations"
-                    / "server_status.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "startup_notice"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "headless_seer_notice"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "headless_seer_runtime"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "scheduled_restart"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "clock_check"
-                    / "__init__.py",
-                } and imported == {"PluginMetadata"}:
-                    continue
-                if imported:
-                    violations.append(
-                        f"{path.relative_to(ROOT)} imports {sorted(imported)}"
-                    )
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "nonebot"
-                and node.func.attr in forbidden_imports
-            ):
-                violations.append(
-                    f"{path.relative_to(ROOT)} calls nonebot.{node.func.attr}"
-                )
-
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            imports = (
+                (node.module or "",)
+                if isinstance(node, ast.ImportFrom)
+                else tuple(alias.name for alias in node.names)
+                if isinstance(node, ast.Import)
+                else ()
+            )
+            if any(name.startswith("nonebot") for name in imports):
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
     assert violations == []
 
 

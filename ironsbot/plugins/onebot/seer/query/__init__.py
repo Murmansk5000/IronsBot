@@ -1,30 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""OneBot manifest entrypoint for the unified Seer query surface."""
+"""Explicit business contribution for the unified Seer query surface."""
 
 from __future__ import annotations
 
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.services.seer.command_contracts import seer_command_contracts
-
-__plugin_meta__ = PluginMetadata(
-    name="赛尔号查询",
-    description="查询赛尔号玩家、精灵、刻印、榜单与活动数据。",
-    usage="发送“帮助”查看当前群已开放的赛尔号查询指令。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 if TYPE_CHECKING:
     from ironsbot.app.composition import ApplicationResources
@@ -99,11 +83,4 @@ def plugin_contribution(
                 ),
             ),
         ),
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(resources=context.resources, scheduler=context.scheduler),
     )
