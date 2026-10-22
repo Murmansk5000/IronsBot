@@ -13,8 +13,7 @@ from ironsbot.core.plugin_install import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-
+    from ironsbot.core.platform import BotAccountRef
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.scheduler import Scheduler
 
@@ -28,7 +27,9 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def check_headless_on_connect(_bot: Bot, *, service: HeadlessService) -> None:
+async def check_headless_on_connect(
+    _account: BotAccountRef, *, service: HeadlessService
+) -> None:
     await service.check_on_connect()
 
 

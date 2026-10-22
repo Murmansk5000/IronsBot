@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.core.platform import Platform
 from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
 
 if TYPE_CHECKING:
@@ -42,6 +43,7 @@ class Application:
     known_features: tuple[str, ...]
     required_plugin_features: frozenset[Feature]
     onebot_message_handling_enabled: bool = True
+    first_connection_platforms: frozenset[Platform] = frozenset(Platform)
     contributions: tuple[PluginContribution, ...] = ()
     resource_startup_hooks: tuple[tuple[str, Any], ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
@@ -76,6 +78,11 @@ class Application:
             resource_startup_hooks=self.resource_startup_hooks,
             resource_shutdown_hooks=self.resource_shutdown_hooks,
         )
+        self.lifecycle.first_connection_platforms = self.first_connection_platforms
+        if self.resources.qq_official is not None:
+            self.resources.qq_official.bind_lifecycle(
+                self.lifecycle, spawn=self.task_owner.create
+            )
         self._configured = True
 
     def install(self, router: PortableCommandRouter) -> None:

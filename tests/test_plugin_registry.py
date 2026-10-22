@@ -308,16 +308,15 @@ def test_manifest_startup_notice_owns_its_lifecycle() -> None:
     ]
 
 
-def test_official_startup_notice_does_not_wait_for_onebot_connect() -> None:
+def test_startup_notice_uses_only_shared_first_ready_hook() -> None:
     base = DEFINITIONS_BY_ID["startup_notice"]
     contribution = startup_notice_plugin_contribution(
         service=cast("StartupNoticeService", object()),
         config=cast("StartupConfig", object()),
-        send_on_startup=True,
     )
 
     assert base.hooks.startup == ()
-    assert [name for name, _hook in contribution.hooks.startup] == ["startup_notice"]
+    assert contribution.hooks.startup == ()
     assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
         "startup_notice"
     ]

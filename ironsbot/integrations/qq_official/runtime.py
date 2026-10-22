@@ -8,6 +8,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
 from threading import Lock
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import ExecutionIdentity
+from ironsbot.core.platform import BotAccountRef, Platform
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.controlled_upload import ControlledMediaUploader
 from ironsbot.integrations.qq_official.group_message_events import (
@@ -41,8 +43,10 @@ if TYPE_CHECKING:
     from httpx import AsyncClient
     from qqbot_agent_sdk.event_parser import InboundEvent
 
+    from ironsbot.core.account_lifecycle import BotConnectionObserver
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.qq_official.recipient_state import (
         QQOfficialRecipientStateStore,
     )
@@ -258,6 +262,9 @@ class QQOfficialRuntime:
         self._recipient_state = recipient_state
         self._ingress_routing: QQOfficialIngressRouting | None = None
         self._connections: dict[str, _Connection] = {}
+        self._connection_observer: BotConnectionObserver | None = None
+        self._spawn_connection_event: TaskSpawner | None = None
+        self._event_loop: asyncio.AbstractEventLoop | None = None
         for index, account in enumerate(accounts, start=1):
             if account.app_id in self._connections:
                 msg = "duplicate official application identifier"
@@ -345,11 +352,46 @@ class QQOfficialRuntime:
         self._router = router
         self._messenger = messenger
 
+    def bind_lifecycle(
+        self, observer: BotConnectionObserver, *, spawn: TaskSpawner
+    ) -> None:
+        if self._connection_observer is not None:
+            msg = "QQ Official connection lifecycle is already bound"
+            raise RuntimeError(msg)
+        self._connection_observer = observer
+        self._spawn_connection_event = spawn
+
+    def _publish_connection(self, app_id: str, *, connected: bool) -> None:
+        loop = self._event_loop
+        if (
+            self._connection_observer is not None
+            and loop is not None
+            and not loop.is_closed()
+        ):
+            loop.call_soon_threadsafe(
+                partial(self._dispatch_connection, app_id, connected=connected)
+            )
+
+    def _dispatch_connection(self, app_id: str, *, connected: bool) -> None:
+        observer = self._connection_observer
+        spawn = self._spawn_connection_event
+        if observer is None or spawn is None:
+            return
+        account = BotAccountRef(Platform.QQ_OFFICIAL, app_id)
+        callback = observer.bot_connect if connected else observer.bot_disconnect
+        coroutine = callback(account)
+        try:
+            spawn(coroutine, name="qq_official.connection")
+        except RuntimeError:
+            coroutine.close()
+            logger.warning("QQ Official connection observation could not be scheduled")
+
     async def start(self) -> None:
         if self._router is None or self._messenger is None:
             msg = "QQ Official runtime must be bound before startup"
             raise RuntimeError(msg)
         loop = asyncio.get_running_loop()
+        self._event_loop = loop
         await asyncio.gather(
             *(
                 _start_connection(
@@ -378,10 +420,13 @@ class QQOfficialRuntime:
         ]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        for connection in self._connections.values():
+        for app_id, connection in self._connections.items():
+            if connection.lifecycle.snapshot().state is QQOfficialConnectionState.READY:
+                self._publish_connection(app_id, connected=False)
             connection.session.flush()
             connection.started = False
             connection.lifecycle.stopped()
+        self._event_loop = None
 
     async def handle_event(
         self,
@@ -486,15 +531,27 @@ class QQOfficialRuntime:
                 )
 
         def connected() -> None:
+            previous = lifecycle.snapshot().state
             lifecycle.ready()
+            if (
+                previous is not QQOfficialConnectionState.READY
+                and lifecycle.snapshot().state is QQOfficialConnectionState.READY
+            ):
+                self._publish_connection(app_id, connected=True)
             logger.info("QQ Official ready: account=%s", account_label)
 
         def disconnected() -> None:
+            was_ready = lifecycle.snapshot().state is QQOfficialConnectionState.READY
             lifecycle.disconnected()
+            if was_ready:
+                self._publish_connection(app_id, connected=False)
             logger.warning("QQ Official disconnected: account=%s", account_label)
 
         def fatal_error(code: str, message: str) -> None:
+            was_ready = lifecycle.snapshot().state is QQOfficialConnectionState.READY
             lifecycle.fatal(code, message)
+            if was_ready:
+                self._publish_connection(app_id, connected=False)
             logger.error(
                 "QQ Official fatal error: account=%s code=%s message=%s",
                 account_label,

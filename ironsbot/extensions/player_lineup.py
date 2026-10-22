@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import ObservationTime, remaining_observation_ttl
 from ironsbot.extensions.contracts import (
-    CommandContext,
     PlayerLineupCachedReply,
     PlayerLineupImageAssets,
     PlayerLineupPacketFetcher,
@@ -48,6 +47,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from pathlib import Path
 
+    from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.extensions.contracts import (
         PlayerDetailActionRegistration,

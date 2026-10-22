@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from nonebot.adapters import Bot  # noqa: TC002 - driver evaluates hook annotations.
 from nonebot.adapters.onebot.v11 import Bot as OneBot
 
+from ironsbot.core.platform import BotAccountRef, Platform
+
 if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
 
@@ -35,9 +37,15 @@ class NoneBotLifecycleBinding:
     async def _connect(self, bot: Bot) -> None:
         if isinstance(bot, OneBot):
             self.connections.connect(bot)
-        await self.lifecycle.bot_connect(bot)
+            account = BotAccountRef(Platform.ONEBOT, bot.self_id)
+            await self.lifecycle.task_owner.create(
+                self.lifecycle.bot_connect(account), name="onebot.connected"
+            )
 
     async def _disconnect(self, bot: Bot) -> None:
-        if isinstance(bot, OneBot) and not self.connections.disconnect(bot):
+        if not isinstance(bot, OneBot) or not self.connections.disconnect(bot):
             return
-        await self.lifecycle.bot_disconnect(bot)
+        await self.lifecycle.task_owner.create(
+            self.lifecycle.bot_disconnect(BotAccountRef(Platform.ONEBOT, bot.self_id)),
+            name="onebot.disconnected",
+        )
