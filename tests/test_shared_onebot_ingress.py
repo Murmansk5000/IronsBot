@@ -24,6 +24,7 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.command_ingress import install_command_ingress
+from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
@@ -34,6 +35,7 @@ from ironsbot.services.command_errors import COMMAND_FAILED_MESSAGE
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.outbound_limits import GroupOutboundRateLimitService
+from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
@@ -77,6 +79,10 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         user_policies,
         frozenset(),
     )
+    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
+    OneBotEventIngress(
+        OneBotAdmissionService(messages_enabled=True, features=features)
+    ).install()
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -188,8 +194,15 @@ async def test_production_entry_does_not_call_matcher_send(
     runtime.execute.assert_awaited_once()
     assert len(runtime.sends) == 1
     assert runtime.sends[0]["bot"] == "1"
-    assert "[CQ:reply,id=1]" in str(runtime.sends[0]["message"])
-    assert ("[CQ:at,qq=101]\n" in str(runtime.sends[0]["message"])) is not private
+    assert runtime.sends[0]["message"][0] == {"type": "reply", "data": {"id": "1"}}
+    assert (
+        {"type": "at", "data": {"qq": "101"}} in runtime.sends[0]["message"]
+    ) is not private
+    if not private:
+        assert runtime.sends[0]["message"][2] == {
+            "type": "text",
+            "data": {"text": "\n"},
+        }
 
 
 @pytest.mark.asyncio
@@ -436,6 +449,7 @@ async def test_actual_preprocessor_fault_is_admin_only_and_stops_all_business(
 @pytest.mark.asyncio
 async def test_own_account_menu_uses_public_replay_and_navigation(
     runtime: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ironsbot.config.models.transport import SelfCommandsConfig
     from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
@@ -443,6 +457,7 @@ async def test_own_account_menu_uses_public_replay_and_navigation(
     from ironsbot.services.own_commands import OwnAccountCommandPolicy
     from tests.helpers.onebot_events import self_command_event
 
+    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
     admission = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
@@ -452,10 +467,10 @@ async def test_own_account_menu_uses_public_replay_and_navigation(
             ),
         )
     )
+    admission.install()
 
     async def deliver(text: str, message_id: int) -> None:
         event = self_command_event(text, message_id)
-        await admission.process(event)
         await handle_event(runtime.bot, event)
 
     await deliver("demo 菜单", -10)
@@ -467,13 +482,15 @@ async def test_own_account_menu_uses_public_replay_and_navigation(
     await deliver("demo 0", -14)
     assert "已退出" in str(runtime.sends[-1]["message"])
     assert all(
-        not any(part.type == "at" for part in sent["message"]) for sent in runtime.sends
+        not any(part["type"] == "at" for part in sent["message"])
+        for sent in runtime.sends
     )
 
 
 @pytest.mark.asyncio
 async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs(
     runtime: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ironsbot.config.models.transport import SelfCommandsConfig
     from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
@@ -481,6 +498,7 @@ async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs
     from ironsbot.services.own_commands import OwnAccountCommandPolicy
     from tests.helpers.onebot_events import self_command_event
 
+    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
     admission = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
@@ -490,16 +508,15 @@ async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs
             ),
         )
     )
+    admission.install()
     runtime.transport.fails = True
     for message_id in (1, 1):
         event = self_command_event("demo 执行", message_id)
-        await admission.process(event)
         await handle_event(runtime.bot, event)
     runtime.execute.assert_awaited_once()
     assert len(runtime.sends) == 1
     runtime.transport.fails = False
     fresh = self_command_event("demo 执行", 2)
-    await admission.process(fresh)
     await handle_event(runtime.bot, fresh)
     assert runtime.execute.await_count == len(("failed", "fresh"))
     assert "result" in str(runtime.sends[-1]["message"])
@@ -508,7 +525,7 @@ async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs
 @pytest.mark.asyncio
 @pytest.mark.parametrize("features", [frozenset(), frozenset({"blacklist"})])
 async def test_own_account_transport_admission_does_not_bypass_business_policy(
-    runtime: SimpleNamespace, features: frozenset[str]
+    runtime: SimpleNamespace, features: frozenset[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from ironsbot.config.models.transport import SelfCommandsConfig
     from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
@@ -517,6 +534,7 @@ async def test_own_account_transport_admission_does_not_bypass_business_policy(
     from tests.helpers.onebot_events import self_command_event
 
     runtime.policies[runtime.group] = features
+    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
     admission = OneBotEventIngress(
         OneBotAdmissionService(
             messages_enabled=True,
@@ -532,11 +550,11 @@ async def test_own_account_transport_admission_does_not_bypass_business_policy(
 
         with pytest.raises(IgnoredException, match="conversation_blacklisted"):
             await admission.process(event)
-        assert not event.accepted
+        assert event.get_plaintext() == "demo 执行"
     else:
-        await admission.process(event)
-        assert event.accepted
+        admission.install()
         await handle_event(runtime.bot, event)
+        assert event.get_plaintext() == "demo 执行"
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
 

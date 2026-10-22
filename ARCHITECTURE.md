@@ -73,8 +73,9 @@ connection registry are transitional protocol resources, not business owners.
 
 Own-account command policy consumes normalized `OwnAccountInput` facts and
 returns an `OwnAccountCommand`; it must not retain or mutate SDK events.
-The OneBot adapter preserves protocol mentions and reply references when
-applying that decision. Actual execution still uses `MessageInputContext`
+Shared admission immutably normalizes command text in `MessageInputContext`,
+preserving protocol mentions and reply references without parsing text again
+or mutating native events. Actual execution uses that admitted context
 and the shared permission, message replay, and business request lifecycle.
 
 Echo suppression has its own bounded outbound-content history. It is not a
@@ -98,8 +99,8 @@ outbound content, and no native SDK-data ledger or ambient context is used.
 silent mode, own-account admission, group ownership and everyone-mention
 rejection. Its facts must agree on account, actor and conversation. Group and
 private conversations retain different routing semantics, not duplicate queries.
-The native `OneBotEventIngress` only decodes protocol facts, applies the own-
-command result and installs hooks. Admission failures use the same composition-
+The native `OneBotEventIngress` only decodes protocol facts, publishes the
+admitted context and installs hooks. Admission failures use the same composition-
 owned error reporter as shared command execution, without replying to an
 unclaimed message or exposing exception details. Cancellation propagates.
 
@@ -139,6 +140,55 @@ not `Matcher.send` or proactive routing. Account mismatch must be rejected
 before identity observation or business execution. Unconfirmed attempted command
 deliveries are reported through the same admin-only public error boundary on
 both platforms, without retrying or replying again to the user.
+The OneBot outbound serializer returns typed JSON segment arrays, not native
+NoneBot message objects. The sender port only requires the account identity and
+OneBot `call_api`; action names and payload construction stay at this integration
+edge. Signed reply IDs, member mentions, text and image encoding preserve the
+native wire representation. Echo checks extract the same facts from wire segments
+for native own-account events and managed sends. Legacy matcher delivery converts
+these segments to its native message object only at that remaining adapter edge.
+Independent tests reject NoneBot imports and exercise the real shared send limiter,
+receipt validation and echo suppression. This does not replace the native receiver.
+`OneBotConnection` is the single connection contract for the directory, account
+routing, outbound delivery, history verification and metadata/group queries. It
+does not reference a NoneBot bot type or require its generated API methods. History
+checks retain account isolation and cannot retry a send. Membership probes still
+distinguish explicit action rejection from transport failure. Native SDK errors
+are converted at the adapter boundary to framework-free action/transport errors;
+untrusted error wording is never delivery or disconnection evidence. Generic
+network failure remains uncertain, not proof of a broken connection or absent
+member. Only a known unsubmitted action can release send capacity.
+OneBot message decoding is owned by `message_facts.decode_onebot_message` over a
+typed `OneBotMessageFacts` snapshot. The native event adapter only extracts the
+current/preprocessed text, original current-message segments and transport
+metadata. The codec restores addressing facts, deduplicates direct member
+mentions, preserves reply precedence and constructs the shared input context.
+Quoted bodies and their mentions are not part of that snapshot. Direct/private
+addressing, roles and sender labels retain their existing semantics. Native
+admission publishes an immutable `AdmittedOneBotMessage` in per-event state only
+after acceptance. The command adapter checks the exact source event, platform,
+account, actor, conversation and message ID, then passes that same context through
+public execution and replies. A missing or mismatched frame never triggers a
+fallback decode. Ordinary inputs decode once; accepted own-account commands are
+normalized again after their existing native prefix rewrite, and only that final
+context is handed off. The raw receiver and native rewrite remain migration work.
+`ApplicationLifecycle` and `TaskOwner` do not import or hold a NoneBot driver,
+native bot type or logger. They execute explicit contribution/resource hooks,
+scheduler ownership and task draining directly. The sole native host binding is
+`integrations.nonebot_lifecycle.NoneBotLifecycleBinding`, constructed by the
+application after configuration; it owns typed driver hook installation and
+OneBot connection publication. It does not duplicate resource start/stop logic.
+Independent execution is tested in a process that rejects every NoneBot import;
+the complete application still uses the native host, plugin loader and htmlkit.
+OneBot routing and notice-source enrichment use one application-owned connection
+directory rather than NoneBot's global bot registry. The native lifecycle bridge
+publishes a connection before business connect hooks, removes only that exact
+connection on disconnect, and ignores stale disconnects after replacement. Normal
+shutdown clears the directory after services and owned tasks stop. Outbound
+receipts and image-failure reports share one per-application execution-name
+resolver; cached names are tied to the exact connection and expire after 600
+seconds. A late lookup cannot publish a replaced connection's nickname. Missing
+connections remain unavailable, never an implicit alternate account selection.
 Non-command matcher sends, API callback correlation and transport health ownership
 remain transitional and must not be mistaken for completed delivery unification.
 

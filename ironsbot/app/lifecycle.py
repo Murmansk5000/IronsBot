@@ -2,17 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from nonebot.adapters import Bot  # noqa: TC002 - driver evaluates hook annotations.
-from nonebot.log import logger
-
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-
-    from nonebot.internal.driver import Driver
 
     from ironsbot.core.plugin_install import (
         BotLifecycleHook,
@@ -24,6 +20,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.scheduler import SchedulerLifecycle
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class ConnectedBotIdentityError(ValueError):
@@ -65,7 +62,7 @@ class TaskOwner:
         error = task.exception()
         if error is not None:
             logger.error(
-                "owned task {} failed: error_type={}",
+                "owned task %s failed: error_type=%s",
                 task.get_name(),
                 type(error).__name__,
             )
@@ -83,7 +80,6 @@ class TaskOwner:
 
 @dataclass(slots=True)
 class ApplicationLifecycle:
-    driver: Driver
     task_owner: TaskOwner = field(default_factory=TaskOwner)
     scheduler: SchedulerLifecycle | None = None
     resource_startup_hooks: tuple[NamedLifecycleHook, ...] = ()
@@ -95,12 +91,10 @@ class ApplicationLifecycle:
     bot_disconnect_hooks: tuple[NamedBotLifecycleHook, ...] = ()
     connected_bot_ids: set[int] = field(default_factory=set, init=False)
     _first_bot_connected: bool = field(default=False, init=False)
-    _installed: bool = field(default=False, init=False)
 
     @classmethod
-    def from_contributions(  # noqa: PLR0913 - explicit lifecycle resources
+    def from_contributions(
         cls,
-        driver: Driver,
         contributions: tuple[PluginContribution, ...],
         *,
         task_owner: TaskOwner,
@@ -109,7 +103,6 @@ class ApplicationLifecycle:
         resource_shutdown_hooks: tuple[NamedLifecycleHook, ...] = (),
     ) -> ApplicationLifecycle:
         return cls(
-            driver=driver,
             task_owner=task_owner,
             scheduler=scheduler,
             resource_startup_hooks=resource_startup_hooks,
@@ -141,16 +134,6 @@ class ApplicationLifecycle:
             ),
         )
 
-    def install(self) -> None:
-        if self._installed:
-            return
-
-        self.driver.on_startup(self.startup)
-        self.driver.on_shutdown(self.shutdown)
-        self.driver.on_bot_connect(self._on_bot_connect)
-        self.driver.on_bot_disconnect(self._on_bot_disconnect)
-        self._installed = True
-
     async def startup(self) -> None:
         await self._run_lifecycle_hooks(
             "resource_startup",
@@ -173,16 +156,6 @@ class ApplicationLifecycle:
             "resource_shutdown",
             tuple(reversed(self.resource_shutdown_hooks)),
         )
-
-    async def _on_bot_connect(self, bot: Bot) -> None:
-        """Adapt NoneBot's typed driver hook to platform-agnostic lifecycle hooks."""
-
-        await self.bot_connect(bot)
-
-    async def _on_bot_disconnect(self, bot: Bot) -> None:
-        """Adapt NoneBot's typed driver hook to platform-agnostic lifecycle hooks."""
-
-        await self.bot_disconnect(bot)
 
     async def bot_connect(self, bot: object) -> None:
         self.connected_bot_ids.add(_bot_id(bot))
@@ -242,8 +215,8 @@ class ApplicationLifecycle:
             if isawaitable(result):
                 await result
         except Exception:
-            logger.opt(exception=True).error(
-                "lifecycle {} hook failed: {}",
+            logger.exception(
+                "lifecycle %s hook failed: %s",
                 phase,
                 name,
             )
@@ -261,9 +234,9 @@ class ApplicationLifecycle:
             result = hook(bot)
             if isawaitable(result):
                 await result
-        except Exception:  # noqa: BLE001 - one owner must not block later owners
-            logger.opt(exception=True).error(
-                "lifecycle {} hook failed: {}",
+        except Exception:
+            logger.exception(
+                "lifecycle %s hook failed: %s",
                 phase,
                 name,
             )

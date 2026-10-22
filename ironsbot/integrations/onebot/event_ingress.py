@@ -17,6 +17,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
+from nonebot.typing import T_State  # noqa: TC002 - native preprocessor injection
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import ExecutionIdentity
@@ -27,7 +28,7 @@ from ironsbot.integrations.onebot.identity import (
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.self_commands import (
-    SelfCommandEvent,
+    SentGroupMessageEvent,
     own_account_input,
 )
 from ironsbot.services.identity_observation import OneBotGroupMessageObservation
@@ -37,13 +38,20 @@ if TYPE_CHECKING:
     from ironsbot.services.onebot_admission import OneBotAdmissionService
 
 logger = logging.getLogger(__name__)
+ADMITTED_MESSAGE_KEY = "_ironsbot_admitted_message"
+
+
+@dataclass(frozen=True, slots=True)
+class AdmittedOneBotMessage:
+    event: MessageEvent
+    context: MessageInputContext
 
 
 @dataclass(frozen=True, slots=True)
 class OneBotEventIngress:
     admission: OneBotAdmissionService
 
-    async def process(self, event: Event) -> None:
+    async def process(self, event: Event) -> MessageInputContext | None:
         try:
             incoming = _decode(event)
         except Exception as error:  # noqa: BLE001 - malformed transport payload is not a command
@@ -55,20 +63,22 @@ class OneBotEventIngress:
         decision = await self.admission.decide(incoming)
         if decision.rejection is not None:
             raise IgnoredException(decision.rejection.value)
-        if decision.own_command is not None:
-            if not isinstance(event, SelfCommandEvent):
-                msg = "Unexpected OneBot own-command event type"
-                raise IgnoredException(msg)
-            event.apply_command(decision.own_command)
+        return decision.context
 
     def install(self) -> None:
         ingress = self
+
         @event_preprocessor
-        async def enforce_onebot_ingress(bot: Bot, event: Event) -> None:
+        async def enforce_onebot_ingress(
+            bot: Bot, event: Event, state: T_State
+        ) -> None:
+            state.pop(ADMITTED_MESSAGE_KEY, None)
             if bot.self_id != str(event.self_id):
                 msg = "Input account does not match receiving connection"
                 raise IgnoredException(msg)
-            await ingress.process(event)
+            context = await ingress.process(event)
+            if isinstance(event, MessageEvent) and context is not None:
+                state[ADMITTED_MESSAGE_KEY] = AdmittedOneBotMessage(event, context)
 
 
 def _decode(event: Event) -> OneBotAdmissionInput:
@@ -93,7 +103,7 @@ def _decode(event: Event) -> OneBotAdmissionInput:
         observation=observation,
         is_group_message=isinstance(event, GroupMessageEvent),
         own_input=own_account_input(event)
-        if isinstance(event, SelfCommandEvent)
+        if isinstance(event, SentGroupMessageEvent)
         else None,
     )
 

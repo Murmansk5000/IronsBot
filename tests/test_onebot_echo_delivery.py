@@ -17,6 +17,7 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.self_commands import own_account_input
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
@@ -70,7 +71,7 @@ def echo_transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
 async def test_definitely_offline_send_does_not_block_later_manual_own_command(
     echo_transport: SimpleNamespace,
 ) -> None:
-    echo_transport.state.error = RuntimeError("账号已离线")
+    echo_transport.state.error = OneBotTransportError(definitely_not_sent=True)
     result = await echo_transport.messenger.send(
         ConversationRef(Platform.ONEBOT, "group", "456"),
         OutboundMessage.from_text("demo help"),

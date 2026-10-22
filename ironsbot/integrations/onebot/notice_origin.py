@@ -6,14 +6,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
-
-from nonebot import get_bots
+from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import Platform, reference_digest
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.integrations.onebot.connections import (
+        OneBotConnection,
+        OneBotConnections,
+    )
     from ironsbot.services.identity_principals import IdentityPrincipalService
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,21 +35,13 @@ def _field(response: object, key: str) -> str:
     )
 
 
-def _onebot_bots(preferred_id: str | None) -> tuple[Any, ...]:
-    try:
-        bots = get_bots()
-    except Exception:  # noqa: BLE001 - notices do not require a live OneBot adapter
-        return ()
-    candidates = [bot for bot in bots.values() if hasattr(bot, "get_group_info")]
-    candidates.sort(key=lambda bot: str(bot.self_id) != preferred_id)
-    return tuple(candidates)
-
-
-async def _group_name(bots: tuple[Any, ...], group_id: int) -> tuple[str, Any | None]:
+async def _group_name(
+    bots: tuple[OneBotConnection, ...], group_id: int
+) -> tuple[str, OneBotConnection | None]:
     for bot in bots:
         try:
             response = await asyncio.wait_for(
-                bot.get_group_info(group_id=group_id, no_cache=False),
+                bot.call_api("get_group_info", group_id=group_id, no_cache=False),
                 timeout=_LOOKUP_TIMEOUT,
             )
             return _field(response, "group_name"), bot
@@ -57,11 +51,11 @@ async def _group_name(bots: tuple[Any, ...], group_id: int) -> tuple[str, Any | 
 
 
 async def _user_name(
-    bots: tuple[Any, ...],
+    bots: tuple[OneBotConnection, ...],
     user_id: int,
     *,
     group_id: int | None,
-    group_bot: Any | None,
+    group_bot: OneBotConnection | None,
 ) -> str:
     ordered = (group_bot, *(bot for bot in bots if bot is not group_bot))
     if group_id is not None:
@@ -70,8 +64,11 @@ async def _user_name(
                 continue
             try:
                 response = await asyncio.wait_for(
-                    bot.get_group_member_info(
-                        group_id=group_id, user_id=user_id, no_cache=False
+                    bot.call_api(
+                        "get_group_member_info",
+                        group_id=group_id,
+                        user_id=user_id,
+                        no_cache=False,
                     ),
                     timeout=_LOOKUP_TIMEOUT,
                 )
@@ -85,7 +82,7 @@ async def _user_name(
             continue
         try:
             response = await asyncio.wait_for(
-                bot.get_stranger_info(user_id=user_id, no_cache=False),
+                bot.call_api("get_stranger_info", user_id=user_id, no_cache=False),
                 timeout=_LOOKUP_TIMEOUT,
             )
             if name := _field(response, "nickname"):
@@ -98,6 +95,7 @@ async def _user_name(
 async def resolve_notice_origin(
     context: MessageInputContext,
     principals: IdentityPrincipalService,
+    connections: OneBotConnections,
 ) -> str:
     conversation = context.message.conversation
     actor = context.message.actor
@@ -116,7 +114,7 @@ async def resolve_notice_origin(
         and context.execution_identity.platform is Platform.ONEBOT
         else None
     )
-    bots = _onebot_bots(preferred_id)
+    bots = connections.snapshot(preferred_id=preferred_id)
     lines: list[str] = []
     group_bot = None
     if conversation.kind == "group":

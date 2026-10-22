@@ -4,40 +4,59 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from time import monotonic
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable
 
-from nonebot import get_bot
+    from ironsbot.integrations.onebot.connections import OneBotConnections
 
 from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.core.platform import Platform
 
-_NAMES: dict[str, tuple[float, str]] = {}
 _TTL = 600
 
 
-async def resolve_execution_identity(
-    identity: ExecutionIdentity,
-    *,
-    aliases: Mapping[str, int],
-) -> ExecutionIdentity:
-    if identity.platform is not Platform.ONEBOT:
-        return identity
-    cached_at, nickname = _NAMES.get(identity.account_id, (0.0, ""))
-    if monotonic() - cached_at >= _TTL or not nickname:
-        try:
-            bot = get_bot(identity.account_id)
-            response = await asyncio.wait_for(bot.call_api("get_login_info"), timeout=2)
-            nickname = str(response.get("nickname") or "").strip()
-            if nickname:
-                _NAMES[identity.account_id] = (monotonic(), nickname)
-        except Exception:  # noqa: BLE001 - task delivery is independent of nickname API
-            nickname = ""
-    name = nickname or next(
-        (key for key, value in aliases.items() if str(value) == identity.account_id),
-        identity.display_name or identity.account_id,
+@dataclass(slots=True)
+class OneBotExecutionIdentityResolver:
+    connections: OneBotConnections
+    account_name: Callable[[str], str]
+    _names: dict[str, tuple[float, object, str]] = field(
+        default_factory=dict, init=False, repr=False
     )
-    return ExecutionIdentity(identity.platform, identity.account_id, name)
+
+    async def resolve(self, identity: ExecutionIdentity) -> ExecutionIdentity:
+        if identity.platform is not Platform.ONEBOT:
+            return identity
+        bot = self.connections.get(identity.account_id)
+        cached_at, source, nickname = self._names.get(
+            identity.account_id, (0.0, None, "")
+        )
+        if source is not bot or monotonic() - cached_at >= _TTL or not nickname:
+            nickname = ""
+            if bot is not None:
+                try:
+                    response = await asyncio.wait_for(
+                        bot.call_api("get_login_info"), timeout=2
+                    )
+                    if self.connections.get(identity.account_id) is bot and isinstance(
+                        response, dict
+                    ):
+                        nickname = str(response.get("nickname") or "").strip()
+                        if nickname:
+                            self._names[identity.account_id] = (
+                                monotonic(),
+                                bot,
+                                nickname,
+                            )
+                except Exception:  # noqa: BLE001 - nickname is not required for delivery
+                    pass
+        configured = self.account_name(identity.account_id)
+        name = nickname or (
+            configured
+            if configured != identity.account_id
+            else identity.display_name or configured
+        )
+        return ExecutionIdentity(identity.platform, identity.account_id, name)

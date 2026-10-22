@@ -11,7 +11,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     MessageSegment,
 )
-from nonebot.adapters.onebot.v11.exception import ActionFailed
 
 from ironsbot.core.outbound import (
     COMMAND_REPLY_TEMPLATE,
@@ -19,6 +18,7 @@ from ironsbot.core.outbound import (
     ReplyTemplate,
     SendResult,
 )
+from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     parse_reply_message_id,
@@ -159,8 +159,10 @@ async def send_portable_event_reply(
         ),
     )
     try:
-        result = await matcher.send(rendered)
-    except ActionFailed as error:
+        result = await matcher.send(
+            Message(MessageSegment(**segment) for segment in rendered)
+        )
+    except OneBotActionError as error:
         return onebot_send_failure(error).result
     return onebot_send_result(result)
 

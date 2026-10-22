@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -49,6 +50,7 @@ class Application:
     resource_startup_hooks: tuple[tuple[str, Any], ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
     lifecycle: ApplicationLifecycle | None = None
+    host_lifecycle: NoneBotLifecycleBinding | None = None
     _configured: bool = field(default=False, init=False)
     _installed: bool = field(default=False, init=False)
 
@@ -72,7 +74,6 @@ class Application:
         )
         self.resources.commands.validate_categories()
         self.lifecycle = ApplicationLifecycle.from_contributions(
-            self.driver,
             self.contributions,
             task_owner=self.task_owner,
             scheduler=self.scheduler,
@@ -101,5 +102,8 @@ class Application:
             install_command_ingress(
                 self.matcher_factory, router, self.resources.onebot_messenger
             )
-        self.lifecycle.install()
+        self.host_lifecycle = NoneBotLifecycleBinding(
+            self.driver, self.lifecycle, self.resources.onebot_connections
+        )
+        self.host_lifecycle.install()
         self._installed = True

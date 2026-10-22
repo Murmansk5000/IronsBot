@@ -12,16 +12,21 @@ from nonebot.matcher import Matcher  # noqa: TC002 - runtime dependency injectio
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - runtime dependency injection
 
-from ironsbot.integrations.onebot.conversations import is_self_message_event
+from ironsbot.core.platform import Platform
+from ironsbot.integrations.onebot.event_ingress import (
+    ADMITTED_MESSAGE_KEY,
+    AdmittedOneBotMessage,
+)
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
 from ironsbot.integrations.onebot.matchers import CommandPolicy
-from ironsbot.integrations.onebot.message_input import message_input_context
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.services.portable_commands import PortableCommandRouter
-
-_CONTEXT_KEY = "_ironsbot_message_input"
 
 
 def install_command_ingress(
@@ -30,18 +35,30 @@ def install_command_ingress(
     messenger: OneBotOutboundMessenger,
 ) -> None:
     def accepts(bot: Bot, event: Event, state: T_State) -> bool:
-        if not isinstance(event, MessageEvent) or is_self_message_event(event):
+        if not isinstance(event, MessageEvent):
             return False
-        context = message_input_context(event)
-        if context.request_bot_id != bot.self_id:
-            return False
-        state[_CONTEXT_KEY] = context
-        return True
+        frame = state.get(ADMITTED_MESSAGE_KEY)
+        return (
+            isinstance(frame, AdmittedOneBotMessage)
+            and frame.event is event
+            and frame.context.message.platform is Platform.ONEBOT
+            and frame.context.execution_identity is not None
+            and frame.context.execution_identity.platform is Platform.ONEBOT
+            and frame.context.request_bot_id == bot.self_id
+            and frame.context.message.message_id == str(event.message_id)
+            and frame.context.message.actor == onebot_actor_ref(event.user_id)
+            and frame.context.message.conversation
+            == onebot_conversation_ref(
+                event.user_id, group_id=getattr(event, "group_id", None)
+            )
+        )
 
     async def handle(matcher: Matcher, bot: Bot, event: Event, state: T_State) -> None:
         if not isinstance(event, MessageEvent):
             return
-        context = state.pop(_CONTEXT_KEY)
+        frame = state.pop(ADMITTED_MESSAGE_KEY)
+        assert isinstance(frame, AdmittedOneBotMessage)
+        context = frame.context
 
         if await router.ingress.handle(
             context, partial(messenger.reply_from, bot, context)

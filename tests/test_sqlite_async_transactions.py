@@ -167,7 +167,6 @@ async def test_async_transaction_requires_an_explicit_task_owner(
 async def test_application_shutdown_drains_submitted_transaction_before_resources(
     database: tuple[SqliteDatabase, list[tuple[str, int]]],
 ) -> None:
-    from unittest.mock import Mock
 
     original, events = database
     owner = TaskOwner()
@@ -187,7 +186,6 @@ async def test_application_shutdown_drains_submitted_transaction_before_resource
         closed_resources.append(True)
 
     lifecycle = ApplicationLifecycle(
-        Mock(),
         task_owner=owner,
         resource_shutdown_hooks=(("resource", close_resource),),
     )

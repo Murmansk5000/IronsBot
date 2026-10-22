@@ -87,8 +87,11 @@ def build_test_runtime(  # noqa: PLR0913
         features,
         tasks.create,
     )
+    from ironsbot.integrations.onebot.connections import OneBotConnections
+
     router = BotRouter(
         OneBotRoutingPolicy(OneBotRoutingConfig(), qq_references),
+        OneBotConnections(),
     )
     subscriptions = PushUnsubscribeStore(isolated_state_path)
     proactive_delivery = ProactiveMessageDelivery(
