@@ -176,7 +176,7 @@ async def test_beiming_player_failure_is_not_reported_as_absence() -> None:
 async def test_beiming_list_accepts_ranks_beyond_thousand() -> None:
     beyond_thousand = 1001
     page_size = 10
-    fetch = AsyncMock(return_value=SimpleNamespace(items=[], fetched_at=0))
+    fetch = AsyncMock(return_value=SimpleNamespace(items=[], fetched_at=0, ranks=[]))
     rank = SimpleNamespace(
         get_spec=lambda _key: GLOBAL_RANKS["北冥试炼"],
         spec_needs_sub_key=lambda _spec: False,

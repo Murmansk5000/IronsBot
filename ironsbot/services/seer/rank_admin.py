@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.services.operations.headless_errors import SocketRecvError
 from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
@@ -14,6 +15,7 @@ from ironsbot.services.seer.rank_cache_messages import (
     build_rank_batch_result_message,
     build_rank_batch_start_message,
 )
+from ironsbot.services.seer.rank_list_models import RankListPreparedReply
 from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_cache_overview_message,
     build_rank_page_cache_status_message,
@@ -26,9 +28,11 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
     rank_refresh_target_label,
     rank_target_limit,
 )
-from ironsbot.services.seer.rank_list_models import RankListPreparedReply
-from ironsbot.services.seer.rank_ranges import RankRangeError, range_failure, validate_rank_interval
-from ironsbot.services.operations.headless_errors import SocketRecvError
+from ironsbot.services.seer.rank_ranges import (
+    RankRangeError,
+    range_failure,
+    validate_rank_interval,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -265,12 +269,12 @@ class RankAdminService:
             f"{spec.title} 第 {command.start_rank}-{command.end_rank}名",
             source="手动缓存榜单",
         ):
-            items = await self._rank.fetch_range(
+            result = await self._rank.fetch_visible_range_result(
                 game,
+                rank_key=command.rank_key,
                 key=spec.key,
                 sub_key=spec.sub_key,
-                start=command.start_rank - 1,
+                start_rank=command.start_rank,
                 count=request_count,
-                use_cache=False,
             )
-        return len(items)
+        return len(result.items)

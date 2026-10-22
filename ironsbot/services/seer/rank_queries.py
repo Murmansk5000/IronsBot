@@ -397,6 +397,7 @@ class RankQueryService:
                 timestamp=timestamp_text(result.fetched_at),
                 start_rank=command.start_rank,
                 requested_count=count,
+                ranks=result.ranks,
             )
             + (
                 "\n"
@@ -413,7 +414,9 @@ class RankQueryService:
             ),
             tuple(
                 RankListSelection(
-                    rank=command.start_rank + offset,
+                    rank=result.ranks[offset]
+                    if result.ranks is not None
+                    else command.start_rank + offset,
                     player_id=item.id,
                     nick=item.nick,
                 )

@@ -52,6 +52,7 @@ OBSERVED_AT = 1781234567.0
 )
 async def test_score_candidates_share_complete_coverage(  # noqa: PLR0913
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     start: int,
     stop: int,
     tie_start: int,
@@ -63,6 +64,7 @@ async def test_score_candidates_share_complete_coverage(  # noqa: PLR0913
     confirmed: bool,
     cached_confirmed: bool,
 ) -> None:
+    monkeypatch.setattr("time.time", lambda: OBSERVED_AT + 100)
     pages = {
         page_start: RankPageResult(
             [
