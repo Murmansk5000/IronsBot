@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ from ironsbot.integrations.htmlkit import (
     HTML_TEMPLATE_RENDERER_SOURCE_PATH,
     render_html_template,
 )
+from ironsbot.integrations.htmlkit_resources import HtmlkitResources
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.project_metadata import current_project_url
 from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
@@ -31,6 +33,7 @@ FINAL_RENDER_CACHE_INPUTS = (
     SEER_RENDERING_PATH.parent / "type_query.py",
     SEER_DATA_RENDERERS_PATH,
     HTML_TEMPLATE_RENDERER_SOURCE_PATH,
+    HTML_TEMPLATE_RENDERER_SOURCE_PATH.with_name("htmlkit_resources.py"),
 )
 
 if TYPE_CHECKING:
@@ -123,10 +126,15 @@ def build_seer_rendering_components(
         category_available=seer_database.render_category_available,
         scope=current_project_url(),
     )
+    resources = HtmlkitResources(http_clients)
     return (
         images,
         RenderCoordinator(
-            render_html_template,
+            partial(
+                render_html_template,
+                img_fetch_fn=resources.image,
+                css_fetch_fn=resources.css,
+            ),
             render_config.native_timeout_seconds,
         ),
         SeerRenderSessions(seer_database, http_clients, images, cache, versions, spawn),

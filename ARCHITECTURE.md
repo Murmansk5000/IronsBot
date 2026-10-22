@@ -44,6 +44,28 @@ default sender, or sharing a token cache between accounts is forbidden.
 
 ## Architecture Status
 
+Extension help visibility accepts the shared `CommandContext` and uses the same
+`feature_is_visible` policy as the command catalog. Composition must not narrow
+that context to a native NoneBot event. Superuser execution bypass does not
+expand group help beyond the group's configured features; blacklists still
+take precedence.
+
+Production HTML rendering supplies image and CSS callbacks backed by the
+application-owned `HttpClients`; the renderer does not create or close another
+HTTP session. Local/data resources still use htmlkit's public readers, and the
+same litehtml engine and templates remain in use. This does not remove the
+library's NoneBot import or font initialization dependency; those are remaining
+host-removal gates.
+
+Connection lifecycle hooks consume `BotAccountRef(platform, id)`, not native
+Bot objects or integer-only IDs. OneBot driver observations and official SDK
+READY/reconnect/disconnect observations enter the same application lifecycle.
+Observations received during startup are coalesced until contributions and the
+scheduler are initialized, then dispatched through the application task owner.
+First-connection business runs once for the selected outbound platform, so a
+silent OneBot helper cannot preempt official startup checks. Shutdown rejects
+late observations and cancels owned connection work before closing resources.
+
 The following distinctions are mandatory during the migration:
 
 - **Target contracts** are the designs all new cross-feature work must move
