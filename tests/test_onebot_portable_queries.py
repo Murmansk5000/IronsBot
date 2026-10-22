@@ -19,7 +19,6 @@ from ironsbot.core.platform import (
 )
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.integrations.onebot import portable_queries
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -40,21 +39,17 @@ from ironsbot.services.seer.player_detail_extensions import (
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryReply
+from tests.helpers.command_execution import operation_router
 from tests.helpers.onebot_events import group_message_event
 
 if TYPE_CHECKING:
-    from nonebot.matcher import Matcher
-
     from ironsbot.services.seer.player_service import PlayerService
 
 
 @pytest.mark.asyncio
-async def test_onebot_adapter_finishes_silently_for_empty_query_result(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_shared_ingress_finishes_silently_for_empty_query_result() -> None:
     sessions = PortableQuerySessions()
     sent = AsyncMock()
-    monkeypatch.setattr(portable_queries, "send_portable_event_reply", sent)
 
     async def operation(
         text: str,
@@ -62,8 +57,9 @@ async def test_onebot_adapter_finishes_silently_for_empty_query_result(
     ) -> None:
         del text, context
 
-    handler = portable_queries.make_portable_query_handler(operation, sessions)
-    await handler(cast("Matcher", Mock()), {}, group_message_event("刻印"))
+    context = message_input_context(group_message_event("刻印"))
+    router = operation_router(operation, context, sessions)
+    await router.ingress.handle(context, sent)
 
     sent.assert_not_awaited()
 
@@ -72,7 +68,6 @@ async def test_onebot_adapter_finishes_silently_for_empty_query_result(
 @pytest.mark.parametrize("interaction", ["none", "menu", "text"])
 @pytest.mark.parametrize("delivered", [False, True])
 async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_menu(
-    monkeypatch: pytest.MonkeyPatch,
     *,
     interaction: Literal["none", "menu", "text"],
     delivered: bool,
@@ -87,7 +82,6 @@ async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_men
     )
     success, failure = Mock(), Mock()
     follow_up = AsyncMock(return_value=OutboundMessage.from_text("finished"))
-    monkeypatch.setattr(portable_queries, "send_portable_event_reply", sent)
 
     async def choose(_choice: str, _context: MessageInputContext) -> OutboundMessage:
         return OutboundMessage.from_text("selected")
@@ -113,14 +107,15 @@ async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_men
             follow_up=follow_up,
         )
 
-    handler = portable_queries.make_portable_query_handler(operation, sessions)
-    await handler(cast("Matcher", Mock()), {}, group_message_event("query"))
+    context = message_input_context(group_message_event("query"))
+    router = operation_router(operation, context, sessions)
+    await router.ingress.handle(context, sent)
 
     if delivered:
         success.assert_called_once_with()
         failure.assert_not_called()
         follow_up.assert_awaited_once_with()
-        assert [call.args[2].parts for call in sent.await_args_list] == [
+        assert [call.args[0].parts for call in sent.await_args_list] == [
             OutboundMessage.from_text(text).parts
             for text in ("choose", "extra", "finished")
         ]
@@ -129,7 +124,6 @@ async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_men
         success.assert_not_called()
         follow_up.assert_not_awaited()
         sent.assert_awaited_once()
-    context = message_input_context(group_message_event("query"))
     assert sessions.has_active_session(context) == (interaction != "none" and delivered)
     if interaction == "menu" and delivered:
         assert sessions.menu_anchor(context) == "sent-1"

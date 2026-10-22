@@ -20,9 +20,7 @@ from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.integrations.onebot.http_api import OneBotHttpRequest, OneBotHttpResponse
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.replies import send_portable_event_reply
 from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
-from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
 
@@ -119,14 +117,6 @@ async def test_http_failures_use_shared_uncertain_settlement(
     assert not transport.service.acquire_reply(100).allowed
     assert len(transport.calls) == 1
     assert str(transport.calls[0]["message"]).count("limit reached") == 1
-    if isinstance(error, OneBotActionError):
-        passive = await send_portable_event_reply(
-            Mock(send=AsyncMock(side_effect=OneBotActionError(1200))),
-            group_message_event("help"),
-            message,
-        )
-        assert passive.failure_kind is result.failure_kind
-        assert "private-detail" not in (passive.error_message or "")
 
 
 @pytest.mark.asyncio

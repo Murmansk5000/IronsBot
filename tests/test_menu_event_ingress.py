@@ -7,27 +7,29 @@ from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves rule signatures
-from nonebot.adapters.onebot.v11 import Adapter, Bot, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    Adapter,
+    Bot,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.matcher import matchers
-from nonebot.message import handle_event
-from nonebot.rule import Rule
 
 from ironsbot.core.action_categories import RequestCategory
+from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.response_admission import ResponseAdmissionDecision
+from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.core.text_matching import TextMatchRule
-from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.portable_queries import (
-    install_portable_menu_router,
-    make_portable_query_handler,
-)
+from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
+from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.onebot_admission import OneBotAdmissionService
+from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_query_operations import build_query_operation
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
@@ -40,24 +42,41 @@ from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
 
+def _received(
+    ingress: SimpleNamespace, router: PortableCommandRouter, features: FeatureService
+):
+    receiver = OneBotReceivedMessages(
+        OneBotAdmissionService(
+            messages_enabled=True, features=features, errors=router.delivery.errors
+        ),
+        router,
+        ingress.messenger,
+    )
+
+    async def receive(bot: Bot, event: MessageEvent | dict[str, Any]) -> None:
+        await receiver.handle(
+            bot, event if isinstance(event, dict) else event.model_dump()
+        )
+
+    return receive
+
+
 @pytest.mark.asyncio
 async def test_replayed_event_only_replies_once_but_new_local_message_runs(
     ingress: SimpleNamespace,
 ) -> None:
-    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
 
-    matchers.clear()
     messaging = _subscription_service()
-    install_command_ingress(
-        ingress.factory,
+    receive = _received(
+        ingress,
         _messaging_router(messaging, ingress.sessions),
-        ingress.messenger,
+        messaging.feature_policy,
     )
     event = group_message_event("td", user_id=101, message_id=301)
-    await handle_event(ingress.bots[0], event)
-    await handle_event(ingress.bots[0], event)
+    await receive(ingress.bots[0], event)
+    await receive(ingress.bots[0], event)
     assert len(ingress.sends) == 1
-    await handle_event(
+    await receive(
         ingress.bots[0], group_message_event("td", user_id=101, message_id=302)
     )
     assert len(ingress.sends) == len(("first", "second"))
@@ -143,7 +162,6 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.platform import ConversationRef, Platform
     from ironsbot.core.plugin_install import PluginContribution
-    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
     from ironsbot.integrations.storage.team_resources import (
         TeamResourceSubscriptionStore,
     )
@@ -208,9 +226,8 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=ingress.sessions,
     )
-    matchers.clear()
-    install_command_ingress(ingress.factory, router, ingress.messenger)
-    await handle_event(
+    receive = _received(ingress, router, features)
+    await receive(
         ingress.bots[0],
         group_message_event(
             "战队730001",
@@ -221,7 +238,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
     )
     assert len(ingress.sends) == 1
     assert "是否订阅" in str(ingress.sends[0]["message"])
-    await handle_event(
+    await receive(
         ingress.bots[0],
         group_message_event(
             "y",
@@ -230,7 +247,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
             sender={"role": "admin"},
         ),
     )
-    await handle_event(
+    await receive(
         ingress.bots[1],
         group_message_event(
             "y",
@@ -241,7 +258,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
         ),
     )
     assert len(ingress.sends) == 1
-    await handle_event(
+    await receive(
         ingress.bots[0],
         group_message_event(
             "y",
@@ -252,9 +269,7 @@ async def test_onebot_team_confirmation_uses_real_ingress_and_owner(
     )
     assert len(ingress.sends) == len(("suggestion", "confirmation"))
     assert "已订阅本群战队" in str(ingress.sends[-1]["message"])
-    await handle_event(
-        ingress.bots[0], group_message_event("y", user_id=101, message_id=4)
-    )
+    await receive(ingress.bots[0], group_message_event("y", user_id=101, message_id=4))
     assert len(ingress.sends) == len(("suggestion", "confirmation"))
     assert "730001" in service.subscriptions_message(
         TeamResourceSubscriptionTarget(conversation)
@@ -269,7 +284,6 @@ async def test_onebot_public_entry_uses_shared_rank_candidates_and_final_target(
     from ironsbot.core.platform import ActorRef, ConversationRef, Platform
     from ironsbot.core.player_references import PlayerReferenceChoice
     from ironsbot.core.plugin_install import PluginContribution
-    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
     from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.portable_commands import PortableCommandRouter
@@ -320,17 +334,14 @@ async def test_onebot_public_entry_uses_shared_rank_candidates_and_final_target(
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=ingress.sessions,
     )
-    matchers.clear()
-    install_command_ingress(ingress.factory, router, ingress.messenger)
-    await handle_event(
+    receive = _received(ingress, router, features)
+    await receive(
         ingress.bots[0], group_message_event("成就榜示例", user_id=101, message_id=1)
     )
     assert len(ingress.sends) == 1
     assert service.delivered == []
     assert "示例甲" in str(ingress.sends[0]["message"])
-    await handle_event(
-        ingress.bots[0], group_message_event("2", user_id=101, message_id=2)
-    )
+    await receive(ingress.bots[0], group_message_event("2", user_id=101, message_id=2))
     assert len(ingress.sends) == len(("candidates", "result"))
     assert service.delivered == [("成就点数", 740003)]
     assert "740003" in str(ingress.sends[-1]["message"])
@@ -349,7 +360,6 @@ async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
 ) -> None:
     from ironsbot.config.models.messaging import MessageCommandAction
     from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
 
     service = _subscription_service()
     action = MessageCommandAction(
@@ -362,17 +372,13 @@ async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
         {},
         frozenset(),
     )
-    # The fixture's legacy menu matcher must not run alongside the production ingress.
-    matchers.clear()
-    install_command_ingress(
-        ingress.factory, _messaging_router(service, ingress.sessions), ingress.messenger
+    receive = _received(
+        ingress, _messaging_router(service, ingress.sessions), service.feature_policy
     )
     message = Message("示例")
     if explicit:
         message += MessageSegment.at(303) + MessageSegment.at(303)
-    await handle_event(
-        ingress.bots[0], group_message_event(message=message, user_id=101)
-    )
+    await receive(ingress.bots[0], group_message_event(message=message, user_id=101))
     assert len(ingress.sends) == 1
     sent = ingress.sends[0]["message"]
     assert [part["data"]["qq"] for part in sent if part["type"] == "at"] == [
@@ -384,19 +390,17 @@ async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
 async def test_onebot_registered_td_back_toggle_exit_and_reopen(
     ingress: SimpleNamespace,
 ) -> None:
-    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
 
     messaging = _subscription_service()
-    matchers.clear()
-    install_command_ingress(
-        ingress.factory,
+    receive = _received(
+        ingress,
         _messaging_router(messaging, ingress.sessions),
-        ingress.messenger,
+        messaging.feature_policy,
     )
     bot = ingress.bots[0]
     sequence = ("td", "1", "1", "0", "2", "0", "td")
     for message_id, value in enumerate(sequence, start=1):
-        await handle_event(
+        await receive(
             bot,
             group_message_event(
                 value, user_id=101, sender={"role": "admin"}, message_id=message_id
@@ -457,7 +461,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.integrations.onebot.matcher_contracts import CommandCooldown
 
 
 @pytest.fixture
@@ -472,6 +475,15 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     sends: list[dict[str, Any]] = []
 
     async def api(_adapter: Adapter, bot: Bot, api: str, **data: Any) -> object:
+        if api == "get_msg":
+            return {
+                "time": 0,
+                "message_type": "group",
+                "message_id": data["message_id"],
+                "real_id": data["message_id"],
+                "sender": {"user_id": int(bot.self_id)},
+                "message": "quoted",
+            }
         assert api in {"send_msg", "send_group_msg", "send_private_msg"}
         sends.append({"bot": bot.self_id, **data})
         return {"message_id": len(sends) + 100}
@@ -479,15 +491,7 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     monkeypatch.setattr(Adapter, "_call_api", api)
     adapter = Adapter(driver)
     sessions = PortableQuerySessions()
-    cooldown = Mock()
-    cooldown.admit.return_value = ResponseAdmissionDecision(allowed=True)
-    factory = MatcherFactory(cast("CommandCooldown", cooldown), SimpleNamespace())
     features = FeatureService({}, {}, frozenset())
-    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-    OneBotEventIngress(
-        OneBotAdmissionService(messages_enabled=True, features=features)
-    ).install()
-    install_portable_menu_router(factory, sessions, features)
     selected: list[tuple[str, int]] = []
     gate = asyncio.Event()
     gate.set()
@@ -513,24 +517,57 @@ def ingress(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
             ),
         )
 
-    command = factory.on_fullmatch(
-        "菜单",
-        policy=CommandPolicy.command("test.menu", category=RequestCategory.LOCAL),
-        block=True,
-    )
-    command.append_handler(make_portable_query_handler(query, sessions))
-    try:
-        yield SimpleNamespace(
-            bots=(Bot(adapter, "1"), Bot(adapter, "2")),
-            sessions=sessions,
-            sends=sends,
-            selected=selected,
-            gate=gate,
-            factory=factory,
-            messenger=OneBotOutboundMessenger(
-                cast("Any", Mock()), build_test_runtime().outbound
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="test",
+                commands=(
+                    CommandContract(
+                        id="test.menu",
+                        plugin_id="test",
+                        section="test",
+                        examples=("菜单",),
+                        description="menu",
+                        category=RequestCategory.LOCAL,
+                    ),
+                ),
             ),
-        )
+        ),
+        known_features=(),
+    )
+    router = PortableCommandRouter(
+        catalog,
+        {"test.menu": query},
+        features,
+        ai=Mock(),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+    bundle = SimpleNamespace(
+        bots=(Bot(adapter, "1"), Bot(adapter, "2")),
+        sessions=sessions,
+        sends=sends,
+        selected=selected,
+        gate=gate,
+        messenger=OneBotOutboundMessenger(
+            cast("Any", Mock()), build_test_runtime().outbound
+        ),
+    )
+    receive = _received(bundle, router, features)
+    sequence = 0
+
+    async def receive_next(bot: Bot, event: MessageEvent | dict[str, Any]) -> None:
+        nonlocal sequence
+        sequence += 1
+        payload = event if isinstance(event, dict) else event.model_dump()
+        # The old fixture reused one synthetic ID; real messages have distinct IDs.
+        await receive(bot, {**payload, "message_id": sequence})
+
+    bundle.receive = receive_next
+    try:
+        yield bundle
     finally:
         matchers.clear()
         matchers.update(saved)
@@ -565,7 +602,6 @@ async def test_status_about_real_ingress_contract(  # noqa: PLR0913 - contract m
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.platform import ActorRef, ConversationRef, Platform
     from ironsbot.core.plugin_install import PluginContribution
-    from ironsbot.integrations.onebot.command_ingress import install_command_ingress
     from ironsbot.services.about import AboutService, about_command_contracts
     from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -618,14 +654,13 @@ async def test_status_about_real_ingress_contract(  # noqa: PLR0913 - contract m
         addressed_input_hints=AddressedInputHintService(),
         query_sessions=ingress.sessions,
     )
-    matchers.clear()
-    install_command_ingress(ingress.factory, router, ingress.messenger)
+    receive = _received(ingress, router, features)
     event = (
         private_message_event(text, user_id=101)
         if private
         else group_message_event(text, user_id=101)
     )
-    await handle_event(ingress.bots[0], event)
+    await receive(ingress.bots[0], event)
     assert len(ingress.sends) == int(expected is not None)
     for method, kind in (
         (service.query_normal, "normal"),
@@ -655,10 +690,9 @@ def _reply(text: str, *, user: int, anchor: int, shape: str = "metadata", bot: i
             reply_message_id=anchor,
         )
     quoted = MessageSegment.reply(anchor) + message
-    if shape == "message":
-        event.message = quoted
-    else:
-        event.original_message = quoted
+    event.message = quoted
+    if shape == "cq":
+        return {**event.model_dump(), "message": str(quoted)}
     return event
 
 
@@ -684,38 +718,62 @@ async def test_onebot_query_matching_and_no_hit_cleanup_at_event_ingress(
         selected.append(id_)
         return QueryResult(reply=QueryReply(text=f"chip:{id_}"))
 
-    def matches(event: Event) -> bool:
-        return AUTOCARD_QUERY(message_input_context(event).text) is not None
-
-    matcher = ingress.factory.on_message(
-        policy=CommandPolicy.command("test.chip", category=RequestCategory.LOCAL),
-        rule=Rule(matches),
-        block=True,
+    operation = build_query_operation(
+        sessions,
+        QueryOperationSpec(
+            parser=AUTOCARD_QUERY.parse_argument,
+            search=search,
+            select=select,
+            prompt_title="choose",
+            keep_open=True,
+        ),
     )
-    matcher.append_handler(
-        make_portable_query_handler(
-            build_query_operation(
-                sessions,
-                QueryOperationSpec(
-                    parser=AUTOCARD_QUERY.parse_argument,
-                    search=search,
-                    select=select,
-                    prompt_title="choose",
-                    keep_open=True,
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="test",
+                commands=(
+                    CommandContract(
+                        id="test.chip",
+                        plugin_id="test",
+                        section="test",
+                        examples=("芯片星光",),
+                        description="chip",
+                        routing_matcher=lambda text, _: (
+                            AUTOCARD_QUERY(text) is not None
+                        ),
+                        category=RequestCategory.LOCAL,
+                    ),
                 ),
             ),
-            sessions,
-        )
+        ),
+        known_features=(),
     )
+    features = FeatureService({}, {}, frozenset())
+    router = PortableCommandRouter(
+        catalog,
+        {"test.chip": operation},
+        features,
+        ai=Mock(),
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=AddressedInputHintService(),
+        query_sessions=sessions,
+    )
+    receive = _received(ingress, router, features)
     bot = ingress.bots[0]
-    await handle_event(bot, group_message_event("芯片星光", user_id=101))
+    await receive(bot, group_message_event("芯片星光", user_id=101, message_id=1))
     assert len(ingress.sends) == 1
-    await handle_event(bot, _reply("2", user=101, anchor=101))
+    response = _reply("2", user=101, anchor=101)
+    assert isinstance(response, MessageEvent)
+    await receive(bot, response.model_copy(update={"message_id": 2}))
     assert selected == [702]
     expected_messages = len(("menu", "selected"))
     assert len(ingress.sends) == expected_messages
-    await handle_event(bot, group_message_event("芯片没拿好也是卒", user_id=101))
-    await handle_event(bot, group_message_event("1", user_id=101))
+    await receive(
+        bot, group_message_event("芯片没拿好也是卒", user_id=101, message_id=3)
+    )
+    await receive(bot, group_message_event("1", user_id=101, message_id=4))
     assert len(ingress.sends) == expected_messages
     context = message_input_context(group_message_event(user_id=101))
     assert sessions.menu_anchor(context) is None
@@ -727,10 +785,10 @@ async def test_unknown_player_query_clears_menu_without_reply(
     ingress: SimpleNamespace,
 ) -> None:
     bot = ingress.bots[0]
-    await handle_event(bot, group_message_event("菜单", user_id=101))
+    await ingress.receive(bot, group_message_event("菜单", user_id=101))
     sent = len(ingress.sends)
-    await handle_event(bot, group_message_event("米米号不存在的玩家", user_id=101))
-    await handle_event(bot, group_message_event("1", user_id=101))
+    await ingress.receive(bot, group_message_event("米米号不存在的玩家", user_id=101))
+    await ingress.receive(bot, group_message_event("1", user_id=101))
     assert len(ingress.sends) == sent
     assert not ingress.selected
     assert not ingress.sessions.has_active_session(
@@ -739,19 +797,19 @@ async def test_unknown_player_query_clears_menu_without_reply(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("shape", ["metadata", "message", "original"])
+@pytest.mark.parametrize("shape", ["metadata", "message", "cq"])
 async def test_real_event_cross_member_sessions_are_independent(
     ingress: SimpleNamespace, shape: str
 ) -> None:
     bot = ingress.bots[0]
-    await handle_event(bot, group_message_event("菜单", user_id=101))
+    await ingress.receive(bot, group_message_event("菜单", user_id=101))
     assert len(ingress.sends) == 1
-    await handle_event(bot, group_message_event("1", user_id=101))
-    await handle_event(bot, _reply("2", user=102, anchor=101, shape=shape))
-    await handle_event(bot, group_message_event("3", user_id=102))
-    await handle_event(bot, _reply("3", user=102, anchor=101, shape=shape))
-    await handle_event(bot, group_message_event("0", user_id=101))
-    await handle_event(bot, group_message_event("7", user_id=102))
+    await ingress.receive(bot, group_message_event("1", user_id=101))
+    await ingress.receive(bot, _reply("2", user=102, anchor=101, shape=shape))
+    await ingress.receive(bot, group_message_event("3", user_id=102))
+    await ingress.receive(bot, _reply("3", user=102, anchor=101, shape=shape))
+    await ingress.receive(bot, group_message_event("0", user_id=101))
+    await ingress.receive(bot, group_message_event("7", user_id=102))
     assert ingress.selected == [
         ("101", 1),
         ("102", 2),
@@ -766,7 +824,7 @@ async def test_real_event_cross_member_sessions_are_independent(
         message_input_context(group_message_event(user_id=102))
     )
     for sent in ingress.sends[2:4]:
-        assert MessageSegment.at(102) in sent["message"]
+        assert {"type": "at", "data": {"qq": "102"}} in sent["message"]
 
 
 @pytest.mark.asyncio
@@ -774,23 +832,23 @@ async def test_quotes_cannot_cross_bot_or_result_and_denial_keeps_own_menu(
     ingress: SimpleNamespace,
 ) -> None:
     first, second = ingress.bots
-    await handle_event(first, group_message_event("菜单", user_id=101))
-    await handle_event(second, group_message_event("菜单", user_id=101, self_id=2))
-    await handle_event(first, group_message_event("菜单", user_id=103))
+    await ingress.receive(first, group_message_event("菜单", user_id=101))
+    await ingress.receive(second, group_message_event("菜单", user_id=101, self_id=2))
+    await ingress.receive(first, group_message_event("菜单", user_id=103))
     own = ingress.sessions.active_prompt(
         message_input_context(group_message_event(user_id=103))
     )
-    await handle_event(first, _reply("1", user=103, anchor=101))
+    await ingress.receive(first, _reply("1", user=103, anchor=101))
     assert (
         ingress.sessions.active_prompt(
             message_input_context(group_message_event(user_id=103))
         )
         == own
     )
-    await handle_event(second, _reply("1", user=102, anchor=101, bot=2))
-    await handle_event(first, _reply("1", user=101, anchor=999))
-    await handle_event(first, group_message_event("1", user_id=101))
-    await handle_event(first, _reply("2", user=101, anchor=105))
+    await ingress.receive(second, _reply("1", user=102, anchor=101, bot=2))
+    await ingress.receive(first, _reply("1", user=101, anchor=999))
+    await ingress.receive(first, group_message_event("1", user_id=101))
+    await ingress.receive(first, _reply("2", user=101, anchor=105))
     assert ingress.selected == [("101", 1)]
 
 
@@ -801,7 +859,7 @@ async def test_early_seven_is_queued_fifo_and_new_command_replaces_menu(
     bot = ingress.bots[0]
     ingress.gate.clear()
     opening = asyncio.create_task(
-        handle_event(bot, group_message_event("菜单", user_id=101))
+        ingress.receive(bot, group_message_event("菜单", user_id=101))
     )
     for _ in range(100):
         if ingress.sessions.recognizes_response(
@@ -813,13 +871,13 @@ async def test_early_seven_is_queued_fifo_and_new_command_replaces_menu(
     for index in (1, 2, 3, 7):
         selections.append(
             asyncio.create_task(
-                handle_event(bot, group_message_event(str(index), user_id=101))
+                ingress.receive(bot, group_message_event(str(index), user_id=101))
             )
         )
         await asyncio.sleep(0)
     ingress.gate.set()
     await asyncio.gather(opening, *selections)
     assert ingress.selected == [("101", index) for index in (1, 2, 3, 7)]
-    await handle_event(bot, group_message_event("菜单", user_id=101))
-    await handle_event(bot, _reply("1", user=101, anchor=101))
+    await ingress.receive(bot, group_message_event("菜单", user_id=101))
+    await ingress.receive(bot, _reply("1", user=101, anchor=101))
     assert ingress.selected == [("101", index) for index in (1, 2, 3, 7)]

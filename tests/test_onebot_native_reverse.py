@@ -127,14 +127,12 @@ async def test_invalid_handshake_does_not_register_a_connection(
 
 
 @pytest.mark.asyncio
-async def test_native_event_bridge_uses_owned_rpc_and_disconnects_pending_calls(
+async def test_notice_handoff_uses_owned_rpc_and_disconnects_pending_calls(
     adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     received = asyncio.Event()
     handled = AsyncMock(side_effect=lambda *_: received.set())
-    monkeypatch.setattr(
-        "ironsbot.integrations.onebot.self_commands.handle_event", handled
-    )
+    monkeypatch.setattr(adapter, "notices", handled)
     socket = Socket()
     serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
     try:
@@ -163,15 +161,16 @@ async def test_native_event_bridge_uses_owned_rpc_and_disconnects_pending_calls(
                 {
                     "time": 0,
                     "self_id": 1,
-                    "post_type": "meta_event",
-                    "meta_event_type": "heartbeat",
-                    "status": {"online": True, "good": True},
-                    "interval": 1000,
+                    "post_type": "notice",
+                    "notice_type": "notify",
+                    "sub_type": "poke",
+                    "user_id": 101,
+                    "target_id": 1,
                 }
             )
         )
         await asyncio.wait_for(received.wait(), timeout=1)
-        assert handled.call_args.args[1].get_type() == "meta_event"
+        assert handled.call_args.args[1]["notice_type"] == "notify"
         pending = asyncio.create_task(adapter._call_api(bot, "get_login_info"))
         await socket.outgoing.get()
         await socket.close()
@@ -200,9 +199,7 @@ async def test_invalid_or_foreign_frame_is_never_dispatched(
     adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch, bad_frame: str
 ) -> None:
     handled = AsyncMock()
-    monkeypatch.setattr(
-        "ironsbot.integrations.onebot.self_commands.handle_event", handled
-    )
+    monkeypatch.setattr("nonebot.message.handle_event", handled)
     socket = Socket()
     await socket.incoming.put(bad_frame)
     await adapter._handle_ws(cast("WebSocket", socket))
@@ -251,9 +248,7 @@ def raw_path(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     native_conversion = Mock(side_effect=AssertionError("native event conversion used"))
     monkeypatch.setattr(SelfCommandAdapter, "json_to_event", native_conversion)
     native_dispatch = AsyncMock(side_effect=AssertionError("native dispatch used"))
-    monkeypatch.setattr(
-        "ironsbot.integrations.onebot.self_commands.handle_event", native_dispatch
-    )
+    monkeypatch.setattr("nonebot.message.handle_event", native_dispatch)
     return SimpleNamespace(
         contexts=contexts,
         sdk_preprocessing=sdk_preprocessing,
@@ -445,15 +440,11 @@ async def test_reverse_reply_lookup_is_single_and_does_not_import_quoted_targets
 async def test_temporary_private_cannot_borrow_source_group_permissions(
     runtime: SimpleNamespace,
 ) -> None:
-    from nonebot.message import handle_event
-
     event = private_message_event("执行", user_id=101)
     payload = event.model_dump()
     payload.update(group_id=456, sub_type="group")
     payload["sender"]["role"] = "owner"
-    parsed = SelfCommandAdapter.json_to_event(payload)
-    assert parsed is not None
-    await handle_event(runtime.bot, parsed)
+    await runtime.received.handle(runtime.bot, payload)
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
     assert all("group_id" not in sent for sent in runtime.sends)
@@ -528,14 +519,61 @@ async def test_shutdown_during_accept_never_publishes_a_bot(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "control",
+    [
+        {"post_type": "meta_event", "meta_event_type": "heartbeat"},
+        {"post_type": "request", "request_type": "friend"},
+        {"post_type": "request", "request_type": "group"},
+        {"post_type": "custom_provider_event"},
+        {"post_type": True},
+        {"post_type": None},
+    ],
+)
+async def test_control_frames_do_not_dispatch_native_or_block_the_next_notice(
+    adapter: SelfCommandAdapter,
+    raw_path: SimpleNamespace,
+    control: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    observed = asyncio.Event()
+    notice = AsyncMock(side_effect=lambda *_: observed.set())
+    adapter.notices = notice
+    socket = Socket()
+    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    try:
+        await socket.accepted.wait()
+        await socket.incoming.put(
+            json.dumps(
+                {"self_id": 1, "time": 0, "comment": "private-marker", **control}
+            )
+        )
+        probe = {
+            "self_id": 1,
+            "time": 0,
+            "post_type": "notice",
+            "notice_type": "notify",
+        }
+        await socket.incoming.put(json.dumps(probe))
+        await asyncio.wait_for(observed.wait(), timeout=2)
+        notice.assert_awaited_once_with(adapter.bots["1"], probe)
+        raw_path.native_conversion.assert_not_called()
+        raw_path.native_dispatch.assert_not_awaited()
+        assert raw_path.contexts == []
+        assert "private-marker" not in caplog.text
+    finally:
+        await socket.close()
+        await serving
+        await asyncio.gather(*tuple(adapter.tasks), return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_shutdown_during_receive_does_not_dispatch_a_late_frame(
     adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     reading, release = asyncio.Event(), asyncio.Event()
     handled = AsyncMock()
-    monkeypatch.setattr(
-        "ironsbot.integrations.onebot.self_commands.handle_event", handled
-    )
+    monkeypatch.setattr(adapter, "received", handled)
 
     class DelayedSocket(Socket):
         async def receive(self) -> str:

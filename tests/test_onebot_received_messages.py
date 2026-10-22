@@ -275,15 +275,16 @@ async def test_raw_business_failure_is_sanitized_and_releases_query_scope(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("before", [False, True])
-@pytest.mark.parametrize("command", [False, True])
-async def test_raw_passive_notice_preserves_command_priority(
-    runtime: SimpleNamespace, *, before: bool, command: bool
+@pytest.mark.parametrize("command,fails", [(False, False), (True, False), (True, True)])
+async def test_raw_passive_notice_runs_only_for_unclaimed_messages(
+    runtime: SimpleNamespace, *, command: bool, fails: bool
 ) -> None:
     order: list[str] = []
 
     async def query(*_args: object) -> OutboundMessage:
         order.append("query")
+        if fails:
+            raise RuntimeError
         return OutboundMessage.from_text("result")
 
     async def notice(*_args: object, **_kwargs: object) -> None:
@@ -301,7 +302,6 @@ async def test_raw_passive_notice_preserves_command_priority(
         runtime.router,
         runtime.messenger,
         red_packets=packets,
-        red_packets_before_commands=before,
     )
     text = "执行" if command else "unknown"
     payload = group_message_event(text, user_id=101).model_dump()
@@ -310,14 +310,8 @@ async def test_raw_passive_notice_preserves_command_priority(
         {"type": "redbag", "data": {"title": "packet"}},
     ]
     await receiver.handle(connection, payload)
-    assert order == (
-        ["packet", "query"]
-        if command and before
-        else ["query"]
-        if command
-        else ["packet"]
-    )
-    assert notices.send.await_count == int(before or not command)
+    assert order == (["query"] if command else ["packet"])
+    assert notices.send.await_count == int(not command)
 
 
 @pytest.mark.parametrize("self_command", [False, True])

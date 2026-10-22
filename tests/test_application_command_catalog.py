@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from pytest import MonkeyPatch
+from typing import Any, cast
 
 from ironsbot.app.application import Application
 from ironsbot.app.lifecycle import TaskOwner
@@ -16,25 +13,8 @@ from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessage
 from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 
 
-def test_application_installs_one_shared_router_after_passive_plugins(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_application_binds_shared_ingress_once_without_native_installation() -> None:
     calls: list[str] = []
-    monkeypatch.setattr(
-        "ironsbot.integrations.onebot.command_ingress.install_command_ingress",
-        lambda *_args: calls.append("portable_router"),
-    )
-
-    class Matchers:
-        def validate_command_catalog(self, catalog: CommandCatalog) -> None:
-            calls.append("validate")
-            assert catalog is commands
-
-        def install_postprocessor(self) -> None:
-            calls.append("postprocessor")
-
-        def install_queued_conversation_router(self) -> None:
-            calls.append("queued_router")
 
     class Driver:
         config = SimpleNamespace(nickname=frozenset())
@@ -44,7 +24,7 @@ def test_application_installs_one_shared_router_after_passive_plugins(
             assert adapter is SelfCommandAdapter
             received = options["received"].__self__
             assert isinstance(received, OneBotReceivedMessages)
-            assert received.admission is application.resources.onebot_ingress.admission
+            assert received.admission is application.resources.onebot_admission
             assert received.router is router
             assert received.messenger is application.resources.onebot_messenger
             assert received.red_packets is None
@@ -52,6 +32,7 @@ def test_application_installs_one_shared_router_after_passive_plugins(
             assert isinstance(notices, OneBotNoticeIngress)
             assert notices.admission is received.admission
             assert notices.messenger is received.messenger
+            assert notices.spawn == application.task_owner.create
             assert notices.poke is notices.audit is notices.red_packets is None
             assert options["spawn"] == application.task_owner.create
 
@@ -67,11 +48,8 @@ def test_application_installs_one_shared_router_after_passive_plugins(
         def on_bot_disconnect(self, _callback: Any) -> None:
             pass
 
-    def install_plugin(_matchers: Any) -> None:
-        calls.append("plugin")
-
     commands = CommandCatalog()
-    contributions = (PluginContribution(id="example", install=install_plugin),)
+    contributions = (PluginContribution(id="example"),)
     application = Application(
         settings=cast(
             "Any",
@@ -95,11 +73,10 @@ def test_application_installs_one_shared_router_after_passive_plugins(
                 features=object(),
                 contribution_catalog=PluginContributionCatalog(),
                 onebot_messenger=object(),
-                onebot_ingress=SimpleNamespace(admission=object()),
+                onebot_admission=object(),
                 onebot_connections=OneBotConnections(),
             ),
         ),
-        matcher_factory=cast("Any", Matchers()),
         extension_contexts={},
         task_owner=TaskOwner(),
         known_features=(),
@@ -114,7 +91,5 @@ def test_application_installs_one_shared_router_after_passive_plugins(
 
     assert calls == [
         "adapter",
-        "plugin",
-        "portable_router",
         "lifecycle",
     ]

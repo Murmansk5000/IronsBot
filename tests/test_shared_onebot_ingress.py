@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Adapter, Bot, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    Adapter,
+    Bot,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.matcher import matchers
-from nonebot.message import handle_event
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
@@ -23,11 +29,9 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.command_ingress import install_command_ingress
-from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
+from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -42,6 +46,7 @@ from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
 )
 from ironsbot.services.portable_reply import PortableReply
+from tests.helpers.onebot_events import SentGroupFixture
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -63,6 +68,15 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
     notices = Mock(send=AsyncMock())
 
     async def api(_adapter: Adapter, _bot: Bot, _api: str, **data: Any) -> object:
+        if _api == "get_msg":
+            return {
+                "time": 0,
+                "message_type": "group",
+                "message_id": data["message_id"],
+                "real_id": data["message_id"],
+                "sender": {"user_id": int(_bot.self_id)},
+                "message": "[CQ:at,qq=777]quoted",
+            }
         sends.append({"bot": _bot.self_id, **data})
         if transport.error is not None:
             raise transport.error
@@ -79,9 +93,6 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         user_policies,
         frozenset(),
     )
-    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-    admission = OneBotAdmissionService(messages_enabled=True, features=features)
-    OneBotEventIngress(admission).install()
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -139,32 +150,42 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         query_sessions=sessions,
         admin_notices=notices,
     )
-    factory = MatcherFactory(sessions.interactions.cooldown, SimpleNamespace())
     limits = GroupOutboundRateLimitService(
         OutboundRateLimitConfig(), features, TaskOwner().create
     )
     messenger = OneBotOutboundMessenger(Mock(), limits)
-    install_command_ingress(factory, router, messenger)
+    admission = OneBotAdmissionService(
+        messages_enabled=True, features=features, errors=router.delivery.errors
+    )
+    bundle = SimpleNamespace(
+        bot=Bot(Adapter(driver), "1"),
+        sends=sends,
+        execute=execute,
+        select=select,
+        sessions=sessions,
+        transport=transport,
+        policies=policies,
+        user_policies=user_policies,
+        group=group,
+        ai=ai,
+        notices=notices,
+        errors=router.delivery.errors,
+        messenger=messenger,
+        router=router,
+        admission=admission,
+        limits=limits,
+        received=OneBotReceivedMessages(admission, router, messenger),
+    )
+
+    async def receive(bot: Bot, event: MessageEvent) -> None:
+        payload = event.model_dump()
+        if isinstance(event, SentGroupFixture):
+            payload["post_type"] = "message_sent"
+        await bundle.received.handle(bot, payload)
+
+    bundle.receive = receive
     try:
-        yield SimpleNamespace(
-            bot=Bot(Adapter(driver), "1"),
-            sends=sends,
-            execute=execute,
-            select=select,
-            sessions=sessions,
-            transport=transport,
-            factory=factory,
-            policies=policies,
-            user_policies=user_policies,
-            group=group,
-            ai=ai,
-            notices=notices,
-            errors=router.delivery.errors,
-            messenger=messenger,
-            router=router,
-            admission=admission,
-            limits=limits,
-        )
+        yield bundle
     finally:
         limits.reset()
         matchers.clear()
@@ -190,7 +211,7 @@ async def test_production_entry_does_not_call_matcher_send(
         if private
         else group_message_event("执行", user_id=101, message_id=1)
     )
-    await handle_event(runtime.bot, event)
+    await runtime.receive(runtime.bot, event)
     send.assert_not_awaited()
     runtime.execute.assert_awaited_once()
     assert len(runtime.sends) == 1
@@ -210,43 +231,22 @@ async def test_production_entry_does_not_call_matcher_send(
 @pytest.mark.parametrize(
     "private,source", [(False, "user"), (True, "user"), (False, "group")]
 )
-async def test_blacklist_precedes_all_native_matcher_priorities(
+async def test_blacklist_precedes_query_and_delivery(
     runtime: SimpleNamespace,
-    monkeypatch: pytest.MonkeyPatch,
     *,
     private: bool,
     source: str,
 ) -> None:
-    import nonebot.message as message_runtime
-
     from ironsbot.core.platform import ActorRef
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from tests.helpers.onebot_events import group_message_event, private_message_event
 
-    monkeypatch.setattr(message_runtime, "_event_preprocessors", set())
     blocked = frozenset({"blacklist"})
     if source == "user":
         runtime.user_policies[ActorRef(Platform.ONEBOT, "101")] = blocked
     else:
         runtime.policies[runtime.group] = blocked
-    OneBotEventIngress(
-        OneBotAdmissionService(messages_enabled=True, features=runtime.limits.features)
-    ).install()
-    called = AsyncMock()
-    earlier = runtime.factory.on_message(
-        policy=CommandPolicy.exempt("test native propagation"),
-        priority=-2000,
-        block=False,
-    )
-
-    async def handle() -> None:
-        await called()
-
-    earlier.append_handler(handle)
     event = private_message_event if private else group_message_event
-    await handle_event(runtime.bot, event("执行", user_id=101))
-    called.assert_not_awaited()
+    await runtime.receive(runtime.bot, event("执行", user_id=101))
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
     assert runtime.sends == []
@@ -270,10 +270,10 @@ async def test_actual_command_sends_enforce_windows_without_global_quota_hooks(
     if private:
         runtime.user_policies[ActorRef(Platform.ONEBOT, "101")] = frozenset({"help"})
     event = private_message_event if private else group_message_event
-    await handle_event(runtime.bot, event("执行", user_id=101, message_id=100))
+    await runtime.receive(runtime.bot, event("执行", user_id=101, message_id=100))
     assert len(runtime.sends) == 1
     assert str(runtime.sends[0]["message"]).count("outbound limit") == int(not private)
-    await handle_event(runtime.bot, event("菜单", user_id=101, message_id=101))
+    await runtime.receive(runtime.bot, event("菜单", user_id=101, message_id=101))
     assert len(runtime.sends) == (len(("result", "menu")) if private else 1)
     runtime.execute.assert_awaited_once()
 
@@ -285,11 +285,11 @@ async def test_source_account_mismatch_is_rejected_before_business(
     from tests.helpers.onebot_events import group_message_event
 
     other = Bot(runtime.bot.adapter, "2")
-    await handle_event(other, group_message_event("执行", self_id=1, user_id=101))
+    await runtime.receive(other, group_message_event("执行", self_id=1, user_id=101))
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
     assert runtime.sends == []
-    await handle_event(
+    await runtime.receive(
         other, group_message_event("执行", self_id=2, user_id=101, message_id=2)
     )
     runtime.execute.assert_awaited_once()
@@ -323,7 +323,7 @@ async def test_command_reply_preserves_superuser_priority_through_explicit_port(
 
     monkeypatch.setattr(runtime.limits, "acquire_superuser_reply", wait_for_capacity)
     task = asyncio.create_task(
-        handle_event(runtime.bot, group_message_event("执行", user_id=101))
+        runtime.receive(runtime.bot, group_message_event("执行", user_id=101))
     )
     try:
         await asyncio.wait_for(queued.wait(), timeout=2)
@@ -340,25 +340,18 @@ async def test_command_reply_preserves_superuser_priority_through_explicit_port(
 
 @pytest.mark.asyncio
 async def test_wrong_connection_cannot_feed_identity_observer(
-    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+    runtime: SimpleNamespace,
 ) -> None:
-    import nonebot.message as message_runtime
-
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from tests.helpers.onebot_events import group_message_event
 
-    monkeypatch.setattr(message_runtime, "_event_preprocessors", set())
     observer = Mock(observe_onebot=AsyncMock())
-    OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True,
-            features=runtime.limits.features,
-            identity_observer=observer,
-            errors=runtime.errors,
-        )
-    ).install()
-    await handle_event(runtime.bot, group_message_event("执行", self_id=2, user_id=101))
+    runtime.received = replace(
+        runtime.received,
+        admission=replace(runtime.admission, identity_observer=observer),
+    )
+    await runtime.receive(
+        runtime.bot, group_message_event("执行", self_id=2, user_id=101)
+    )
     observer.observe_onebot.assert_not_awaited()
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
@@ -372,14 +365,14 @@ async def test_actual_onebot_transport_exception_uses_shared_error_boundary(
     from tests.helpers.onebot_events import group_message_event
 
     runtime.transport.error = RuntimeError("private-native-send-detail")
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=1)
     )
     runtime.notices.send.assert_awaited_once()
     assert len(runtime.sends) == 1
     assert "private-native-send-detail" not in caplog.text
     runtime.transport.error = None
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=2)
     )
     assert runtime.execute.await_count == len(("failed", "recovered"))
@@ -394,7 +387,7 @@ async def test_malformed_receipt_releases_request_without_retrying_original_deli
     from tests.helpers.onebot_events import group_message_event
 
     runtime.transport.response = {"message_id": value}
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=1)
     )
     assert runtime.execute.await_count == 1
@@ -402,7 +395,7 @@ async def test_malformed_receipt_releases_request_without_retrying_original_deli
     runtime.transport.response = None
     runtime.execute.reset_mock()
     runtime.sends.clear()
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=2)
     )
     runtime.execute.assert_awaited_once()
@@ -412,33 +405,24 @@ async def test_malformed_receipt_releases_request_without_retrying_original_deli
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("enabled", [False, True])
-async def test_actual_preprocessor_fault_is_admin_only_and_stops_all_business(
+async def test_admission_fault_is_admin_only_and_stops_all_business(
     runtime: SimpleNamespace,
-    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     *,
     enabled: bool,
 ) -> None:
-    import nonebot.message as message_runtime
-
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from tests.helpers.onebot_events import group_message_event
 
-    monkeypatch.setattr(message_runtime, "_event_preprocessors", set())
     observer = Mock(
         observe_onebot=AsyncMock(side_effect=RuntimeError("private-mirror-detail"))
     )
-    ingress = OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=enabled,
-            features=runtime.limits.features,
-            identity_observer=observer,
-            errors=runtime.errors,
-        )
+    runtime.received = replace(
+        runtime.received,
+        admission=replace(
+            runtime.admission, messages_enabled=enabled, identity_observer=observer
+        ),
     )
-    ingress.install()
-    await handle_event(runtime.bot, group_message_event("执行", user_id=101))
+    await runtime.receive(runtime.bot, group_message_event("执行", user_id=101))
     observer.observe_onebot.assert_awaited_once()
     runtime.notices.send.assert_awaited_once()
     runtime.execute.assert_not_awaited()
@@ -450,29 +434,24 @@ async def test_actual_preprocessor_fault_is_admin_only_and_stops_all_business(
 @pytest.mark.asyncio
 async def test_own_account_menu_uses_public_replay_and_navigation(
     runtime: SimpleNamespace,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ironsbot.config.models.transport import SelfCommandsConfig
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from ironsbot.services.own_commands import OwnAccountCommandPolicy
     from tests.helpers.onebot_events import self_command_event
 
-    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-    admission = OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True,
-            features=runtime.limits.features,
+    runtime.received = replace(
+        runtime.received,
+        admission=replace(
+            runtime.admission,
             self_commands=OwnAccountCommandPolicy(
                 SelfCommandsConfig(enabled=True, prefixes=["demo "])
             ),
-        )
+        ),
     )
-    admission.install()
 
     async def deliver(text: str, message_id: int) -> None:
         event = self_command_event(text, message_id)
-        await handle_event(runtime.bot, event)
+        await runtime.receive(runtime.bot, event)
 
     await deliver("demo 菜单", -10)
     await deliver("demo 1", -12)
@@ -491,34 +470,29 @@ async def test_own_account_menu_uses_public_replay_and_navigation(
 @pytest.mark.asyncio
 async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs(
     runtime: SimpleNamespace,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ironsbot.config.models.transport import SelfCommandsConfig
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from ironsbot.services.own_commands import OwnAccountCommandPolicy
     from tests.helpers.onebot_events import self_command_event
 
-    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-    admission = OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True,
-            features=runtime.limits.features,
+    runtime.received = replace(
+        runtime.received,
+        admission=replace(
+            runtime.admission,
             self_commands=OwnAccountCommandPolicy(
                 SelfCommandsConfig(enabled=True, prefixes=["demo "])
             ),
-        )
+        ),
     )
-    admission.install()
     runtime.transport.fails = True
     for message_id in (1, 1):
         event = self_command_event("demo 执行", message_id)
-        await handle_event(runtime.bot, event)
+        await runtime.receive(runtime.bot, event)
     runtime.execute.assert_awaited_once()
     assert len(runtime.sends) == 1
     runtime.transport.fails = False
     fresh = self_command_event("demo 执行", 2)
-    await handle_event(runtime.bot, fresh)
+    await runtime.receive(runtime.bot, fresh)
     assert runtime.execute.await_count == len(("failed", "fresh"))
     assert "result" in str(runtime.sends[-1]["message"])
 
@@ -526,43 +500,32 @@ async def test_own_account_failed_delivery_replay_is_silent_and_fresh_retry_runs
 @pytest.mark.asyncio
 @pytest.mark.parametrize("features", [frozenset(), frozenset({"blacklist"})])
 async def test_own_account_transport_admission_does_not_bypass_business_policy(
-    runtime: SimpleNamespace, features: frozenset[str], monkeypatch: pytest.MonkeyPatch
+    runtime: SimpleNamespace, features: frozenset[str]
 ) -> None:
     from ironsbot.config.models.transport import SelfCommandsConfig
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from ironsbot.services.own_commands import OwnAccountCommandPolicy
     from tests.helpers.onebot_events import self_command_event
 
     runtime.policies[runtime.group] = features
-    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-    admission = OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True,
-            features=runtime.limits.features,
+    runtime.received = replace(
+        runtime.received,
+        admission=replace(
+            runtime.admission,
             self_commands=OwnAccountCommandPolicy(
                 SelfCommandsConfig(enabled=True, prefixes=["demo "])
             ),
-        )
+        ),
     )
     event = self_command_event("demo 执行")
-    if "blacklist" in features:
-        from nonebot.exception import IgnoredException
-
-        with pytest.raises(IgnoredException, match="conversation_blacklisted"):
-            await admission.process(event)
-        assert event.get_plaintext() == "demo 执行"
-    else:
-        admission.install()
-        await handle_event(runtime.bot, event)
-        assert event.get_plaintext() == "demo 执行"
+    await runtime.receive(runtime.bot, event)
+    assert event.get_plaintext() == "demo 执行"
     runtime.execute.assert_not_awaited()
     runtime.ai.chat_reply.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("text", ["执行", "unclaimed"])
-async def test_actual_onebot_only_blocks_input_claimed_by_public_runtime(
+async def test_raw_input_never_falls_back_to_native_matchers(
     runtime: SimpleNamespace, text: str
 ) -> None:
     from tests.helpers.onebot_events import group_message_event
@@ -574,8 +537,8 @@ async def test_actual_onebot_only_blocks_input_claimed_by_public_runtime(
         calls()
 
     probe.append_handler(record)
-    await handle_event(runtime.bot, group_message_event(text, user_id=101))
-    assert calls.call_count == int(text == "unclaimed")
+    await runtime.receive(runtime.bot, group_message_event(text, user_id=101))
+    calls.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -589,7 +552,7 @@ async def test_actual_onebot_entry_uses_public_route_and_cooldown(
         message = Message("执行")
         if mention:
             message = MessageSegment.at(1) + message
-        await handle_event(
+        await runtime.receive(
             runtime.bot,
             group_message_event(
                 "执行",
@@ -601,7 +564,6 @@ async def test_actual_onebot_entry_uses_public_route_and_cooldown(
     runtime.execute.assert_awaited_once()
     assert "result" in str(runtime.sends[0]["message"])
     assert "操作过于频繁" in str(runtime.sends[1]["message"])
-    assert len(runtime.factory.message_matchers) == 1
 
 
 @pytest.mark.asyncio
@@ -611,7 +573,7 @@ async def test_actual_onebot_entry_does_not_broaden_literal_commands(
 ) -> None:
     from tests.helpers.onebot_events import group_message_event
 
-    await handle_event(runtime.bot, group_message_event(text, user_id=101))
+    await runtime.receive(runtime.bot, group_message_event(text, user_id=101))
     claimed = text == "执行"
     assert runtime.execute.await_count == int(claimed)
     assert len(runtime.sends) == int(claimed)
@@ -632,12 +594,12 @@ async def test_failed_onebot_reply_does_not_consume_shared_cooldown(
             "failed", request_succeeded=failure != "business"
         )
     )
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=1)
     )
     runtime.transport.fails = False
     runtime.execute.return_value = OutboundMessage.from_text("recovered")
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=2)
     )
     assert runtime.execute.await_count == len(("failed", "recovered"))
@@ -653,7 +615,7 @@ async def test_actual_onebot_exception_is_safe_and_releases_admission(
 
     error = RuntimeError("sensitive-query-detail")
     if stage == "menu":
-        await handle_event(
+        await runtime.receive(
             runtime.bot, group_message_event("菜单", user_id=101, message_id=1)
         )
         runtime.select.side_effect = error
@@ -664,7 +626,7 @@ async def test_actual_onebot_exception_is_safe_and_releases_admission(
         )
     else:
         runtime.execute.side_effect = error
-    await handle_event(
+    await runtime.receive(
         runtime.bot,
         group_message_event(
             "1" if stage == "menu" else "执行", user_id=101, message_id=2
@@ -674,7 +636,7 @@ async def test_actual_onebot_exception_is_safe_and_releases_admission(
     assert "sensitive-query-detail" not in str(runtime.sends)
     runtime.execute.side_effect = None
     runtime.execute.return_value = OutboundMessage.from_text("recovered")
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=3)
     )
     assert "recovered" in str(runtime.sends[-1]["message"])
@@ -686,12 +648,14 @@ async def test_menu_and_new_command_share_one_actual_onebot_entry(
 ) -> None:
     from tests.helpers.onebot_events import group_message_event
 
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("菜单", user_id=101, message_id=1)
     )
-    await handle_event(runtime.bot, group_message_event("1", user_id=101, message_id=2))
+    await runtime.receive(
+        runtime.bot, group_message_event("1", user_id=101, message_id=2)
+    )
     runtime.select.assert_awaited_once()
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event("执行", user_id=101, message_id=3)
     )
     runtime.execute.assert_awaited_once()
@@ -726,7 +690,7 @@ async def test_actual_onebot_entry_preserves_command_before_ai(
     message = Message(text)
     if mention:
         message = MessageSegment.at(1) + message
-    await handle_event(
+    await runtime.receive(
         runtime.bot, group_message_event(text, message=message, user_id=101)
     )
     if expected is None:

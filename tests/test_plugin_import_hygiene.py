@@ -127,7 +127,7 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
-def test_registry_install_has_no_storage_or_network_side_effects(
+def test_contribution_loading_has_no_storage_or_network_side_effects(
     tmp_path: Path,
 ) -> None:
     script = r"""
@@ -163,17 +163,10 @@ asyncio.create_task = _forbidden_sync("async task creation")
 httpx.Client.request = _forbidden_sync("http request")
 httpx.AsyncClient.request = _forbidden_async_request
 
-from ironsbot.integrations.onebot.matchers import MatcherFactory
 from tests.helpers.plugin_registry import build_test_plugin_registry
-from tests.helpers.runtime import build_test_runtime
 
-external_ids = {"apscheduler", "localstore", "htmlkit", "saa"}
 definitions = build_test_plugin_registry()
-registry = build_test_runtime().matcher_factory()
-for definition in definitions:
-    if definition.id not in external_ids and definition.install is not None:
-        definition.install(registry)
-registry.install_postprocessor()
+assert definitions
 
 runtime_paths = [
     pathlib.Path("data"),
