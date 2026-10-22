@@ -19,8 +19,7 @@ from ironsbot.services.bilibili.command_contracts import bilibili_command_contra
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-
+    from ironsbot.core.platform import BotAccountRef
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.operations.scheduler import Scheduler
 
@@ -34,8 +33,10 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def _check_on_connect(bot: Bot, *, monitor: BilibiliMonitorService) -> None:
-    await monitor.check_on_connect(str(bot.self_id))
+async def _check_on_connect(
+    account: BotAccountRef, *, monitor: BilibiliMonitorService
+) -> None:
+    await monitor.check_on_connect(account.id)
 
 
 def plugin_contribution(

@@ -14,7 +14,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.messaging import TeamAuditWelcomeConfig
 from ironsbot.core.outbound import DeliveryFailureKind, SendResult
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import ActorRef, BotAccountRef, ConversationRef, Platform
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.plugins.onebot.team_audit import plugin_contribution
 from ironsbot.services.team import audit as audit_module
@@ -82,8 +82,8 @@ async def test_audit_startup_owns_scan_and_connections_only_restore(
     ids = {job.id for job in audit.scheduler.get_jobs()}
     assert "team_audit_followup_scan" in ids
     assert len(ids) == len(("scan", "pending"))
-    await lifecycle.bot_connect(SimpleNamespace(self_id="11"))
-    await lifecycle.bot_connect(SimpleNamespace(self_id="12"))
+    await lifecycle.bot_connect(BotAccountRef(audit.reminder.actor.platform, "11"))
+    await lifecycle.bot_connect(BotAccountRef(audit.reminder.actor.platform, "12"))
     assert {job.id for job in audit.scheduler.get_jobs()} == ids
     audit.messenger.send.assert_not_awaited()
 

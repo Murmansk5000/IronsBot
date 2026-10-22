@@ -30,7 +30,7 @@ from ironsbot.app.seer_composition import build_seer_components
 from ironsbot.core.command_catalog import (
     CommandCatalog,
     CommandContext,
-    feature_is_visible_in_help,
+    feature_is_visible,
 )
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, Platform
@@ -388,9 +388,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         cache_paths=cache_paths,
     )
 
-    def feature_visible_for_extension(context: CommandContext, feature: str) -> bool:
-        return feature_is_visible_in_help(features, context, feature)
-
     extension_contexts = {
         "scheduled_messages": messaging.schedule_renderers,
         "player_lineup": PlayerLineupExtensionServices(
@@ -404,7 +401,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             lineup_cache=PlayerLineupCacheServices(
                 ttl_seconds=settings.seer.player.background_refresh.cache_ttl_seconds
             ),
-            feature_visible=feature_visible_for_extension,
+            feature_visible=partial(feature_is_visible, features),
             _player_details=player_detail_extensions,
             player_id_resolver=player_id_resolver,
             settings=settings.operations.private_extensions.settings.get(
@@ -655,12 +652,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     ]
     if common.qq_official is not None:
         resource_startup_hooks.append(("qq_official", common.qq_official.start))
-        resource_startup_hooks.append(
-            (
-                "bilibili_official_recovery",
-                partial(bilibili_monitor.check_on_connect, "qq_official"),
-            )
-        )
         resource_shutdown_hooks.append(("qq_official", common.qq_official.stop))
 
     return Application(
@@ -687,6 +678,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         onebot_message_handling_enabled=(
             settings.outbound_platform_selection.onebot_message_handling_enabled
+        ),
+        first_connection_platforms=frozenset(
+            {Platform.QQ_OFFICIAL}
+            if settings.outbound_platform_selection.official_active
+            else {Platform.ONEBOT}
+            if settings.outbound_platform_selection.onebot_outbound_enabled
+            else set()
         ),
         resource_startup_hooks=tuple(resource_startup_hooks),
         resource_shutdown_hooks=tuple(resource_shutdown_hooks),

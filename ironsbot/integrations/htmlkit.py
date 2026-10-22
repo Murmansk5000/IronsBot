@@ -1,13 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from collections.abc import Mapping
+from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 from ironsbot.services.seer.rendering import TemplatePath
 
 from .project_metadata import current_project_url
 
 HTML_TEMPLATE_RENDERER_SOURCE_PATH = Path(__file__).resolve()
+
+
+class HtmlResourceCallbacks(TypedDict, total=False):
+    img_fetch_fn: Callable[[str], Coroutine[Any, Any, bytes | None]]
+    css_fetch_fn: Callable[[str], Coroutine[Any, Any, str | None]]
 
 
 async def render_html_template(
@@ -17,6 +22,7 @@ async def render_html_template(
     *,
     max_width: int = 500,
     allow_refit: bool = True,
+    **resource_callbacks: Unpack[HtmlResourceCallbacks],
 ) -> bytes:
     from nonebot_plugin_htmlkit import template_to_pic
 
@@ -28,4 +34,5 @@ async def render_html_template(
         context,
         max_width=max_width,
         allow_refit=allow_refit,
+        **resource_callbacks,
     )
