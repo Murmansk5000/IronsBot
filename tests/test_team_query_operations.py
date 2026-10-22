@@ -16,14 +16,13 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.player_references import PlayerReferenceChoice
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_commands import team_query_input_matcher
 from ironsbot.services.seer.team import SeerTeamQueryService, TeamQueryActor
 from ironsbot.services.seer.team_commands import build_team_query_operation
 from tests.helpers.onebot_events import GroupMemberRole, group_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 
 
 @pytest.mark.asyncio

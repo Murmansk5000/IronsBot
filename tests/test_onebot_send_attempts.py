@@ -8,31 +8,29 @@ from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Bot
 
-from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
 )
 from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage, ReplyContext
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.integrations.onebot.http_api import OneBotHttpRequest, OneBotHttpResponse
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+from ironsbot.integrations.onebot.transport import OneBotHttpConnection, OneBotTransport
 from tests.helpers.runtime import build_test_runtime
 
 
 @pytest.fixture
-def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+def transport() -> SimpleNamespace:
     try:
         driver = nonebot.get_driver()
     except ValueError:
         nonebot.init(_env_file=None)
         driver = nonebot.get_driver()
-    monkeypatch.setattr(Bot, "_calling_api_hook", set())
-    monkeypatch.setattr(Bot, "_called_api_hook", set())
     state = SimpleNamespace(
         error=None,
         block=False,
@@ -78,15 +76,18 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             cooldown_message="limit reached",
         )
     )
-    adapter = SelfCommandAdapter(
+    owner = TaskOwner()
+    adapter = OneBotTransport(
         driver,
-        spawn=TaskOwner().create,
+        spawn=owner.create,
         received=AsyncMock(),
         notices=AsyncMock(),
         request_http=api,
+        connections=OneBotConnections(),
+        observer=ApplicationLifecycle(task_owner=owner),
     )
     adapter.http_api.api_roots["1"] = "http://test/"
-    bot = Bot(adapter, "1")
+    bot = OneBotHttpConnection("1", adapter.http_api)
     messenger = OneBotOutboundMessenger(
         cast("Any", Mock(for_conversation=Mock(return_value=bot))), runtime.outbound
     )

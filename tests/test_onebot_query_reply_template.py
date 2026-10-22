@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import onebot_message_text
 from ironsbot.services.portable_data_commands import build_portable_data_operation
 from ironsbot.services.portable_messaging_commands import (
@@ -17,6 +16,7 @@ from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.peak import PeakQueryResult
 from tests.helpers.command_execution import operation_router
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from types import SimpleNamespace

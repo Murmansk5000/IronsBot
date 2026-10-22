@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.outbound import SendResult, TextPart
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.portable_seer_commands import build_portable_rank_help_operation
 from ironsbot.services.seer.rank_command_contracts import RANK_HELP_COMMANDS
 from tests.helpers.command_execution import operation_router
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 
 def test_rank_help_uses_every_domain_help_alias() -> None:

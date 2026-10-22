@@ -23,7 +23,6 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.seer_data.skin_price_repository import (
     load_active_skin_store_prices,
 )
@@ -78,6 +77,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryReply, QueryResult
 from ironsbot.services.seer.skin_price import SkinStorePrice
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator

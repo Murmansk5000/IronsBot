@@ -17,8 +17,6 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.portable_commands import PortableCommandRouter
@@ -58,6 +56,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_catalog import RANK_COMMAND_MAP
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

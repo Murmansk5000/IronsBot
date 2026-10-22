@@ -51,7 +51,7 @@ DRIVER_HOOKS = {
     "on_bot_disconnect",
 }
 LIFECYCLE_PATH = PACKAGE / "app" / "lifecycle.py"
-NATIVE_LIFECYCLE_PATH = PACKAGE / "integrations" / "nonebot_lifecycle.py"
+NATIVE_LIFECYCLE_PATH = PACKAGE / "integrations" / "nonebot_host.py"
 SQLITE_PATH = PACKAGE / "integrations" / "storage" / "sqlite.py"
 SCHEDULER_PATH = PACKAGE / "integrations" / "scheduler" / "facade.py"
 SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "onebot" / "scheduler" / "__init__.py"
@@ -271,6 +271,22 @@ def test_runtime_does_not_import_onebot_adapter_contracts() -> None:
     assert offenders == []
 
 
+def test_onebot_protocol_does_not_import_native_events_bots_or_adapters() -> None:
+    offenders = [
+        f"{_relative(path)}:{node.lineno}"
+        for path in _files(PACKAGE / "integrations" / "onebot")
+        for node in ast.walk(_tree(path))
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").startswith("nonebot.adapters")
+        and not (
+            node.module == "nonebot.adapters.onebot.v11.config"
+            and {alias.name for alias in node.names} == {"Config"}
+        )
+    ]
+    # The remaining native parser belongs to the configuration/host migration.
+    assert offenders == []
+
+
 def test_plugins_do_not_import_other_plugins() -> None:
     offenders: list[str] = []
     for path in _files(PLUGINS):
@@ -358,7 +374,7 @@ def test_only_native_binding_registers_driver_hooks() -> None:
         and (name := _call_name(node)) is not None
         and name in DRIVER_HOOKS
     ]
-    assert sorted(registrations) == sorted(DRIVER_HOOKS)
+    assert sorted(registrations) == ["on_shutdown", "on_startup"]
 
 
 def test_only_task_owner_creates_background_tasks() -> None:

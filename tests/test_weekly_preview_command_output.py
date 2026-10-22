@@ -7,12 +7,12 @@ from typing import Any, cast
 
 import pytest
 
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import onebot_message_text
 from ironsbot.services.portable_data_commands import build_portable_data_operation
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from tests.helpers.command_execution import operation_router
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 pytest_plugins = ("tests.test_shared_onebot_ingress",)
 

@@ -8,7 +8,6 @@ import pytest
 from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.integrations.onebot.message_envelope import decode_received_message
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import (
     OneBotMessageDecodeError,
     decode_onebot_segments,
@@ -16,6 +15,7 @@ from ironsbot.integrations.onebot.message_segments import (
     onebot_message_text,
 )
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture

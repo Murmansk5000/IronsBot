@@ -29,7 +29,6 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
@@ -47,6 +46,7 @@ from ironsbot.services.portable_query_sessions import (
 )
 from ironsbot.services.portable_reply import PortableReply
 from tests.helpers.onebot_events import SentGroupFixture
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

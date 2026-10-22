@@ -23,7 +23,6 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.configured_targets.bilibili import (
     build_bili_configured_targets,
 )
-from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -42,6 +41,7 @@ from tests.helpers.onebot_events import (
     group_message_event,
     private_message_event,
 )
+from tests.helpers.onebot_inputs import command_context
 
 try:
     nonebot.get_driver()

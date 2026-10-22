@@ -3,19 +3,19 @@ from __future__ import annotations
 import subprocess
 import sys
 from dataclasses import replace
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.message_input import MessageInputKind
+from ironsbot.integrations.onebot.message_envelope import decode_received_message
 from ironsbot.integrations.onebot.message_facts import (
     OneBotMessageFacts,
     decode_onebot_message,
 )
-from ironsbot.integrations.onebot.message_input import message_input_context
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.message_segments import OneBotSegment
@@ -183,12 +183,10 @@ def test_metadata_then_current_then_original_reply_precedence(
 
 
 @pytest.mark.parametrize("field", ["user_id", "message_id", "reply"])
-def test_native_missing_required_metadata_still_fails(field: str) -> None:
-    event = group_message_event().model_copy(
-        update={field: SimpleNamespace(message_id=None) if field == "reply" else None}
-    )
-    with pytest.raises(ValueError, match="OneBot"):
-        message_input_context(event)
+def test_received_missing_required_metadata_is_rejected(field: str) -> None:
+    payload = group_message_event().model_dump()
+    payload[field] = {"message_id": None} if field == "reply" else None
+    assert decode_received_message(payload) is None
 
 
 def test_protocol_decoder_and_admission_run_without_nonebot() -> None:

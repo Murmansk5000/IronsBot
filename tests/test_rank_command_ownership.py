@@ -8,14 +8,13 @@ from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_catalog import RANK_COMMAND_MAP
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, LOCAL_RANKS
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 
 _ACTOR = ActorRef(Platform.ONEBOT, "100")
 _GROUP = ConversationRef(Platform.ONEBOT, "group", "200")

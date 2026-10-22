@@ -21,8 +21,6 @@ from ironsbot.core.platform import (
 )
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
@@ -56,6 +54,7 @@ from ironsbot.services.seer.rank_command_contracts import rank_help_command_cont
 from ironsbot.services.seer.rank_list_parsing import parse_rank_player_target_command
 from ironsbot.services.seer.rank_queries import RankQueryService
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 from tests.test_portable_player_commands import _PlayerService
 from tests.test_portable_rank_commands import _RankQueryService
 

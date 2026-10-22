@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.core.outbound import SendResult
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import onebot_own_account_input
 from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
@@ -20,6 +19,7 @@ from tests.helpers.onebot_events import (
     own_account_input,
     self_command_event,
 )
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from types import SimpleNamespace

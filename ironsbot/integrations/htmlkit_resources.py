@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from ironsbot.integrations.litehtml.local_resources import local_css, local_image
+
 if TYPE_CHECKING:
     from ironsbot.integrations.http.clients import HttpClients
 
@@ -20,25 +22,13 @@ class HtmlkitResources:
     clients: HttpClients
 
     async def image(self, url: str) -> bytes | None:
-        if url.startswith("data:"):
-            from nonebot_plugin_htmlkit import data_scheme_img_fetcher
-
-            return await data_scheme_img_fetcher(url)
-        if url.startswith("file://"):
-            from nonebot_plugin_htmlkit import filesystem_img_fetcher
-
-            return await filesystem_img_fetcher(url)
+        if url.startswith(("data:", "file://")):
+            return await local_image(url)
         return await self._network(url)
 
     async def css(self, url: str) -> str | None:
-        if url.startswith("data:"):
-            from nonebot_plugin_htmlkit import data_scheme_css_fetcher
-
-            return await data_scheme_css_fetcher(url)
-        if url.startswith("file://"):
-            from nonebot_plugin_htmlkit import filesystem_css_fetcher
-
-            return await filesystem_css_fetcher(url)
+        if url.startswith(("data:", "file://")):
+            return await local_css(url)
         content = await self._network(url)
         if content is None:
             return None

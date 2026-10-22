@@ -8,8 +8,8 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
-from nonebot.log import LoguruHandler
 
+from ironsbot.app.application_logging import configure_application_logging
 from ironsbot.app.composition import build_application
 from ironsbot.app.log_privacy import configure_log_privacy
 from ironsbot.app.plugin_composition import build_builtin_contributions
@@ -35,17 +35,6 @@ def configure_process_timezone() -> None:
     tzset = getattr(time, "tzset", None)
     if tzset is not None:
         tzset()
-
-
-def configure_application_logging(level: str) -> None:
-    """Route standard-library application logs through NoneBot's Loguru sink."""
-
-    application_logger = logging.getLogger("ironsbot")
-    if not any(
-        isinstance(handler, LoguruHandler) for handler in application_logger.handlers
-    ):
-        application_logger.addHandler(LoguruHandler())
-    application_logger.setLevel(level.upper())
 
 
 def initialize_nonebot(settings: Settings) -> None:
@@ -84,9 +73,6 @@ def bootstrap() -> Application:
     configure_log_privacy(os.environ)
     configure_application_logging(settings.bot.log_level)
     application = build_application(settings)
-    if nonebot.load_plugin("nonebot_plugin_htmlkit") is None:
-        msg = "the HTML rendering prerequisite could not be initialized"
-        raise RuntimeError(msg)
     contributions = build_builtin_contributions(
         settings, application.resources, application.scheduler
     )

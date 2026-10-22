@@ -3,13 +3,11 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from nonebot.adapters import Bot
 from nonebot.dependencies.utils import get_typed_signature
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.core.platform import BotAccountRef, Platform
-from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
-from ironsbot.integrations.onebot.connections import OneBotConnections
+from ironsbot.integrations.nonebot_host import NoneBotHostBinding
 
 if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
@@ -49,11 +47,11 @@ class _ResourceUnavailableError(RuntimeError):
     pass
 
 
-def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
+def test_host_installs_only_startup_and_shutdown_hooks_once() -> None:
     driver = FakeDriver()
     lifecycle = ApplicationLifecycle()
-    binding = NoneBotLifecycleBinding(
-        cast("Driver", driver), lifecycle, OneBotConnections()
+    binding = NoneBotHostBinding(
+        cast("Driver", driver), lifecycle
     )
 
     binding.install()
@@ -61,16 +59,12 @@ def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
 
     assert len(driver.startup_handlers) == 1
     assert len(driver.shutdown_handlers) == 1
-    assert len(driver.bot_connect_handlers) == 1
-    assert len(driver.bot_disconnect_handlers) == 1
+    assert driver.bot_connect_handlers == []
+    assert driver.bot_disconnect_handlers == []
     connect_signature = get_typed_signature(lifecycle.bot_connect)
     disconnect_signature = get_typed_signature(lifecycle.bot_disconnect)
     assert connect_signature.parameters["account"].annotation is BotAccountRef
     assert disconnect_signature.parameters["account"].annotation is BotAccountRef
-    driver_connect_signature = get_typed_signature(driver.bot_connect_handlers[0])
-    driver_disconnect_signature = get_typed_signature(driver.bot_disconnect_handlers[0])
-    assert driver_connect_signature.parameters["bot"].annotation is Bot
-    assert driver_disconnect_signature.parameters["bot"].annotation is Bot
 
 
 def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:

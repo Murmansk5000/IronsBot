@@ -3692,7 +3692,8 @@ check_on_startup = false
             (
                 "from ironsbot.app.bootstrap import bootstrap; "
                 "app = bootstrap(); "
-                "assert set(app.driver._adapters) == {'OneBot V11'}; "
+                "assert not app.driver._adapters; "
+                "assert app.onebot_transport is not None; "
                 "assert app.resources.qq_official.account_ids == ('10001',); "
                 "sender = app.resources.qq_official.sender('10001'); "
                 "assert sender is not None and sender.custom_keyboards; "
