@@ -281,9 +281,12 @@ V5 的语义 owner、不会恢复的旧路径，以及 V5 上的验证证据。�
    数字只能存在于 OneBot 适配边界。支持多机器人时，持久化主键必须包含独立的
    `account_id` 列。旧 SQLite 的列形状只能由停机迁移工具读取，运行时代码不得
    双读、补列或懒迁移。
-13. 迁移到标准 NoneBot 清单的插件必须同时拥有自己的 `PluginMetadata`、
-   `PluginContribution` 和直接命令描述；不得把 matcher 留在中央桥接、
-   把帮助或命令元数据留在另一处。
+13. 自有插件通过显式贡献工厂提供 `PluginContribution` 和直接命令描述；
+   内建插件由应用 composition 装配，私有扩展通过其 `pyproject.toml` 的
+   `project.entry-points.ironsbot.extensions` 声明贡献工厂。
+   自有贡献工厂不要求采用 NoneBot 清单或 `PluginMetadata`。
+   不得把 matcher 留在中央桥接、把帮助或命令元数据留在另一处，
+   也不得通过 import 副作用完成注册。
 14. 迁移出站消息时保留原有发送语义：`OutboundMessenger.send()` 是主动推送，
    必须经过目标平台的队列、限流和退订策略；`reply()` 才是对当前事件的即时
    回复。不能因为换成通用端口而绕过防刷屏、路由或失败回滚。

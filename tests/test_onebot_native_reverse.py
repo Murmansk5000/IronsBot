@@ -75,7 +75,11 @@ def adapter(
         runtime.admission, runtime.router, runtime.messenger
     )
     result = SelfCommandAdapter(
-        driver, spawn=TaskOwner().create, received=messages.handle, notices=AsyncMock()
+        driver,
+        spawn=TaskOwner().create,
+        received=messages.handle,
+        notices=AsyncMock(),
+        request_http=AsyncMock(),
     )
     monkeypatch.setattr(result.reverse_server, "access_token", "test-token")
 

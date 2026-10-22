@@ -1,20 +1,13 @@
 # SPDX-License-Identifier: MIT
-"""OneBot configured-message commands, push management, and manifest wiring."""
+"""Configured-message, push and lifecycle contributions for both platforms."""
 
 from __future__ import annotations
 
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
-from ironsbot.core.plugin_install import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
+from ironsbot.core.plugin_install import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 
@@ -24,15 +17,6 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler
-
-__plugin_meta__ = PluginMetadata(
-    name="文本发送",
-    description="按配置回复文本或链接，并管理定时推送。",
-    usage="发送配置的口令，或发送“推送管理”管理当前会话的推送。",
-    type="application",
-    homepage="https://github.com/Murmansk5000/IronsBot",
-    supported_adapters={"~onebot.v11"},
-)
 
 
 def help_visible(
@@ -88,17 +72,5 @@ def plugin_contribution(
         hooks=PluginHooks(
             startup=(("messaging", partial(service.start, scheduler)),),
             shutdown=(("push_topics", service.stop_topics),),
-        ),
-    )
-
-
-if (context := active_plugin_install_context()) is not None:
-    context.contribute(
-        __plugin_meta__,
-        plugin_contribution(
-            config=context.settings.messaging,
-            features=context.resources.features,
-            service=context.resources.messaging,
-            scheduler=context.scheduler,
         ),
     )

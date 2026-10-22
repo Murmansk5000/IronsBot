@@ -130,8 +130,9 @@ docker_socket_path = "/var/run/docker.sock"
 真实阵容来自可选私有扩展包 `murmansk5000/ironsbot-private:latest`。它不是机器人
 覆盖镜像：Unraid 的 Repository 和 `[operations.docker_update].image` 始终保持
 `murmansk5000/ironsbot:latest`。容器启动时，公开主镜像通过 Docker socket 拉取私有包、
-校验其标准 NoneBot 清单并解包到 `/app/data/private_extensions`，再由
-当前扩展加载器加载其中声明的扩展模块；模块只能取得公开代码为其声明的窄契约。
+校验其 `[project.entry-points."ironsbot.extensions"]` 工厂清单并解包到
+`/app/data/private_extensions`，再显式调用工厂，传入公开的强类型 `ExtensionServices`。
+导入模块本身不注册业务，扩展不能按字符串查找组合根的内部服务。
 
 阵容是第一个扩展；以后可在同一个私有包中增加新的、由公开主程序显式支持的扩展。整个
 部署仍只有一个 IronsBot 进程，并复用已配置公共无头账号池。扩展直接借用主连接发送封包，不启动
@@ -245,14 +246,15 @@ uv run python scripts/check_repo.py --static
 
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展位于
 `ironsbot/custom_plugins`。当前版本仍由 `python -m ironsbot` 经过
-`ironsbot/app/bootstrap.py` 启动。内置插件由标准 NoneBot TOML 清单直接发现；
-每个插件通过 `PluginMetadata` 声明身份，并以 `PluginContribution` 注册运行时
+`ironsbot/app/bootstrap.py` 启动。内置插件由 `app/plugin_composition.py` 显式装配；
+full/core 使用同一份有序工厂目录，并以 `PluginContribution` 注册运行时
 贡献。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
 命令认领的唯一语义来源。
 
 当前接入方式与公共执行链状态以[入口核对清单](onebot-menu-parity.md)为准，不把历史 matcher 包装视为扩展契约。私有扩展通过
-自身标准 NoneBot 清单加载，只能取得公共代码声明的窄上下文，不能成为内置插件发现或命令
-注册入口。后续迁移方向、责任边界与完成条件以
+Python 标准入口点声明工厂，只能取得公共代码声明的窄契约，不能成为内置插件发现或命令
+注册入口。旧私有 NoneBot 清单不再加载；公共与私有包必须使用经验证的配对版本。
+后续迁移方向、责任边界与完成条件以
 [ARCHITECTURE.md](../ARCHITECTURE.md) 为准。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。

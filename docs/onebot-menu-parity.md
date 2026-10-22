@@ -163,7 +163,7 @@ OneBot 发送与历史回执的消息 ID 共用 `integrations/onebot/receipts.py
 
 详细阵容仅允许超管发送“阵容详情<数字米米号>”，不进入普通玩家菜单、不触发绑定建议。动作的访问范围、菜单可见性、目标语法与绑定建议通过公共注册契约声明；入口与执行前按实际操作者复核。内置及私有动作共用 core/player_detail_actions.py 中同一请求类型，公开契约不再重复定义请求。详细包使用公共连接、排队和额度服务，解析及渲染成功后幂等结算；失败或元数据不完整不结算，不补零。
 
-私有 experiments 仅保留历史参考，不参与运行注册、测试收集或发布；tools 保留原有未跟踪内容。测试基于本地公共工作区，发布前仍需在公共提交完成后更新 private 的 public-runtime.json 并重新验证配对，不能把旧 SHA 视为新契约的发布依据。
+私有 experiments 仅保留历史参考，不参与运行注册、测试收集或发布；tools 保留原有未跟踪内容。私有 main/details 均通过 Python 入口点声明显式工厂，由公共组合根传入 ExtensionServices；导入不再注册动作或定时渲染器。发布前须更新 public-runtime.json 并重新验证对应公共提交，不能把旧 SHA 或本地通过视为镜像已发布。
 
 共享命名与位置已清理：QQ 配置引用使用 config/qq_references.py；橱窗 TD 使用 services/seer/lucky_skin_window_subscriptions.py；目标配置编译移出平台适配器；战队审核功能策略使用公共 FeatureTeamAuditPolicy。数字 QQ 的逻辑身份仍沿用现有存储表达，不迁移身份或数据库。
 

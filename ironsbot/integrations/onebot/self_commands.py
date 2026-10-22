@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -11,25 +10,22 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 from weakref import WeakKeyDictionary
 
-import httpx
 from nonebot.adapters.onebot.v11 import (
     Adapter,
     Bot,
 )
-from nonebot.drivers import URL, HTTPClientMixin, Request, Response
+from nonebot.drivers import URL, Request, Response
 from nonebot.exception import WebSocketClosed
 
-from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.forward_client import OneBotForwardClient
 from ironsbot.integrations.onebot.http_api import (
     OneBotHttpApi,
-    OneBotHttpRequest,
-    OneBotHttpResponse,
 )
 from ironsbot.integrations.onebot.http_receiver import OneBotHttpReceiver
 from ironsbot.integrations.onebot.reverse_server import OneBotReverseServer
 
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import AsyncIterator, Coroutine, Mapping
 
     from nonebot.drivers import Driver, WebSocket
@@ -39,6 +35,7 @@ if TYPE_CHECKING:
         OneBotConnection,
         OneBotEventHandler,
     )
+    from ironsbot.integrations.onebot.http_api import OneBotHttpExchange
     from ironsbot.integrations.onebot.socket_events import OneBotSocket
     from ironsbot.integrations.onebot.websocket_session import OneBotWebSocketSession
 
@@ -80,6 +77,7 @@ class SelfCommandAdapter(Adapter):
         spawn: TaskSpawner,
         received: OneBotEventHandler,
         notices: OneBotEventHandler,
+        request_http: OneBotHttpExchange,
         **kwargs: Any,
     ) -> None:
         super().__init__(driver, **kwargs)
@@ -115,7 +113,7 @@ class SelfCommandAdapter(Adapter):
             },
             access_token=self.onebot_config.onebot_access_token,
             timeout=self.config.api_timeout,
-            request=self._request_http,
+            request=request_http,
         )
 
     def _spawn_event(
@@ -203,20 +201,3 @@ class SelfCommandAdapter(Adapter):
         if session := self._socket_sessions.get(bot):
             return await session.call_api(api, **data)
         return await self.http_api.call(bot.self_id, api, **data)
-
-    async def _request_http(self, request: OneBotHttpRequest) -> OneBotHttpResponse:
-        if not isinstance(self.driver, HTTPClientMixin):
-            raise OneBotTransportError(definitely_not_sent=True) from None
-        try:
-            response = await self.driver.request(
-                Request(
-                    "POST",
-                    request.url,
-                    headers=dict(request.headers),
-                    timeout=request.timeout,
-                    content=request.body,
-                )
-            )
-        except (httpx.RequestError, OSError, asyncio.TimeoutError):
-            raise OneBotTransportError from None
-        return OneBotHttpResponse(response.status_code, response.content)

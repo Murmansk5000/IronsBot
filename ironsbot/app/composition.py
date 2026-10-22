@@ -40,6 +40,7 @@ from ironsbot.extensions.player_lineup import (
     PlayerLineupExtensionServices,
     PlayerLineupQueryServices,
 )
+from ironsbot.extensions.registration import ExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
@@ -388,9 +389,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         cache_paths=cache_paths,
     )
 
-    extension_contexts = {
-        "scheduled_messages": messaging.schedule_renderers,
-        "player_lineup": PlayerLineupExtensionServices(
+    extension_services = ExtensionServices(
+        scheduled_messages=messaging.schedule_renderers,
+        player_lineup=PlayerLineupExtensionServices(
             lineup_render_session=seer_components.lineup_render_session,
             lineup_query=PlayerLineupQueryServices(
                 headless=headless,
@@ -408,7 +409,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 "player_lineup", {}
             ),
         ),
-    }
+    )
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
@@ -664,7 +665,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         databases=databases,
         resources=resources,
         contributions=(),
-        extension_contexts=extension_contexts,
+        extension_services=extension_services,
         task_owner=task_owner,
         known_features=(
             *(feature.value for feature in Feature),

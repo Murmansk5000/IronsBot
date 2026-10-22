@@ -11,25 +11,29 @@ import tarfile
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib import import_module
+from importlib.metadata import EntryPoint
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import uuid4
 
 import tomllib
 
+from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.services.operations.docker_models import (
     DockerImageArchiveRequest,
     DockerRegistryCredentials,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ironsbot.config.models.operations import (
         DockerUpdateConfig,
         PrivateExtensionsConfig,
     )
+    from ironsbot.extensions.registration import ExtensionServices
     from ironsbot.services.operations.docker_models import DockerImageArchive
 
 PRIVATE_EXTENSIONS_ROOT = "ironsbot_extensions"
@@ -58,9 +62,9 @@ class PrivateExtensionArtifactGateway(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class PrivateExtensionManifest:
-    """Validated standard NoneBot plugin declaration from a private package."""
+    """Validated Python entry points, loaded only by explicit composition."""
 
-    plugin_modules: tuple[str, ...]
+    entry_points: tuple[EntryPoint, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +72,7 @@ class PrivateExtensionInstallResult:
     installed: bool
     message: str = ""
     image_id: str = ""
-    plugin_modules: tuple[str, ...] = ()
+    entry_points: tuple[str, ...] = ()
 
 
 class PrivateExtensionCatalog:
@@ -108,20 +112,48 @@ class PrivateExtensionCatalog:
         return self._reason
 
     @property
-    def manifest_path(self) -> Path | None:
-        if self._root is None or self._manifest is None:
-            return None
-        return self._root / PRIVATE_EXTENSIONS_MANIFEST
-
-    @property
-    def plugin_modules(self) -> tuple[str, ...]:
+    def entry_points(self) -> tuple[EntryPoint, ...]:
         if self._manifest is None:
             return ()
-        return self._manifest.plugin_modules
+        return self._manifest.entry_points
+
+    def contributions(
+        self, services: ExtensionServices
+    ) -> tuple[PluginContribution, ...]:
+        """Call declared factories with typed capabilities, without import hooks."""
+
+        if self._root is None:
+            return ()
+        contributions: list[PluginContribution] = []
+        with self.plugin_import_path():
+            for entry in self.entry_points:
+                module = import_module(entry.module)
+                origin = getattr(module, "__file__", None)
+                if origin is None or not Path(origin).resolve().is_relative_to(
+                    self._root.resolve()
+                ):
+                    msg = (
+                        f"private extension module loaded outside package: {entry.name}"
+                    )
+                    raise PrivateExtensionError(msg)
+                factory = entry.load()
+                if not callable(factory):
+                    msg = f"private extension factory is not callable: {entry.name}"
+                    raise PrivateExtensionError(msg)
+                contribution = cast(
+                    "Callable[[ExtensionServices], PluginContribution]", factory
+                )(services)
+                if not isinstance(contribution, PluginContribution):
+                    msg = (
+                        f"private extension factory returned invalid data: {entry.name}"
+                    )
+                    raise PrivateExtensionError(msg)
+                contributions.append(contribution)
+        return tuple(contributions)
 
     @contextmanager
     def plugin_import_path(self) -> Iterator[None]:
-        """Expose the package root only while NoneBot loads its manifest."""
+        """Expose the package root only while explicit factories are loaded."""
 
         if self._root is None:
             yield
@@ -146,7 +178,7 @@ def load_private_extension_catalog(
 
 
 class PrivateExtensionInstaller:
-    """Refresh a private package before the public NoneBot process starts."""
+    """Refresh a private package before the application starts."""
 
     def __init__(
         self,
@@ -188,17 +220,17 @@ class PrivateExtensionInstaller:
                 installed=False,
                 message="private extension refresh failed",
             )
-        plugin_modules = manifest.plugin_modules
+        entry_points = tuple(entry.value for entry in manifest.entry_points)
         logger.info(
             "private extensions installed: image=%s image_id=%s plugins=%s",
             self._config.image,
             artifact.image.image_id[:19],
-            ",".join(plugin_modules),
+            ",".join(entry_points),
         )
         return PrivateExtensionInstallResult(
             installed=True,
             image_id=artifact.image.image_id,
-            plugin_modules=plugin_modules,
+            entry_points=entry_points,
         )
 
 
@@ -309,53 +341,40 @@ def _load_manifest(root: Path) -> PrivateExtensionManifest:
     except tomllib.TOMLDecodeError as error:
         msg = "private extension manifest is not valid TOML"
         raise PrivateExtensionError(msg) from error
-    return PrivateExtensionManifest(
-        plugin_modules=_private_plugin_modules(_nonebot_manifest_table(payload), root)
-    )
+    return PrivateExtensionManifest(entry_points=_private_entry_points(payload, root))
 
 
-def _nonebot_manifest_table(payload: object) -> dict[str, object]:
+def _private_entry_points(payload: object, root: Path) -> tuple[EntryPoint, ...]:
     if not isinstance(payload, dict):
         msg = "private extension manifest must be an object"
         raise PrivateExtensionError(msg)
-    tool = payload.get("tool")
-    if not isinstance(tool, dict):
-        msg = "private extension manifest has no tool table"
+    project = payload.get("project")
+    if not isinstance(project, dict):
+        msg = "private extension manifest has no project table"
         raise PrivateExtensionError(msg)
-    nonebot = tool.get("nonebot")
-    if not isinstance(nonebot, dict):
-        msg = "private extension manifest has no [tool.nonebot] table"
-        raise PrivateExtensionError(msg)
-    return nonebot
-
-
-def _private_plugin_modules(
-    nonebot: dict[str, object],
-    root: Path,
-) -> tuple[str, ...]:
-    if nonebot.get("plugin_dirs", []) != []:
-        msg = "private extension manifest must not declare plugin_dirs"
-        raise PrivateExtensionError(msg)
-    raw_plugins = nonebot.get("plugins")
+    groups = project.get("entry-points")
+    raw_plugins = (
+        groups.get("ironsbot.extensions") if isinstance(groups, dict) else None
+    )
     if not isinstance(raw_plugins, dict) or not raw_plugins:
-        msg = "private extension manifest has no [tool.nonebot.plugins] table"
+        msg = "private extension manifest has no ironsbot.extensions entry-point table"
         raise PrivateExtensionError(msg)
 
-    modules: list[str] = []
-    for source, raw_modules in raw_plugins.items():
-        if not isinstance(source, str) or not isinstance(raw_modules, list):
-            msg = "private extension plugins must map string sources to module lists"
+    entries: list[EntryPoint] = []
+    for name, target in raw_plugins.items():
+        if not isinstance(name, str) or not name.strip() or not isinstance(target, str):
+            msg = "private extension entry points must map names to factory references"
             raise PrivateExtensionError(msg)
-        for module in raw_modules:
-            _validate_private_plugin_module(module, root)
-            modules.append(module)
-    if not modules:
-        msg = "private extension manifest has no plugin modules"
+        module, separator, factory = target.partition(":")
+        if not separator or not factory.isidentifier():
+            msg = "private extension entry point must name one module:function"
+            raise PrivateExtensionError(msg)
+        _validate_private_plugin_module(module, root)
+        entries.append(EntryPoint(name=name, value=target, group="ironsbot.extensions"))
+    if len({entry.value for entry in entries}) != len(entries):
+        msg = "private extension manifest repeats a factory"
         raise PrivateExtensionError(msg)
-    if len(set(modules)) != len(modules):
-        msg = "private extension manifest repeats a plugin module"
-        raise PrivateExtensionError(msg)
-    return tuple(modules)
+    return tuple(entries)
 
 
 def _validate_private_plugin_module(module: object, root: Path) -> None:

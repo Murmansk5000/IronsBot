@@ -44,6 +44,22 @@ default sender, or sharing a token cache between accounts is forbidden.
 
 ## Architecture Status
 
+Private extensions declare Python factories under
+`[project.entry-points."ironsbot.extensions"]`. The composition root explicitly
+calls them with typed `ExtensionServices` (lineup ports and schedule renderers).
+Importing a module never registers business actions. The loader validates local
+module paths, callable factories and contribution results; no NoneBot metadata
+or scoped string-context lookup is used for private packages. Built-in factories
+are composed by `app/plugin_composition.py`; both profiles share one ordered
+factory directory. No application plugin relies on framework discovery or an
+installation ContextVar. Only the transitional HTML prerequisite still uses
+NoneBot loading for its font initialization.
+
+OneBot HTTP action delivery uses `HttpxOneBotExchange` over the root-owned
+`HttpClients.origin`, not a NoneBot driver HTTP session. The shared OneBot HTTP
+protocol still owns timeout and receipt interpretation; the transport only maps
+HTTPX I/O and known network failures. It borrows, never closes, the client.
+
 Extension help visibility accepts the shared `CommandContext` and uses the same
 `feature_is_visible` policy as the command catalog. Composition must not narrow
 that context to a native NoneBot event. Superuser execution bypass does not
@@ -484,15 +500,15 @@ contracts to `PluginContribution`, but it must not
 redeclare examples, access rules, help text, or input ownership. The current
 migration inventory lives in `docs/multiplatform-refactor.md`; update it in the
 same commit as every ownership move. This is deliberately stricter than
-`PluginMetadata.usage`, which remains non-authoritative framework metadata.
+framework metadata, which is no longer part of application plugin registration.
 
 ### Plugin Profiles
 
-The bundled NoneBot manifests are intentionally different deployment profiles:
+The explicit contribution directory defines two deployment profiles:
 
 | Profile | Purpose | Included user-facing scope |
 | --- | --- | --- |
-| `full` | Normal production deployment | Every bundled OneBot plugin. |
+| `full` | Normal production deployment | Every bundled business contribution. |
 | `core` | Compact or platform-porting baseline | Seer queries, rank help, help, and about; plus only the runtime dependencies those plugins need. |
 
 `core` is a strict subset of `full`, not an alias. During application assembly,
@@ -589,7 +605,7 @@ feature, persistence schema, or policy decision.
 | Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. Raw-package omissions that change display use a SeerAPI `pet_soulmark_display_addition` fact with provenance; no presenter may branch on a pet ID. |
-| Private-extension loading | target | Verified private `[tool.nonebot.plugins]` manifest plus a scoped `PluginInstallContext` | The public bootstrap only validates the package and calls `nonebot.load_from_toml`; modules receive narrow declared extension contexts, never composition internals. |
+| Private-extension loading | target | Verified `[project.entry-points."ironsbot.extensions"]` factories plus typed `ExtensionServices` | Composition explicitly calls local factories; imports have no registration side effects. Private modules never read application globals or request dependencies by string. |
 
 Before adding cross-feature code, locate its row in this table. If it has no
 row, add a target responsibility with an owner and a testable boundary first.
@@ -1049,9 +1065,9 @@ adding fields or side registries to a temporary bootstrap adapter.
 
 | Responsibility | Current bridge | Target authority | Migration completion |
 | --- | --- | --- | --- |
-| Plugin discovery and loading | Standard TOML loads declared third-party prerequisites, built-in packages, and verified private packages | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No reflective module importer, plugin registry, or second manifest format remains. |
-| Plugin identity and static metadata | `PluginMetadata` in each built-in top-level plugin package | `PluginMetadata` in each top-level plugin package | Private extensions expose equivalent declarative metadata without importing application composition code. |
-| Command contracts, jobs, lifecycle contributions | Plugin-local `PluginContribution`, with no native matcher installer | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Plugin discovery and loading | Explicit built-in directory and private Python entry points | Factories composed with typed dependencies | No application plugin uses framework discovery or import side effects. |
+| Plugin identity and static metadata | Identity comes from contributions | Shared `PluginContribution` and command/help contracts | Built-in and private modules need no framework metadata or application globals. |
+| Command contracts, jobs, lifecycle contributions | All factories are explicit | `PluginContribution` created by explicit composition | No native matcher installer, scoped context, or string dependency lookup remains. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 

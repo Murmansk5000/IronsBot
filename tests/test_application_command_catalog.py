@@ -35,6 +35,7 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
             assert notices.spawn == application.task_owner.create
             assert notices.poke is notices.audit is notices.red_packets is None
             assert options["spawn"] == application.task_owner.create
+            assert options["request_http"].client is application.http_clients.origin
 
         def on_startup(self, _callback: Any) -> None:
             calls.append("lifecycle")
@@ -63,7 +64,7 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
         asgi=cast("Any", object()),
         scheduler=cast("Any", object()),
         file_logging=cast("Any", object()),
-        http_clients=cast("Any", object()),
+        http_clients=cast("Any", SimpleNamespace(origin=object())),
         databases=cast("Any", object()),
         resources=cast(
             "Any",
@@ -78,7 +79,7 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
                 qq_official=None,
             ),
         ),
-        extension_contexts={},
+        extension_services=cast("Any", object()),
         task_owner=TaskOwner(),
         known_features=(),
         required_plugin_features=frozenset(),

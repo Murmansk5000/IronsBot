@@ -715,6 +715,12 @@ pytest、Ruff、编译、`git diff --check` 均通过。
 
 ### Phase 2 — 标准 NoneBot 插件装载
 
+以下为已实施的历史阶段契约。后续共享执行链迁移已将私有 main/details 改为
+`[project.entry-points."ironsbot.extensions"]` 显式工厂和强类型 `ExtensionServices`，
+不再通过 NoneBot 或字符串上下文加载；后续内置插件也已改为显式工厂目录，
+旧内置 TOML 与安装上下文已经删除。当前边界以
+ARCHITECTURE.md 的 Architecture Status 及共享执行链 Spec 为准。
+
 **目标契约：** 标准 `[tool.nonebot.plugins]` 清单、`PluginMetadata`、
 `PluginContribution`、`PluginInstallContext`、`MatcherFactory` 和
 `CommandCatalog`。
