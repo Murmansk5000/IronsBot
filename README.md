@@ -25,6 +25,8 @@
 
 进程由应用直接持有 FastAPI/Uvicorn，OneBot 不再通过 NoneBot 驱动运行。
 原 `bot.driver` 已移除；监听地址、端口和 OneBot 连接路径不变，见[运行宿主](docs/operations-guide.md#运行宿主)。
+旧 matcher 优先级表也已移除，仅三项有效通知顺序移至 `bot.onebot.notice_priority`；
+自定义过这些值的部署请按同一运维说明移动，命令与 AI 的执行顺序不变。
 
 ## 文档导航
 

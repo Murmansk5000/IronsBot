@@ -88,6 +88,8 @@ directly; they do not import the framework logger. The application hierarchy has
 one idempotently installed bridge and does not propagate raw records to root
 handlers. Exception text is redacted before console/file sinks receive it;
 queued file sinks remain owned and closed by the application lifecycle.
+Declared private factory namespaces are bound to the same bridge before import;
+their import-time and factory logs cannot bypass it through root handlers.
 
 Connection lifecycle hooks consume `BotAccountRef(platform, id)`, not native
 Bot objects or integer-only IDs. OneBot transport observations and official SDK
@@ -449,9 +451,9 @@ The authoritative long-term ownership is therefore:
 - `ApplicationLifecycle` owns application lifecycle and background task
   ownership.
 
-The temporary private-extension adapter owns none of those target
-responsibilities. It only adapts configured external private contributions
-until that extension boundary has a standard declarative replacement.
+Private entry-point factories own none of those cross-domain responsibilities.
+They receive explicit ports and return typed contributions without a global
+installation context or framework discovery.
 
 ### Plugin Contract Terminology
 
@@ -461,7 +463,6 @@ architecture work:
 
 | Term | Owns | Does not own |
 | --- | --- | --- |
-| `PluginMetadata` | Static plugin identity and NoneBot metadata | Matchers, commands, lifecycle policy, or feature decisions |
 | `PluginContribution` | A plugin's explicit runtime contributions submitted during installation | A central plugin registry, command semantics, or cross-plugin policy |
 | `core.command_catalog.CommandCatalog` / target `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
 | Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
@@ -490,12 +491,9 @@ remains the single runtime catalog. New command work must add the smallest
 missing contract field or catalog query there, then make help, poke hints and
 AI command claims consume the same field.
 
-NoneBot's `PluginMetadata.usage` remains metadata for the framework and plugin
-inspection only. It may give a short human-oriented summary, but it is never a
-source of command syntax, permission, help detail, poke text, or AI command
-ownership. Those user-facing decisions must be derived from `CommandCatalog`.
-Changing a metadata `usage` string therefore never changes which messages the
-bot can handle.
+NoneBot `PluginMetadata` is retired, including its `usage` field. Command syntax,
+permission, help detail, poke text and AI command ownership are derived from
+`CommandCatalog`, not framework metadata.
 
 Direct-input ownership is parser-aware. A descriptor may claim an exact
 spelling or declare an explicit input matcher. It must not reserve a broad
@@ -1087,9 +1085,10 @@ reusable contracts rather than adding feature-local regexes:
   service, never a second static list.
 
 The retired central registry is a migration-history concern, not a runtime
-bridge. All built-in and private contributions now come from manifest-loaded
-plugin packages. Private package validation may supply a temporary Python
-import path only while NoneBot loads the package's own manifest; it must never
+bridge. Built-in contributions come from the explicit application directory;
+private contributions come from configured Python entry points. Private package
+validation may supply a temporary import path while invoking those factories;
+it must never
 become a second module discovery mechanism, command directory, or lifecycle
 authority.
 
@@ -1488,8 +1487,8 @@ ironsbot/
 
 The target package has no `shared`, `utils`, `plugin_catalog`, custom
 reflection-based plugin-discovery module, or command cooldown manifest. This
-does not prohibit the standard NoneBot TOML plugin manifest, nor the
-configuration field that selects one declared manifest profile. The selector is
+does not prohibit an explicit factory directory or a configuration field that
+selects one declared profile. The selector is
 declarative configuration only: it never becomes a second discovery list or a
 runtime registry. Code currently owned by those locations moves to its actual
 owner:
@@ -1498,9 +1497,9 @@ owner:
 - application use cases belong to `services`;
 - framework, network, filesystem, scheduler, and database code belongs to
   `integrations`;
-- NoneBot event adaptation belongs to `plugins`;
+- protocol event adaptation belongs to `integrations`;
 - process construction and resource lifetime belong to `app`;
-- the internal plugin and matcher contracts belong to `runtime`.
+- platform-neutral execution mechanisms belong to `runtime`.
 
 ## Dependency Direction
 
@@ -1533,7 +1532,8 @@ The graph is interpreted as "may depend on":
   for all other infrastructure it needs.
 - `integrations` imports `core`, configuration value types, and service
   protocols. It never imports plugins or the application composition root.
-- `runtime` imports `core` and NoneBot, but no concrete service or integration.
+- `runtime` uses platform-neutral values and policy contracts, never framework
+  types, platform adapters, or concrete I/O clients.
 - `plugins` import `core`, `runtime`, and services. They never import config
   loaders or concrete integrations.
 - `app` is the composition root and may import every layer.
@@ -1684,7 +1684,8 @@ The explicit built-in directory is the sole built-in composition source.
 A configuration value may select a named, declared profile
 such as `full` or `core`, but it cannot list modules itself. There is no
 parallel application manifest, help layout map, feature-to-module map, runtime
-setup string list, or reflective `module:function` lookup.
+setup string list, or custom reflective service lookup. Private extensions use
+only their validated standard Python entry points, not a second built-in list.
 
 Production bootstrap installs no message/notice matchers or native event
 preprocessors. Commands enter the shared command ingress after protocol
@@ -1695,10 +1696,9 @@ Private main/details tests use the same shared ingress and no legacy matcher API
 ## Message Input Routing
 
 `core.message_input.MessageInputContext` is the platform-neutral record of a
-newly received message. The current `runtime.message_input` is its OneBot
-adapter: it converts current-message IDs and direct member mentions into
-`IncomingMessageRef` and `ActorRef` values before applying this fixed routing
-order:
+newly received message. The OneBot protocol facts and QQ Official identity
+adapters produce `IncomingMessageRef` and `ActorRef` values. Its summary `kind`
+uses this fixed precedence, without discarding the simultaneously present facts:
 
 1. reply;
 2. direct bot mention;
@@ -1709,7 +1709,7 @@ The quoted message body and its mentions never participate in this decision.
 Mentions newly sent after a quote still follow the declared strategy: for
 example, a quoted `收集@成员` is a valid `member_target_command`, while an
 `@成员` contained in the quoted message itself is ignored.
-Matchers declare one input strategy instead of inspecting message segments:
+Command contracts use pure input strategies instead of inspecting wire segments:
 
 - `explicit_command` accepts direct commands, commands addressed with a bot
   mention, and replies, except a current ordinary-member mention;
@@ -1725,28 +1725,18 @@ framework identifies that input as a shared menu reply; business code may
 derive a new caller-owned conversation from the stored menu target, but never
 reassigns or closes the original owner's conversation.
 
-The Phase 2 replacement uses `[tool.nonebot.plugins]` and
-`nonebot.load_from_toml`, with one real top-level package per plugin. Every
-plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
-`PluginInstallContext` only while contributions are registered. It is not a
-service locator and must not be read by services or renderers. A
-`PluginContribution` carries command descriptors, lifecycle hooks and
-scheduled-job contributions during the current installation bridge, not a
-matcher installer. `CommandCatalog` consumes the command contracts
-and remains the only command-description authority; `ApplicationLifecycle`
-owns lifecycle policy and task lifetime. The replacement becomes the only
-authority; the bridge and its reflective discovery are then deleted instead of
-being kept as a compatibility path.
+Historical Phase 2 used NoneBot manifests, metadata and a scoped installation
+context. That bridge is deleted. Current explicit factories return
+`PluginContribution`; `CommandCatalog` owns direct commands and
+`ApplicationLifecycle` owns hooks, tasks and resources. No import-time
+registration, matcher installer or old manifest compatibility path remains.
 
 ## Service Boundaries
 
-A plugin is a transport adapter. It may:
-
-- match a NoneBot event;
-- convert the event into typed command input and actor/target context;
-- call one service method;
-- convert a typed result into OneBot output;
-- finish or continue a conversation.
+A plugin factory declares commands, help, feature ownership and lifecycle work.
+It is not an event adapter or executor. Protocol adapters convert wire facts
+into typed input and translate shared outbound messages/receipts. The common
+ingress, services and delivery coordinate command execution and conversations.
 
 A plugin does not:
 

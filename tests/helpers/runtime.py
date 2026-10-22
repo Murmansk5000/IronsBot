@@ -16,7 +16,6 @@ from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     PushUnsubscribeConfig,
 )
-from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.promotions import PromotionCatalog
@@ -44,7 +43,6 @@ class TestRuntime:
     admin_notices: AdminNoticeService
     cooldown: CommandCooldownService
     in_flight_requests: InFlightRequestService
-    matcher_priorities: MatcherPriorityConfig
     tasks: TaskOwner
 
 
@@ -58,7 +56,6 @@ def build_test_runtime(  # noqa: PLR0913
     push_unsubscribe: PushUnsubscribeConfig | None = None,
     state_path: Path | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
-    matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
     resolved_feature_config = feature_config or FeatureConfig()
     isolated_state_path = state_path or _isolated_state_path()
@@ -110,7 +107,6 @@ def build_test_runtime(  # noqa: PLR0913
             features,
             cooldown_config or CommandCooldownConfig(),
         ),
-        matcher_priorities=matcher_priority_config or MatcherPriorityConfig(),
         tasks=tasks,
     )
 

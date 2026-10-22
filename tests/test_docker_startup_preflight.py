@@ -399,6 +399,7 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "/site-packages/pygments" not in dockerfile
     assert "/site-packages/pymdownx" not in dockerfile
     assert "COPY packages/litehtml_core /wheel/packages/litehtml_core" in dockerfile
+    assert "!packages/litehtml_core/README.md" in dockerignore.splitlines()
     assert "ironsbot-litehtml-core==${native_version}" in dockerfile
     assert "/site-packages/markdown" not in dockerfile
     assert ".venv/" in dockerignore

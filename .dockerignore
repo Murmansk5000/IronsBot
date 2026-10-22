@@ -46,6 +46,7 @@ tests/
 .pre-commit-config.yaml
 ARCHITECTURE.md
 README.md
+!packages/litehtml_core/README.md
 ca_profile.xml
 docker-compose.yml
 icon.png
