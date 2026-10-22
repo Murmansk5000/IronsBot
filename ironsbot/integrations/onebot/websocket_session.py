@@ -10,6 +10,7 @@ from itertools import count
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from ironsbot.integrations.onebot.api_results import onebot_api_result
 from ironsbot.integrations.onebot.errors import (
     OneBotActionError,
     OneBotTransportError,
@@ -85,15 +86,12 @@ class OneBotWebSocketSession:
         request = self._pending.get(echo) if isinstance(echo, str) else None
         if request is None or request.result.done():
             return True
-        status, retcode = payload.get("status"), payload.get("retcode")
-        if (status == "ok" and type(retcode) is int and retcode == 0) or (
-            status == "async" and type(retcode) is int and retcode == 1
-        ):
-            request.result.set_result(payload.get("data") if status == "ok" else None)
+        try:
+            result = onebot_api_result(payload)
+        except OneBotActionError as error:
+            request.result.set_exception(error)
         else:
-            request.result.set_exception(
-                OneBotActionError(retcode if type(retcode) is int else None)
-            )
+            request.result.set_result(result)
         return True
 
     def close(self) -> None:

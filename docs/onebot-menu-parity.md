@@ -1,14 +1,32 @@
 # 双平台菜单与入口核对
 
-消息正文由无 NoneBot 依赖的 `decode_onebot_segments` 唯一解码：CQ 字符串只在分段时解码转义一次，数组文字不反转义、不按 CQ 重解析，嵌套自定义数据保留；规范允许的非文字空参数对象转为空字典。坏消息段和非字符串 post_type 在原生模型之前拒绝，固定日志不输出消息内容。命令、观察和自身回声共用消息段文字提取，不调用原生 get_plaintext 或异常兜底。接收消息的必要字段、发送者及引用元数据由框架无关的 message_envelope 在原生模型前校验；保留扩展字段，整数拒绝布尔值，不输出坏字段内容。发送事件与通知仍使用原生校验，不能据此宣称全部输入已去框架化。
+消息正文由无 NoneBot 依赖的 `decode_onebot_segments` 唯一解码：CQ 字符串只在分段时解码转义一次，数组文字不反转义、不按 CQ 重解析，嵌套自定义数据保留；规范允许的非文字空参数对象转为空字典。坏消息段和非字符串 post_type 在协议边界拒绝，固定日志不输出消息内容。命令、观察和自身回声共用消息段文字提取，不调用原生 get_plaintext 或异常兜底。接收/发送消息与通知均使用框架无关的协议校验；保留扩展字段，整数拒绝布尔值，不输出坏字段内容。其他控制事件、宿主和插件依赖仍未全部去框架化。
 
 临时私聊即使带来源 group_id 或 sender.role，仍以 message_type=private 构造会话和交接帧，不取得来源群权限或群角色，不切成群回复。实际反向 WebSocket 的 CQ/数组回放覆盖私聊权限、同连接私聊发送及回执结算；来源群已开放功能但私聊未开放时，不执行业务或 AI。
+
+正向/反向 WebSocket 与 HTTP 接收的引用、机器人提及、昵称和连续文字段预处理共用无框架依赖的 message_preparation。普通接收与 message_sent 经 OneBotReceivedMessages 直接进入同一公共准入，不构造原生消息、不经过 matcher，不调用 SDK Bot.handle_event，不伪造交接帧或尝试原生解析 fallback；notice 也直达既有服务。42 组群/私聊样例对照已安装 SDK 的真实预处理，保留空消息、重复入口提及、引用失败保留正文及昵称前缀语义。引用元数据最多查询一次，失败只记录错误类型，取消继续传播。原始消息保留给身份观察；引用正文中的提及不进入命令目标。三种接收入口均有禁止原生转换/派发的实际公共业务与回执测试。
+
+接收/发送 DTO 共用来源字段校验，发送观察允许缺少 font/sub_type/sender/raw_message，缺省不合成身份或群角色；接收 DTO 仍要求原有必填元数据。自身发送沿用正式 OwnAccountCommandPolicy 的开关、前缀、路由例外和回声抑制；普通 message 不能冒充 message_sent。其他账号的群发送只观察，不查询引用、不进入业务、AI 或红包处理；私聊发送事件保持忽略。反向桥已删除原生消息预处理与回填代码，自身完整/最小报文也在禁止原生转换/派发的真实 CQ/数组矩阵中执行。
+
+组合根在 router 确定后注册接收适配器，显式注入同一 admission/router/messenger，无全局业务服务或未绑定时的旧路径兜底。普通群、私聊和临时私聊的 CQ/数组真实接收矩阵禁止原生转换、SDK 预处理及原生派发，并按对象身份断言同一公共上下文只构造一次。静默、黑名单和路由拒绝仍先完成后台身份观察；@全体不进入业务。红包仅在贡献已安装且消息处理允许时启用；与命令的先后仍采用原有优先级，没有更改配置或主动扩大通知范围。
+
+红包消息及灰条通知的识别、摘要和可选群名查询现由 integrations.onebot.red_packet 处理，只依赖规范消息段与连接端口；旧插件函数删除，不保留转发导出。CQ 摘要编码与原生显示逐例对照，保留标题、文字优先及 80 字截断。管理收件人、TD、并发冷却仍由既有 RedPacketNoticeService/AdminNoticeService 处理；可选群名响应缺失或形状错误不阻断通知，取消继续传播，不打印错误正文。
+
+实际注册审查仍有 command_ingress、红包被动消息及戳一戳/审核入群/红包 notice 的原生声明，但三种传输的消息和通知都已绕过这些 matcher。声明及原生测试入口尚待宿主/插件清理，不作为第二套业务权威。player_shortcuts/group 没有生产注册消费者，私有 details 的并发测试仍引用，未擅自删除。私有 main/details 的阵容和倒计时贡献未安装额外消息 matcher。
+
+三种传输的 notice 由 OneBotNoticeIngress 直接校验来源并交给戳一戳、审核入群和红包服务，复用同一组 notice_events 动作。保留原有准入、安装条件及同优先级并发/后续优先级阻断，取消继续传播。异常只交给既有管理员报告器，不伪造消息 ID 或向普通群补发。原生测试入口与直达入口使用相同实际服务行为矩阵；红包两种来源仍复用群冷却，并非精确事件判重。
+
+HTTP 上报由 OneBotHttpReceiver 校验账号、原始正文 HMAC-SHA1 签名和来源，TaskOwner 持有任务。保留三个 URL 与可选 onebot_secret：缺少/错误签名返回 401/403，畸形或来源不符返回 400，接受返回空 204，停止后拒收。群聊、私聊、临时私聊及自身发送的 CQ/数组矩阵验证权限范围、一次上下文投影、回执、并发重放和失败释放。HTTP 出站协议也已独立；ASGI 与 HTTP 客户端资源宿主仍待迁移。
+
+HTTP 出站由 OneBotHttpApi 负责地址/正文、总超时和响应校验，宿主只翻译 HTTP 请求/响应及已知网络错误；不调用 SDK API 发送或解析函数。HTTP 与 WebSocket 共用唯一 onebot_api_result：只接受 ok/0、async/1，后者不产生最终回执；缺失或矛盾的状态、布尔/字符串 retcode、错误响应附带的 message_id 均不采信。缺地址和停止后明确未发送；提交后超时、坏 HTTP 响应或回执缺失保持不确定，不自动重发。地址按账号保存构建时快照，旧 socket 不回落 HTTP；本步不新增配置。
+
+正向连接由 OneBotForwardClient 等待合法 lifecycle/connect 报文后登记账号；该控制帧不成为业务输入，仍执行原有连接钩子。正反向共用 OneBotSocketEvents 的解码、来源核验、RPC 回执及任务提交，不重复接收循环。保持三秒重连间隔，不自动重试业务；重复账号拒绝替换，断线关闭等待请求，旧 Bot 永远不能借用新连接或回落 HTTP。停止唤醒重连等待，握手或连接器迟到完成也不登记账号；取消释放连接与回执。多 URL 测试验证账号/会话/回执独立，同时保留同一用户跨机器人共用的既有指令冷却。独立无 NoneBot 进程验证正向接收、受管任务及关闭；不等于独立 ASGI 宿主已经完成。
 
 正文协议依据：[CQ 字符串](https://github.com/botuniverse/onebot-11/blob/master/message/string.md)和[消息段数组](https://github.com/botuniverse/onebot-11/blob/master/message/array.md)。20 个样例与当前 SDK 的既有分段结果逐例对照；有效命令、转义字面量、提及、引用和畸形 CQ 的行为保留，不引入业务兼容路径。
 
 命令、后台身份观察与自身指令现从同一份 OneBotMessageFacts 投影，原生入口不再重复读取消息段。普通群、私聊、自身发送及其他账号发送的来源分类仍明确区分：其他账号发送只产生观察，不成为自身口令。命令使用处理后的文本与去重后的直接目标，观察使用原始当前消息文本及数字提及；引用作者仅在没有显式数字提及时补充观察，绝不成为命令目标。删除无生产消费者的原生 own_account_input，不保留测试专用生产 API；测试改走真实投影。当前已有正式 CQ/数组正文解析，但仍未替换完整原始事件模型。
 
-反向 WebSocket 的 API 等待现由无框架依赖的 `OneBotWebSocketSession` 持有，每连接独立 echo 与等待表，不再进入 SDK 的全局回执等待表。并发回执可乱序，超时、取消、断线均清理等待者；迟到和未知 echo 只消费、不派发命令。旧 Bot 对象仍绑定旧的已关闭会话，不能借重连后的新连接发送。原生桥在现有路径执行恒定时间令牌核验、账号校验与重复连接防护，事件任务由组合根注入的 TaskOwner 创建。停止时关闭等待调用与 socket，拒绝新握手，accept 中途停止不发布 Bot。事件转换、非命令注册及 ASGI 宿主仍使用 NoneBot；HTTP/正向 WebSocket 路径尚未替换，不宣称接收层迁移完成。
+正反向 WebSocket 的 API 等待由 `OneBotWebSocketSession` 持有，每连接独立 echo 与等待表，不进入 SDK 全局回执等待表。并发回执可乱序；超时、取消、断线清理等待者；迟到和未知 echo 只消费、不派发业务。OneBotReverseServer 仍持有反向令牌核验、连接预占和关闭，收帧/回执由正反向公共实现执行。原生宿主只转换 socket、登记 Bot 并交接事件；没有 native_reverse 旧导出。交接前绑定原连接，立即断线不丢弃已接受事件；任务拒收关闭协程。反向 accept 中途停止不发布 Bot，取消或断线钩子失败也关闭 socket。其他控制事件、原生注册声明及 ASGI/插件/渲染/HTTP 资源宿主仍待收口，不宣称已完整移除 NoneBot。
 
 协议依据：[OneBot v11 WebSocket](https://github.com/botuniverse/onebot-11/blob/master/communication/ws.md)、[反向连接](https://github.com/botuniverse/onebot-11/blob/master/communication/ws-reverse.md)及 [API 状态](https://github.com/botuniverse/onebot-11/blob/master/communication/http.md)（本轮核对）。`async/1` 只表示提交异步处理，不产生成功消息回执，即使响应错误附带 message_id 也不采信。未增加业务重试、权限或配置字段。
 
@@ -104,7 +122,7 @@ OneBot 发送与历史回执的消息 ID 共用 `integrations/onebot/receipts.py
 
 `GroupOutboundRateLimitService.execute_send` 显式持有发送尝试：准入/排队、冷却提示决策、开始提交标记和回执结算在公共层完成。删除只为原生钩子借用许可而存在的 ContextVar、owns_send 及尝试内无消费者的 group_id；发送回调只接收当前真实尝试，不读取环境中的许可。窗口条目自身记录是否已结算，重复/矛盾回执不能退款已确认的不确定发送，不另建回执账本。
 
-提交前取消或明确未发送会释放许可；提交后取消、超时、缺回执及未分类失败保留窗口。中断标记由协议端转换，公共层决定清除普通推送等待者，保留超管优先通道。原生 SDK 的 ActionFailed、ApiNotAvailable、NetworkError 只在协议适配器转换为框架无关错误，回执转换不读取异常正文或 repr。API 未提供能确认未提交；通用网络错误无法区分超时与断线，保留不确定状态且不据此开启断连冷却。真实 ConnectionError 可标记连接中断但仍不能证明未送达。删除离线/断连文本猜测；并发 details 旧测试入口尚未移除。
+提交前取消或明确未发送会释放许可；提交后取消、超时、缺回执及未分类失败保留窗口。中断标记由协议端转换，公共层决定清除普通推送等待者，保留超管优先通道。HTTP/WS 原始响应由唯一协议校验转成 OneBotActionError；已知 HTTP 网络失败由宿主转成 OneBotTransportError，不依赖 SDK 异常类或读取异常正文/repr。API 未提供能确认未提交；通用网络错误无法区分超时与断线，保留不确定状态且不据此开启断连冷却。真实 ConnectionError 可标记连接中断但仍不能证明未送达。删除离线/断连文本猜测；并发 details 旧测试入口尚未移除。
 
 生产普通命令现由组合根显式注入 OneBot 出站端口，主 matcher 只转换输入、传递接收连接并在认领后停止传播，不再调用 `Matcher.send`。`reply_from` 校验规范化执行身份与接收账号，使用同一公共回复模板及 `execute_send`；群/私聊回复均固定接收连接，不查询主动推送路由，也不补查昵称或换用其他在线账号。原生预处理在身份观察之前校验连接来源，独立命令入口及发送端也拒绝来源不匹配。自身账号不 @自己、图片引用、负数/零消息 ID、配置成员提及、菜单和超管优先队列保持原语义。
 

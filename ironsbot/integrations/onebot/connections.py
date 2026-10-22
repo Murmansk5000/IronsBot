@@ -15,6 +15,12 @@ class OneBotConnection(Protocol):
     async def call_api(self, api: str, **data: Any) -> object: ...
 
 
+class OneBotEventHandler(Protocol):
+    async def __call__(
+        self, connection: OneBotConnection, payload: dict[str, Any]
+    ) -> None: ...
+
+
 @dataclass(slots=True)
 class OneBotConnections:
     _bots: dict[str, OneBotConnection] = field(
