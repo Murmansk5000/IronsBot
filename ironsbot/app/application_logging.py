@@ -28,12 +28,23 @@ class ApplicationLogHandler(logging.Handler):
 
 
 def configure_application_logging(level: str) -> None:
-    application_logger = logging.getLogger("ironsbot")
+    _configure_namespace("ironsbot", logger.level(level.upper()).no)
+
+
+def configure_extension_logging(module: str) -> None:
+    """Bind a declared extension before import, without changing root logging."""
+    _configure_namespace(
+        module.split(".", 1)[0], logging.getLogger("ironsbot").getEffectiveLevel()
+    )
+
+
+def _configure_namespace(namespace: str, level: int) -> None:
+    application_logger = logging.getLogger(namespace)
     if not any(
         isinstance(handler, ApplicationLogHandler)
         for handler in application_logger.handlers
     ):
         application_logger.addHandler(ApplicationLogHandler())
-    application_logger.setLevel(logger.level(level.upper()).no)
+    application_logger.setLevel(level)
     # Root handlers must not receive a second, unredacted copy of the record.
     application_logger.propagate = False
