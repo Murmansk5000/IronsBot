@@ -189,7 +189,10 @@ async def test_prepared_local_rank_keeps_rendered_rank_player_mapping(
 
 
 @pytest.mark.asyncio
-async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> None:
+@pytest.mark.parametrize("listed_rank", [11, 13])
+async def test_prepared_global_and_score_ranks_keep_only_rendered_players(
+    listed_rank: int,
+) -> None:
     missing_score = 99
     spec = GlobalRankSpec("成就点数榜", key=1, sub_key=2, unit="点")
 
@@ -209,6 +212,7 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> N
             return SimpleNamespace(
                 items=[SimpleNamespace(id=700011, nick="Alice", score=100)],
                 fetched_at=None,
+                ranks=[listed_rank],
             )
 
         @staticmethod
@@ -310,7 +314,10 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players() -> N
         conversation=None,
     )
 
-    assert [(item.rank, item.player_id) for item in listed.selections] == [(11, 700011)]
+    assert [(item.rank, item.player_id) for item in listed.selections] == [
+        (listed_rank, 700011)
+    ]
+    assert f"{listed_rank}. Alice" in listed.message
     assert [(item.rank, item.player_id) for item in scored.selections] == [
         (21, 700021),
         (22, 700022),
