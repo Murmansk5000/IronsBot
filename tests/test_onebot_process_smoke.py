@@ -45,7 +45,6 @@ def _config(port: int) -> str:
     return f"""
 [bot]
 environment = "test"
-driver = "~fastapi+~httpx"
 host = "127.0.0.1"
 port = {port}
 log_level = "INFO"
@@ -327,5 +326,5 @@ def test_full_process_handles_onebot_websocket_event(
 
     assert reply_received
     log_text = ANSI_ESCAPE.sub("", log_path.read_text(encoding="utf-8"))
-    assert "Current Env: test" in log_text
+    assert "Application startup complete" in log_text
     assert "Unknown ForwardRef" not in log_text

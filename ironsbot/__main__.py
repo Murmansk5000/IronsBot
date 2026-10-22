@@ -2,7 +2,8 @@
 import sys
 from io import TextIOWrapper
 
-import nonebot
+import uvicorn
+from loguru import logger
 from pydantic import ValidationError
 
 from ironsbot.app.bootstrap import bootstrap
@@ -32,8 +33,11 @@ except (TOMLDecodeError, ValidationError, TypeError, ValueError) as error:
 if __name__ == "__main__":
     # Prefer the pure-Python Uvicorn runtime. It avoids optional native event-loop
     # and protocol accelerators while diagnosing production ExitCode=139 crashes.
-    nonebot.run(
-        app=application.asgi,
+    uvicorn.run(
+        application.asgi,
+        host=application.settings.bot.host,
+        port=application.settings.bot.port,
+        log_level=logger.level(application.settings.bot.log_level).no,
         loop="asyncio",
         http="h11",
         ws="websockets-sansio",

@@ -5,7 +5,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
+NO_FRAMEWORK = """
+import sys
+from importlib.abc import MetaPathFinder
+class RejectFramework(MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "nonebot" or fullname.startswith("nonebot."):
+            raise AssertionError("unexpected framework import: " + fullname)
+sys.meta_path.insert(0, RejectFramework())
+"""
 
 
 def test_generator_bootstrap_uses_shared_ingress_without_native_registration(
@@ -16,12 +27,12 @@ def test_generator_bootstrap_uses_shared_ingress_without_native_registration(
         (ROOT / "config.example.toml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    script = """
+    script = (
+        NO_FRAMEWORK
+        + """
 import socket
 import sys
-import traceback
-import nonebot.dependencies as dependencies
-from nonebot.log import logger
+from loguru import logger
 
 def network_forbidden(*args, **kwargs):
     raise AssertionError("registration must not connect to the network")
@@ -29,22 +40,6 @@ def network_forbidden(*args, **kwargs):
 socket.socket.connect = network_forbidden
 socket.create_connection = network_forbidden
 logger.remove()
-warnings = []
-def record_warning(message):
-    if "Unknown ForwardRef" in str(message):
-        warnings.append(str(message) + "\\n" + "".join(traceback.format_stack()))
-logger.add(record_warning, level="WARNING")
-original = dependencies.get_typed_signature
-registered = set()
-def checked_signature(call):
-    signature = original(call)
-    source = getattr(call, "func", call)
-    if getattr(source, "__module__", "").startswith((
-        "ironsbot.plugins.", "ironsbot.integrations.onebot."
-    )):
-        registered.add(source.__qualname__)
-    return signature
-dependencies.get_typed_signature = checked_signature
 from ironsbot.app.application import Application
 import ironsbot.app.seer_composition as seer_composition
 original_rendering = seer_composition.build_seer_rendering_components
@@ -100,10 +95,10 @@ Application.install = checked_install
 from scripts.generate_poke_command_introductions import _command_ids
 assert _command_ids()
 assert render_resources_checked
-assert not registered, registered
-assert not warnings, "\\n".join(warnings)
+assert not any(name.startswith("nonebot.") for name in sys.modules)
 print("SHARED_INGRESS_OK")
 """
+    )
     environment = os.environ.copy()
     for key in tuple(environment):
         if key.startswith(
@@ -135,58 +130,19 @@ def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     )
     config_path = tmp_path / "bootstrap.toml"
     config_path.write_text(config, encoding="utf-8")
-    script = """
+    script = (
+        NO_FRAMEWORK
+        + """
 import os
-import inspect
 import sys
-import nonebot
-from typing import ForwardRef
-
-from nonebot.log import logger
-from nonebot.dependencies import utils
-import nonebot.dependencies as dependencies
-from nonebot.matcher import matchers
+from loguru import logger
 
 logger.remove()
-
-unresolved_annotations = []
-current_call = [None]
-original_get_typed_annotation = utils.get_typed_annotation
-original_get_typed_signature = dependencies.get_typed_signature
-
-def checked_get_typed_annotation(parameter, globalns):
-    if isinstance(parameter.annotation, str):
-        try:
-            utils.evaluate_forwardref(
-                ForwardRef(parameter.annotation),
-                globalns,
-                globalns,
-            )
-        except Exception as error:
-            call = current_call[0]
-            source = getattr(call, "func", call)
-            unresolved_annotations.append(
-                f"{getattr(source, '__module__', '<unknown>')}:"
-                f"{getattr(source, '__qualname__', repr(source))}."
-                f"{parameter.name}={parameter.annotation} ({error})"
-            )
-    return original_get_typed_annotation(parameter, globalns)
-
-def checked_get_typed_signature(call):
-    previous = current_call[0]
-    current_call[0] = call
-    try:
-        return original_get_typed_signature(call)
-    finally:
-        current_call[0] = previous
-
-utils.get_typed_annotation = checked_get_typed_annotation
-dependencies.get_typed_signature = checked_get_typed_signature
 
 from ironsbot.app.bootstrap import bootstrap
 
 state = bootstrap()
-assert nonebot.get_driver().env == "test"
+assert state.settings.bot.environment == "test"
 assert os.environ["ENVIRONMENT"] == "outer"
 messages = []
 privacy_sink = logger.add(messages.append, format="{message}")
@@ -204,14 +160,11 @@ assert "test-secret" not in rendered
 assert actor_id not in rendered
 assert "<secret:" in rendered
 assert "<id:" in rendered
-assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
 assert state.lifecycle.scheduler is state.scheduler
-assert state.host_lifecycle.lifecycle is state.lifecycle
 assert state.onebot_transport.accounts is state.resources.onebot_connections
 assert state.onebot_transport.observer is state.lifecycle
 assert state.onebot_transport is not None
-assert not state.driver._adapters
 assert state.lifecycle.shutdown_hooks[-1] == (
     "onebot_transport", state.onebot_transport.close
 )
@@ -224,6 +177,7 @@ assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
     "identity_links",
     "data_sync",
     "qq_official",
+    "onebot_transport",
 ]
 from ironsbot.core.platform import Platform
 assert state.lifecycle.first_connection_platforms == frozenset({Platform.QQ_OFFICIAL})
@@ -234,7 +188,7 @@ assert {"seer.team.query", "seer.pet.avatar"}.issubset(
 )
 assert len(state.contributions) > 0
 assert not state.onebot_message_handling_enabled
-assert not any(matchers.values())
+assert not any(name.startswith("nonebot.") for name in sys.modules)
 assert state.resources.onebot_admission.errors is state.resources.command_errors
 from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
 assert state.resources.identity_observer is not None
@@ -257,9 +211,10 @@ assert len({plugin.id for plugin in state.contributions}) == len(state.contribut
 
 print("BOOTSTRAP_OK")
 """
+    )
     result = subprocess.run(
         [sys.executable, "-c", script],
-        cwd=ROOT,
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -267,7 +222,14 @@ print("BOOTSTRAP_OK")
         check=False,
         timeout=30,
         env={
-            **dict(os.environ),
+            **{
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith(
+                    ("APP_SECRET_", "ONEBOT_", "AI_KEY", "QQ_OFFICIAL_")
+                )
+            },
+            "PYTHONPATH": str(ROOT),
             "ENVIRONMENT": "outer",
             "APP_CONFIG_PATH": str(config_path),
             "APP_SECRET_10001": "test-secret",
@@ -278,3 +240,73 @@ print("BOOTSTRAP_OK")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "BOOTSTRAP_OK"
+
+
+@pytest.mark.parametrize(
+    ("onebot", "official"), [(True, False), (False, True), (True, True)]
+)
+def test_three_deployment_modes_compose_without_framework_or_network(
+    tmp_path: Path, *, onebot: bool, official: bool
+) -> None:
+    config_path = tmp_path / "mode.toml"
+    config = f"""
+[bot]
+environment = "test"
+plugin_manifest = "core"
+[bot.onebot]
+enabled = {str(onebot).lower()}
+"""
+    if official:
+        config += """
+[bot.qq_official.accounts.test_bot]
+app_id = "10001"
+"""
+    config_path.write_text(config, encoding="utf-8")
+    script = NO_FRAMEWORK + """
+import socket
+from loguru import logger
+logger.remove()
+def forbidden(*args, **kwargs):
+    raise AssertionError("composition opened a network connection")
+socket.socket.connect = forbidden
+socket.create_connection = forbidden
+from ironsbot.app.bootstrap import bootstrap
+app = bootstrap()
+onebot = sys.argv[1] == "True"
+official = sys.argv[2] == "True"
+assert (app.onebot_transport is not None) == onebot
+assert len(app.asgi.routes) == (6 if onebot else 0)
+assert (app.resources.qq_official is not None) == official
+expected = "qq_official" if official else "onebot"
+assert app.settings.outbound_platform_selection.platform.value == expected
+assert app.onebot_message_handling_enabled == (onebot and not official)
+assert app.lifecycle is not None
+names = [name for name, _ in app.lifecycle.resource_startup_hooks]
+assert ("onebot_transport" in names) == onebot
+assert ("qq_official" in names) == official
+assert not any(name.startswith("nonebot.") for name in sys.modules)
+print("MODE_OK")
+"""
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(
+            ("QQ_OFFICIAL_", "APP_ID_", "APP_SECRET_", "ONEBOT_", "AI_KEY")
+        )
+    }
+    environment.update(APP_CONFIG_PATH=str(config_path), PYTHONPATH=str(ROOT))
+    if official:
+        environment["APP_SECRET_10001"] = "mode-test-secret"
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(onebot), str(official)],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "MODE_OK"

@@ -10,8 +10,6 @@ requires-python = ">=3.11, <4.0"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"]
 dependencies = [
-    "nonebot-adapter-onebot>=2.4.6",
-    "nonebot2[httpx]>=2.4.4",
     "fastapi>=0.93.0,<1.0.0",
     "uvicorn>=0.20.0,<1.0.0",
     "websockets>=15.0",
@@ -35,16 +33,6 @@ qq-official = [
 [tool.uv]
 # Keep the optional official SDK on the audited cryptography 50 release line.
 override-dependencies = ["cryptography>=50.0.0,<51.0.0"]
-
-[tool.nonebot]
-plugin_dirs = []
-builtin_plugins = []
-
-[tool.nonebot.adapters]
-nonebot-adapter-onebot = [
-    { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
-]
-"@local" = []
 
 [tool.setuptools.packages.find]
 include = ["ironsbot*"]
@@ -167,6 +155,8 @@ venv = ".venv"
 
 [dependency-groups]
 dev = [
+    # SDK models are used only to construct historical protocol test fixtures.
+    "nonebot-adapter-onebot>=2.4.6",
     "bandit>=1.9.4",
     "basedpyright>=1.38.1",
     "pip-audit>=2.10.1",

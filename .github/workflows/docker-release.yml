@@ -161,7 +161,7 @@ jobs:
                       test "$regular" != "$bold"
                       actual_python="$(python -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")"
                       test "$actual_python" = "$EXPECTED_PYTHON_VERSION"
-                      python -c "from ironsbot.config.loader import load_settings; from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime; import nonebot, qqbot_agent_sdk, seerapi_models; load_settings()"
+                      python -c "import sys; sys.modules['nonebot'] = None; from ironsbot.app.bootstrap import bootstrap; from ironsbot.config.loader import load_settings; from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime; import fastapi, uvicorn, qqbot_agent_sdk, seerapi_models; load_settings()"
                       python -c "import asyncio, importlib.util; assert importlib.util.find_spec(\"pygments\") is None; assert importlib.util.find_spec(\"pymdownx\") is None; from ironsbot.integrations.litehtml import initialize_fontconfig, render_html; from ironsbot.integrations.litehtml.local_resources import local_image, local_css; initialize_fontconfig(); image = asyncio.run(render_html(\"<body style=font-weight:700>IronsBot 中文渲染</body>\", base_url=\"file:///\", max_width=320, allow_refit=True, img_fetch_fn=local_image, css_fetch_fn=local_css)); assert image.startswith(bytes.fromhex(\"89504e470d0a1a0a\"))"
                     '
 
