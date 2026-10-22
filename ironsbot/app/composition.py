@@ -219,8 +219,8 @@ async def _load_identity_links(  # noqa: PLR0913
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
-    driver.register_adapter(SelfCommandAdapter)
     task_owner = TaskOwner()
+    driver.register_adapter(SelfCommandAdapter, spawn=task_owner.create)
     scheduler = SchedulerFacade(
         timezone="Asia/Shanghai", spawn=task_owner.create_draining
     )
