@@ -9,6 +9,7 @@ from nonebot.matcher import Matcher
 from nonebot.message import handle_event
 
 from ironsbot.config.models.features import HelpConfig
+from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import (
@@ -20,6 +21,7 @@ from ironsbot.core.outbound import (
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.errors import OneBotActionError
+from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
 from ironsbot.plugins.onebot.messaging.poke import install
 from ironsbot.services.messaging.poke_reply import PokeReplyService
 
@@ -90,12 +92,14 @@ async def test_poke_service_limited_group_has_no_lookup_or_send(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("private", [False, True])
 @pytest.mark.parametrize("role_failure", [False, True])
+@pytest.mark.parametrize("source", ["native", "raw"])
 async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
     runtime: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
     *,
     private: bool,
     role_failure: bool,
+    source: str,
 ) -> None:
     monkeypatch.setattr(Bot, "_calling_api_hook", set())
     monkeypatch.setattr(Bot, "_called_api_hook", set())
@@ -127,7 +131,21 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
         user_id=101,
         target_id=1,
     )
-    await handle_event(runtime.bot, event)
+
+    async def deliver(current: PokeNotifyEvent) -> None:
+        if source == "native":
+            await handle_event(runtime.bot, current)
+        else:
+            await ingress.handle(runtime.bot, current.model_dump())
+
+    ingress = OneBotNoticeIngress(
+        runtime.admission,
+        runtime.messenger,
+        Mock(),
+        MatcherPriorityConfig(),
+        poke=service,
+    )
+    await deliver(event)
 
     expected = [{"type": "text", "data": {"text": DIRECT_COMMAND_HELP_HINT_TEXT}}]
     if not private:
@@ -146,9 +164,9 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
     runtime.messenger._router.for_conversation.assert_not_called()
 
     # A poke for another target cannot consume the remaining private/group hint.
-    await handle_event(runtime.bot, event.model_copy(update={"target_id": 2}))
+    await deliver(event.model_copy(update={"target_id": 2}))
     assert len(calls) == (1 if private else 2)
-    await handle_event(runtime.bot, event)
+    await deliver(event)
     assert len(calls) == initial_count + int(private)
 
 

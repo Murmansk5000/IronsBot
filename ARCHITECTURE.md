@@ -163,11 +163,16 @@ one authenticated connection rather than the SDK's shared result store. Opaque
 echoes correlate concurrent responses; timeout/cancellation removes waiters and
 late responses cannot enter business dispatch. Disconnect distinguishes queued
 from already submitted requests, and an old bot object keeps its closed session
-rather than borrowing a reconnected account's socket. `NativeOneBotReverseServer`
-is the current bridge: it authenticates and receives frames on the existing
-routes, validates their source account, then uses the application task owner to
-dispatch into native event decoding and the shared business ingress. Shutdown
-closes pending calls and sockets and refuses new handshakes. The remaining HTTP
+rather than borrowing a reconnected account's socket. `OneBotReverseServer`
+owns authentication, connection reservation, frame reception, source validation,
+RPC response delivery and closure without any NoneBot imports. Its socket and
+connection/event callbacks are explicit ports; it uses the application task
+owner, not a parallel task manager. `SelfCommandAdapter` currently translates
+native sockets and binds each accepted event to its original native bot before
+task submission. Disconnect cannot drop an already accepted event or let it
+borrow a new socket. The former `native_reverse` module is deleted, with no
+compatibility export. Shutdown closes pending calls and sockets and refuses new
+handshakes. The remaining HTTP
 and forward-WebSocket SDK paths, native event bridge and ASGI host have not yet
 been replaced; this is not a claim of complete NoneBot removal.
 
@@ -182,8 +187,97 @@ native `get_plaintext` or falling back after a framework exception.
 metadata before the native bridge, preserving provider extensions without
 logging rejected payloads. Temporary private messages remain private even if
 provider metadata includes a source group or group role; those fields cannot
-select group permissions or group delivery. Sent messages and notices still
-depend on native event validation; the host and event bridge remain unfinished.
+select group permissions or group delivery. Sent envelopes share those source
+fields but permit absent font/subtype/sender metadata; they never synthesize a
+sender or group role. Reverse notices use their own framework-free wire
+envelope; native event validation remains on other control event types and
+test consumers. The host remains unfinished.
+
+Reverse/forward WebSocket and HTTP reception prepare addressing and reply
+metadata through the framework-free `message_preparation` module, then enter shared admission
+instead of native dispatch or SDK `Bot.handle_event`. One optional `get_msg`
+lookup validates quoted metadata; failures log only the error type and do not
+expose payloads. Quoted text and mentions never become command input. Text
+reduction, entry/trailing bot mentions, nickname stripping and private addressing
+retain installed SDK behavior, verified by direct differential replay. The
+source message is copied, preserving original observation facts. The native
+bridge only converts other event types to remaining native event objects.
+The adapted protocol module includes its original MIT notice in the source so
+both source and runtime distributions retain it.
+
+Passive red-packet recognition, summary formatting and optional group-name
+lookup live in the framework-free `integrations.onebot.red_packet` module.
+Native matchers only translate event segments and call that protocol boundary
+plus the existing `RedPacketNoticeService`. They must not retain a second
+detector or re-export its old plugin API. CQ diagnostic formatting uses the
+same segment contract and is compared against native display semantics.
+Admin recipients, subscription preferences, concurrency admission and cooldown
+remain owned by the existing shared notice services, not the protocol detector.
+
+Received and sent messages from all three OneBot transports now enter
+`OneBotReceivedMessages` directly. It validates the wire envelope, prepares
+protocol metadata, projects one shared context and calls the existing admission
+and command ingress. There is no native message construction, matcher dispatch,
+fake admitted frame, or fallback to a native parser on this path. Identity
+observation still runs before silent/blacklist/routing rejection. The same
+connection is captured for shared delivery and receipt settlement. Unclaimed
+red-packet messages use the existing passive service; its relative order follows
+the configured priority against the single shared command priority constant.
+Sent group messages from other accounts only contribute identity observations:
+they do not fetch quoted messages or enter command/passive execution. Own sent
+messages use the existing prefix, echo and administrative-binding policy;
+received self messages cannot acquire sent-origin eligibility. Sent private
+events remain ignored. The composition root registers the adapter only after
+binding this explicit
+receiver to the existing router, messenger and admission resources.
+
+Notices from all three OneBot transports enter `OneBotNoticeIngress` without native models or matchers.
+Poke, team-audit arrival and red-packet actions reuse the same business services
+as the remaining native transport adapters. Their wire conversion and optional
+role/group metadata lookup live in `notice_events`; native plugins delegate to
+those same actions rather than duplicate orchestration. Existing installation
+conditions, silent admission and priority/blocking semantics remain intact:
+equal-priority handlers run concurrently before a blocking handler prevents
+later priorities. Errors use the shared restricted administrator reporter with
+an actual notice context, never a fabricated message ID or user reply. Tasks
+remain owned by the application and cancellation propagates. Other
+native event types remain on the native bridge; this does
+not remove the host or plugin discovery yet.
+
+`OneBotHttpReceiver` owns HTTP source/header validation, raw-body HMAC-SHA1
+signature verification and application-owned task submission independently of
+the ASGI host. Its host adapter only translates Request/Response and supplies
+the current connection. Valid messages and notices use the same payload handoff
+as reverse reception, without native message construction or SDK preprocessing.
+Malformed/foreign payloads cannot register an account or start work; signature
+comparison is constant-time and rejected bodies are not logged. Stopping rejects
+new HTTP events, and a rejected task submission closes the created coroutine.
+The existing HTTP URLs, optional secret, empty 204 acceptance and business
+policies remain; the ASGI lifecycle is still transitional.
+
+`OneBotHttpApi` owns action URL/body preparation, total timeout and protocol
+response validation without native HTTP models. The host translates the request
+and response and normalizes known HTTP transport failures; no SDK API dispatcher
+or result parser is used. HTTP and WebSocket share `api_results.onebot_api_result`:
+only `ok/0` supplies data, `async/1` supplies no final receipt, and all mismatches
+raise a sanitized structured action error. Missing API roots and stopped HTTP
+resources are definitely not sent; timeouts, bad HTTP responses and lost receipts
+after submission remain uncertain. Neither path retries business sends. Account
+roots are snapshotted at construction; closed socket sessions never fall back to
+HTTP. Driver-owned HTTP connections remain part of the unfinished host migration.
+
+`OneBotForwardClient` waits for a validated lifecycle `connect` frame before
+registering its account. That frame establishes the protocol connection rather
+than becoming a business input; application connection hooks remain unchanged.
+Forward and reverse directions share `OneBotSocketEvents` for frame decoding,
+source validation, RPC response consumption and owned event submission, plus the
+same `OneBotWebSocketSession` for API requests. Duplicate accounts cannot replace
+an active connection. Disconnect/cancellation closes pending calls; old Bot
+references retain the closed session and cannot fall through to HTTP or use a
+reconnected socket. Reconnection keeps the existing three-second interval and
+does not retry business work. Stopping wakes reconnect waits and prevents late
+connection publication. The host only supplies the authenticated connector and
+Bot registration; neither URLs nor provider error bodies enter client logs.
 
 OneBot message decoding is owned by `message_facts.decode_onebot_message` over a
 typed `OneBotMessageFacts` snapshot. The native event adapter only extracts the
@@ -197,7 +291,8 @@ and own-command facts from this same snapshot. Direct targets never include the
 quoted author; observation may use that author only when no explicit numeric
 mention exists. Observation retains original text, while commands use processed
 text. Sent messages from other accounts remain observation-only; a received
-self message cannot acquire own-command eligibility. Native admission publishes
+self message cannot acquire own-command eligibility. On remaining native paths,
+admission publishes
 an immutable `AdmittedOneBotMessage` in per-event state only
 after acceptance. The command adapter checks the exact source event, platform,
 account, actor, conversation and message ID, then passes that same context through

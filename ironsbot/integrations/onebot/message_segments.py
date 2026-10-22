@@ -110,6 +110,30 @@ def onebot_message_text(message: Sequence[OneBotSegment]) -> str:
     )
 
 
+def encode_onebot_message(message: Sequence[OneBotSegment]) -> str:
+    """Format protocol diagnostics without depending on native message objects."""
+
+    def escape(value: str, *, comma: bool = True) -> str:
+        escaped = (
+            value.replace("&", "&amp;").replace("[", "&#91;").replace("]", "&#93;")
+        )
+        return escaped.replace(",", "&#44;") if comma else escaped
+
+    parts: list[str] = []
+    for segment in message:
+        if segment["type"] == "text":
+            parts.append(escape(segment["data"]["text"], comma=False))
+        else:
+            params = ",".join(
+                f"{key}={escape(str(value))}"
+                for key, value in segment["data"].items()
+                if value is not None
+            )
+            suffix = f",{params}" if params else ""
+            parts.append(f"[CQ:{segment['type']}{suffix}]")
+    return "".join(parts)
+
+
 def onebot_own_account_input(
     account_id: str,
     conversation: ConversationRef,

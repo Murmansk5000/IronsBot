@@ -88,6 +88,45 @@ class Application:
         if not self._configured or self.lifecycle is None:
             msg = "application must be configured before installation"
             raise RuntimeError(msg)
+        from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
+        from ironsbot.integrations.onebot.received_messages import (
+            COMMAND_INGRESS_PRIORITY,
+            OneBotReceivedMessages,
+        )
+        from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+
+        received = OneBotReceivedMessages(
+            self.resources.onebot_ingress.admission,
+            router,
+            self.resources.onebot_messenger,
+            nicknames=frozenset(self.driver.config.nickname),
+            red_packets=(
+                self.resources.red_packet_notice
+                if self.onebot_message_handling_enabled
+                and any(item.id == "red_packet_notice" for item in self.contributions)
+                else None
+            ),
+            red_packets_before_commands=(
+                self.settings.bot.matcher_priority.red_packet_notice
+                < COMMAND_INGRESS_PRIORITY
+            ),
+        )
+        installed = frozenset(item.id for item in self.contributions)
+        notices = OneBotNoticeIngress(
+            self.resources.onebot_ingress.admission,
+            self.resources.onebot_messenger,
+            self.scheduler,
+            self.settings.bot.matcher_priority,
+            poke=self.resources.poke_reply if "poke_reply" in installed else None,
+            audit=self.resources.team_audit if "team_audit" in installed else None,
+            red_packets=received.red_packets,
+        )
+        self.driver.register_adapter(
+            SelfCommandAdapter,
+            spawn=self.task_owner.create,
+            received=received.handle,
+            notices=notices.handle,
+        )
         for contribution in self.contributions:
             if contribution.install is not None and (
                 self.onebot_message_handling_enabled

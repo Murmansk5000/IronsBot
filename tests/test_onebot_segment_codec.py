@@ -11,6 +11,7 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import (
     OneBotMessageDecodeError,
     decode_onebot_segments,
+    encode_onebot_message,
     onebot_message_text,
 )
 from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
@@ -18,6 +19,8 @@ from tests.helpers.onebot_events import group_message_event
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture
+
+    from ironsbot.integrations.onebot.message_segments import OneBotMessage
 
 
 @pytest.mark.parametrize(
@@ -47,8 +50,11 @@ if TYPE_CHECKING:
 )
 def test_cq_decoding_matches_existing_transport_semantics(source: str) -> None:
     native = Message(source)
-    expected = [{"type": part.type, "data": part.data} for part in native]
+    expected: OneBotMessage = [
+        {"type": part.type, "data": part.data} for part in native
+    ]
     assert decode_onebot_segments(source) == expected
+    assert encode_onebot_message(expected) == str(native)
     assert (
         onebot_message_text(decode_onebot_segments(source))
         == native.extract_plain_text()
