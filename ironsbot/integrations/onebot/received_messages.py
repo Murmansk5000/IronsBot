@@ -42,7 +42,6 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_commands import PortableCommandRouter
 
 logger = logging.getLogger(__name__)
-COMMAND_INGRESS_PRIORITY = -31
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +51,6 @@ class OneBotReceivedMessages:
     messenger: OneBotOutboundMessenger
     nicknames: frozenset[str] = frozenset()
     red_packets: RedPacketNoticeService | None = None
-    red_packets_before_commands: bool = False
 
     async def handle(
         self, connection: OneBotConnection, payload: dict[str, Any]
@@ -83,17 +81,10 @@ class OneBotReceivedMessages:
             and is_red_packet_message(prepared.message)
             else None
         )
-        if packet_summary is not None and self.red_packets_before_commands:
-            assert group_id is not None
-            await self._red_packet(connection, context, group_id, packet_summary)
         claimed = await self.router.ingress.handle(
             context, partial(self.messenger.reply_from, connection, context)
         )
-        if (
-            not claimed
-            and packet_summary is not None
-            and not self.red_packets_before_commands
-        ):
+        if not claimed and packet_summary is not None:
             assert group_id is not None
             await self._red_packet(connection, context, group_id, packet_summary)
 

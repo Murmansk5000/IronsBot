@@ -5,11 +5,12 @@ import json
 import subprocess
 import sys
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.features import HelpConfig
 from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.core.feature_policy import FeatureService
@@ -25,6 +26,7 @@ from ironsbot.services.messaging.poke_reply import PokeReplyService
 from tests.test_onebot_native_reverse import Socket
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
     from types import SimpleNamespace
 
     from nonebot.drivers import WebSocket
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 
 pytest_plugins = ("tests.test_onebot_native_reverse",)
+T = TypeVar("T")
 
 
 def _poke(**fields: object) -> dict[str, Any]:
@@ -79,6 +82,7 @@ async def test_unadmitted_or_unowned_poke_has_no_lookup_or_send(
         Mock(),
         MatcherPriorityConfig(),
         poke=None if reason == "uninstalled" else poke,
+        spawn=asyncio.create_task,
     )
     payload = _poke()
     if reason == "account":
@@ -116,6 +120,7 @@ async def test_poke_blocks_only_later_notice_handlers(
         ),
         poke=Mock(handle=AsyncMock(side_effect=poke)),
         red_packets=Mock(handle=AsyncMock(side_effect=packet)),
+        spawn=asyncio.create_task,
     )
     await ingress.handle(runtime.bot, _poke(marker="红包"))
     assert order == (["packet", "poke"] if packet_first else ["poke"])
@@ -142,6 +147,7 @@ async def test_same_priority_notice_handlers_are_awaited_concurrently(
         MatcherPriorityConfig(poke_reply=0, red_packet_notice=0),
         poke=Mock(handle=AsyncMock(side_effect=poke)),
         red_packets=Mock(handle=AsyncMock(side_effect=packet)),
+        spawn=asyncio.create_task,
     )
     await asyncio.wait_for(ingress.handle(runtime.bot, _poke(marker="红包")), timeout=1)
     assert poke_started.is_set() and packet_started.is_set()
@@ -170,6 +176,7 @@ async def test_notice_failure_reports_only_to_admins_without_fake_message(
         Mock(),
         MatcherPriorityConfig(),
         poke=Mock(handle=AsyncMock(side_effect=RuntimeError("private-marker"))),
+        spawn=asyncio.create_task,
     )
     await ingress.handle(runtime.bot, _poke())
     await ingress.handle(runtime.bot, _poke())
@@ -195,12 +202,138 @@ async def test_notice_cancellation_is_not_reported_or_retried(
         Mock(),
         MatcherPriorityConfig(),
         poke=service,
+        spawn=asyncio.create_task,
     )
     with pytest.raises(asyncio.CancelledError):
         await ingress.handle(runtime.bot, _poke())
     service.handle.assert_awaited_once()
     runtime.notices.send.assert_not_awaited()
     assert runtime.sends == []
+
+
+@pytest.mark.asyncio
+async def test_cancelled_notice_handler_cancels_and_drains_its_sibling(
+    runtime: SimpleNamespace,
+) -> None:
+    started, cleaned = asyncio.Event(), asyncio.Event()
+    siblings: list[asyncio.Task[Any]] = []
+
+    async def poke(*_args: object, **_kwargs: object) -> None:
+        await started.wait()
+        raise asyncio.CancelledError
+
+    async def packet(*_args: object, **_kwargs: object) -> None:
+        task = asyncio.current_task()
+        assert task is not None
+        siblings.append(task)
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaned.set()
+
+    ingress = OneBotNoticeIngress(
+        runtime.admission,
+        runtime.messenger,
+        Mock(),
+        MatcherPriorityConfig(poke_reply=0, red_packet_notice=0),
+        poke=Mock(handle=AsyncMock(side_effect=poke)),
+        red_packets=Mock(handle=AsyncMock(side_effect=packet)),
+        spawn=asyncio.create_task,
+    )
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(
+                ingress.handle(runtime.bot, _poke(marker="红包")), timeout=2
+            )
+        assert cleaned.is_set()
+        assert all(task.done() for task in siblings)
+        assert runtime.sends == []
+        runtime.notices.send.assert_not_awaited()
+    finally:
+        for task in siblings:
+            task.cancel()
+        await asyncio.gather(*siblings, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_repeated_notice_cancellation_waits_for_owned_cleanup(
+    runtime: SimpleNamespace,
+) -> None:
+    owner = TaskOwner()
+    started, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def poke(*_args: object, **_kwargs: object) -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaning.set()
+            await release.wait()
+
+    ingress = OneBotNoticeIngress(
+        runtime.admission,
+        runtime.messenger,
+        Mock(),
+        MatcherPriorityConfig(),
+        spawn=owner.create,
+        poke=Mock(handle=AsyncMock(side_effect=poke)),
+    )
+    handling = asyncio.create_task(ingress.handle(runtime.bot, _poke()))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        assert len(owner.tasks) == 1
+        handling.cancel()
+        await asyncio.wait_for(cleaning.wait(), timeout=2)
+        handling.cancel()
+        await asyncio.sleep(0)
+        assert not handling.done()
+        assert len(owner.tasks) == 1
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(handling, timeout=2)
+        assert owner.tasks == set()
+        runtime.notices.send.assert_not_awaited()
+    finally:
+        release.set()
+        handling.cancel()
+        await asyncio.gather(handling, return_exceptions=True)
+        await owner.cancel_all()
+
+
+@pytest.mark.asyncio
+async def test_notice_spawn_failure_closes_coroutine_and_drains_accepted_tasks(
+    runtime: SimpleNamespace,
+) -> None:
+    owner = TaskOwner()
+    submitted: list[Coroutine[Any, Any, Any]] = []
+    accepted: list[asyncio.Task[Any]] = []
+
+    def spawn(coroutine: Coroutine[Any, Any, T], *, name: str) -> asyncio.Task[T]:
+        submitted.append(coroutine)
+        if accepted:
+            raise RuntimeError
+        task = owner.create(coroutine, name=name)
+        accepted.append(task)
+        return task
+
+    ingress = OneBotNoticeIngress(
+        runtime.admission,
+        runtime.messenger,
+        Mock(),
+        MatcherPriorityConfig(poke_reply=0, red_packet_notice=0),
+        spawn=spawn,
+        poke=Mock(handle=AsyncMock()),
+        red_packets=Mock(handle=AsyncMock()),
+    )
+    with pytest.raises(RuntimeError):
+        await ingress.handle(runtime.bot, _poke(marker="红包"))
+    assert len(accepted) == 1 and accepted[0].cancelled()
+    with pytest.raises(RuntimeError, match="cannot reuse already awaited coroutine"):
+        submitted[1].send(None)
+    assert owner.tasks == set()
+    assert runtime.sends == []
+    runtime.notices.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -213,6 +346,7 @@ async def test_reverse_poke_uses_real_shared_send_and_receipts_without_native_di
         Mock(),
         MatcherPriorityConfig(),
         poke=PokeReplyService(HelpConfig()),
+        spawn=asyncio.create_task,
     )
     adapter.notices = ingress.handle
     socket = Socket()
@@ -285,7 +419,7 @@ async def run():
         OutboundRateLimitConfig(enabled=False), features, owner.create)
     ingress = OneBotNoticeIngress(OneBotAdmissionService(True, features),
         OneBotOutboundMessenger(Mock(), limits), Mock(), MatcherPriorityConfig(),
-        poke=PokeReplyService(HelpConfig(hint_max_per_window=1)))
+        poke=PokeReplyService(HelpConfig(hint_max_per_window=1)), spawn=owner.create)
     accepted, handled = asyncio.Event(), asyncio.Event()
     actions = []
     class Socket:

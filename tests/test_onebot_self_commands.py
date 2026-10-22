@@ -1,23 +1,19 @@
-from unittest.mock import Mock
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
-from nonebot.exception import IgnoredException
 from pydantic import ValidationError
 
 from ironsbot.config.models.transport import SelfCommandsConfig
-from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import SendResult
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import onebot_own_account_input
-from ironsbot.integrations.onebot.replies import build_event_reply_message
-from ironsbot.integrations.onebot.self_commands import (
-    SelfCommandAdapter,
-    SentGroupMessageEvent,
-)
-from ironsbot.services.onebot_admission import OneBotAdmissionService
+from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from tests.helpers.onebot_events import (
     group_message_event,
@@ -25,10 +21,15 @@ from tests.helpers.onebot_events import (
     self_command_event,
 )
 
-_FEATURES = FeatureService({}, {}, frozenset())
+if TYPE_CHECKING:
+    from types import SimpleNamespace
+
+    from tests.helpers.onebot_events import SentGroupFixture
+
+pytest_plugins = ("tests.test_shared_onebot_ingress",)
 
 
-def _accept(policy: OwnAccountCommandPolicy, event: SentGroupMessageEvent) -> bool:
+def _accept(policy: OwnAccountCommandPolicy, event: SentGroupFixture) -> bool:
     return policy.accept(own_account_input(event)) is not None
 
 
@@ -128,27 +129,56 @@ def test_self_admin_binding_requires_exactly_one_other_member() -> None:
         assert not _accept(gate, event)
 
 
-def test_other_senders_are_not_converted_to_self_commands() -> None:
+@pytest.mark.asyncio
+async def test_other_senders_are_observed_without_executing_self_commands(
+    runtime: SimpleNamespace,
+) -> None:
     data = group_message_event("demo help").model_dump()
     data["post_type"] = "message_sent"
-    assert not isinstance(SelfCommandAdapter.json_to_event(data), SentGroupMessageEvent)
+    observer = Mock(observe_onebot=AsyncMock())
+    receiver = OneBotReceivedMessages(
+        replace(
+            runtime.admission,
+            identity_observer=observer,
+            self_commands=OwnAccountCommandPolicy(
+                SelfCommandsConfig(enabled=True, prefixes=["demo "])
+            ),
+        ),
+        runtime.router,
+        runtime.messenger,
+    )
+    await receiver.handle(runtime.bot, data)
+    observer.observe_onebot.assert_awaited_once()
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+    assert runtime.sends == []
 
 
 @pytest.mark.asyncio
-async def test_silent_mode_overrides_enabled_self_commands() -> None:
+async def test_silent_mode_overrides_enabled_self_commands(
+    runtime: SimpleNamespace,
+) -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
-    event = self_command_event("demo help")
-    with pytest.raises(IgnoredException):
-        await OneBotEventIngress(
-            OneBotAdmissionService(
-                messages_enabled=False, features=_FEATURES, self_commands=gate
-            )
-        ).process(event)
-    assert event.get_plaintext() == "demo help"
+    event = self_command_event("demo 执行")
+    payload = event.model_dump()
+    payload["post_type"] = "message_sent"
+    receiver = replace(
+        runtime.received,
+        admission=replace(
+            runtime.admission, messages_enabled=False, self_commands=gate
+        ),
+    )
+    await receiver.handle(runtime.bot, payload)
+    assert event.get_plaintext() == "demo 执行"
+    runtime.execute.assert_not_awaited()
+    runtime.ai.chat_reply.assert_not_awaited()
+    assert runtime.sends == []
 
 
 @pytest.mark.asyncio
-async def test_own_normalization_does_not_reparse_literal_cq() -> None:
+async def test_own_normalization_does_not_reparse_literal_cq(
+    runtime: SimpleNamespace,
+) -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
     literal = "demo 米米号[CQ:at,qq=777]"
     event = self_command_event("demo help")
@@ -156,12 +186,17 @@ async def test_own_normalization_does_not_reparse_literal_cq() -> None:
     event.original_message = event.message.copy()
     event.raw_message = str(event.message)
     event.to_me = True
-    context = await OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True, features=_FEATURES, self_commands=gate
-        )
-    ).process(event)
-    assert context is not None
+    payload = event.model_dump()
+    payload["post_type"] = "message_sent"
+    commands = Mock(handle=AsyncMock(return_value=False))
+    receiver = OneBotReceivedMessages(
+        replace(runtime.admission, self_commands=gate),
+        Mock(ingress=commands),
+        runtime.messenger,
+    )
+    await receiver.handle(runtime.bot, payload)
+    commands.handle.assert_awaited_once()
+    context = commands.handle.call_args.args[0]
     assert context.text == "米米号[CQ:at,qq=777]"
     assert context.member_mentions == ()
     assert not context.mentions_bot
@@ -171,43 +206,48 @@ async def test_own_normalization_does_not_reparse_literal_cq() -> None:
 
 
 @pytest.mark.asyncio
-async def test_self_reply_quotes_request_without_mentioning_self() -> None:
+async def test_self_reply_quotes_request_without_mentioning_self(
+    runtime: SimpleNamespace,
+) -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
-    event = self_command_event("demo help")
-    await OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True, features=_FEATURES, self_commands=gate
-        )
-    ).process(event)
-    message = build_event_reply_message(event, "result")
-    assert [segment.type for segment in message] == ["reply", "text"]
-    assert message[0].data["id"] == "-3"
+    event = self_command_event("demo 执行")
+    payload = event.model_dump()
+    payload["post_type"] = "message_sent"
+    receiver = replace(
+        runtime.received, admission=replace(runtime.admission, self_commands=gate)
+    )
+    await receiver.handle(runtime.bot, payload)
+    runtime.execute.assert_awaited_once()
+    assert len(runtime.sends) == 1
+    assert runtime.sends[0]["message"] == [
+        {"type": "reply", "data": {"id": "-3"}},
+        {"type": "text", "data": {"text": "result"}},
+    ]
 
 
 @pytest.mark.asyncio
-async def test_admin_binding_passes_group_routing() -> None:
+async def test_admin_binding_passes_group_routing(runtime: SimpleNamespace) -> None:
     gate = OwnAccountCommandPolicy(SelfCommandsConfig())
     router = Mock()
     router.allows_incoming.return_value = False
     event = self_command_event("绑定米米号123456")
-    event.original_message = Message("绑定米米号123456") + MessageSegment.at(42)
-    context = await OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True,
-            features=_FEATURES,
-            self_commands=gate,
-            routing=router,
-        )
-    ).process(event)
-    assert context is not None and context.text == "绑定米米号123456"
+    event.message = Message("绑定米米号123456") + MessageSegment.at(42)
+    payload = event.model_dump()
+    payload["post_type"] = "message_sent"
+    commands = Mock(handle=AsyncMock(return_value=False))
+    receiver = OneBotReceivedMessages(
+        replace(runtime.admission, self_commands=gate, routing=router),
+        Mock(ingress=commands),
+        runtime.messenger,
+    )
+    await receiver.handle(runtime.bot, payload)
+    commands.handle.assert_awaited_once()
+    context = commands.handle.call_args.args[0]
+    assert context.text == "绑定米米号123456"
     assert tuple(actor.id for actor in context.member_mentions) == ("42",)
     router.allows_incoming.assert_not_called()
-    with pytest.raises(IgnoredException):
-        await OneBotEventIngress(
-            OneBotAdmissionService(
-                messages_enabled=True,
-                features=_FEATURES,
-                self_commands=gate,
-                routing=router,
-            )
-        ).process(self_command_event("收集"))
+    rejected = self_command_event("收集").model_dump()
+    rejected["post_type"] = "message_sent"
+    await receiver.handle(runtime.bot, rejected)
+    commands.handle.assert_awaited_once()
+    assert runtime.sends == []

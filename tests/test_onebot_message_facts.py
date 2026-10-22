@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.core.message_input import MessageInputKind
 from ironsbot.integrations.onebot.message_facts import (
     OneBotMessageFacts,
     decode_onebot_message,
@@ -18,6 +19,44 @@ from tests.helpers.onebot_events import group_message_event, private_message_eve
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.message_segments import OneBotSegment
+
+
+@pytest.mark.parametrize(
+    "member,bot,reply,expected",
+    [
+        (False, False, False, MessageInputKind.DIRECT),
+        (True, False, False, MessageInputKind.MEMBER_MENTION),
+        (False, True, False, MessageInputKind.BOT_MENTION),
+        (True, True, False, MessageInputKind.BOT_MENTION),
+        (False, False, True, MessageInputKind.REPLY),
+        (True, True, True, MessageInputKind.REPLY),
+    ],
+)
+def test_protocol_context_preserves_mention_facts_alongside_input_kind(
+    *, member: bool, bot: bool, reply: bool, expected: MessageInputKind
+) -> None:
+    segments: list[OneBotSegment] = []
+    if member:
+        segments.append({"type": "at", "data": {"qq": "456"}})
+    if bot:
+        segments.append({"type": "at", "data": {"qq": "1"}})
+    if reply:
+        segments.append({"type": "reply", "data": {"id": "99"}})
+    facts = OneBotMessageFacts(
+        account_id="1",
+        user_id="123",
+        message_id="3",
+        text="current",
+        group_id="456",
+        segments=tuple(segments),
+    )
+    context = decode_onebot_message(facts)
+    assert context.kind is expected
+    assert context.mentions_bot is bot
+    assert tuple(actor.id for actor in context.member_mentions) == (
+        ("456",) if member else ()
+    )
+    assert context.message.reply_to_id == ("99" if reply else None)
 
 
 @pytest.mark.parametrize("private", [False, True])

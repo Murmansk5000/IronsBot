@@ -21,9 +21,6 @@ if TYPE_CHECKING:
     from ironsbot.core.plugin_install import PluginContribution
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.matchers import (
-        MatcherFactory,
-    )
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.services.portable_commands import PortableCommandRouter
 
@@ -40,7 +37,6 @@ class Application:
     http_clients: HttpClients
     databases: DatabaseManager
     resources: ApplicationResources
-    matcher_factory: MatcherFactory
     extension_contexts: Mapping[str, object]
     task_owner: TaskOwner
     known_features: tuple[str, ...]
@@ -90,13 +86,12 @@ class Application:
             raise RuntimeError(msg)
         from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
         from ironsbot.integrations.onebot.received_messages import (
-            COMMAND_INGRESS_PRIORITY,
             OneBotReceivedMessages,
         )
         from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 
         received = OneBotReceivedMessages(
-            self.resources.onebot_ingress.admission,
+            self.resources.onebot_admission,
             router,
             self.resources.onebot_messenger,
             nicknames=frozenset(self.driver.config.nickname),
@@ -106,17 +101,14 @@ class Application:
                 and any(item.id == "red_packet_notice" for item in self.contributions)
                 else None
             ),
-            red_packets_before_commands=(
-                self.settings.bot.matcher_priority.red_packet_notice
-                < COMMAND_INGRESS_PRIORITY
-            ),
         )
         installed = frozenset(item.id for item in self.contributions)
         notices = OneBotNoticeIngress(
-            self.resources.onebot_ingress.admission,
+            self.resources.onebot_admission,
             self.resources.onebot_messenger,
             self.scheduler,
             self.settings.bot.matcher_priority,
+            spawn=self.task_owner.create,
             poke=self.resources.poke_reply if "poke_reply" in installed else None,
             audit=self.resources.team_audit if "team_audit" in installed else None,
             red_packets=received.red_packets,
@@ -127,20 +119,6 @@ class Application:
             received=received.handle,
             notices=notices.handle,
         )
-        for contribution in self.contributions:
-            if contribution.install is not None and (
-                self.onebot_message_handling_enabled
-                or contribution.install_without_onebot_messages
-            ):
-                contribution.install(self.matcher_factory)
-        if self.onebot_message_handling_enabled:
-            from ironsbot.integrations.onebot.command_ingress import (
-                install_command_ingress,
-            )
-
-            install_command_ingress(
-                self.matcher_factory, router, self.resources.onebot_messenger
-            )
         self.host_lifecycle = NoneBotLifecycleBinding(
             self.driver, self.lifecycle, self.resources.onebot_connections
         )

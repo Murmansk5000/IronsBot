@@ -2,18 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nonebot.adapters.onebot.v11 import (
-    Adapter,
-    Event,
-    GroupMessageEvent,
-    Message,
-    MessageSegment,
-)
-from nonebot.exception import IgnoredException
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.outbound import OutboundMessage
@@ -23,7 +15,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
+from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
 from ironsbot.services.identity_link_store import (
@@ -39,7 +31,6 @@ from ironsbot.services.identity_observation import (
 from ironsbot.services.inbound_claims import MemoryInboundMessageClaims
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.portable_commands import DIRECT_COMMAND_HELP_HINT_TEXT
-from tests.helpers.onebot_events import group_message_event
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -148,16 +139,29 @@ def _observed_reply(
     *,
     sender: int = OFFICIAL_BOT_QQ,
     text: str = "结果",
-) -> GroupMessageEvent:
-    message = Message(MessageSegment.text(text))
-    return group_message_event(
-        text=text,
-        user_id=sender,
-        group_id=ONEBOT_GROUP,
-        message=message,
-        original_message=message,
-        reply_sender_user_id=MEMBER_QQ,
-    )
+) -> dict[str, Any]:
+    return {
+        "time": 100,
+        "self_id": 99999,
+        "post_type": "message",
+        "message_type": "group",
+        "sub_type": "normal",
+        "message_id": 12345,
+        "user_id": sender,
+        "group_id": ONEBOT_GROUP,
+        "font": 0,
+        "raw_message": text,
+        "sender": {"user_id": sender},
+        "message": [{"type": "text", "data": {"text": text}}],
+        "reply": {
+            "time": 100,
+            "message_type": "group",
+            "message_id": 12,
+            "real_id": 12,
+            "sender": {"user_id": MEMBER_QQ},
+            "message": "request",
+        },
+    }
 
 
 def _observation(
@@ -177,25 +181,29 @@ def _observation(
     )
 
 
-def _message_sent_event(*, target_qq: int) -> Event:
-    event = Adapter.json_to_event(
-        {
-            "time": 100,
-            "self_id": 99999,
-            "post_type": "message_sent",
-            "user_id": 99999,
-            "message_id": 12345,
-            "message_type": "group",
-            "group_id": ONEBOT_GROUP,
-            "message": [
-                {"type": "at", "data": {"qq": str(OFFICIAL_BOT_QQ)}},
-                {"type": "text", "data": {"text": " "}},
-                {"type": "at", "data": {"qq": str(target_qq)}},
-            ],
-        }
+def _message_sent_event(*, target_qq: int) -> dict[str, Any]:
+    return {
+        "time": 100,
+        "self_id": 99999,
+        "post_type": "message_sent",
+        "user_id": 99999,
+        "message_id": 12345,
+        "message_type": "group",
+        "group_id": ONEBOT_GROUP,
+        "message": [
+            {"type": "at", "data": {"qq": str(OFFICIAL_BOT_QQ)}},
+            {"type": "text", "data": {"text": " "}},
+            {"type": "at", "data": {"qq": str(target_qq)}},
+        ],
+    }
+
+
+def _receiver(admission: OneBotAdmissionService) -> tuple[OneBotReceivedMessages, Mock]:
+    command_ingress = Mock(handle=AsyncMock(return_value=False))
+    return (
+        OneBotReceivedMessages(admission, Mock(ingress=command_ingress), Mock()),
+        command_ingress,
     )
-    assert event is not None
-    return event
 
 
 def _service(
@@ -608,7 +616,7 @@ async def test_real_observation_storage_failure_is_admin_only_without_fallback(
     service, store = _service(tmp_path, [100.0])
     service.claims = SqliteInboundMessageClaims(tmp_path, spawn=asyncio.create_task)
     errors = Mock(report=AsyncMock())
-    ingress = OneBotEventIngress(
+    receiver, commands = _receiver(
         OneBotAdmissionService(
             messages_enabled=False,
             features=_FEATURES,
@@ -616,8 +624,8 @@ async def test_real_observation_storage_failure_is_admin_only_without_fallback(
             errors=errors,
         )
     )
-    with pytest.raises(IgnoredException, match="admission_failed"):
-        await ingress.process(_observed_reply())
+    await receiver.handle(Mock(self_id="99999"), _observed_reply())
+    commands.handle.assert_not_awaited()
     errors.report.assert_awaited_once()
     assert await store.all_links() == ()
 
@@ -1256,10 +1264,10 @@ async def test_silent_ingress_observes_then_blocks_onebot_event(
     tmp_path: Path,
 ) -> None:
     clock = [100.0]
-    service, _store = _service(tmp_path, clock)
+    service, store = _service(tmp_path, clock)
     incoming = _incoming("official-1")
     service.record_reply(incoming, OutboundMessage.from_text("结果"))
-    policy = OneBotEventIngress(
+    receiver, commands = _receiver(
         OneBotAdmissionService(
             messages_enabled=False,
             features=_FEATURES,
@@ -1267,8 +1275,12 @@ async def test_silent_ingress_observes_then_blocks_onebot_event(
         )
     )
 
-    with pytest.raises(IgnoredException):
-        await policy.process(_observed_reply())
+    await receiver.handle(Mock(self_id="99999"), _observed_reply())
+    commands.handle.assert_not_awaited()
+    linked = await store.for_official(
+        OfficialIdentity(APP_ID, "member", incoming.actor.id, OFFICIAL_GROUP)
+    )
+    assert linked is not None and linked.onebot_qq_id == str(MEMBER_QQ)
 
 
 @pytest.mark.asyncio
@@ -1285,7 +1297,7 @@ async def test_silent_ingress_observes_napcat_message_sent_then_blocks(
             text="",
         )
     )
-    policy = OneBotEventIngress(
+    receiver, commands = _receiver(
         OneBotAdmissionService(
             messages_enabled=False,
             features=_FEATURES,
@@ -1293,8 +1305,8 @@ async def test_silent_ingress_observes_napcat_message_sent_then_blocks(
         )
     )
 
-    with pytest.raises(IgnoredException):
-        await policy.process(_message_sent_event(target_qq=50005))
+    await receiver.handle(Mock(self_id="99999"), _message_sent_event(target_qq=50005))
+    commands.handle.assert_not_awaited()
 
     target = await store.for_official(
         OfficialIdentity(APP_ID, "member", "target-openid", OFFICIAL_GROUP)
@@ -1308,30 +1320,27 @@ async def test_silent_ingress_links_napcat_command_without_bot_mention(
 ) -> None:
     clock = [100.0]
     service, store = _service(tmp_path, clock)
-    event = Adapter.json_to_event(
-        {
-            "time": 100,
-            "self_id": 99999,
-            "post_type": "message_sent",
-            "user_id": 99999,
-            "message_id": 12346,
-            "message_type": "group",
-            "group_id": ONEBOT_GROUP,
-            "message": [
-                {"type": "text", "data": {"text": "米米号"}},
-                {"type": "at", "data": {"qq": "50005"}},
-            ],
-        }
-    )
-    assert event is not None
-    policy = OneBotEventIngress(
+    event = {
+        "time": 100,
+        "self_id": 99999,
+        "post_type": "message_sent",
+        "user_id": 99999,
+        "message_id": 12346,
+        "message_type": "group",
+        "group_id": ONEBOT_GROUP,
+        "message": [
+            {"type": "text", "data": {"text": "米米号"}},
+            {"type": "at", "data": {"qq": "50005"}},
+        ],
+    }
+    receiver, commands = _receiver(
         OneBotAdmissionService(
             messages_enabled=False, features=_FEATURES, identity_observer=service
         )
     )
 
-    with pytest.raises(IgnoredException):
-        await policy.process(event)
+    await receiver.handle(Mock(self_id="99999"), event)
+    commands.handle.assert_not_awaited()
     assert await service.observe_official_message(
         _incoming(
             "official-command",
@@ -1352,10 +1361,15 @@ async def test_interactive_ingress_allows_onebot_event(tmp_path: Path) -> None:
     service, _store = _service(tmp_path, clock)
     event = _observed_reply()
 
-    await OneBotEventIngress(
+    receiver, commands = _receiver(
         OneBotAdmissionService(
             messages_enabled=True,
             features=_FEATURES,
             identity_observer=service,
         )
-    ).process(event)
+    )
+    await receiver.handle(Mock(self_id="99999"), event)
+    commands.handle.assert_awaited_once()
+    context = commands.handle.call_args.args[0]
+    assert context.message.actor.id == str(OFFICIAL_BOT_QQ)
+    assert context.message.conversation.id == str(ONEBOT_GROUP)

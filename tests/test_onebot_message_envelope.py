@@ -3,29 +3,49 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, Mock
 
 import pytest
-from nonebot.adapters.onebot.v11 import MessageEvent
 from pydantic import ValidationError
 
-from ironsbot.integrations.onebot.message_envelope import OneBotMessageEnvelope
-from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+from ironsbot.integrations.onebot.message_envelope import (
+    OneBotMessageEnvelope,
+    decode_received_message,
+)
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
+    from types import SimpleNamespace
+
     from pytest import LogCaptureFixture
+
+    from ironsbot.core.message_input import MessageInputContext
+
+pytest_plugins = ("tests.test_shared_onebot_ingress",)
 
 _USER_ID = 101
 _GROUP_ID = 456
 _MESSAGE_ID = -12
 
 
+async def _receive_context(
+    runtime: SimpleNamespace, payload: dict[str, Any]
+) -> MessageInputContext:
+    admission = Mock(decide=AsyncMock(side_effect=runtime.admission.decide))
+    receiver = replace(runtime.received, admission=admission)
+    await receiver.handle(runtime.bot, payload)
+    context = admission.decide.call_args.args[0].context
+    assert context is not None
+    return context
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("private", [False, True])
 @pytest.mark.parametrize("message_id", [-12, 0, 42])
-def test_valid_messages_preserve_source_metadata_and_custom_extensions(
-    message_id: int, *, private: bool
+async def test_valid_messages_preserve_source_metadata_and_custom_extensions(
+    runtime: SimpleNamespace, message_id: int, *, private: bool
 ) -> None:
     payload = (
         private_message_event("执行", user_id=101, message_id=message_id)
@@ -39,9 +59,7 @@ def test_valid_messages_preserve_source_metadata_and_custom_extensions(
     assert envelope.user_id == _USER_ID
     assert envelope.model_dump()["provider_extension"] == {"nested": [1, 2]}
     assert json.dumps(payload) == before
-    event = SelfCommandAdapter.json_to_event(payload)
-    assert isinstance(event, MessageEvent)
-    context = message_input_context(event)
+    context = await _receive_context(runtime, payload)
     assert context.message.message_id == str(message_id)
     assert context.message.conversation.kind == ("private" if private else "group")
 
@@ -67,7 +85,7 @@ def test_missing_message_fields_are_rejected_without_native_payload_logging(
 ) -> None:
     payload = group_message_event("private-marker").model_dump()
     payload.pop(field)
-    assert SelfCommandAdapter.json_to_event(payload) is None
+    assert decode_received_message(payload) is None
     assert "invalid message envelope" in caplog.text
     assert "private-marker" not in caplog.text
 
@@ -80,7 +98,7 @@ def test_boolean_is_not_a_protocol_integer(field: str) -> None:
     payload[field] = True
     with pytest.raises(ValidationError):
         OneBotMessageEnvelope.model_validate(payload)
-    assert SelfCommandAdapter.json_to_event(payload) is None
+    assert decode_received_message(payload) is None
 
 
 @pytest.mark.parametrize("field", ["nickname", "card", "role", "user_id"])
@@ -90,7 +108,7 @@ def test_malformed_sender_is_rejected_without_leaking_values(
 ) -> None:
     payload = group_message_event().model_dump()
     payload["sender"][field] = {"secret": "private-marker"}
-    assert SelfCommandAdapter.json_to_event(payload) is None
+    assert decode_received_message(payload) is None
     assert "private-marker" not in caplog.text
 
 
@@ -103,7 +121,10 @@ def test_integer_strings_remain_supported_without_boolean_coercion() -> None:
     assert message.group_id == _GROUP_ID
 
 
-def test_reply_envelope_accepts_wire_text_without_importing_quoted_targets() -> None:
+@pytest.mark.asyncio
+async def test_reply_envelope_accepts_wire_text_without_importing_quoted_targets(
+    runtime: SimpleNamespace,
+) -> None:
     payload = group_message_event(
         "执行",
         reply_message_id=-42,
@@ -113,14 +134,15 @@ def test_reply_envelope_accepts_wire_text_without_importing_quoted_targets() -> 
     envelope = OneBotMessageEnvelope.model_validate(payload)
     assert envelope.reply is not None
     assert envelope.reply.message[0]["type"] == "at"
-    event = SelfCommandAdapter.json_to_event(payload)
-    assert isinstance(event, MessageEvent)
-    context = message_input_context(event)
+    context = await _receive_context(runtime, payload)
     assert not context.member_mentions
     assert context.message.reply_to_id == "-42"
 
 
-def test_temporary_private_source_group_is_metadata_not_conversation_or_role() -> None:
+@pytest.mark.asyncio
+async def test_temporary_private_source_group_is_metadata_not_conversation_or_role(
+    runtime: SimpleNamespace,
+) -> None:
     payload = private_message_event(
         "执行",
         user_id=101,
@@ -129,9 +151,7 @@ def test_temporary_private_source_group_is_metadata_not_conversation_or_role() -
     payload.update(group_id=456, sub_type="group")
     envelope = OneBotMessageEnvelope.model_validate(payload)
     assert envelope.group_id == _GROUP_ID
-    event = SelfCommandAdapter.json_to_event(payload)
-    assert isinstance(event, MessageEvent)
-    context = message_input_context(event)
+    context = await _receive_context(runtime, payload)
     assert context.message.conversation.kind == "private"
     assert context.message.conversation.id == "101"
     assert context.message.group_role is None

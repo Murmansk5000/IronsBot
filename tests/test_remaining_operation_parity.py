@@ -16,14 +16,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.integrations.onebot.matchers import MatcherFactory
-from ironsbot.integrations.onebot.portable_queries import (
-    make_portable_operation_handler,
-)
-from ironsbot.integrations.onebot.request_state import (
-    COMMAND_COOLDOWN_TOKEN_STATE_KEY,
-    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
-)
+from ironsbot.core.response_admission import ResponseAdmissionDecision
 from ironsbot.services.ai.chat_operation import execute_chat
 from ironsbot.services.portable_bilibili_commands import (
     build_portable_bilibili_operations,
@@ -40,7 +33,7 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.team.resource_subscriptions import (
     parse_team_resource_manage_command,
 )
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.command_execution import operation_router
 
 
 def _context(platform: Platform, role: str = "member") -> MessageInputContext:
@@ -156,6 +149,7 @@ async def test_subscription_execution_rechecks_role(platform: Platform) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
 @pytest.mark.parametrize(
     "outcome",
     [
@@ -167,29 +161,31 @@ async def test_subscription_execution_rechecks_role(platform: Platform) -> None:
         "cancelled",
     ],
 )
-async def test_onebot_settles_both_admissions_from_shared_outcome(
-    monkeypatch: pytest.MonkeyPatch, outcome: str
+async def test_shared_execution_settles_both_admissions_from_actual_outcome(
+    platform: Platform, outcome: str
 ) -> None:
-    requests = Mock()
-    cooldown = Mock()
-    postprocessors = []
-    monkeypatch.setattr(
-        "ironsbot.integrations.onebot.matchers.run_postprocessor",
-        postprocessors.append,
+    requests = Mock(
+        admit=Mock(
+            return_value=ResponseAdmissionDecision(allowed=True, token="admission")
+        )
     )
-    MatcherFactory(
-        cooldown, Mock(), in_flight_requests=requests
-    ).install_postprocessor()
-    state = {
-        IN_FLIGHT_REQUEST_TOKEN_STATE_KEY: "admission",
-        COMMAND_COOLDOWN_TOKEN_STATE_KEY: "cooldown",
-    }
-    matcher = Mock(
-        state=state,
-        send=AsyncMock(
-            return_value={} if outcome == "send_failure" else {"message_id": 840001}
-        ),
+    cooldown = Mock(
+        admit=Mock(
+            return_value=ResponseAdmissionDecision(allowed=True, token="cooldown")
+        )
     )
+    sessions = PortableQuerySessions()
+    sessions.interactions.request_service = requests
+    sessions.interactions.cooldown = cooldown
+    context = _context(platform)
+    sent = AsyncMock(
+        return_value=SendResult(
+            delivered=outcome != "send_failure",
+            message_id=None if outcome == "send_failure" else "840001",
+            error_code="rejected" if outcome == "send_failure" else None,
+        )
+    )
+    replies: list[PortableReply] = []
 
     async def operation(
         text: str, context: MessageInputContext
@@ -201,21 +197,23 @@ async def test_onebot_settles_both_admissions_from_shared_outcome(
             raise asyncio.CancelledError
         if outcome == "unclaimed":
             return None
-        return PortableReply(
+        reply = PortableReply(
             OutboundMessage.from_text(
                 "result", request_succeeded=outcome != "business_failure"
             )
         )
+        replies.append(reply)
+        return reply
 
-    handler = make_portable_operation_handler(operation)
+    router = operation_router(operation, context, sessions)
     if outcome == "cancelled":
         with pytest.raises(asyncio.CancelledError):
-            await handler(matcher, state, group_message_event("数据版本"))
+            await router.ingress.handle(context, sent)
     else:
-        await handler(matcher, state, group_message_event("数据版本"))
-    await postprocessors[0](
-        state, exception=RuntimeError("cancelled") if outcome == "cancelled" else None
-    )
+        await router.ingress.handle(context, sent)
+    for reply in replies:
+        reply.finished()
+        reply.finished()
     for service, token in ((requests, "admission"), (cooldown, "cooldown")):
         if outcome == "success":
             service.finish.assert_called_once_with(token)
@@ -223,11 +221,10 @@ async def test_onebot_settles_both_admissions_from_shared_outcome(
         else:
             service.release.assert_called_once_with(token)
             service.finish.assert_not_called()
-    await postprocessors[0](state)
     assert requests.finish.call_count + requests.release.call_count == 1
     assert cooldown.finish.call_count + cooldown.release.call_count == 1
-    assert IN_FLIGHT_REQUEST_TOKEN_STATE_KEY not in state
-    assert COMMAND_COOLDOWN_TOKEN_STATE_KEY not in state
+    requests.admit.assert_called_once()
+    cooldown.admit.assert_called_once()
 
 
 @pytest.mark.asyncio
