@@ -12,6 +12,8 @@
 .uv-cache/
 
 **/__pycache__/
+**/build/
+**/*.egg-info/
 **/*.py[cod]
 *.log
 *.sqlite
