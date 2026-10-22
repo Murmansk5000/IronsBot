@@ -185,6 +185,7 @@ def build_common_components(
             session_root=cache_root / "qq_official",
             startup_timeout_seconds=settings.bot.qq_official.startup_timeout_seconds,
             recipient_state=recipient_state,
+            upload_spawn=task_owner.create,
         )
         qq_official.configure_ingress_routing(ingress_routing)
 

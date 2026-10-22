@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.delivery_attempt import controlled_delivery
+from ironsbot.core.delivery_attempt import controlled_delivery, reuse_media_uploads
 from ironsbot.core.outbound import (
     BinaryImagePart,
     DeliveryFailureKind,
@@ -302,12 +302,13 @@ class BilibiliDynamicOutboundSender:
         async def send_one(conversation: ConversationRef) -> None:
             await send_target(conversation, full=conversation in full_set)
 
-        await DynamicRetryPlan(dynamic_id, self.delivery.policy, self.ledger).run(
-            pending,
-            send_one,
-            failures,
-            resume=resume,
-        )
+        async with reuse_media_uploads():
+            await DynamicRetryPlan(dynamic_id, self.delivery.policy, self.ledger).run(
+                pending,
+                send_one,
+                failures,
+                resume=resume,
+            )
         prepared = await asyncio.gather(
             *(task for task in (text_task, image_task) if task is not None),
             return_exceptions=True,
