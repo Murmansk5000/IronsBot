@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from ironsbot.core.platform import BotAccountRef, Platform
+
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
@@ -21,12 +23,6 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
-
-
-class ConnectedBotIdentityError(ValueError):
-    @classmethod
-    def missing_self_id(cls) -> ConnectedBotIdentityError:
-        return cls("connected bot has no self_id")
 
 
 @dataclass(slots=True)
@@ -89,8 +85,14 @@ class ApplicationLifecycle:
     first_bot_connect_hooks: tuple[NamedBotLifecycleHook, ...] = ()
     bot_connect_hooks: tuple[NamedBotLifecycleHook, ...] = ()
     bot_disconnect_hooks: tuple[NamedBotLifecycleHook, ...] = ()
-    connected_bot_ids: set[int] = field(default_factory=set, init=False)
+    first_connection_platforms: frozenset[Platform] = frozenset(Platform)
+    connected_accounts: set[BotAccountRef] = field(default_factory=set, init=False)
     _first_bot_connected: bool = field(default=False, init=False)
+    _started: bool = field(default=False, init=False)
+    _stopping: bool = field(default=False, init=False)
+    _pending_connections: dict[BotAccountRef, bool] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     @classmethod
     def from_contributions(
@@ -135,16 +137,30 @@ class ApplicationLifecycle:
         )
 
     async def startup(self) -> None:
-        await self._run_lifecycle_hooks(
-            "resource_startup",
-            self.resource_startup_hooks,
-            propagate_errors=True,
-        )
-        await self._run_lifecycle_hooks("startup", self.startup_hooks)
-        if self.scheduler is not None:
-            self.scheduler.start()
+        try:
+            await self._run_lifecycle_hooks(
+                "resource_startup",
+                self.resource_startup_hooks,
+                propagate_errors=True,
+            )
+            await self._run_lifecycle_hooks("startup", self.startup_hooks)
+            if self.scheduler is not None:
+                self.scheduler.start()
+        except BaseException:
+            self._pending_connections.clear()
+            self._stopping = True
+            raise
+        self._started = True
+        pending, self._pending_connections = self._pending_connections, {}
+        for account, connected in pending.items():
+            if connected:
+                self.task_owner.create(
+                    self.bot_connect(account), name="account.connected"
+                )
 
     async def shutdown(self) -> None:
+        self._stopping = True
+        self._pending_connections.clear()
         if self.scheduler is not None:
             await self.scheduler.shutdown()
         await self._run_lifecycle_hooks(
@@ -152,31 +168,47 @@ class ApplicationLifecycle:
             tuple(reversed(self.shutdown_hooks)),
         )
         await self.task_owner.cancel_all()
+        self.connected_accounts.clear()
         await self._run_lifecycle_hooks(
             "resource_shutdown",
             tuple(reversed(self.resource_shutdown_hooks)),
         )
 
-    async def bot_connect(self, bot: object) -> None:
-        self.connected_bot_ids.add(_bot_id(bot))
-        if not self._first_bot_connected:
+    async def bot_connect(self, account: BotAccountRef) -> None:
+        if self._stopping:
+            return
+        if not self._started:
+            self._pending_connections[account] = True
+            return
+        self.connected_accounts.add(account)
+        if (
+            not self._first_bot_connected
+            and account.platform in self.first_connection_platforms
+        ):
             self._first_bot_connected = True
             await self._run_bot_hooks(
                 "first_bot_connect",
                 self.first_bot_connect_hooks,
-                bot,
+                account,
             )
-        await self._run_bot_hooks("bot_connect", self.bot_connect_hooks, bot)
+        await self._run_bot_hooks("bot_connect", self.bot_connect_hooks, account)
 
-    async def bot_disconnect(self, bot: object) -> None:
+    async def bot_disconnect(self, account: BotAccountRef) -> None:
+        if self._stopping:
+            return
+        if not self._started:
+            self._pending_connections[account] = False
+            return
+        if account not in self.connected_accounts:
+            return
         try:
             await self._run_bot_hooks(
                 "bot_disconnect",
                 self.bot_disconnect_hooks,
-                bot,
+                account,
             )
         finally:
-            self.connected_bot_ids.discard(_bot_id(bot))
+            self.connected_accounts.discard(account)
 
     @staticmethod
     async def _run_lifecycle_hooks(
@@ -197,10 +229,10 @@ class ApplicationLifecycle:
     async def _run_bot_hooks(
         phase: str,
         hooks: tuple[NamedBotLifecycleHook, ...],
-        bot: object,
+        account: BotAccountRef,
     ) -> None:
         for name, hook in hooks:
-            await ApplicationLifecycle._run_bot_hook(phase, name, hook, bot)
+            await ApplicationLifecycle._run_bot_hook(phase, name, hook, account)
 
     @staticmethod
     async def _run_lifecycle_hook(
@@ -228,10 +260,10 @@ class ApplicationLifecycle:
         phase: str,
         name: str,
         hook: BotLifecycleHook,
-        bot: object,
+        account: BotAccountRef,
     ) -> None:
         try:
-            result = hook(bot)
+            result = hook(account)
             if isawaitable(result):
                 await result
         except Exception:
@@ -240,12 +272,3 @@ class ApplicationLifecycle:
                 phase,
                 name,
             )
-
-
-def _bot_id(bot: object) -> int:
-    """Read an adapter bot's stable numeric identity at the app boundary."""
-
-    value = getattr(bot, "self_id", None)
-    if value is None:
-        raise ConnectedBotIdentityError.missing_self_id()
-    return int(value)

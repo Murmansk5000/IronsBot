@@ -47,6 +47,22 @@ def checked_signature(call):
     return signature
 dependencies.get_typed_signature = checked_signature
 from ironsbot.app.application import Application
+import ironsbot.app.seer_composition as seer_composition
+original_rendering = seer_composition.build_seer_rendering_components
+render_resources_checked = False
+
+def checked_rendering(clients, *args, **kwargs):
+    global render_resources_checked
+    result = original_rendering(clients, *args, **kwargs)
+    renderer = result[1].renderer
+    image_owner = renderer.keywords["img_fetch_fn"].__self__
+    css_owner = renderer.keywords["css_fetch_fn"].__self__
+    assert image_owner is css_owner
+    assert image_owner.clients is clients
+    render_resources_checked = True
+    return result
+
+seer_composition.build_seer_rendering_components = checked_rendering
 original_install = Application.install
 def checked_install(self, router):
     assert self.lifecycle.scheduler is self.scheduler
@@ -56,10 +72,34 @@ def checked_install(self, router):
     assert self.resources.onebot_messenger._self_commands is (
         self.resources.onebot_admission.self_commands
     )
+    from ironsbot.core.command_catalog import CommandContext
+    from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+    features = self.resources.features
+    assert isinstance(features.group_features, dict)
+    assert isinstance(features.actor_features, dict)
+    extension = self.extension_contexts["player_lineup"]
+    for platform in Platform:
+        account = "test-account" if platform is Platform.QQ_OFFICIAL else None
+        actor = ActorRef(platform, "910001", account_id=account)
+        group = ConversationRef(platform, "group", "920001", account_id=account)
+        private = ConversationRef(platform, "private", actor.id, account_id=account)
+        for conversation in (group, private):
+            context = CommandContext(actor, conversation)
+            assert not extension.is_feature_visible_in_help(
+                context, "player_lineup_private"
+            )
+            if conversation.kind == "group":
+                features.group_features[group] = frozenset({"player_lineup_private"})
+            else:
+                features.actor_features[actor] = frozenset({"player_lineup_private"})
+            assert extension.is_feature_visible_in_help(
+                context, "player_lineup_private"
+            ), "configured extension help must accept the public command context"
     return original_install(self, router)
 Application.install = checked_install
 from scripts.generate_poke_command_introductions import _command_ids
 assert _command_ids()
+assert render_resources_checked
 assert not registered, registered
 assert not warnings, "\\n".join(warnings)
 print("SHARED_INGRESS_OK")
@@ -203,8 +243,11 @@ assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
     "identity_links",
     "data_sync",
     "qq_official",
-    "bilibili_official_recovery",
 ]
+from ironsbot.core.platform import Platform
+assert state.lifecycle.first_connection_platforms == frozenset({Platform.QQ_OFFICIAL})
+assert state.resources.qq_official._connection_observer is state.lifecycle
+assert state.resources.qq_official._spawn_connection_event == state.task_owner.create
 assert {"seer.team.query", "seer.pet.avatar"}.issubset(
     state.resources.commands.qq_official_direct_command_ids
 )

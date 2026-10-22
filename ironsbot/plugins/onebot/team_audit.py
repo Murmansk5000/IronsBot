@@ -14,7 +14,7 @@ from ironsbot.core.plugin_install import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.onebot.connections import OneBotConnection
+    from ironsbot.core.platform import BotAccountRef
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.team.audit import TeamAuditService
 
@@ -29,7 +29,7 @@ __plugin_meta__ = PluginMetadata(
 
 
 async def restore_team_audit_followups(
-    _bot: OneBotConnection,
+    _account: BotAccountRef,
     *,
     scheduler: Scheduler,
     service: TeamAuditService,
