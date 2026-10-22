@@ -34,6 +34,6 @@ def configure_application_logging(level: str) -> None:
         for handler in application_logger.handlers
     ):
         application_logger.addHandler(ApplicationLogHandler())
-    application_logger.setLevel(level.upper())
+    application_logger.setLevel(logger.level(level.upper()).no)
     # Root handlers must not receive a second, unredacted copy of the record.
     application_logger.propagate = False

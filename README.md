@@ -23,6 +23,9 @@
 可选私有扩展采用显式 Python 工厂入口；升级主程序时须使用配对验证过的扩展版本，
 旧 NoneBot 私有插件清单不再加载，详见[私有扩展说明](docs/operations-guide.md#私有扩展包)。
 
+进程由应用直接持有 FastAPI/Uvicorn，OneBot 不再通过 NoneBot 驱动运行。
+原 `bot.driver` 已移除；监听地址、端口和 OneBot 连接路径不变，见[运行宿主](docs/operations-guide.md#运行宿主)。
+
 ## 文档导航
 
 | 内容 | 阅读入口 |
@@ -167,6 +170,14 @@ ws://IRONSBOT_HOST:8085/onebot/v11/ws
 同一 Docker 网络中可使用 `ws://ironsbot:8080/onebot/v11/ws`。
 这里 `8085` 是下面示例映射的主机端口，`8080` 是容器内端口。
 启动后确认 OneBot 已连接，在已配置群或已授权私聊中发送 `帮助`。
+
+OneBot 接入参数统一在 `[bot.onebot]`：`ws_urls` 为正向 WS 地址，`api_roots`
+为数字机器人账号对应的 HTTP API 地址，`api_timeout` 默认 30 秒，`nicknames`
+默认留空。只使用反向 WS 时无须填写前两个字段。HTTP 上报签名使用加密环境变量
+`ONEBOT_SECRET`，不写 TOML；既有 `ONEBOT_ACCESS_TOKEN` 名称不变。
+可选部署覆盖仍使用 `ONEBOT_WS_URLS`、`ONEBOT_API_ROOTS`、`API_TIMEOUT`、`NICKNAME`，
+其中数组和字典必须为 JSON。不再读取 SDK 的 `ONEBOT_V11_*` 别名，发现非空旧变量会
+明确报错，避免误以为已启用鉴权。完整示例见 [.env.example](.env.example)。
 
 ### 混合模式与身份关联
 

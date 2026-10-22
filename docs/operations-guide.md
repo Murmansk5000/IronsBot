@@ -279,6 +279,22 @@ Python 标准入口点声明工厂，只能取得公共代码声明的窄契约�
 失败或元数据不完整不得补零伪装完整结果。详细分支发布前还须更新与公共提交配对的 public-runtime.json，
 不能把本地测试通过等同于已发布版本兼容。experiments 只供历史参考，不参与运行注册。
 
+## 运行宿主
+
+应用直接运行 FastAPI/Uvicorn，统一生命周期负责资源、调度和任务的启动与关闭，
+包括必需资源启动失败后的清理。OneBot 正向连接、HTTP 上报和反向 WebSocket
+仍进入同一接收层；QQ 官方账号仍由应用生命周期持有，不改为 NoneBot 适配器。
+
+`bot.driver` 已删除，`DRIVER` 不再参与宿主选择。旧 TOML 中该字段按未知字段规则
+警告并忽略，建议移除；没有旧驱动表达式的解析或兼容执行路径。
+`bot.host`、`bot.port`、`ONEBOT_ACCESS_TOKEN`、HTTP 签名与官方凭据变量不变。
+容器内端口、Unraid 端口映射和三种部署方式不变，无须修改生产数据库。
+`bot.onebot.enabled = false` 不构造 OneBot 接收资源、不注册以下入口，也不启动
+`ws_urls` 中的正向连接。官方账号生命周期及公共调度仍正常运行。
+仅需静默辅助身份观察时保持 `enabled = true`，由现有发送策略决定是否回复。
+反向 WebSocket 保留 `/onebot/v11/`、`/onebot/v11/ws`、`/onebot/v11/ws/`；
+HTTP POST 保留 `/onebot/v11/`、`/onebot/v11/http`、`/onebot/v11/http/`。
+
 ## 原生图片渲染
 
 图片继续使用同一个 litehtml 原生引擎，不需要浏览器。主仓库维护最小 Python 绑定，

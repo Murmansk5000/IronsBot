@@ -33,6 +33,9 @@ secret = "logging-test-secret"
 identity = "8" * 10
 configure_log_privacy({"TEST_SECRET": secret})
 application = logging.getLogger("ironsbot")
+for configured in ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"):
+    configure_application_logging(configured)
+    assert application.level == logger.level(configured).no
 configure_application_logging("INFO")
 configure_application_logging("INFO")
 assert len(application.handlers) == 1
