@@ -20,7 +20,6 @@ from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.config.models.transport import OneBotRoutingConfig
 from ironsbot.config.qq_references import QQReferenceResolver
 from ironsbot.core.promotions import PromotionCatalog
-from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -47,13 +46,6 @@ class TestRuntime:
     in_flight_requests: InFlightRequestService
     matcher_priorities: MatcherPriorityConfig
     tasks: TaskOwner
-
-    def matcher_factory(self) -> MatcherFactory:
-        return MatcherFactory(
-            self.cooldown,
-            self.matcher_priorities,
-            in_flight_requests=self.in_flight_requests,
-        )
 
 
 def build_test_runtime(  # noqa: PLR0913

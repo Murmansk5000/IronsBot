@@ -17,10 +17,6 @@ from ironsbot.integrations.onebot.ingress_facts import (
     onebot_admission_input,
 )
 from ironsbot.integrations.onebot.message_input import message_input_facts
-from ironsbot.integrations.onebot.self_commands import (
-    SelfCommandAdapter,
-    SentGroupMessageEvent,
-)
 
 if TYPE_CHECKING:
     from ironsbot.core.own_commands import OwnAccountInput
@@ -29,7 +25,11 @@ GroupMemberRole = Literal["owner", "admin", "member"]
 SenderInput = Sender | Mapping[str, Any] | None
 
 
-def own_account_input(event: SentGroupMessageEvent) -> OwnAccountInput:
+class SentGroupFixture(GroupMessageEvent):
+    """Tag synthetic sent messages before serializing them into wire payloads."""
+
+
+def own_account_input(event: SentGroupFixture) -> OwnAccountInput:
     incoming = onebot_admission_input(
         message_input_facts(event), OneBotMessageOrigin.SENT_GROUP
     )
@@ -94,12 +94,9 @@ def group_message_event(  # noqa: PLR0913
     return event
 
 
-def self_command_event(text: str, message_id: int = -3) -> SentGroupMessageEvent:
+def self_command_event(text: str, message_id: int = -3) -> SentGroupFixture:
     data = group_message_event(text, user_id=1, message_id=message_id).model_dump()
-    data["post_type"] = "message_sent"
-    event = SelfCommandAdapter.json_to_event(data)
-    assert isinstance(event, SentGroupMessageEvent)
-    return event
+    return SentGroupFixture.model_validate(data)
 
 
 def group_at_message_event(  # noqa: PLR0913

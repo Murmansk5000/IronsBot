@@ -15,12 +15,9 @@ import httpx
 from nonebot.adapters.onebot.v11 import (
     Adapter,
     Bot,
-    Event,
-    GroupMessageEvent,
 )
 from nonebot.drivers import URL, HTTPClientMixin, Request, Response
 from nonebot.exception import WebSocketClosed
-from nonebot.message import handle_event
 
 from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.forward_client import OneBotForwardClient
@@ -30,13 +27,6 @@ from ironsbot.integrations.onebot.http_api import (
     OneBotHttpResponse,
 )
 from ironsbot.integrations.onebot.http_receiver import OneBotHttpReceiver
-from ironsbot.integrations.onebot.message_envelope import (
-    decode_received_message,
-)
-from ironsbot.integrations.onebot.message_segments import (
-    OneBotMessageDecodeError,
-    decode_onebot_segments,
-)
 from ironsbot.integrations.onebot.reverse_server import OneBotReverseServer
 
 if TYPE_CHECKING:
@@ -80,10 +70,6 @@ class _NativeSocket:
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         await self.websocket.close(code, reason)
-
-
-class SentGroupMessageEvent(GroupMessageEvent):
-    """Tag an own-account sent event while the native host uses message matchers."""
 
 
 class SelfCommandAdapter(Adapter):
@@ -165,9 +151,6 @@ class SelfCommandAdapter(Adapter):
         if payload.get("post_type") == "notice":
             await self.notices(connection, payload)
             return
-        if (event := self.json_to_event(payload)) is not None:
-            assert isinstance(connection, Bot)
-            await handle_event(connection, event)
 
     async def _handle_http(self, request: Request) -> Response:
         result = self.http_receiver.receive(request.headers, request.content)
@@ -237,43 +220,3 @@ class SelfCommandAdapter(Adapter):
         except (httpx.RequestError, OSError, asyncio.TimeoutError):
             raise OneBotTransportError from None
         return OneBotHttpResponse(response.status_code, response.content)
-
-    @classmethod
-    def json_to_event(cls, json_data: Any) -> Event | None:
-        if (
-            isinstance(json_data, dict)
-            and "post_type" in json_data
-            and not isinstance(json_data["post_type"], str)
-        ):
-            logger.warning("OneBot event rejected: invalid post type")
-            return None
-        if isinstance(json_data, dict) and json_data.get("post_type") == "message":
-            envelope = decode_received_message(json_data)
-            return (
-                super().json_to_event(envelope.model_dump(exclude_unset=True))
-                if envelope is not None
-                else None
-            )
-        if isinstance(json_data, dict) and json_data.get("post_type") == "message_sent":
-            try:
-                json_data = {
-                    **json_data,
-                    "message": decode_onebot_segments(json_data.get("message")),
-                }
-                if "original_message" in json_data:
-                    json_data["original_message"] = decode_onebot_segments(
-                        json_data["original_message"]
-                    )
-            except OneBotMessageDecodeError:
-                logger.warning("OneBot message rejected: invalid message segments")
-                return None
-        if (
-            isinstance(json_data, dict)
-            and json_data.get("post_type") == "message_sent"
-            and json_data.get("message_type") == "group"
-            and json_data.get("user_id") == json_data.get("self_id")
-        ):
-            return SentGroupMessageEvent.model_validate(
-                {**json_data, "post_type": "message"}
-            )
-        return super().json_to_event(json_data)
