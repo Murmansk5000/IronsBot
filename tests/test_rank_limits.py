@@ -417,6 +417,9 @@ def test_cache_only_player_lookup_uses_rank_fact_or_complete_miss(
     monkeypatch: MonkeyPatch,
 ) -> None:
     rank, cache = _build_rank(online_limit=100)
+    from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
+
+    rank = replace(rank, exclusions=RankExclusionPolicy(frozenset(), {}))
     cached_item = CachedRankLookup(
         id=712345678,
         nick="cached",
