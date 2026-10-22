@@ -32,6 +32,7 @@ class OneBotMessageFacts:
     group_id: str | None = None
     group_role: str | None = None
     reply_to_id: str | None = None
+    reply_sender_id: str | None = None
     raw_message: str = ""
     addressed_to_bot: bool = False
     actor_display_name: str = ""

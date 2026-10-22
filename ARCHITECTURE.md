@@ -158,20 +158,54 @@ are converted at the adapter boundary to framework-free action/transport errors;
 untrusted error wording is never delivery or disconnection evidence. Generic
 network failure remains uncertain, not proof of a broken connection or absent
 member. Only a known unsubmitted action can release send capacity.
+Reverse WebSocket API waits now belong to `OneBotWebSocketSession`, scoped to
+one authenticated connection rather than the SDK's shared result store. Opaque
+echoes correlate concurrent responses; timeout/cancellation removes waiters and
+late responses cannot enter business dispatch. Disconnect distinguishes queued
+from already submitted requests, and an old bot object keeps its closed session
+rather than borrowing a reconnected account's socket. `NativeOneBotReverseServer`
+is the current bridge: it authenticates and receives frames on the existing
+routes, validates their source account, then uses the application task owner to
+dispatch into native event decoding and the shared business ingress. Shutdown
+closes pending calls and sockets and refuses new handshakes. The remaining HTTP
+and forward-WebSocket SDK paths, native event bridge and ASGI host have not yet
+been replaced; this is not a claim of complete NoneBot removal.
+
+OneBot message bodies use `message_segments.decode_onebot_segments` at the
+transport boundary for both CQ strings and JSON arrays. CQ tokens are decoded
+once, while array text and parameter values remain literal. Canonical arrays
+reach the native event bridge without its string parser; malformed segment
+shapes are rejected before native payload logging. Commands, observations and
+own-account echo checks share segment plaintext extraction, without calling
+native `get_plaintext` or falling back after a framework exception.
+`message_envelope` validates received-message metadata and quoted reply
+metadata before the native bridge, preserving provider extensions without
+logging rejected payloads. Temporary private messages remain private even if
+provider metadata includes a source group or group role; those fields cannot
+select group permissions or group delivery. Sent messages and notices still
+depend on native event validation; the host and event bridge remain unfinished.
+
 OneBot message decoding is owned by `message_facts.decode_onebot_message` over a
 typed `OneBotMessageFacts` snapshot. The native event adapter only extracts the
 current/preprocessed text, original current-message segments and transport
 metadata. The codec restores addressing facts, deduplicates direct member
 mentions, preserves reply precedence and constructs the shared input context.
 Quoted bodies and their mentions are not part of that snapshot. Direct/private
-addressing, roles and sender labels retain their existing semantics. Native
-admission publishes an immutable `AdmittedOneBotMessage` in per-event state only
+addressing, roles and sender labels retain their existing semantics. The single
+`ingress_facts.onebot_admission_input` projection also derives group observation
+and own-command facts from this same snapshot. Direct targets never include the
+quoted author; observation may use that author only when no explicit numeric
+mention exists. Observation retains original text, while commands use processed
+text. Sent messages from other accounts remain observation-only; a received
+self message cannot acquire own-command eligibility. Native admission publishes
+an immutable `AdmittedOneBotMessage` in per-event state only
 after acceptance. The command adapter checks the exact source event, platform,
 account, actor, conversation and message ID, then passes that same context through
 public execution and replies. A missing or mismatched frame never triggers a
-fallback decode. Ordinary inputs decode once; accepted own-account commands are
-normalized again after their existing native prefix rewrite, and only that final
-context is handed off. The raw receiver and native rewrite remain migration work.
+fallback decode. Ordinary and own-account inputs decode once; accepted own
+commands are normalized immutably by shared admission without rewriting native
+events. Complete JSON event validation and the remaining native event bridge
+still need migration; body decoding does not pretend to replace them.
 `ApplicationLifecycle` and `TaskOwner` do not import or hold a NoneBot driver,
 native bot type or logger. They execute explicit contribution/resource hooks,
 scheduler ownership and task draining directly. The sole native host binding is

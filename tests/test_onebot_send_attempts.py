@@ -9,6 +9,7 @@ import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import ActionFailed, Adapter, Bot
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
@@ -59,7 +60,7 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             cooldown_message="limit reached",
         )
     )
-    bot = Bot(SelfCommandAdapter(driver), "1")
+    bot = Bot(SelfCommandAdapter(driver, spawn=TaskOwner().create), "1")
     messenger = OneBotOutboundMessenger(
         cast("Any", Mock(for_conversation=Mock(return_value=bot))), runtime.outbound
     )

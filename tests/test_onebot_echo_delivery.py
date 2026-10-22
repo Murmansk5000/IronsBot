@@ -19,9 +19,8 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.self_commands import own_account_input
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
-from tests.helpers.onebot_events import self_command_event
+from tests.helpers.onebot_events import own_account_input, self_command_event
 from tests.helpers.runtime import build_test_runtime
 
 
