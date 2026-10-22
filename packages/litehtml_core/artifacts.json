@@ -1,0 +1,98 @@
+[
+  {
+    "url": "https://files.pythonhosted.org/packages/c8/36/66cedb5d3170c24ec3261392c090c830bb921570f9373c2686c26495973d/nonebot_plugin_htmlkit-0.1.0rc5-cp310-abi3-macosx_11_0_arm64.whl",
+    "sha256": "3d495d8b7e7fa22f45a21ee4bbd1052fd12a4236aee23396f9e5de71eb66189f"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/b4/68/330b0a4cc81d82ca382f9a5f464939cdfb3482cf29e27c7f4e40278b5884/nonebot_plugin_htmlkit-0.1.0rc5-cp310-abi3-manylinux_2_34_aarch64.whl",
+    "sha256": "ef8348e1433bbfe178e668acb7c46994c0a6cfa2f30446abbf7f8f08ffb25bd6"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/2f/96/2385871a9d23601fb2c8fc933c145b8fb8776edc65d873b122df3eea0f6c/nonebot_plugin_htmlkit-0.1.0rc5-cp310-abi3-manylinux_2_34_x86_64.whl",
+    "sha256": "74b35033fd0d23e9d5c9a509b596c522630aafcfc2a2f37c605a9c5b36ce8138"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/7a/a2/b2f20c9a87c4b1a3b88b5481407095b7aa03b7a0811b34325847b0751b14/nonebot_plugin_htmlkit-0.1.0rc5-cp310-abi3-musllinux_1_2_aarch64.whl",
+    "sha256": "c1c5550490a9efbfbf491f9ab42fadf347af81fc214e113773ff77bd72c4c095"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/fd/b2/750298c5c1c35ec208370494d659437da82635190755df076c7771baaca7/nonebot_plugin_htmlkit-0.1.0rc5-cp310-abi3-musllinux_1_2_x86_64.whl",
+    "sha256": "4921f529a6eec4b7f4cf3085d8cf9ca2617029e62c43631561a1188f9eadc9bc"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/bb/b7/14cf8b2d1984c56cc2214665f3d2b382400c8dc423c6642cc1ed31939d15/nonebot_plugin_htmlkit-0.1.0rc5-cp310-abi3-win_amd64.whl",
+    "sha256": "e8c49e8618fae48b6a499af416fe2725c324b159eec5d6694352d275c7f598f5"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/6a/13/b76bf3fc1f8a2ac48616a6420c682662566bf9965e2d3daec17ca6d4040a/nonebot_plugin_htmlkit-0.1.0rc5-cp312-abi3-macosx_11_0_arm64.whl",
+    "sha256": "b60f891c21da4ff024773eca695dcc92ae648656c7be8a2f1c9839c052971d8b"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/85/98/15d572a75544e1bf7901cf465a4f1f5d17fff6d1c3e93c210bd688409630/nonebot_plugin_htmlkit-0.1.0rc5-cp312-abi3-manylinux_2_34_aarch64.whl",
+    "sha256": "0a105bcc2714ef1bb07b689af74bda3ba3165a19f061bf1177bf8b5b0a3c9411"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/42/89/52b440b99c40930bf9ec26b5479f6b9355021533b01cd7354b727d36c805/nonebot_plugin_htmlkit-0.1.0rc5-cp312-abi3-manylinux_2_34_x86_64.whl",
+    "sha256": "30dff5ea120ee64c042112c1bf968de6929ee48e903504ca6e5221ad6d61ba90"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/0a/31/0dc54b1469ac81186521a4814d4688923c6e28e19b1d487f569c30f3983b/nonebot_plugin_htmlkit-0.1.0rc5-cp312-abi3-musllinux_1_2_aarch64.whl",
+    "sha256": "c452af6bb67738d54a0d6ba29ba81a4e1117f32c8b3686d1ab33f977c95fd473"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/a8/cf/cb94ceba5472eb10412345840418ca9bf535aad32d7a9c53562a8ca25c20/nonebot_plugin_htmlkit-0.1.0rc5-cp312-abi3-musllinux_1_2_x86_64.whl",
+    "sha256": "34dd2ed57748bcd7480da3938a3753de333d5c69cf3488188dc139890e8942fb"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/5c/1f/702efa35ff59feb30799d3a8f1978719facd8bab286cc5f141136b91df1a/nonebot_plugin_htmlkit-0.1.0rc5-cp312-abi3-win_amd64.whl",
+    "sha256": "97d39efcb1d82e7f7a3daf2f6903baacadcce84cfd978fef486c8e1183a4dc55"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/c8/96/5e38c12111a71646ffe1f0efa8e7468e89699feda34326d42a4de7b994c5/nonebot_plugin_htmlkit-0.1.0rc5-cp313-cp313t-macosx_11_0_arm64.whl",
+    "sha256": "72b12faf497fce1e50ba121092221073f9db3db5fad21afcd0902a9ef4b8e00f"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/db/c3/a26909de1e7bffb84108128defe848bf4e16d8a3f40ef7a27f2aaffabc8e/nonebot_plugin_htmlkit-0.1.0rc5-cp313-cp313t-manylinux_2_34_aarch64.whl",
+    "sha256": "c4c240d6b9bf61a53230634abc6f6a20f075c8934dbcd821639b78e83fbeb789"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/15/f9/3a8e874036e6c73ecf9221d05502d6681fce1268d61e7f379c98cefd4a54/nonebot_plugin_htmlkit-0.1.0rc5-cp313-cp313t-manylinux_2_34_x86_64.whl",
+    "sha256": "0cf8e51662bf082d5d89e2c1f3c24463eedcf2516da3e64475bd75914485cdb1"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/14/62/85037e9cdc8467eb75dfeaea0519a929bf390100fe0f4a5fa5faf0dcc647/nonebot_plugin_htmlkit-0.1.0rc5-cp313-cp313t-musllinux_1_2_aarch64.whl",
+    "sha256": "4ea2a9d524f78b11107fe6736388926ee61f87d5acfe1dd4b50fdcaeaa23f166"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/fc/48/b49732b8a67e6aaebdbf9dc4361052328872f46ad67796315e08f8ad6a44/nonebot_plugin_htmlkit-0.1.0rc5-cp313-cp313t-musllinux_1_2_x86_64.whl",
+    "sha256": "9d6224ed8a05e41afebe2df285aaf661644268dc399e73bceb8999d2c568cdd8"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/ea/84/18ca0644c94ecd9a6504cedba3ba0585878512ec844858011639ca74b17c/nonebot_plugin_htmlkit-0.1.0rc5-cp313-cp313t-win_amd64.whl",
+    "sha256": "271dfddaab7f7f88a5ae61d401c58aa4d6c334d3fc5dcefb4a82b85084b5df85"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/15/9d/534f66b60d9538f8ef111e2a51adcd90db8a718f95a988d9f0fcb5e085ab/nonebot_plugin_htmlkit-0.1.0rc5-cp314-cp314t-macosx_11_0_arm64.whl",
+    "sha256": "8255d25e141be2eae55b24b290e40c8db33d416822ba426789166ca5988873cb"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/5b/8d/9dcc91ff91181eab1f4c3c72e2b6288c07986b4f25cc92305d1c48382155/nonebot_plugin_htmlkit-0.1.0rc5-cp314-cp314t-manylinux_2_34_aarch64.whl",
+    "sha256": "c9c8cd3ede2d2c43160c69faa5136da9d5e6f485aff30ffc7dbc43d4beb1c603"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/77/b4/b7a6ff3502caa4e8dad5360d9f830abe239beb3bb5f0e676a41537fc866f/nonebot_plugin_htmlkit-0.1.0rc5-cp314-cp314t-manylinux_2_34_x86_64.whl",
+    "sha256": "eb8276e7058c02e914aa6d72dc8974f221bbe0a153addc8724115ef3aef8f1ed"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/c9/8c/51af35e1e3f03538b96d2d1e6b8c6db8ddb0dd0ac71eac9a25bd71d3f06c/nonebot_plugin_htmlkit-0.1.0rc5-cp314-cp314t-musllinux_1_2_aarch64.whl",
+    "sha256": "e591e0083b1364bb7921ece4348aaf6c451572f87ba3df17588b44dd3b407ff5"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/b4/72/f39f4b78352322336077cf703a129fb342019fe9633b2cd8185a63d6e2c0/nonebot_plugin_htmlkit-0.1.0rc5-cp314-cp314t-musllinux_1_2_x86_64.whl",
+    "sha256": "d0b30fe30fe364f9e4d34a80bf134d79de67bc8550becd095ffeb709cf4105f2"
+  },
+  {
+    "url": "https://files.pythonhosted.org/packages/fa/03/2b0493a871217abd1dc916804cbe4e1aac0852d9e54f97039841b472aadb/nonebot_plugin_htmlkit-0.1.0rc5-cp314-cp314t-win_amd64.whl",
+    "sha256": "4562b1b2e2ca257294f52671970c431a4e253aeb8b133d90104ff5bbafacb06e"
+  }
+]

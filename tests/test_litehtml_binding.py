@@ -24,8 +24,8 @@ def test_native_abi_mismatch_fails_without_importing_a_plugin(
         version="unsupported" if kind == "version" else litehtml.NATIVE_VERSION,
         files=(
             [
-                Path("nonebot_plugin_htmlkit/core.pyd"),
-                Path("nonebot_plugin_htmlkit/core.so"),
+                Path("ironsbot_litehtml/core.pyd"),
+                Path("ironsbot_litehtml/core.so"),
             ]
             if kind == "ambiguous"
             else []

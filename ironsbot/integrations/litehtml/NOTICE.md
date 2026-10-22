@@ -7,8 +7,8 @@ semantics derive from nonebot/plugin-htmlkit 0.1.0rc5 (Python: MIT, copyright
 
 Source: https://github.com/nonebot/plugin-htmlkit
 
-The native C++ litehtml renderer is not copied or rebuilt here. The existing
-locked upstream distribution supplies its original core binary (upstream C++
+The native C++ litehtml renderer is not copied or rebuilt here. The repository's
+packages/litehtml_core distribution extracts the original core binary (upstream C++
 binding: LGPL-3.0-or-later). Its source, third-party native dependencies and build
 instructions remain in the upstream repository and release source archive.
 No wheel, DLL or shared library is committed to this repository.
@@ -19,11 +19,12 @@ NoneBot package, patch sys.modules, create a fake driver, or fall back to the
 old Python API. A missing/ambiguous binary or different ABI version is an error.
 The package and exact native version are intentionally fixed together.
 
-The upstream distribution currently remains a binary carrier and still declares
-NoneBot as a transitive install dependency. Removing runtime imports is not a
-claim that all installed NoneBot dependencies have been removed. Independent
-native artifact packaging remains a separate gate; the application host itself
-now runs without NoneBot.
+The repository-local ironsbot-litehtml-core package has no runtime dependencies.
+Its build verifies published wheel SHA256 hashes and keeps only the unchanged
+native binary. Original wheel notices, LGPL/GPL license texts and corresponding
+source locations are preserved under packages/litehtml_core. The bot plugin is
+used only in development for counterfactual PNG tests, not runtime installation.
+No new repository, package-index publication, engine or runtime fallback is used.
 
 Application startup explicitly initializes fonts using FONTCONFIG/FC process
 environment variables. HTTP image/CSS callbacks borrow the application's client;

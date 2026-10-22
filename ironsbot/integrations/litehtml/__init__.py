@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import urljoin
 
-NATIVE_DISTRIBUTION = "nonebot-plugin-htmlkit"
+NATIVE_DISTRIBUTION = "ironsbot-litehtml-core"
 NATIVE_VERSION = "0.1.0rc5"
 SOURCE_PATH = Path(__file__).parent
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def _native_core() -> _NativeCore:
     candidates = tuple(
         package.locate_file(item)
         for item in package.files or ()
-        if item.as_posix().startswith("nonebot_plugin_htmlkit/core")
+        if item.as_posix().startswith("ironsbot_litehtml/core")
         and item.suffix in {".pyd", ".so"}
     )
     if len(candidates) != 1:

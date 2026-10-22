@@ -61,7 +61,9 @@ jobs:
                   # pip-audit cannot combine --require-hashes with a VCS requirement. The
                   # internal models package is pinned by full commit in uv.lock; its registry
                   # dependencies remain in this export and are still hash-audited below.
-                  python -m uv export --frozen --no-dev --no-emit-project --no-emit-package seerapi-models "${extra_args[@]}" --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
+                  # The local native core has no runtime dependencies; its source artifacts
+                  # are separately checked against the committed SHA256 manifest during build.
+                  python -m uv export --frozen --no-dev --no-emit-project --no-emit-package seerapi-models --no-emit-package ironsbot-litehtml-core "${extra_args[@]}" --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
                   python -m uv tool run --python "$PYTHON_VERSION" --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --timeout 30 --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
 
             - name: Upload dependency audit evidence

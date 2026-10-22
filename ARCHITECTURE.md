@@ -78,9 +78,10 @@ application-owned `HttpClients`; the renderer does not create or close another
 HTTP session. Local/data readers and Jinja template loading use worker I/O;
 the same native litehtml binary, render arguments and templates remain in use.
 Fontconfig is an explicit startup resource using the existing process environment.
-The pinned upstream wheel remains a binary carrier (and still declares NoneBot
-as an install dependency), but its Python plugin is not imported or patched.
-Native artifact packaging and the application host remain separate gates.
+The repository-local `packages/litehtml_core` package extracts the unchanged
+binary from pinned, hash-verified upstream wheels. It declares no runtime
+dependencies; the upstream plugin is only a development PNG baseline.
+Native artifact packaging and the application host are independent from NoneBot.
 
 Application standard-library logs, privacy redaction and file sinks use Loguru
 directly; they do not import the framework logger. The application hierarchy has
@@ -237,7 +238,8 @@ are hosted by `OneBotASGI` on FastAPI. The process runs Uvicorn directly, using
 the same HTTP and reverse-WebSocket paths, authentication and action sessions.
 FastAPI lifespan invokes the sole application lifecycle, including cleanup after
 failed startup. No production import requires NoneBot. The native rendering
-wheel still declares it transitively; independent binary packaging remains open.
+binary is packaged independently by `ironsbot-litehtml-core`, without installing
+the upstream wheel's Python plugin or transitive framework dependencies.
 The composition root constructs and retains `Application.onebot_transport`
 directly, not through the framework's global adapter registry. Its shutdown is
 an application lifecycle hook, before owned-task cancellation and shared-resource
@@ -1128,8 +1130,8 @@ factories explicitly, and each supplies a typed contribution. Seer rank
 refresh job registration is application service code in
 `services.seer.rank_refresh_scheduler`, not a OneBot event adapter. The standard
 composition owns the HTML renderer and font startup; no framework plugin owns
-these resources. Only the pinned native binary carrier retains a transitive
-framework install dependency. Scheduling is not a NoneBot plugin:
+these resources. The repository-local native distribution has no framework
+install dependency. Scheduling is not a NoneBot plugin:
 composition creates a private APScheduler instance for each application.
 ApplicationLifecycle starts it after resource and service registration, then
 stops it and awaits running jobs before service shutdown, owned-task draining
