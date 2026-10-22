@@ -86,6 +86,16 @@ class SelfCommandsConfig(BaseModel):
         return sorted(set(value), key=len, reverse=True)
 
 
+class OneBotNoticePriorityConfig(BaseModel):
+    """Relative ordering only for supported numeric-account notice handlers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    poke_reply: int = Field(default=0, ge=0)
+    red_packet_notice: int = Field(default=5, ge=0)
+    team_audit: int = Field(default=90, ge=0)
+
+
 class OneBotConfig(BaseModel):
     """OneBot ingress, identity observation and outbound policy."""
 
@@ -100,6 +110,9 @@ class OneBotConfig(BaseModel):
     nicknames: set[str] = Field(default_factory=set)
     http_secret: str = Field(default="", exclude=True, repr=False)
     routing: OneBotRoutingConfig = Field(default_factory=OneBotRoutingConfig)
+    notice_priority: OneBotNoticePriorityConfig = Field(
+        default_factory=OneBotNoticePriorityConfig
+    )
     self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
     trusted_official_bots: dict[str, int] = Field(default_factory=dict)
 

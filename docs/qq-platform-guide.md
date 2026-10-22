@@ -1,7 +1,7 @@
 # QQ 平台接入、身份与发送细节
 
 QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。
-NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk` 作为应用资源
+应用直接持有 ASGI 与 OneBot V11/NapCat 接入，QQ 官方连接由腾讯 `qqbot-agent-sdk` 作为应用资源
 启动和关闭，不经过 `nonebot-adapter-qq`。只要任一 TOML 官方账号拥有完整的
 AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；NapCat
 不回复指令、不主动发送，官方端掉线或发送失败也不会回退到 NapCat。

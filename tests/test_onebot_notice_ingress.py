@@ -12,7 +12,7 @@ import pytest
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.features import HelpConfig
-from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.transport import OneBotNoticePriorityConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.asgi import OneBotASGI
@@ -80,7 +80,7 @@ async def test_unadmitted_or_unowned_poke_has_no_lookup_or_send(
         replace(runtime.admission, messages_enabled=reason != "silent"),
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         poke=None if reason == "uninstalled" else poke,
         spawn=asyncio.create_task,
     )
@@ -114,7 +114,7 @@ async def test_poke_blocks_only_later_notice_handlers(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(
+        OneBotNoticePriorityConfig(
             poke_reply=5 if packet_first else 0,
             red_packet_notice=0 if packet_first else 5,
         ),
@@ -144,7 +144,7 @@ async def test_same_priority_notice_handlers_are_awaited_concurrently(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(poke_reply=0, red_packet_notice=0),
+        OneBotNoticePriorityConfig(poke_reply=0, red_packet_notice=0),
         poke=Mock(handle=AsyncMock(side_effect=poke)),
         red_packets=Mock(handle=AsyncMock(side_effect=packet)),
         spawn=asyncio.create_task,
@@ -174,7 +174,7 @@ async def test_notice_failure_reports_only_to_admins_without_fake_message(
         replace(runtime.admission, errors=errors),
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         poke=Mock(handle=AsyncMock(side_effect=RuntimeError("private-marker"))),
         spawn=asyncio.create_task,
     )
@@ -200,7 +200,7 @@ async def test_notice_cancellation_is_not_reported_or_retried(
         replace(runtime.admission, errors=runtime.errors),
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         poke=service,
         spawn=asyncio.create_task,
     )
@@ -236,7 +236,7 @@ async def test_cancelled_notice_handler_cancels_and_drains_its_sibling(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(poke_reply=0, red_packet_notice=0),
+        OneBotNoticePriorityConfig(poke_reply=0, red_packet_notice=0),
         poke=Mock(handle=AsyncMock(side_effect=poke)),
         red_packets=Mock(handle=AsyncMock(side_effect=packet)),
         spawn=asyncio.create_task,
@@ -275,7 +275,7 @@ async def test_repeated_notice_cancellation_waits_for_owned_cleanup(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         spawn=owner.create,
         poke=Mock(handle=AsyncMock(side_effect=poke)),
     )
@@ -321,7 +321,7 @@ async def test_notice_spawn_failure_closes_coroutine_and_drains_accepted_tasks(
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(poke_reply=0, red_packet_notice=0),
+        OneBotNoticePriorityConfig(poke_reply=0, red_packet_notice=0),
         spawn=spawn,
         poke=Mock(handle=AsyncMock()),
         red_packets=Mock(handle=AsyncMock()),
@@ -344,7 +344,7 @@ async def test_reverse_poke_uses_real_shared_send_and_receipts_without_native_di
         runtime.admission,
         runtime.messenger,
         Mock(),
-        MatcherPriorityConfig(),
+        OneBotNoticePriorityConfig(),
         poke=PokeReplyService(HelpConfig()),
         spawn=asyncio.create_task,
     )
@@ -404,7 +404,7 @@ from unittest.mock import Mock
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.features import HelpConfig
 from ironsbot.config.models.messaging import OutboundRateLimitConfig
-from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.config.models.transport import OneBotNoticePriorityConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
@@ -418,7 +418,7 @@ async def run():
     limits = GroupOutboundRateLimitService(
         OutboundRateLimitConfig(enabled=False), features, owner.create)
     ingress = OneBotNoticeIngress(OneBotAdmissionService(True, features),
-        OneBotOutboundMessenger(Mock(), limits), Mock(), MatcherPriorityConfig(),
+        OneBotOutboundMessenger(Mock(), limits), Mock(), OneBotNoticePriorityConfig(),
         poke=PokeReplyService(HelpConfig(hint_max_per_window=1)), spawn=owner.create)
     accepted, handled = asyncio.Event(), asyncio.Event()
     actions = []
