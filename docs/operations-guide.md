@@ -304,5 +304,11 @@ NoneBot 插件。现有 FONTCONFIG/FC 环境变量继续有效，没有新增 TO
 原生 PNG 对照和主程序/扩展配对一起验收；不能单独升级该依赖或把它的存在视为
 应用仍需要加载旧插件。来源及许可证见 `ironsbot/integrations/litehtml/NOTICE.md`。
 
+原生载体源码位于主仓库 `packages/litehtml_core`，由 `uv sync` 和 Docker 构建阶段
+本地打包，无须另建仓库或发布 PyPI。构建只下载固定 SHA256 的上游 wheel 并提取
+未修改的核心文件；首次构建需要联网，运行时不下载、不安装旧插件或 NoneBot。
+不支持的 ABI 明确报错，不自行换引擎。开发依赖仍保留原插件用于 PNG 字节对照，
+生产使用 `--no-dev`；裁剪源码或复制构建清单时不能漏掉这个目录。
+
 [返回 README](../README.md) · [配置与订阅](configuration-and-subscriptions.md) ·
 [玩家查询](player-query-guide.md)

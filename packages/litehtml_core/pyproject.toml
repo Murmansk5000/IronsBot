@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=82", "packaging>=26"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ironsbot-litehtml-core"
+version = "0.1.0rc5"
+description = "Verified upstream litehtml binary without a bot framework"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LGPL-3.0-or-later"
+license-files = ["LICENSE*", "NOTICE.md"]
+dependencies = []
+
+[tool.setuptools]
+packages = ["ironsbot_litehtml"]
+
+[tool.setuptools.cmdclass]
+build = "build_native.NativeBuild"
+build_ext = "build_native.NativeBuildExt"
+bdist_wheel = "build_native.NativeWheel"

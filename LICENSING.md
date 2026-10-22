@@ -35,6 +35,9 @@ GPL-3.0 全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)。
 Python 适配层派生的最小封装（MIT，Copyright (c) 2025 NoneBot）。原版权声明、
 原生二进制来源和 C++ 部分 LGPL-3.0-or-later 标记见同目录 LICENSE 和 NOTICE.md。
 原生引擎仍来自锁定的上游构建，未在仓库提交二进制或复制一整套引擎镜像。
+`packages/litehtml_core` 是仓库内最小原生分发包，按固定 SHA256 提取未修改的核心；
+其中保留 LGPL-3.0、GPL-3.0、上游 wheel 版权与精确源码位置。打包脚本为 MIT，
+不分发原 NoneBot 插件 Python 外壳，也不修改原生引擎。替换兼容原生核心的方式见其 NOTICE.md。
 
 赛尔号查询、领域服务和渲染资源源自并持续改造自
 [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)（GPL-3.0-or-later）。

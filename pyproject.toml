@@ -14,8 +14,7 @@ dependencies = [
     "uvicorn>=0.20.0,<1.0.0",
     "websockets>=15.0",
     "seerapi-models @ git+https://github.com/Murmansk-Seer/seerapi.git@main#subdirectory=packages/seerapi-models",
-    # Binary carrier only; IronsBot does not import its NoneBot Python plugin.
-    "nonebot-plugin-htmlkit==0.1.0rc5",
+    "ironsbot-litehtml-core==0.1.0rc5",
     "jinja2>=3.1.6",
     "loguru>=0.7.3,<0.8.0",
     "pillow>=13.0.0",
@@ -31,8 +30,12 @@ qq-official = [
 ]
 
 [tool.uv]
+constraint-dependencies = ["msgpack>=1.2.3"]
 # Keep the optional official SDK on the audited cryptography 50 release line.
 override-dependencies = ["cryptography>=50.0.0,<51.0.0"]
+
+[tool.uv.sources]
+ironsbot-litehtml-core = { path = "packages/litehtml_core" }
 
 [tool.setuptools.packages.find]
 include = ["ironsbot*"]
@@ -157,6 +160,9 @@ venv = ".venv"
 dev = [
     # SDK models are used only to construct historical protocol test fixtures.
     "nonebot-adapter-onebot>=2.4.6",
+    # Counterfactual PNG comparison only; excluded from runtime installation.
+    "nonebot-plugin-htmlkit==0.1.0rc5",
+    "setuptools>=82",
     "bandit>=1.9.4",
     "basedpyright>=1.38.1",
     "pip-audit>=2.10.1",

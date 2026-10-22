@@ -562,6 +562,14 @@ README、架构、运维和 Docker 说明同步移除当前宿主的旧描述；
 
 原生分发审查补充：已从锁文件固定 URL 获取 0.1.0rc5 源码归档，在 E 盘核验 SHA256=5c9fc3ed1d1cbf95711006761d19e7a1dc0d0e8b7989c2e806a2bff3aeff7b17。源码中 core C++ 与 Python 插件可分离，但独立构建还依赖 xmake、litehtml、Pango/Cairo 和多种图片解码库；本机 PATH 未发现 xmake/CMake/cl/ninja。尚未复制整套上游、安装编译器、重建或更换原生二进制，不能把源码审查当成独立分发已完成。
 
+第八十九步把原生二进制载体独立为主仓库 packages/litehtml_core 最小源码包，不另建仓库或发布 PyPI。构建按本机支持的正式 ABI 选择原已锁定 wheel，限制 HTTPS 来源、下载时间/大小及核心大小，校验 SHA256 后只复制未修改的单个核心；不带回上游插件 Python、模板或运行依赖，不重新编译或换引擎。保留原 wheel 版权、LGPL/GPL 文本、精确源码与构建/替换说明。setuptools 临时构建目录使用 TEMP/TMP 并自动清理；输出与缓存留在 E 盘。没有提交 wheel、DLL 或共享库。
+
+根依赖改为仓库内 ironsbot-litehtml-core，应用绑定只查找该分发的固定 ABI，没有旧载体双读或回退。原 htmlkit 仅作为 dev 中的 PNG 对照基线；正式依赖图不含 NoneBot、OneBot SDK、Markdown/Pygments 插件外壳。Docker 构建复制本地包、生成 wheel 后将本地路径改为精确版本，运行层保持离线安装；删除已无来源的插件语法高亮清理项。pip-audit 仍审计导出的第三方运行依赖，本地无依赖核心单独按清单验证原始 artifact 哈希。构建与来源文档、许可、Docker 上下文忽略同步更新，无新增 TOML/env/Unraid 字段。
+
+已实际构建 sdist 与 cp312-abi3-win_amd64 wheel；核心 SHA256=b5d072333664e7c737516d84a938ade976f676c9efc0dc11bf4e52e728f298a1，与当前原版核心逐字节相同。源码包包含 artifact 清单、构建脚本与许可且无二进制。E 盘 CPython 3.12 隔离运行环境安装 48 个运行包（含种子工具共 49 个分发），未安装任何 NoneBot 包；禁止框架导入仍能导入 bootstrap 和生成中文 PNG，显式字体配置无 Fontconfig 警告。该证据是 Windows 本机隔离验证，不冒充未运行的 Linux 容器/CI。
+
+本步公共全量显式开启原生渲染：6460 passed / 7 skipped；打包、原生与部署专项 78 passed，最终附加元数据/包内容检查通过。Ruff、公共和打包源码 BasedPyright、compileall、静态仓库和 diff 检查通过；私有 main/details 原生全量 50/72 passed，两套类型检查通过。两仓库未改接口或私有业务，不重写现有配对 SHA；保持既有未跟踪文件和保护刻印文件，未推送、未部署。整体在此验证并提交后约 99%；7 项发布数据图片样例、最终跨仓配对冻结与逐项完成审计仍未关闭。
+
 ## NoneBot 移除评估
 
 结论：不把保留 NoneBot/matcher 作为设计条件。可以移除，但不能只替换 WebSocket 接收函数就宣称完成。
