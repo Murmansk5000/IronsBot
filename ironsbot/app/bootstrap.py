@@ -150,6 +150,5 @@ def bootstrap() -> Application:
             router,
             application.resources.outbound_messenger,
         )
-    application.resources.onebot_ingress.install()
     application.install(router)
     return application

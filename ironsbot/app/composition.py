@@ -44,8 +44,6 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
-from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
@@ -504,17 +502,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         addresses=addresses,
     )
     command_errors = CommandErrorReporter(common.admin_notices)
-    onebot_ingress = OneBotEventIngress(
-        OneBotAdmissionService(
-            features=features,
-            messages_enabled=(
-                settings.outbound_platform_selection.onebot_message_handling_enabled
-            ),
-            identity_observer=identity_observer,
-            self_commands=common.own_commands,
-            routing=common.bot_router.policy,
-            errors=command_errors,
-        )
+    onebot_admission = OneBotAdmissionService(
+        features=features,
+        messages_enabled=(
+            settings.outbound_platform_selection.onebot_message_handling_enabled
+        ),
+        identity_observer=identity_observer,
+        self_commands=common.own_commands,
+        routing=common.bot_router.policy,
+        errors=command_errors,
     )
 
     def poke_reply_candidates(
@@ -615,7 +611,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         identity_principals=identity_principals,
         identity_observer=identity_observer,
         union_identity=union_identity,
-        onebot_ingress=onebot_ingress,
+        onebot_admission=onebot_admission,
         onebot_connections=common.onebot_connections,
         command_errors=command_errors,
         private_extensions=private_extensions,
@@ -625,11 +621,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     query_sessions.interactions.cooldown = CommandCooldownService(
         settings.messaging.command_cooldown, features
-    )
-    matcher_factory = MatcherFactory(
-        query_sessions.interactions.cooldown,
-        settings.bot.matcher_priority,
-        in_flight_requests=query_sessions.interactions.request_service,
     )
     resource_startup_hooks: list[NamedLifecycleHook] = [
         (
@@ -682,7 +673,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         databases=databases,
         resources=resources,
         contributions=(),
-        matcher_factory=matcher_factory,
         extension_contexts=extension_contexts,
         task_owner=task_owner,
         known_features=(

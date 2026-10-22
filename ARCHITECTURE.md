@@ -99,13 +99,14 @@ outbound content, and no native SDK-data ledger or ambient context is used.
 silent mode, own-account admission, group ownership and everyone-mention
 rejection. Its facts must agree on account, actor and conversation. Group and
 private conversations retain different routing semantics, not duplicate queries.
-The native `OneBotEventIngress` only decodes protocol facts, publishes the
-admitted context and installs hooks. Admission failures use the same composition-
+The composition root injects this service directly into message and notice
+reception, without a native event-preprocessor wrapper. Admission failures use the same composition-
 owned error reporter as shared command execution, without replying to an
 unclaimed message or exposing exception details. Cancellation propagates.
 
-Native event-preprocessor registration, durable replay boundaries and framework
-resource ownership remain transitional. The bounded in-memory echo policy does
+The retired native event-preprocessor wrapper has been deleted after its last
+test consumers moved to the actual receiver. Framework resource ownership is
+still transitional. The bounded in-memory echo policy does
 not provide cross-process recovery or remove the framework host.
 
 Identity observation and command execution use the same normalized delivery-key
@@ -145,8 +146,9 @@ NoneBot message objects. The sender port only requires the account identity and
 OneBot `call_api`; action names and payload construction stay at this integration
 edge. Signed reply IDs, member mentions, text and image encoding preserve the
 native wire representation. Echo checks extract the same facts from wire segments
-for native own-account events and managed sends. Legacy matcher delivery converts
-these segments to its native message object only at that remaining adapter edge.
+for raw own-account events and managed sends. The unused native reply formatter
+and matcher-send wrapper have been deleted; protocol tests exercise the actual
+outbound port instead of preserving a test-only production API.
 Independent tests reject NoneBot imports and exercise the real shared send limiter,
 receipt validation and echo suppression. This does not replace the native receiver.
 `OneBotConnection` is the single connection contract for the directory, account
@@ -201,15 +203,17 @@ expose payloads. Quoted text and mentions never become command input. Text
 reduction, entry/trailing bot mentions, nickname stripping and private addressing
 retain installed SDK behavior, verified by direct differential replay. The
 source message is copied, preserving original observation facts. The native
-bridge only converts other event types to remaining native event objects.
+adapter no longer dispatches other event types into native matching. No active
+public/private request or meta-event business consumers were found; connection
+hooks remain owned by the transport and application lifecycle.
 The adapted protocol module includes its original MIT notice in the source so
 both source and runtime distributions retain it.
 
 Passive red-packet recognition, summary formatting and optional group-name
 lookup live in the framework-free `integrations.onebot.red_packet` module.
-Native matchers only translate event segments and call that protocol boundary
-plus the existing `RedPacketNoticeService`. They must not retain a second
-detector or re-export its old plugin API. CQ diagnostic formatting uses the
+The transport ingress calls that protocol boundary and the existing
+`RedPacketNoticeService`; native passive matcher installers have been deleted.
+Do not retain a second detector or re-export its old plugin API. CQ diagnostic formatting uses the
 same segment contract and is compared against native display semantics.
 Admin recipients, subscription preferences, concurrency admission and cooldown
 remain owned by the existing shared notice services, not the protocol detector.
@@ -233,16 +237,16 @@ receiver to the existing router, messenger and admission resources.
 
 Notices from all three OneBot transports enter `OneBotNoticeIngress` without native models or matchers.
 Poke, team-audit arrival and red-packet actions reuse the same business services
-as the remaining native transport adapters. Their wire conversion and optional
-role/group metadata lookup live in `notice_events`; native plugins delegate to
-those same actions rather than duplicate orchestration. Existing installation
+without native passive installers. Their wire conversion and optional
+role/group metadata lookup live in `notice_events`. Plugins declare availability
+and lifecycle hooks; the root binds those services explicitly. Existing installation
 conditions, silent admission and priority/blocking semantics remain intact:
 equal-priority handlers run concurrently before a blocking handler prevents
 later priorities. Errors use the shared restricted administrator reporter with
 an actual notice context, never a fabricated message ID or user reply. Tasks
-remain owned by the application and cancellation propagates. Other
-native event types remain on the native bridge; this does
-not remove the host or plugin discovery yet.
+remain owned by the application and cancellation propagates. Native control-event
+dispatch, matcher construction and preprocessor installation are no longer part
+of bootstrap; this does not remove the host or plugin discovery yet.
 
 `OneBotHttpReceiver` owns HTTP source/header validation, raw-body HMAC-SHA1
 signature verification and application-owned task submission independently of
@@ -291,16 +295,19 @@ and own-command facts from this same snapshot. Direct targets never include the
 quoted author; observation may use that author only when no explicit numeric
 mention exists. Observation retains original text, while commands use processed
 text. Sent messages from other accounts remain observation-only; a received
-self message cannot acquire own-command eligibility. On remaining native paths,
-admission publishes
-an immutable `AdmittedOneBotMessage` in per-event state only
-after acceptance. The command adapter checks the exact source event, platform,
-account, actor, conversation and message ID, then passes that same context through
-public execution and replies. A missing or mismatched frame never triggers a
-fallback decode. Ordinary and own-account inputs decode once; accepted own
-commands are normalized immutably by shared admission without rewriting native
-events. Complete JSON event validation and the remaining native event bridge
-still need migration; body decoding does not pretend to replace them.
+self message cannot acquire own-command eligibility. The retired native command
+adapter and its `AdmittedOneBotMessage` state frame have been deleted. Reception
+projects one context directly into shared admission, execution and replies;
+provider extension fields cannot replace that context or its execution identity.
+Ordinary and own-account inputs decode once; accepted own commands are normalized
+immutably without rewriting source events. Shared command, menu, cooldown and
+failure tests now execute this actual receiver rather than install the retired
+command matcher. Public menu tests and private detailed-lineup tests now use
+that receiver and the same command router; the old Seer matcher group and
+player-shortcut installer have been deleted. The native matcher factory, query
+forwarding layer, request-state keys and binding helpers have also been deleted.
+Remaining native reply-format test helpers and framework resource ownership
+still require cleanup.
 `ApplicationLifecycle` and `TaskOwner` do not import or hold a NoneBot driver,
 native bot type or logger. They execute explicit contribution/resource hooks,
 scheduler ownership and task draining directly. The sole native host binding is
@@ -350,7 +357,8 @@ OneBot application runnable; they are not the architecture that new
 cross-feature work should target. Within Phase 2,
 the standard NoneBot manifest discovery, `MatcherFactory` construction, and
 public extension query/render/cache ports have passed phase acceptance (see
-the phase ledger for evidence). `PluginContribution` is
+the phase ledger for historical evidence). Matcher construction is no longer
+part of the current application composition. `PluginContribution` is
 the current plugin-local way to submit explicit runtime contributions; it is
 not an application registry or a catch-all authority for every plugin concern.
 Phase 4 removes renderer-owned persistence lookups. No new subsystem may be
@@ -1021,7 +1029,7 @@ adding fields or side registries to a temporary bootstrap adapter.
 | --- | --- | --- | --- |
 | Plugin discovery and loading | Standard TOML loads declared third-party prerequisites, built-in packages, and verified private packages | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No reflective module importer, plugin registry, or second manifest format remains. |
 | Plugin identity and static metadata | `PluginMetadata` in each built-in top-level plugin package | `PluginMetadata` in each top-level plugin package | Private extensions expose equivalent declarative metadata without importing application composition code. |
-| Matchers, command contracts, jobs, lifecycle contributions | `MatcherFactory` + plugin-local `PluginContribution` | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Command contracts, jobs, lifecycle contributions | Plugin-local `PluginContribution`, with no native matcher installer | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
@@ -1560,7 +1568,7 @@ a name, an owner, cancellation on shutdown, and observable failure logging.
 Every built-in plugin is a top-level manifest-loaded package and submits its
 own contribution during the scoped loading window. `PluginContribution` is not
 the semantic authority for commands, permissions, help layout, or lifecycle
-policy; it carries the local installation callback, declared command
+policy; it carries declared command
 descriptors and hooks to their respective owners. The public bootstrap validates
 the private package's standard NoneBot TOML and invokes `nonebot.load_from_toml`
 inside the same scoped install window as built-in plugins. It is not a plugin
@@ -1577,16 +1585,14 @@ class PluginContribution:
     features: frozenset[Feature]
     help: HelpEntry | None
     commands: tuple[CommandContract, ...] = ()
-    install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
 ```
 
-`PluginInstall` is an opaque platform-install callback. The current application
-composition passes the OneBot `MatcherFactory`; individual plugin installers
-may therefore retain the concrete factory type they actually require. The
-generic contribution boundary must not force every installer or bot lifecycle
-hook to accept `object`, and it must not leak a concrete adapter type into
-platform-neutral services.
+The application no longer invokes opaque native installation callbacks or
+constructs a matcher factory. The unused install callback fields have been
+deleted after public and private tests moved to command and hook contracts.
+Remaining test-only native query APIs are an unfinished cleanup gate, not a
+supported second installation path. Contributions declare commands and hooks.
 
 The standard manifests discover built-in and private packages directly. Private
 modules can append only configured external contributions during the scoped
@@ -1608,15 +1614,12 @@ such as `full` or `core`, but it cannot list modules itself. There is no
 parallel application manifest, help layout map, feature-to-module map, runtime
 setup string list, or reflective `module:function` lookup.
 
-Every message matcher is created through `runtime.matchers.MatcherFactory`.
-Creation requires one explicit command policy:
-
-- a stable semantic command id;
-- a resolver for a dynamic semantic command id; or
-- a documented passive/conversation exemption.
-
-The factory installs command cooldown admission when the matcher is created.
-There is no second pass that imports matcher objects by string reference.
+Production bootstrap installs no message/notice matchers or native event
+preprocessors. Commands enter the shared command ingress after protocol
+conversion; passive notices enter their existing shared services. Cooldown,
+claiming and completion remain owned by public execution, not registration.
+Native factories and event helpers still used by legacy private test consumers
+are transitional and must not be used for new registrations.
 
 ## Message Input Routing
 
@@ -1656,9 +1659,9 @@ The Phase 2 replacement uses `[tool.nonebot.plugins]` and
 plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 `PluginInstallContext` only while contributions are registered. It is not a
 service locator and must not be read by services or renderers. A
-`PluginContribution` carries a plugin-local matcher installer, command
-descriptors, lifecycle hooks and scheduled-job contributions during the
-current installation bridge. `CommandCatalog` consumes the command contracts
+`PluginContribution` carries command descriptors, lifecycle hooks and
+scheduled-job contributions during the current installation bridge, not a
+matcher installer. `CommandCatalog` consumes the command contracts
 and remains the only command-description authority; `ApplicationLifecycle`
 owns lifecycle policy and task lifetime. The replacement becomes the only
 authority; the bridge and its reflective discovery are then deleted instead of
@@ -1911,7 +1914,7 @@ imports are forbidden. Each migrated query surface removes its exact exception;
 `SeerDataQueryService` is the reference shape and consumes only
 `SeerDataQueryFacts` domain values.
 
-## Current OneBot Behaviour Baseline
+## Historical OneBot Behaviour Baseline
 
 This snapshot records what Phase 1 onward must preserve while changing its
 implementation. It is deliberately an ownership map, not a second command
@@ -1979,7 +1982,7 @@ The repository must include tests that prove:
 - one settings loader and no global settings access;
 - no reflective plugin importer, bootstrap registry, or parallel command
   directory; private loading must not acquire target-contract ownership;
-- all internal message matchers have an explicit command policy;
+- production message and notice registration does not create native matchers;
 - only bootstrap registers driver lifecycle hooks;
 - only `SqliteDatabase` calls `sqlite3.connect`;
 - services and integrations do not import NoneBot transport types except where

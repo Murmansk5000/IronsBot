@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from nonebot.adapters.onebot.v11 import Adapter, Bot, PokeNotifyEvent
 from nonebot.matcher import Matcher
-from nonebot.message import handle_event
 
 from ironsbot.config.models.features import HelpConfig
 from ironsbot.config.models.settings import MatcherPriorityConfig
@@ -22,7 +22,6 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.errors import OneBotActionError
 from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
-from ironsbot.plugins.onebot.messaging.poke import install
 from ironsbot.services.messaging.poke_reply import PokeReplyService
 
 if TYPE_CHECKING:
@@ -92,14 +91,12 @@ async def test_poke_service_limited_group_has_no_lookup_or_send(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("private", [False, True])
 @pytest.mark.parametrize("role_failure", [False, True])
-@pytest.mark.parametrize("source", ["native", "raw"])
 async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
     runtime: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
     *,
     private: bool,
     role_failure: bool,
-    source: str,
 ) -> None:
     monkeypatch.setattr(Bot, "_calling_api_hook", set())
     monkeypatch.setattr(Bot, "_called_api_hook", set())
@@ -119,8 +116,6 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
 
     monkeypatch.setattr(Adapter, "_call_api", api)
     service = PokeReplyService(HelpConfig(hint_max_per_window=1))
-    runtime.factory.priorities.poke_reply = 0
-    install(runtime.factory, service, runtime.messenger)
     event = PokeNotifyEvent(
         time=0,
         self_id=1,
@@ -133,10 +128,7 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
     )
 
     async def deliver(current: PokeNotifyEvent) -> None:
-        if source == "native":
-            await handle_event(runtime.bot, current)
-        else:
-            await ingress.handle(runtime.bot, current.model_dump())
+        await ingress.handle(runtime.bot, current.model_dump())
 
     ingress = OneBotNoticeIngress(
         runtime.admission,
@@ -144,6 +136,7 @@ async def test_actual_poke_entry_uses_shared_transport_not_matcher_send(
         Mock(),
         MatcherPriorityConfig(),
         poke=service,
+        spawn=asyncio.create_task,
     )
     await deliver(event)
 

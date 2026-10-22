@@ -5,8 +5,9 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
-from nonebot.adapters.onebot.v11 import Message, MessageEvent
+from nonebot.adapters.onebot.v11 import Message
 
+from ironsbot.integrations.onebot.message_envelope import decode_received_message
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_segments import (
     OneBotMessageDecodeError,
@@ -14,7 +15,6 @@ from ironsbot.integrations.onebot.message_segments import (
     encode_onebot_message,
     onebot_message_text,
 )
-from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
 from tests.helpers.onebot_events import group_message_event
 
 if TYPE_CHECKING:
@@ -104,7 +104,7 @@ def test_invalid_segment_shapes_have_no_payload_in_errors(source: object) -> Non
 
 
 @pytest.mark.parametrize("sent", [False, True])
-def test_native_transport_always_passes_cq_through_the_canonical_codec(
+def test_received_and_sent_messages_pass_cq_through_the_canonical_codec(
     *, sent: bool
 ) -> None:
     payload = group_message_event("hello", user_id=1 if sent else 101).model_dump()
@@ -112,10 +112,10 @@ def test_native_transport_always_passes_cq_through_the_canonical_codec(
     payload["message"] = "[CQ:at,qq=42]执行"
     if sent:
         payload["post_type"] = "message_sent"
-    event = SelfCommandAdapter.json_to_event(payload)
-    assert isinstance(event, MessageEvent)
-    assert event.message[0].type == "at"
-    assert event.message[0].data["qq"] == "42"
+    event = decode_received_message(payload)
+    assert event is not None
+    assert event.message[0]["type"] == "at"
+    assert event.message[0]["data"]["qq"] == "42"
     assert payload["message"] == "[CQ:at,qq=42]执行"
 
 
@@ -126,7 +126,7 @@ def test_bad_message_is_rejected_before_native_payload_logging(
     payload["message"] = [
         {"type": "text", "data": {"text": {"secret": "private-marker"}}}
     ]
-    assert SelfCommandAdapter.json_to_event(payload) is None
+    assert decode_received_message(payload) is None
     assert "private-marker" not in caplog.text
     assert "invalid message segments" in caplog.text
 
@@ -138,7 +138,7 @@ def test_invalid_event_kind_is_rejected_without_logging_source(
 ) -> None:
     payload = group_message_event().model_dump()
     payload["post_type"] = post_type
-    assert SelfCommandAdapter.json_to_event(payload) is None
+    assert decode_received_message(payload) is None
     assert "private-marker" not in caplog.text
 
 

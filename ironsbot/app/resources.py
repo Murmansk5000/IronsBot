@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.connections import OneBotConnections
-    from ironsbot.integrations.onebot.event_ingress import OneBotEventIngress
     from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
     from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.official_union_identity import OfficialUnionIdentityService
+    from ironsbot.services.onebot_admission import OneBotAdmissionService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.headless import HeadlessService
@@ -103,7 +103,7 @@ class ApplicationResources:
     identity_principals: IdentityPrincipalService
     identity_observer: SilentIdentityObservationService | None
     union_identity: OfficialUnionIdentityService | None
-    onebot_ingress: OneBotEventIngress
+    onebot_admission: OneBotAdmissionService
     onebot_connections: OneBotConnections
     command_errors: CommandErrorReporter
     private_extensions: PrivateExtensionCatalog

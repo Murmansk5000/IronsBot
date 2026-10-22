@@ -81,10 +81,9 @@ def test_manifest_blacklist_owns_its_feature() -> None:
 
     assert contribution.features == frozenset({Feature.BLACKLIST})
     assert contribution.commands == ()
-    assert contribution.install is None
 
 
-def test_manifest_red_packet_owns_its_passive_matchers() -> None:
+def test_manifest_red_packet_declares_passive_service_availability() -> None:
     contribution = DEFINITIONS_BY_ID["red_packet_notice"]
 
     assert contribution.features == frozenset()
@@ -98,7 +97,7 @@ def test_manifest_fire_manual_ad_owns_its_feature() -> None:
     assert contribution.commands == ()
 
 
-def test_manifest_poke_reply_owns_its_passive_matcher() -> None:
+def test_manifest_poke_reply_declares_passive_service_availability() -> None:
     contribution = DEFINITIONS_BY_ID["poke_reply"]
 
     assert contribution.features == frozenset()
@@ -111,14 +110,6 @@ def test_manifest_rank_help_owns_its_command_contracts() -> None:
     assert contribution.features == frozenset({Feature.SEER_RANK})
     assert contribution.commands
     assert {command.plugin_id for command in contribution.commands} == {"rank_help"}
-
-
-def test_command_contributions_do_not_register_a_second_execution_path() -> None:
-    assert all(
-        contribution.install is None
-        for contribution in DEFINITIONS
-        if contribution.commands
-    )
 
 
 def test_manifest_pet_config_owns_its_command_descriptor() -> None:
@@ -420,7 +411,7 @@ def test_contribution_shutdown_executes_in_reverse_registration_order() -> None:
     ]
 
 
-def test_internal_plugins_use_only_the_matcher_factory() -> None:
+def test_internal_plugins_do_not_register_native_handlers() -> None:
     forbidden_imports = {
         "MatcherGroup",
         "PluginMetadata",
