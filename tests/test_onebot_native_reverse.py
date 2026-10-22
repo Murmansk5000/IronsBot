@@ -4,18 +4,18 @@ import asyncio
 import json
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
-import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Adapter as NativeAdapter
 from nonebot.adapters.onebot.v11 import Bot
-from nonebot.exception import WebSocketClosed
+from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
-from ironsbot.config.models.transport import SelfCommandsConfig
+from ironsbot.config.models.transport import OneBotConfig, SelfCommandsConfig
 from ironsbot.integrations.onebot import received_messages as received_protocol
+from ironsbot.integrations.onebot.asgi import OneBotASGI
 from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.http_api import OneBotHttpRequest, OneBotHttpResponse
@@ -29,7 +29,9 @@ pytest_plugins = ("tests.test_shared_onebot_ingress",)
 _POLICY_VIOLATION = 1008
 
 if TYPE_CHECKING:
-    from nonebot.drivers import WebSocket
+    from collections.abc import Iterable
+
+    from starlette.types import Message as AsgiMessage
 
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.integrations.onebot.ingress_facts import OneBotMessageOrigin
@@ -37,48 +39,67 @@ if TYPE_CHECKING:
     from ironsbot.services.onebot_admission import OneBotAdmissionInput
 
 
-class Socket:
+class Socket(WebSocket):
     def __init__(self, account: str = "1", token: str = "Bearer test-token") -> None:
-        self.request = SimpleNamespace(
-            headers={"x-self-id": account, "authorization": token}
-        )
+        self._connect_pending = True
         self.accepted = asyncio.Event()
-        self.incoming: asyncio.Queue[str | Exception] = asyncio.Queue()
+        self.incoming: asyncio.Queue[str | bytes | Exception] = asyncio.Queue()
         self.outgoing: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self.close_calls: list[tuple[int, str]] = []
+        super().__init__(
+            {
+                "type": "websocket",
+                "path": "/onebot/v11/ws",
+                "scheme": "ws",
+                "query_string": b"",
+                "headers": [
+                    (b"x-self-id", account.encode("utf-8")),
+                    (b"authorization", token.encode("utf-8")),
+                ],
+            },
+            self._receive_message,
+            self._send_message,
+        )
 
-    async def accept(self) -> None:
-        self.accepted.set()
-
-    async def receive(self) -> str:
+    async def _receive_message(self) -> AsgiMessage:
+        if self._connect_pending:
+            self._connect_pending = False
+            return {"type": "websocket.connect"}
         value = await self.incoming.get()
+        if isinstance(value, WebSocketDisconnect):
+            return {"type": "websocket.disconnect", "code": value.code}
         if isinstance(value, Exception):
             raise value
-        return value
+        if isinstance(value, bytes):
+            return {"type": "websocket.receive", "bytes": value}
+        return {"type": "websocket.receive", "text": value}
 
-    async def send(self, text: str) -> None:
-        await self.outgoing.put(json.loads(text))
+    async def _send_message(self, message: AsgiMessage) -> None:
+        if message["type"] == "websocket.accept":
+            self.accepted.set()
+        elif message["type"] == "websocket.send":
+            await self.outgoing.put(json.loads(message["text"]))
+        elif message["type"] == "websocket.close":
+            code = message.get("code", 1000)
+            self.close_calls.append((code, message.get("reason", "")))
+            await self.incoming.put(WebSocketDisconnect(code))
 
-    async def close(self, code: int = 1000, reason: str = "") -> None:
-        self.close_calls.append((code, reason))
-        await self.incoming.put(WebSocketClosed(code))
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        if self.application_state is not WebSocketState.DISCONNECTED:
+            await super().close(code, reason)
 
 
 @pytest.fixture
 def adapter(
     monkeypatch: pytest.MonkeyPatch, runtime: SimpleNamespace
 ) -> OneBotTransport:
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init(_env_file=None)
-        driver = nonebot.get_driver()
     messages = OneBotReceivedMessages(
         runtime.admission, runtime.router, runtime.messenger
     )
     owner = TaskOwner()
     result = OneBotTransport(
-        driver,
+        config=OneBotConfig(),
+        access_token=None,
         spawn=owner.create,
         received=messages.handle,
         notices=AsyncMock(),
@@ -87,14 +108,6 @@ def adapter(
         observer=ApplicationLifecycle(task_owner=owner),
     )
     monkeypatch.setattr(result.reverse_server, "access_token", "test-token")
-    monkeypatch.setattr(
-        driver, "_bot_connect", Mock(side_effect=AssertionError("native bot connected"))
-    )
-    monkeypatch.setattr(
-        driver,
-        "_bot_disconnect",
-        Mock(side_effect=AssertionError("native bot disconnected")),
-    )
 
     async def http(request: OneBotHttpRequest) -> OneBotHttpResponse:
         params = json.loads(request.body)
@@ -127,7 +140,7 @@ async def test_invalid_handshake_does_not_register_a_connection(
     adapter: OneBotTransport, account: str, token: str
 ) -> None:
     socket = Socket(account, token)
-    await adapter._handle_ws(cast("WebSocket", socket))
+    await OneBotASGI(adapter).websocket(socket)
     assert not socket.accepted.is_set()
     assert socket.close_calls[0][0] == _POLICY_VIOLATION
     assert adapter.accounts.snapshot() == ()
@@ -142,15 +155,13 @@ async def test_notice_handoff_uses_owned_rpc_and_disconnects_pending_calls(
     handled = AsyncMock(side_effect=lambda *_: received.set())
     monkeypatch.setattr(adapter, "notices", handled)
     socket = Socket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     try:
         await socket.accepted.wait()
         bot = adapter.accounts.get("1")
         assert bot is not None
         assert bot is adapter.reverse_server.sessions["1"]
-        request = asyncio.create_task(
-            bot.call_api("send_group_msg", group_id=456)
-        )
+        request = asyncio.create_task(bot.call_api("send_group_msg", group_id=456))
         sent = await socket.outgoing.get()
         await socket.incoming.put(
             json.dumps(
@@ -209,7 +220,7 @@ async def test_invalid_or_foreign_frame_is_never_dispatched(
     monkeypatch.setattr("nonebot.message.handle_event", handled)
     socket = Socket()
     await socket.incoming.put(bad_frame)
-    await adapter._handle_ws(cast("WebSocket", socket))
+    await OneBotASGI(adapter).websocket(socket)
     handled.assert_not_awaited()
     assert adapter.reverse_server.sessions == {}
     assert adapter.accounts.snapshot() == ()
@@ -220,9 +231,9 @@ async def test_duplicate_is_rejected_and_server_shutdown_releases_waiters(
     adapter: OneBotTransport,
 ) -> None:
     socket, duplicate = Socket(), Socket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     await socket.accepted.wait()
-    await adapter._handle_ws(cast("WebSocket", duplicate))
+    await OneBotASGI(adapter).websocket(duplicate)
     assert not duplicate.accepted.is_set()
     bot = adapter.accounts.get("1")
     assert bot is not None
@@ -333,7 +344,7 @@ async def test_reverse_socket_reaches_shared_business_and_receipt_settlement(
 ) -> None:
     payload, private, own = _reverse_message_case(runtime, adapter, source, wire_format)
     socket = Socket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     try:
         await socket.accepted.wait()
         await socket.incoming.put(json.dumps(payload))
@@ -390,7 +401,7 @@ async def test_reverse_reply_lookup_is_single_and_does_not_import_quoted_targets
     runtime: SimpleNamespace, adapter: OneBotTransport, reply_state: str
 ) -> None:
     socket = Socket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     try:
         await socket.accepted.wait()
         payload = group_message_event("执行", user_id=101).model_dump()
@@ -467,8 +478,8 @@ async def test_accepted_event_retains_its_connection_after_immediate_disconnect(
     monkeypatch.setattr(adapter, "received", handled)
     socket = Socket()
     await socket.incoming.put(group_message_event("执行").model_dump_json())
-    await socket.incoming.put(WebSocketClosed(1000))
-    await adapter._handle_ws(cast("WebSocket", socket))
+    await socket.incoming.put(WebSocketDisconnect(1000))
+    await OneBotASGI(adapter).websocket(socket)
     await asyncio.gather(*tuple(adapter.tasks))
     handled.assert_awaited_once()
     assert handled.call_args.args[1]["post_type"] == "message"
@@ -481,7 +492,7 @@ async def test_old_bot_cannot_send_using_a_reconnected_accounts_session(
     adapter: OneBotTransport,
 ) -> None:
     first = Socket()
-    old_handler = asyncio.create_task(adapter._handle_ws(cast("WebSocket", first)))
+    old_handler = asyncio.create_task(OneBotASGI(adapter).websocket(first))
     await first.accepted.wait()
     old_bot = adapter.accounts.get("1")
     assert old_bot is not None
@@ -489,7 +500,7 @@ async def test_old_bot_cannot_send_using_a_reconnected_accounts_session(
     await first.close()
     await old_handler
     second = Socket()
-    new_handler = asyncio.create_task(adapter._handle_ws(cast("WebSocket", second)))
+    new_handler = asyncio.create_task(OneBotASGI(adapter).websocket(second))
     try:
         await second.accepted.wait()
         current = adapter.accounts.get("1")
@@ -511,12 +522,18 @@ async def test_shutdown_during_accept_never_publishes_a_bot(
     release = asyncio.Event()
 
     class DelayedSocket(Socket):
-        async def accept(self) -> None:
+        async def accept(
+            self,
+            subprotocol: str | None = None,
+            headers: Iterable[tuple[bytes, bytes]] | None = None,
+        ) -> None:
+            assert subprotocol is None
+            assert headers is None
             self.accepted.set()
             await release.wait()
 
     socket = DelayedSocket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     await socket.accepted.wait()
     await adapter.reverse_server.close()
     release.set()
@@ -524,7 +541,7 @@ async def test_shutdown_during_accept_never_publishes_a_bot(
     assert adapter.accounts.snapshot() == ()
     assert adapter.reverse_server.sessions == {}
     late = Socket()
-    await adapter._handle_ws(cast("WebSocket", late))
+    await OneBotASGI(adapter).websocket(late)
     assert not late.accepted.is_set()
 
 
@@ -550,7 +567,7 @@ async def test_control_frames_do_not_dispatch_native_or_block_the_next_notice(
     notice = AsyncMock(side_effect=lambda *_: observed.set())
     adapter.notices = notice
     socket = Socket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     try:
         await socket.accepted.wait()
         await socket.incoming.put(
@@ -586,14 +603,15 @@ async def test_shutdown_during_receive_does_not_dispatch_a_late_frame(
     monkeypatch.setattr(adapter, "received", handled)
 
     class DelayedSocket(Socket):
-        async def receive(self) -> str:
-            raw = await super().receive()
-            reading.set()
-            await release.wait()
+        async def _receive_message(self) -> AsgiMessage:
+            raw = await super()._receive_message()
+            if raw["type"] == "websocket.receive":
+                reading.set()
+                await release.wait()
             return raw
 
     socket = DelayedSocket()
-    serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
+    serving = asyncio.create_task(OneBotASGI(adapter).websocket(socket))
     await socket.accepted.wait()
     await socket.incoming.put(group_message_event("执行").model_dump_json())
     await reading.wait()

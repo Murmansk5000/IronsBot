@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 from pathlib import Path
@@ -38,13 +39,26 @@ AI_PROVIDER_ENV_COLLISION_ERROR = "AI provider aliases collide as environment na
 _ONEBOT_ENV_PATHS = (
     ("ONEBOT_ENABLED", ("bot", "onebot", "enabled")),
     ("ONEBOT_SEND_MESSAGES", ("bot", "onebot", "send_messages")),
+    ("API_TIMEOUT", ("bot", "onebot", "api_timeout")),
     (
         "ONEBOT_IDENTITY_VERIFICATION",
         ("bot", "onebot", "identity_verification"),
     ),
 )
+_ONEBOT_JSON_ENV_PATHS = (
+    ("ONEBOT_WS_URLS", ("bot", "onebot", "ws_urls")),
+    ("ONEBOT_API_ROOTS", ("bot", "onebot", "api_roots")),
+    ("NICKNAME", ("bot", "onebot", "nicknames")),
+)
+_RETIRED_ONEBOT_ENV_NAMES = (
+    "ONEBOT_V11_ACCESS_TOKEN",
+    "ONEBOT_V11_SECRET",
+    "ONEBOT_V11_WS_URLS",
+    "ONEBOT_V11_API_ROOTS",
+)
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
+    ("ONEBOT_SECRET", ("bot", "onebot", "http_secret")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
     ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
     (
@@ -163,15 +177,39 @@ def _inject_qq_official_credentials(
             raw_account["secret"] = secret
 
 
+def _inject_onebot_transport_settings(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    retired = [name for name in _RETIRED_ONEBOT_ENV_NAMES if env.get(name)]
+    if retired:
+        msg = (
+            "retired OneBot variables are not supported; remove V11_ from: "
+            + ", ".join(retired)
+        )
+        raise ValueError(msg)
+    for env_name, path in _ONEBOT_ENV_PATHS:
+        if (value := env.get(env_name)) is not None:
+            _set_environment_override(data, path=path, value=value)
+
+    for env_name, path in _ONEBOT_JSON_ENV_PATHS:
+        if (value := env.get(env_name)) is None:
+            continue
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            msg = f"{env_name} must contain valid JSON"
+            raise ValueError(msg) from None
+        _set_environment_override(data, path=path, value=decoded)
+
+
 def _inject_onebot_deployment_settings(
     data: dict[str, Any],
     *,
     env: Mapping[str, str],
 ) -> None:
-    for env_name, path in _ONEBOT_ENV_PATHS:
-        if (value := env.get(env_name)) is not None:
-            _set_environment_override(data, path=path, value=value)
-
+    _inject_onebot_transport_settings(data, env=env)
     bot = data.setdefault("bot", {})
     if not isinstance(bot, dict):
         msg = "configuration table bot must be a TOML table"
@@ -217,7 +255,7 @@ def _set_environment_override(
     data: dict[str, Any],
     *,
     path: Sequence[str],
-    value: str,
+    value: object,
 ) -> None:
     table = data
     for part in path[:-1]:

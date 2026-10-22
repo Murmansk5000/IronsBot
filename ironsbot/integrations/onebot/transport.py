@@ -8,17 +8,6 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from nonebot.adapters.onebot.v11.config import Config
-from nonebot.drivers import (
-    URL,
-    ASGIMixin,
-    HTTPServerSetup,
-    Request,
-    Response,
-    WebSocketServerSetup,
-)
-from nonebot.exception import WebSocketClosed
-
 from ironsbot.core.platform import BotAccountRef, Platform
 from ironsbot.integrations.onebot.forward_client import OneBotForwardClient
 from ironsbot.integrations.onebot.http_api import (
@@ -29,10 +18,9 @@ from ironsbot.integrations.onebot.reverse_server import OneBotReverseServer
 from ironsbot.integrations.onebot.websocket_client import open_onebot_socket
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Mapping
+    from collections.abc import Coroutine
 
-    from nonebot.drivers import Driver, WebSocket
-
+    from ironsbot.config.models.transport import OneBotConfig
     from ironsbot.core.account_lifecycle import BotConnectionObserver
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.onebot.connections import (
@@ -41,33 +29,6 @@ if TYPE_CHECKING:
         OneBotEventHandler,
     )
     from ironsbot.integrations.onebot.http_api import OneBotHttpExchange
-
-
-@dataclass(frozen=True, slots=True)
-class _NativeSocket:
-    websocket: WebSocket
-
-    @property
-    def headers(self) -> Mapping[str, str]:
-        return self.websocket.request.headers
-
-    async def accept(self) -> None:
-        await self.websocket.accept()
-
-    async def receive(self) -> str | bytes:
-        try:
-            return await self.websocket.receive()
-        except WebSocketClosed:
-            raise ConnectionError from None
-
-    async def send(self, text: str) -> None:
-        try:
-            await self.websocket.send(text)
-        except WebSocketClosed:
-            raise ConnectionError from None
-
-    async def close(self, code: int = 1000, reason: str = "") -> None:
-        await self.websocket.close(code, reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,23 +41,11 @@ class OneBotHttpConnection:
 
 
 class OneBotTransport:
-    def _setup(self) -> None:
-        if isinstance(self.driver, ASGIMixin):
-            for path in ("/onebot/v11/", "/onebot/v11/http", "/onebot/v11/http/"):
-                self.driver.setup_http_server(
-                    HTTPServerSetup(URL(path), "POST", "OneBot HTTP", self._handle_http)
-                )
-            for path in ("/onebot/v11/", "/onebot/v11/ws", "/onebot/v11/ws/"):
-                self.driver.setup_websocket_server(
-                    WebSocketServerSetup(URL(path), "OneBot WS", self._handle_ws)
-                )
-        if self.onebot_config.onebot_ws_urls:
-            self.driver._lifespan.on_ready(self._start_forward)
-
     def __init__(  # noqa: PLR0913 - explicit I/O, account and lifecycle ports
         self,
-        driver: Driver,
         *,
+        config: OneBotConfig,
+        access_token: str | None,
         spawn: TaskSpawner,
         received: OneBotEventHandler,
         notices: OneBotEventHandler,
@@ -104,9 +53,8 @@ class OneBotTransport:
         connections: OneBotConnections,
         observer: BotConnectionObserver,
     ) -> None:
-        self.driver = driver
-        self.onebot_config = Config.model_validate(driver.config.model_dump())
-        self.api_timeout = driver.config.api_timeout
+        self.config = config
+        self.access_token = access_token
         self.accounts = connections
         self.observer = observer
         self._spawn = spawn
@@ -115,8 +63,8 @@ class OneBotTransport:
         self.tasks: set[asyncio.Task[Any]] = set()
         self._closing = False
         self.reverse_server = OneBotReverseServer(
-            access_token=self.onebot_config.onebot_access_token,
-            api_timeout=self.api_timeout,
+            access_token=access_token,
+            api_timeout=config.api_timeout,
             spawn=self._spawn_event,
             connected=lambda account: self.accounts.get(account) is not None,
             on_connect=self._connected,
@@ -124,22 +72,18 @@ class OneBotTransport:
             on_event=self._dispatch_payload,
         )
         self.http_receiver = OneBotHttpReceiver(
-            secret=self.onebot_config.onebot_secret,
+            secret=config.http_secret,
             spawn=self._spawn_event,
             connection=self._http_connection,
             on_event=self._dispatch_payload,
         )
         self.forward_clients: list[OneBotForwardClient] = []
         self.http_api = OneBotHttpApi(
-            api_roots={
-                account: str(url)
-                for account, url in self.onebot_config.onebot_api_roots.items()
-            },
-            access_token=self.onebot_config.onebot_access_token,
-            timeout=self.api_timeout,
+            api_roots={account: str(url) for account, url in config.api_roots.items()},
+            access_token=access_token,
+            timeout=config.api_timeout,
             request=request_http,
         )
-        self._setup()
 
     def _spawn_event(
         self, coroutine: Coroutine[Any, Any, Any], *, name: str
@@ -190,24 +134,20 @@ class OneBotTransport:
             await self.notices(connection, payload)
             return
 
-    async def _handle_http(self, request: Request) -> Response:
-        result = self.http_receiver.receive(request.headers, request.content)
-        return Response(result.status, content=result.content)
-
-    async def _handle_ws(self, websocket: WebSocket) -> None:
-        await self.reverse_server.handle(_NativeSocket(websocket))
-
-    async def _start_forward(self) -> None:
+    async def start(self) -> None:
+        if self._closing:
+            msg = "OneBot transport is closed"
+            raise RuntimeError(msg)
         if self.forward_clients:
             return
-        for url in self.onebot_config.onebot_ws_urls:
+        for url in self.config.ws_urls:
             client = OneBotForwardClient(
                 connect=partial(
                     open_onebot_socket,
                     str(url),
-                    access_token=self.onebot_config.onebot_access_token,
+                    access_token=self.access_token,
                 ),
-                api_timeout=self.api_timeout,
+                api_timeout=self.config.api_timeout,
                 spawn=self._spawn_event,
                 connected=lambda account: self.accounts.get(account) is not None,
                 on_connect=self._connected,
