@@ -438,7 +438,6 @@ async def test_type_query_result_crosses_restricted_platform_boundary(
 async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR0915 - shared release acceptance
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
-    import nonebot
     from httpx import AsyncClient
     from PIL import Image
     from sqlalchemy import event
@@ -489,16 +488,11 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
             pytest.skip("lineup release acceptance requires IRONSBOT_PRIVATE_ROOT")
         monkeypatch.syspath_prepend(private_root)
 
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init()
-        driver = nonebot.get_driver()
     if fontconfig := os.environ.get("IRONSBOT_RENDER_FONTCONFIG"):
-        monkeypatch.setattr(driver.config, "fontconfig_file", fontconfig, raising=False)
-    from nonebot_plugin_htmlkit import init_fontconfig
+        monkeypatch.setenv("FONTCONFIG_FILE", fontconfig)
+    from ironsbot.integrations.litehtml import initialize_fontconfig
 
-    init_fontconfig()
+    initialize_fontconfig()
     databases = DatabaseManager()
     database = SeerDatabase(databases, merge_connected_mintmarks=True)
     owner = TaskOwner()

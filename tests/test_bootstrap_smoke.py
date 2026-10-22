@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import subprocess
 import sys
@@ -67,6 +66,7 @@ original_install = Application.install
 def checked_install(self, router):
     assert self.lifecycle.scheduler is self.scheduler
     assert 'nonebot_plugin_apscheduler' not in sys.modules
+    assert 'nonebot_plugin_htmlkit' not in sys.modules
     assert router.ingress.claims.spawn == self.task_owner.create_draining
     assert self.resources.onebot_admission.features is self.resources.features
     assert self.resources.onebot_messenger._self_commands is (
@@ -124,32 +124,6 @@ print("SHARED_INGRESS_OK")
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "SHARED_INGRESS_OK"
-
-
-def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
-    from nonebot.log import logger
-
-    from ironsbot.app.bootstrap import configure_application_logging
-
-    application_logger = logging.getLogger("ironsbot")
-    previous_handlers = application_logger.handlers[:]
-    previous_level = application_logger.level
-    messages: list[str] = []
-    sink_id = logger.add(
-        lambda message: messages.append(str(message)),
-        format="{message}",
-        level="INFO",
-    )
-    try:
-        application_logger.handlers.clear()
-        configure_application_logging("INFO")
-        logging.getLogger("ironsbot.acceptance").info("stdlib bridge ready")
-    finally:
-        logger.remove(sink_id)
-        application_logger.handlers[:] = previous_handlers
-        application_logger.setLevel(previous_level)
-
-    assert any("stdlib bridge ready" in message for message in messages)
 
 
 def test_application_bootstrap_smoke(tmp_path: Path) -> None:
@@ -234,12 +208,19 @@ assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
 assert state.lifecycle.scheduler is state.scheduler
 assert state.host_lifecycle.lifecycle is state.lifecycle
-assert state.host_lifecycle.connections is state.resources.onebot_connections
+assert state.onebot_transport.accounts is state.resources.onebot_connections
+assert state.onebot_transport.observer is state.lifecycle
+assert state.onebot_transport is not None
+assert not state.driver._adapters
+assert state.lifecycle.shutdown_hooks[-1] == (
+    "onebot_transport", state.onebot_transport.close
+)
 assert state.resources.onebot_messenger._router.connections is (
     state.resources.onebot_connections
 )
 assert 'nonebot_plugin_apscheduler' not in sys.modules
 assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
+    "fontconfig",
     "identity_links",
     "data_sync",
     "qq_official",

@@ -22,7 +22,6 @@ from ironsbot.core.outbound import SendResult
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.headless_seer.client import ClientManager
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -47,6 +46,7 @@ from ironsbot.services.team.resource_subscriptions import (
     TeamResourceSubscriptionUpdate,
 )
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import message_input_context
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:

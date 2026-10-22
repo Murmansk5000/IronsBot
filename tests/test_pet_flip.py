@@ -182,8 +182,8 @@ def test_member_id_equal_to_appid_is_not_discarded(platform: Platform) -> None:
 def test_onebot_adapter_excludes_bot_before_shared_game() -> None:
     from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-    from ironsbot.integrations.onebot.message_input import message_input_context
     from tests.helpers.onebot_events import group_message_event
+    from tests.helpers.onebot_inputs import message_input_context
 
     message = (
         Message("抛精灵")

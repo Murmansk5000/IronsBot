@@ -9,16 +9,18 @@ from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
+from nonebot.adapters.onebot.v11 import Adapter as NativeAdapter
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.exception import WebSocketClosed
 
-from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.integrations.onebot import received_messages as received_protocol
+from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.errors import OneBotTransportError
 from ironsbot.integrations.onebot.http_api import OneBotHttpRequest, OneBotHttpResponse
 from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
-from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+from ironsbot.integrations.onebot.transport import OneBotTransport
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
@@ -65,7 +67,7 @@ class Socket:
 @pytest.fixture
 def adapter(
     monkeypatch: pytest.MonkeyPatch, runtime: SimpleNamespace
-) -> SelfCommandAdapter:
+) -> OneBotTransport:
     try:
         driver = nonebot.get_driver()
     except ValueError:
@@ -74,14 +76,25 @@ def adapter(
     messages = OneBotReceivedMessages(
         runtime.admission, runtime.router, runtime.messenger
     )
-    result = SelfCommandAdapter(
+    owner = TaskOwner()
+    result = OneBotTransport(
         driver,
-        spawn=TaskOwner().create,
+        spawn=owner.create,
         received=messages.handle,
         notices=AsyncMock(),
         request_http=AsyncMock(),
+        connections=OneBotConnections(),
+        observer=ApplicationLifecycle(task_owner=owner),
     )
     monkeypatch.setattr(result.reverse_server, "access_token", "test-token")
+    monkeypatch.setattr(
+        driver, "_bot_connect", Mock(side_effect=AssertionError("native bot connected"))
+    )
+    monkeypatch.setattr(
+        driver,
+        "_bot_disconnect",
+        Mock(side_effect=AssertionError("native bot disconnected")),
+    )
 
     async def http(request: OneBotHttpRequest) -> OneBotHttpResponse:
         params = json.loads(request.body)
@@ -102,15 +115,6 @@ def adapter(
     result.http_api.api_roots["1"] = "http://test/"
     result.http_api.request = http
 
-    def connect(bot: Bot) -> None:
-        result.bots[bot.self_id] = bot
-
-    def disconnect(bot: Bot) -> None:
-        if result.bots.get(bot.self_id) is bot:
-            del result.bots[bot.self_id]
-
-    monkeypatch.setattr(result, "bot_connect", connect)
-    monkeypatch.setattr(result, "bot_disconnect", disconnect)
     return result
 
 
@@ -120,19 +124,19 @@ def adapter(
     [("", "Bearer test-token"), ("１２", "Bearer test-token"), ("1", "wrong")],
 )
 async def test_invalid_handshake_does_not_register_a_connection(
-    adapter: SelfCommandAdapter, account: str, token: str
+    adapter: OneBotTransport, account: str, token: str
 ) -> None:
     socket = Socket(account, token)
     await adapter._handle_ws(cast("WebSocket", socket))
     assert not socket.accepted.is_set()
     assert socket.close_calls[0][0] == _POLICY_VIOLATION
-    assert adapter.bots == {}
+    assert adapter.accounts.snapshot() == ()
     assert adapter.reverse_server.sessions == {}
 
 
 @pytest.mark.asyncio
 async def test_notice_handoff_uses_owned_rpc_and_disconnects_pending_calls(
-    adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch
+    adapter: OneBotTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     received = asyncio.Event()
     handled = AsyncMock(side_effect=lambda *_: received.set())
@@ -141,12 +145,11 @@ async def test_notice_handoff_uses_owned_rpc_and_disconnects_pending_calls(
     serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
     try:
         await socket.accepted.wait()
-        bot = adapter.bots["1"]
-        assert isinstance(bot, Bot)
-        # No SDK result-store/connection entry is involved in this request.
-        assert adapter.connections == {}
+        bot = adapter.accounts.get("1")
+        assert bot is not None
+        assert bot is adapter.reverse_server.sessions["1"]
         request = asyncio.create_task(
-            adapter._call_api(bot, "send_group_msg", group_id=456)
+            bot.call_api("send_group_msg", group_id=456)
         )
         sent = await socket.outgoing.get()
         await socket.incoming.put(
@@ -175,18 +178,18 @@ async def test_notice_handoff_uses_owned_rpc_and_disconnects_pending_calls(
         )
         await asyncio.wait_for(received.wait(), timeout=1)
         assert handled.call_args.args[1]["notice_type"] == "notify"
-        pending = asyncio.create_task(adapter._call_api(bot, "get_login_info"))
+        pending = asyncio.create_task(bot.call_api("get_login_info"))
         await socket.outgoing.get()
         await socket.close()
         await serving
         with pytest.raises(OneBotTransportError) as caught:
             await pending
         assert not caught.value.definitely_not_sent
-        assert adapter.bots == {}
+        assert adapter.accounts.snapshot() == ()
         assert adapter.reverse_server.sessions == {}
         # Old Bot references remain tied to the closed session, not HTTP or a new bot.
         with pytest.raises(OneBotTransportError) as closed:
-            await adapter._call_api(bot, "send_group_msg")
+            await bot.call_api("send_group_msg")
         assert closed.value.definitely_not_sent
         assert socket.outgoing.empty()
     finally:
@@ -200,7 +203,7 @@ async def test_notice_handoff_uses_owned_rpc_and_disconnects_pending_calls(
     "bad_frame", ["[]", "not-json", '{"self_id":2,"post_type":"message"}']
 )
 async def test_invalid_or_foreign_frame_is_never_dispatched(
-    adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch, bad_frame: str
+    adapter: OneBotTransport, monkeypatch: pytest.MonkeyPatch, bad_frame: str
 ) -> None:
     handled = AsyncMock()
     monkeypatch.setattr("nonebot.message.handle_event", handled)
@@ -209,28 +212,30 @@ async def test_invalid_or_foreign_frame_is_never_dispatched(
     await adapter._handle_ws(cast("WebSocket", socket))
     handled.assert_not_awaited()
     assert adapter.reverse_server.sessions == {}
-    assert adapter.bots == {}
+    assert adapter.accounts.snapshot() == ()
 
 
 @pytest.mark.asyncio
 async def test_duplicate_is_rejected_and_server_shutdown_releases_waiters(
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
 ) -> None:
     socket, duplicate = Socket(), Socket()
     serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
     await socket.accepted.wait()
     await adapter._handle_ws(cast("WebSocket", duplicate))
     assert not duplicate.accepted.is_set()
-    bot = adapter.bots["1"]
-    assert isinstance(bot, Bot)
-    request = asyncio.create_task(adapter._call_api(bot, "get_login_info"))
+    bot = adapter.accounts.get("1")
+    assert bot is not None
+    assert bot is adapter.reverse_server.sessions["1"]
+    assert bot is not None
+    request = asyncio.create_task(bot.call_api("get_login_info"))
     await socket.outgoing.get()
     await adapter.reverse_server.close()
     await serving
     with pytest.raises(OneBotTransportError):
         await request
     assert adapter.reverse_server.sessions == {}
-    assert adapter.bots == {}
+    assert adapter.accounts.snapshot() == ()
 
 
 @pytest.fixture
@@ -250,7 +255,7 @@ def raw_path(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     sdk_preprocessing = AsyncMock(side_effect=AssertionError("SDK preprocessing used"))
     monkeypatch.setattr(Bot, "handle_event", sdk_preprocessing)
     native_conversion = Mock(side_effect=AssertionError("native event conversion used"))
-    monkeypatch.setattr(SelfCommandAdapter, "json_to_event", native_conversion)
+    monkeypatch.setattr(NativeAdapter, "json_to_event", native_conversion)
     native_dispatch = AsyncMock(side_effect=AssertionError("native dispatch used"))
     monkeypatch.setattr("nonebot.message.handle_event", native_dispatch)
     return SimpleNamespace(
@@ -263,7 +268,7 @@ def raw_path(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
 
 def _reverse_message_case(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     source: str,
     wire_format: str,
 ) -> tuple[dict[str, Any], bool, bool]:
@@ -321,7 +326,7 @@ def _reverse_message_case(
 @pytest.mark.parametrize("wire_format", ["array", "cq"])
 async def test_reverse_socket_reaches_shared_business_and_receipt_settlement(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
     wire_format: str,
     source: str,
@@ -382,7 +387,7 @@ async def test_reverse_socket_reaches_shared_business_and_receipt_settlement(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reply_state", ["valid", "malformed", "rejected"])
 async def test_reverse_reply_lookup_is_single_and_does_not_import_quoted_targets(
-    runtime: SimpleNamespace, adapter: SelfCommandAdapter, reply_state: str
+    runtime: SimpleNamespace, adapter: OneBotTransport, reply_state: str
 ) -> None:
     socket = Socket()
     serving = asyncio.create_task(adapter._handle_ws(cast("WebSocket", socket)))
@@ -456,7 +461,7 @@ async def test_temporary_private_cannot_borrow_source_group_permissions(
 
 @pytest.mark.asyncio
 async def test_accepted_event_retains_its_connection_after_immediate_disconnect(
-    adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch
+    adapter: OneBotTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handled = AsyncMock()
     monkeypatch.setattr(adapter, "received", handled)
@@ -467,32 +472,33 @@ async def test_accepted_event_retains_its_connection_after_immediate_disconnect(
     await asyncio.gather(*tuple(adapter.tasks))
     handled.assert_awaited_once()
     assert handled.call_args.args[1]["post_type"] == "message"
-    assert adapter.bots == {}
+    assert adapter.accounts.snapshot() == ()
     assert adapter.reverse_server.sessions == {}
 
 
 @pytest.mark.asyncio
 async def test_old_bot_cannot_send_using_a_reconnected_accounts_session(
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
 ) -> None:
     first = Socket()
     old_handler = asyncio.create_task(adapter._handle_ws(cast("WebSocket", first)))
     await first.accepted.wait()
-    old_bot = adapter.bots["1"]
-    assert isinstance(old_bot, Bot)
+    old_bot = adapter.accounts.get("1")
+    assert old_bot is not None
+    assert old_bot is adapter.reverse_server.sessions["1"]
     await first.close()
     await old_handler
     second = Socket()
     new_handler = asyncio.create_task(adapter._handle_ws(cast("WebSocket", second)))
     try:
         await second.accepted.wait()
-        current = adapter.bots["1"]
+        current = adapter.accounts.get("1")
         assert current is not old_bot
         with pytest.raises(OneBotTransportError) as caught:
-            await adapter._call_api(old_bot, "send_group_msg")
+            await old_bot.call_api("send_group_msg")
         assert caught.value.definitely_not_sent
         assert second.outgoing.empty()
-        assert adapter.bots["1"] is current
+        assert adapter.accounts.get("1") is current
     finally:
         await second.close()
         await new_handler
@@ -500,7 +506,7 @@ async def test_old_bot_cannot_send_using_a_reconnected_accounts_session(
 
 @pytest.mark.asyncio
 async def test_shutdown_during_accept_never_publishes_a_bot(
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
 ) -> None:
     release = asyncio.Event()
 
@@ -515,7 +521,7 @@ async def test_shutdown_during_accept_never_publishes_a_bot(
     await adapter.reverse_server.close()
     release.set()
     await serving
-    assert adapter.bots == {}
+    assert adapter.accounts.snapshot() == ()
     assert adapter.reverse_server.sessions == {}
     late = Socket()
     await adapter._handle_ws(cast("WebSocket", late))
@@ -535,7 +541,7 @@ async def test_shutdown_during_accept_never_publishes_a_bot(
     ],
 )
 async def test_control_frames_do_not_dispatch_native_or_block_the_next_notice(
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
     control: dict[str, Any],
     caplog: pytest.LogCaptureFixture,
@@ -560,7 +566,7 @@ async def test_control_frames_do_not_dispatch_native_or_block_the_next_notice(
         }
         await socket.incoming.put(json.dumps(probe))
         await asyncio.wait_for(observed.wait(), timeout=2)
-        notice.assert_awaited_once_with(adapter.bots["1"], probe)
+        notice.assert_awaited_once_with(adapter.accounts.get("1"), probe)
         raw_path.native_conversion.assert_not_called()
         raw_path.native_dispatch.assert_not_awaited()
         assert raw_path.contexts == []
@@ -573,7 +579,7 @@ async def test_control_frames_do_not_dispatch_native_or_block_the_next_notice(
 
 @pytest.mark.asyncio
 async def test_shutdown_during_receive_does_not_dispatch_a_late_frame(
-    adapter: SelfCommandAdapter, monkeypatch: pytest.MonkeyPatch
+    adapter: OneBotTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     reading, release = asyncio.Event(), asyncio.Event()
     handled = AsyncMock()
@@ -591,8 +597,37 @@ async def test_shutdown_during_receive_does_not_dispatch_a_late_frame(
     await socket.accepted.wait()
     await socket.incoming.put(group_message_event("执行").model_dump_json())
     await reading.wait()
-    await adapter.reverse_server.close()
+    await adapter.close()
     release.set()
     await serving
     handled.assert_not_awaited()
     assert not adapter.tasks
+
+
+@pytest.mark.asyncio
+async def test_transport_cleanup_survives_connection_observer_failure(
+    adapter: OneBotTransport,
+) -> None:
+    entered, released = asyncio.Event(), asyncio.Event()
+
+    async def pending() -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            released.set()
+
+    task = adapter._spawn_event(pending(), name="onebot.event")
+    await entered.wait()
+    adapter.observer = Mock(
+        bot_connect=AsyncMock(),
+        bot_disconnect=AsyncMock(side_effect=RuntimeError("observer failed")),
+    )
+    connection = adapter._http_connection("1")
+    with pytest.raises(RuntimeError, match="observer failed"):
+        await adapter.close()
+    assert released.is_set() and task.cancelled()
+    assert adapter.accounts.snapshot() == ()
+    assert not adapter.tasks
+    with pytest.raises(OneBotTransportError):
+        await connection.call_api("get_login_info")

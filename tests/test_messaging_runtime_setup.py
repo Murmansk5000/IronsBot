@@ -22,7 +22,18 @@ except ValueError:
 from ironsbot.config.message_schedule_targets import (
     build_message_schedule_targets,
 )
+from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.features import FeatureConfig, build_feature_service
+from ironsbot.config.models.messaging import (
+    CommandCooldownConfig,
+    CommandCooldownWindowConfig,
+    MessageCommandAction,
+    MessageConfig,
+    MessageKeywordReplyAction,
+    MessageMentionReplyAction,
+    MessageScheduledAction,
+    PushUnsubscribeConfig,
+)
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -34,15 +45,26 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.storage.push_subscriptions import (
+    PushPreferencePruneResult,
+    PushUnsubscribeStore,
+)
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity_link_store import CrossPlatformGroupLink
 from ironsbot.services.identity_principals import IdentityPrincipalService
+from ironsbot.services.messaging import schedules as message_schedules
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.messaging.push_time import PushTimeOption
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
+)
+from ironsbot.services.messaging.service import MessagingService
+from ironsbot.services.messaging.subscriptions import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
+    CRON_TIME_PREFERENCE,
+    PushSubscriptionOption,
 )
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_messaging_commands import (
@@ -50,49 +72,25 @@ from ironsbot.services.portable_messaging_commands import (
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import deliver_portable_reply
-
-from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.config.models.messaging import (
-    CommandCooldownConfig,
-    CommandCooldownWindowConfig,
-    MessageCommandAction,
-    MessageConfig,
-    MessageKeywordReplyAction,
-    MessageMentionReplyAction,
-    MessageScheduledAction,
-    PushUnsubscribeConfig,
-)
-from ironsbot.integrations.storage.push_subscriptions import (
-    PushPreferencePruneResult,
-    PushUnsubscribeStore,
-)
-from ironsbot.services.messaging import schedules as message_schedules
-from ironsbot.services.messaging.command_cooldown import CommandCooldownService
-from ironsbot.services.messaging.push_time import PushTimeOption
-from ironsbot.services.messaging.service import MessagingService
-from ironsbot.services.messaging.subscriptions import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
-    CRON_TIME_PREFERENCE,
-    PushSubscriptionOption,
-)
 from tests.helpers.onebot_events import (
     GroupMemberRole,
     group_member_message_event,
     group_message_event,
     private_message_event,
 )
+from tests.helpers.onebot_inputs import command_context, message_input_context
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from ironsbot.services.messaging.scheduled_delivery import (
-        ScheduledMessageDelivery,
-    )
     from pytest import MonkeyPatch
 
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.messaging.scheduled_delivery import (
+        ScheduledMessageDelivery,
+    )
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30

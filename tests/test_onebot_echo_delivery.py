@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import Mock
 
-import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Adapter, Bot
 
 from ironsbot.config.models.transport import SelfCommandsConfig
 from ironsbot.core.outbound import (
@@ -18,21 +16,20 @@ from ironsbot.core.outbound import (
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.errors import OneBotTransportError
+from ironsbot.integrations.onebot.http_api import (
+    OneBotHttpApi,
+    OneBotHttpRequest,
+    OneBotHttpResponse,
+)
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
+from ironsbot.integrations.onebot.transport import OneBotHttpConnection
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from tests.helpers.onebot_events import own_account_input, self_command_event
 from tests.helpers.runtime import build_test_runtime
 
 
 @pytest.fixture
-def echo_transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    try:
-        driver = nonebot.get_driver()
-    except ValueError:
-        nonebot.init(_env_file=None)
-        driver = nonebot.get_driver()
-    monkeypatch.setattr(Bot, "_calling_api_hook", set())
-    monkeypatch.setattr(Bot, "_called_api_hook", set())
+def echo_transport() -> SimpleNamespace:
     state = SimpleNamespace(
         error=None,
         response={"message_id": 1},
@@ -42,21 +39,33 @@ def echo_transport(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         now=100.0,
     )
 
-    async def api(_adapter: Adapter, _bot: Bot, name: str, **_data: Any) -> object:
+    async def api(request: OneBotHttpRequest) -> OneBotHttpResponse:
+        name = request.url.rsplit("/", 1)[-1]
         if name == "get_login_info":
-            return {"nickname": "test"}
+            return OneBotHttpResponse(
+                200, '{"status":"ok","retcode":0,"data":{"nickname":"test"}}'
+            )
         state.entered.set()
         if state.block:
             await state.release.wait()
         if state.error is not None:
             raise state.error
-        return state.response
+        return OneBotHttpResponse(
+            200, json.dumps({"status": "ok", "retcode": 0, "data": state.response})
+        )
 
-    monkeypatch.setattr(Adapter, "_call_api", api)
     policy = OwnAccountCommandPolicy(
         SelfCommandsConfig(enabled=True, prefixes=["demo "]), clock=lambda: state.now
     )
-    bot = Bot(Adapter(driver), "1")
+    bot = OneBotHttpConnection(
+        "1",
+        OneBotHttpApi(
+            api_roots={"1": "http://test/"},
+            access_token=None,
+            timeout=1,
+            request=api,
+        ),
+    )
     limits = build_test_runtime().outbound
     messenger = OneBotOutboundMessenger(
         Mock(for_conversation=Mock(return_value=bot)), limits, self_commands=policy

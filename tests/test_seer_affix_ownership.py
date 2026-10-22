@@ -19,8 +19,6 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -42,6 +40,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import command_context, message_input_context
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -340,7 +339,7 @@ async def test_empty_affix_entity_lookups_stay_silent(
     ai.chat_reply.assert_not_awaited()
 
 
-@pytest.mark.parametrize("text", ["精灵榜", "皮肤榜", "刻印攻击榜"])
+@pytest.mark.parametrize("text", ["精灵榜", "皮肤榜", "群星之巅榜", "刻印攻击榜"])
 def test_rank_commands_do_not_belong_to_fuzzy_queries(text: str) -> None:
     features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
     context = CommandContext(_ACTOR, _PRIVATE)

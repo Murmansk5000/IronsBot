@@ -5,12 +5,12 @@ from ironsbot.core.command_catalog import CommandCatalog, command_context_from_i
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 from tests.helpers.runtime import build_test_runtime
 
 

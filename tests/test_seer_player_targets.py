@@ -3,13 +3,13 @@
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 PLAYER_ID = 105_023_264
 

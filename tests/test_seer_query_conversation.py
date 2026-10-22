@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.outbound import SendResult
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.portable_query_operations import build_query_operation
 from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
@@ -15,6 +14,7 @@ from ironsbot.services.portable_query_sessions import (
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from tests.helpers.command_execution import operation_router
 from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 
 @pytest.mark.asyncio

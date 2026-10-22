@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 from ironsbot.app.application import Application
 from ironsbot.app.lifecycle import TaskOwner
@@ -10,18 +12,23 @@ from ironsbot.core.plugin_install import PluginContribution, PluginContributionC
 from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
 from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
-from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+
+if TYPE_CHECKING:
+    import pytest
 
 
-def test_application_binds_shared_ingress_once_without_native_installation() -> None:
+def test_application_binds_shared_ingress_once_without_native_installation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
+    transport = SimpleNamespace(close=AsyncMock())
 
     class Driver:
         config = SimpleNamespace(nickname=frozenset())
 
-        def register_adapter(self, adapter: type, **options: Any) -> None:
+        @staticmethod
+        def transport(_driver: object, **options: Any) -> SimpleNamespace:
             calls.append("adapter")
-            assert adapter is SelfCommandAdapter
             received = options["received"].__self__
             assert isinstance(received, OneBotReceivedMessages)
             assert received.admission is application.resources.onebot_admission
@@ -36,6 +43,9 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
             assert notices.poke is notices.audit is notices.red_packets is None
             assert options["spawn"] == application.task_owner.create
             assert options["request_http"].client is application.http_clients.origin
+            assert options["connections"] is application.resources.onebot_connections
+            assert options["observer"] is application.lifecycle
+            return transport
 
         def on_startup(self, _callback: Any) -> None:
             calls.append("lifecycle")
@@ -62,7 +72,7 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
         ),
         driver=cast("Any", Driver()),
         asgi=cast("Any", object()),
-        scheduler=cast("Any", object()),
+        scheduler=cast("Any", SimpleNamespace(shutdown=AsyncMock())),
         file_logging=cast("Any", object()),
         http_clients=cast("Any", SimpleNamespace(origin=object())),
         databases=cast("Any", object()),
@@ -87,6 +97,10 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
     )
 
     application.configure(contributions)
+    monkeypatch.setattr(
+        "ironsbot.integrations.onebot.transport.OneBotTransport",
+        Driver.transport,
+    )
     router = cast("Any", object())
     application.install(router)
     application.install(router)
@@ -95,3 +109,10 @@ def test_application_binds_shared_ingress_once_without_native_installation() -> 
         "adapter",
         "lifecycle",
     ]
+    assert application.onebot_transport is transport
+    assert application.lifecycle is not None
+    assert application.lifecycle.shutdown_hooks == (
+        ("onebot_transport", transport.close),
+    )
+    asyncio.run(application.lifecycle.shutdown())
+    transport.close.assert_awaited_once()

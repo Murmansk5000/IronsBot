@@ -18,11 +18,11 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 ACTOR = ActorRef(Platform.ONEBOT, "101")
 GROUP = ConversationRef(Platform.ONEBOT, "group", "456")

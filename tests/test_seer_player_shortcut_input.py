@@ -2,7 +2,6 @@
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
@@ -13,6 +12,7 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     parse_player_shortcut_command,
 )
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 PLAYER_ID = 105_023_264
 GROUP_ID = 987_654_321

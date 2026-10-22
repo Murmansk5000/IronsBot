@@ -45,6 +45,7 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
+from ironsbot.integrations.litehtml import initialize_fontconfig
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
@@ -621,6 +622,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.messaging.command_cooldown, features
     )
     resource_startup_hooks: list[NamedLifecycleHook] = [
+        ("fontconfig", initialize_fontconfig),
         (
             "identity_links",
             partial(

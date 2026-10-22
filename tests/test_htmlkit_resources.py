@@ -98,16 +98,9 @@ async def test_renderer_resources_propagate_cancellation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_renderer_local_and_data_resources_reuse_backend_fetchers(
+async def test_renderer_local_and_data_resources_use_independent_readers(
     tmp_path: Path,
 ) -> None:
-    import nonebot
-
-    try:
-        nonebot.get_driver()
-    except ValueError:
-        nonebot.init(_env_file=())
-
     image = tmp_path / "image.bin"
     image.write_bytes(b"image")
     css = tmp_path / "style.css"
@@ -146,19 +139,19 @@ def test_native_renderer_loads_owned_http_images_and_css(tmp_path: Path) -> None
         encoding="utf-8",
     )
     script = r"""
-import asyncio, socket, sys
+import asyncio, socket, sys, os
 from io import BytesIO
 from pathlib import Path
-import httpx, nonebot
+import httpx
 from PIL import Image
 
 def forbidden(*args, **kwargs):
     raise AssertionError("native rendering must not access real network")
 
-nonebot.init(_env_file=(), driver="~fastapi", fontconfig_file=sys.argv[1])
-import nonebot_plugin_htmlkit as backend
-backend.init_fontconfig()
-assert backend.session is None
+sys.modules["nonebot"] = None
+os.environ["FONTCONFIG_FILE"] = sys.argv[1]
+from ironsbot.integrations.litehtml import initialize_fontconfig
+initialize_fontconfig()
 from ironsbot.integrations.htmlkit import render_html_template
 from ironsbot.integrations.htmlkit_resources import HtmlkitResources
 from ironsbot.integrations.http.clients import HttpClients
@@ -190,7 +183,7 @@ async def main():
         colors = dict((rgb, count) for count, rgb in image.getcolors(100000))
         assert colors.get((33, 138, 98), 0) >= 64, colors
         assert set(requests) == {"/style.css", "/image.png"}, requests
-        assert backend.session is None
+        assert "nonebot_plugin_htmlkit" not in sys.modules
         image.save(Path(sys.argv[1]).parent / "owned-resources.png")
 asyncio.run(main())
 """
