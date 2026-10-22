@@ -22,13 +22,13 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.errors import OneBotTransportError
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.services.messaging.outbound_limits import (
     OutboundPermit,
     OutboundRateLimitDecision,
 )
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:

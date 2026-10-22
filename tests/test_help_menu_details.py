@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from ironsbot.core.command_catalog import CommandContract
-from ironsbot.integrations.onebot.context import command_context
 from ironsbot.services.help_menu import HelpMenuEntry, format_plugin_detail
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.onebot_inputs import command_context
 
 
 def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> None:

@@ -31,6 +31,11 @@ GPL-3.0 全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)。
 
 ## 第三方出处
 
+`ironsbot/integrations/litehtml` 保留从 `nonebot/plugin-htmlkit` 0.1.0rc5
+Python 适配层派生的最小封装（MIT，Copyright (c) 2025 NoneBot）。原版权声明、
+原生二进制来源和 C++ 部分 LGPL-3.0-or-later 标记见同目录 LICENSE 和 NOTICE.md。
+原生引擎仍来自锁定的上游构建，未在仓库提交二进制或复制一整套引擎镜像。
+
 赛尔号查询、领域服务和渲染资源源自并持续改造自
 [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)（GPL-3.0-or-later）。
 正式使用的代码和资源均保留在上方列出的 GPL 目录中，不再保留无运行时用途的历史镜像。

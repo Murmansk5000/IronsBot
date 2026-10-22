@@ -3,7 +3,6 @@ from typing import Any, cast
 
 import nonebot
 import pytest
-from ironsbot.integrations.onebot.context import command_context
 
 from ironsbot.config.models.features import (
     FeatureConfig,
@@ -42,6 +41,7 @@ from tests.helpers.onebot_events import (
     group_message_event,
     private_message_event,
 )
+from tests.helpers.onebot_inputs import command_context
 
 try:
     nonebot.get_driver()

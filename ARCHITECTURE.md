@@ -52,8 +52,8 @@ module paths, callable factories and contribution results; no NoneBot metadata
 or scoped string-context lookup is used for private packages. Built-in factories
 are composed by `app/plugin_composition.py`; both profiles share one ordered
 factory directory. No application plugin relies on framework discovery or an
-installation ContextVar. Only the transitional HTML prerequisite still uses
-NoneBot loading for its font initialization.
+installation ContextVar. Rendering and font startup use the framework-independent
+binding under `integrations/litehtml`, not NoneBot plugin loading.
 
 OneBot HTTP action delivery uses `HttpxOneBotExchange` over the root-owned
 `HttpClients.origin`, not a NoneBot driver HTTP session. The shared OneBot HTTP
@@ -68,13 +68,21 @@ take precedence.
 
 Production HTML rendering supplies image and CSS callbacks backed by the
 application-owned `HttpClients`; the renderer does not create or close another
-HTTP session. Local/data resources still use htmlkit's public readers, and the
-same litehtml engine and templates remain in use. This does not remove the
-library's NoneBot import or font initialization dependency; those are remaining
-host-removal gates.
+HTTP session. Local/data readers and Jinja template loading use worker I/O;
+the same native litehtml binary, render arguments and templates remain in use.
+Fontconfig is an explicit startup resource using the existing process environment.
+The pinned upstream wheel remains a binary carrier (and still declares NoneBot
+as an install dependency), but its Python plugin is not imported or patched.
+Native artifact packaging and the application host remain separate gates.
+
+Application standard-library logs, privacy redaction and file sinks use Loguru
+directly; they do not import the framework logger. The application hierarchy has
+one idempotently installed bridge and does not propagate raw records to root
+handlers. Exception text is redacted before console/file sinks receive it;
+queued file sinks remain owned and closed by the application lifecycle.
 
 Connection lifecycle hooks consume `BotAccountRef(platform, id)`, not native
-Bot objects or integer-only IDs. OneBot driver observations and official SDK
+Bot objects or integer-only IDs. OneBot transport observations and official SDK
 READY/reconnect/disconnect observations enter the same application lifecycle.
 Observations received during startup are coalesced until contributions and the
 scheduler are initialized, then dispatched through the application task owner.
@@ -207,19 +215,35 @@ rather than borrowing a reconnected account's socket. `OneBotReverseServer`
 owns authentication, connection reservation, frame reception, source validation,
 RPC response delivery and closure without any NoneBot imports. Its socket and
 connection/event callbacks are explicit ports; it uses the application task
-owner, not a parallel task manager. `SelfCommandAdapter` currently translates
-native sockets and binds each accepted event to its original native bot before
-task submission. Disconnect cannot drop an already accepted event or let it
-borrow a new socket. The former `native_reverse` module is deleted, with no
+owner, not a parallel task manager. `OneBotTransport` uses the authenticated
+WebSocket session itself as the action connection; HTTP uses a connection bound
+to one account and the shared HTTP API. No native Bot, adapter registry or
+duplicate session-to-Bot maps mediate accepted events. Disconnect cannot drop an
+already accepted event or let it borrow a new socket. The former `native_reverse`
+and `self_commands` transport modules are deleted, with no
 compatibility export. Shutdown closes pending calls and sockets and refuses new
-handshakes. The remaining HTTP
-and forward-WebSocket SDK paths, native event bridge and ASGI host have not yet
-been replaced; this is not a claim of complete NoneBot removal.
+handshakes. Forward connections use `websocket_client.open_onebot_socket` over
+the existing websockets library, not a framework WebSocket client mixin. The
+connector only owns I/O and bounded open/close; `OneBotForwardClient` remains
+the sole handshake/reconnect/session owner. HTTP and WebSocket protocol paths
+are independent, but configuration parsing, endpoint hosting and the ASGI host
+still depend on the framework; this is not a claim of complete NoneBot removal.
+The composition root constructs and retains `Application.onebot_transport`
+directly, not through the framework's global adapter registry. Its shutdown is
+an application lifecycle hook, before owned-task cancellation and shared-resource
+closure; it does not independently register another driver shutdown callback.
+
+Production does not expose synthetic SDK-event context/session adapters or a
+second notice-source formatter. Test fixtures serialize through the production
+message-envelope validator and decode prepared facts with `decode_onebot_message`;
+their context factory lives only under `tests/helpers`. Malformed metadata is
+tested against the real receive parser, not a test-only exception API. Runtime
+notice labels continue through `resolve_notice_origin` and the shared reporter.
 
 OneBot message bodies use `message_segments.decode_onebot_segments` at the
 transport boundary for both CQ strings and JSON arrays. CQ tokens are decoded
 once, while array text and parameter values remain literal. Canonical arrays
-reach the native event bridge without its string parser; malformed segment
+reach the framework-free message envelope without an SDK string parser; malformed segment
 shapes are rejected before native payload logging. Commands, observations and
 own-account echo checks share segment plaintext extraction, without calling
 native `get_plaintext` or falling back after a framework exception.
@@ -349,13 +373,15 @@ still require cleanup.
 `ApplicationLifecycle` and `TaskOwner` do not import or hold a NoneBot driver,
 native bot type or logger. They execute explicit contribution/resource hooks,
 scheduler ownership and task draining directly. The sole native host binding is
-`integrations.nonebot_lifecycle.NoneBotLifecycleBinding`, constructed by the
-application after configuration; it owns typed driver hook installation and
-OneBot connection publication. It does not duplicate resource start/stop logic.
+`integrations.nonebot_host.NoneBotHostBinding`, constructed by the
+application after configuration; it only installs startup/shutdown hooks.
+OneBot and QQ Official publish through the same `BotConnectionObserver` port,
+without driver Bot callbacks. It does not duplicate resource start/stop logic.
 Independent execution is tested in a process that rejects every NoneBot import;
-the complete application still uses the native host, plugin loader and htmlkit.
+the complete application still uses the native ASGI/configuration host; plugin
+composition and litehtml Python/font startup have already been made explicit.
 OneBot routing and notice-source enrichment use one application-owned connection
-directory rather than NoneBot's global bot registry. The native lifecycle bridge
+directory rather than NoneBot's global bot registry. The transport
 publishes a connection before business connect hooks, removes only that exact
 connection on disconnect, and ignores stale disconnects after replacement. Normal
 shutdown clears the directory after services and owned tasks stop. Outbound

@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import asyncio
 from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
 from typing import Any, TypedDict, Unpack
 
+import jinja2
+
+from ironsbot.integrations.litehtml import render_html
+from ironsbot.integrations.litehtml.local_resources import local_css, local_image
 from ironsbot.services.seer.rendering import TemplatePath
 
 from .project_metadata import current_project_url
@@ -24,15 +29,22 @@ async def render_html_template(
     allow_refit: bool = True,
     **resource_callbacks: Unpack[HtmlResourceCallbacks],
 ) -> bytes:
-    from nonebot_plugin_htmlkit import template_to_pic
-
     context = dict(templates)
     context.setdefault("project_url", current_project_url())
-    return await template_to_pic(
-        template_path,
-        template_name,
-        context,
+    environment = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(template_path), enable_async=True
+    )
+    template = await asyncio.to_thread(environment.get_template, template_name)
+    base_url = (
+        f"file://{Path(template.filename).as_posix()}"
+        if template.filename
+        else "file:///"
+    )
+    return await render_html(
+        await template.render_async(**context),
+        base_url=base_url,
         max_width=max_width,
         allow_refit=allow_refit,
-        **resource_callbacks,
+        img_fetch_fn=resource_callbacks.get("img_fetch_fn", local_image),
+        css_fetch_fn=resource_callbacks.get("css_fetch_fn", local_css),
     )

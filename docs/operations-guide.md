@@ -279,5 +279,14 @@ Python 标准入口点声明工厂，只能取得公共代码声明的窄契约�
 失败或元数据不完整不得补零伪装完整结果。详细分支发布前还须更新与公共提交配对的 public-runtime.json，
 不能把本地测试通过等同于已发布版本兼容。experiments 只供历史参考，不参与运行注册。
 
+## 原生图片渲染
+
+图片继续使用同一个 litehtml 原生引擎，不需要浏览器。主仓库维护最小 Python 绑定，
+字体初始化由应用启动负责，图片/CSS 网络访问复用应用 HTTP 客户端，不再加载 htmlkit 的
+NoneBot 插件。现有 FONTCONFIG/FC 环境变量继续有效，没有新增 TOML 或 Unraid 字段。
+为保持 ABI 与输出一致，原生二进制载体固定到已验证版本，更新时须连同锁文件、
+原生 PNG 对照和主程序/扩展配对一起验收；不能单独升级该依赖或把它的存在视为
+应用仍需要加载旧插件。来源及许可证见 `ironsbot/integrations/litehtml/NOTICE.md`。
+
 [返回 README](../README.md) · [配置与订阅](configuration-and-subscriptions.md) ·
 [玩家查询](player-query-guide.md)

@@ -9,7 +9,7 @@ import traceback
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot.log import logger
+from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

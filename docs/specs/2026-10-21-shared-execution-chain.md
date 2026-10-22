@@ -498,11 +498,51 @@ SDK 回调契约回放使用合成 WebSocket 和工作线程触发 READY、重�
 
 用户选择在主仓库维护去框架渲染所需的最小源码，不新建依赖仓库、不发布 PyPI。已核验同一个 htmlkit 原生 ABI 可以在不初始化 nonebot_plugin_htmlkit 父包的子进程加载；这是可行性证据，不是渲染与字体迁移已完成。接管时须记录二进制来源、许可证和依赖打包，不使用隐藏 NoneBot 桩或旧接口回退冒充去框架化。
 
+第八十一步按用户选择，在主仓库维护最小 litehtml Python 绑定及本地资源读取，不新建库仓库、不发布 PyPI。生产模板直接使用 Jinja 与同一个锁定的 0.1.0rc5 原生 core；按安装记录定位编译扩展，通过 Python 扩展加载器装载到自己的命名空间，不执行或伪造 nonebot_plugin_htmlkit 父包。ABI 版本、二进制缺失/歧义均明确失败，不回退旧 Python 接口。保留来源、MIT 版权及 C++ LGPL 标记，wheel 不包含新复制的 DLL/引擎镜像；原分发包当前仍只是原生二进制载体，因此不能宣称安装依赖里的 NoneBot 已全部删除。
+
+删除 bootstrap 的 htmlkit 插件加载和资源读取中的原 SDK import。字体初始化进入应用首个必需资源钩子，沿用现有 FONTCONFIG/FC 环境变量；HTTP 继续借用同一客户端，本地读取及模板文件读取在 worker 执行。默认 native 参数、PNG、base_url 和模板行为保持一致，绑定源码纳入缓存指纹。私有 main/details 的原生验收也改用正式字体入口，禁止 NoneBot 后仍渲染空、单格、完整阵容及详情，不搬迁任何私有实现。
+
+原生对照在两个独立进程使用同一模板/字体，锁定的旧公开接口与新绑定输出 PNG 字节完全一致；图像/CSS HTTP 回放、ABI 错误、本地资源失败、项目地址和真实 bootstrap/发布工作流共 54 项通过。私有 main 原生开启后 50 passed，details 72 passed，两套类型检查通过。公开全量第一次 6391 passed / 9 skipped，七项真实发布数据渲染因未提供发布库仍跳过；18 组峰池素材故障/恢复验收已启用原生引擎，相关目录 68 passed / 7 skipped。离线打包首轮缺 setuptools 缓存、Windows tar 解压中文路径失败，均未作为成功证据；改用 E 盘隔离 ZIP 源与构建日志后，已核验 wheel 带绑定源码、LICENSE、NOTICE 和精确 ABI 依赖。
+
+本步只修改渲染与对应验收，不暂存并发榜单/配置内容。应用宿主、OneBot 原生连接资源与独立 native 依赖打包仍待收口，目标保持 active；没有生产配置、数据库、推送或部署操作。
+
+第八十一步最终复核：并发榜单提交 c70c390e 完成后，公共全量 6396 passed / 9 skipped；全仓 Ruff、公共及两套私有 BasedPyright、compileall、静态仓库和 diff 检查通过。原生专项 54 项通过，私有 main/details 原生开启分别 50/72 全通过。E 盘隔离 wheel 直接 zip-import 后禁止 NoneBot 仍输出有效 PNG，未装载原插件父包；打包后的源码、许可证及版本约束已核对。渲染 Python/字体宿主门槛完成，整体约 97%；独立应用宿主、原生分发依赖与最终三模式复验仍未完成，不推送、不部署。
+
+第八十二步删除日志基础设施对 nonebot.log 的依赖：脱敏器、文件 sink 直接使用已锁定的 Loguru，应用标准日志由 app/application_logging 的唯一桥接器接入。重复配置不重复安装 handler，保留调用源、级别和异常信息；应用日志不再向 root 传播未经脱敏的第二份记录。bootstrap 使用新入口，不提供旧日志 handler 或旧函数路径的兼容实现；Loguru 显式列为直接依赖，锁文件没有升级其他依赖。
+
+独立子进程明确禁止 NoneBot，分别验证普通、错误、自定义级别及异常堆栈的脱敏、一次输出、低级别过滤、文件落盘和重复关闭；控制台与文件均不含测试密钥和身份原文，root handler 不收到原始记录。日志及真实 bootstrap 专项 12 passed；公共全量 6398 passed / 9 skipped，Ruff、公共生产与测试 BasedPyright、compileall、静态检查和 diff 检查通过。私有扩展接口、TOML/env、Docker/Unraid、业务行为和生产数据未改变，不推送、不部署。
+
+宿主后续接管范围已重新核对：除了反向 WebSocket，还必须保留当前正向 WebSocket、HTTP 上报签名、HTTP API 根地址和 API 超时。它们目前仍通过原生驱动配置进入协议资源；不能在只替换反向入口后宣称宿主已全部移除。整体仍约 97%，应用宿主、原生依赖独立打包及三模式最终验收保持未完成。
+
+第八十三步将正向 WebSocket 建连从 NoneBot driver 移至 websocket_client.open_onebot_socket，直接使用已有 websockets 依赖。保持 Bearer、原有 30 秒建立/关闭期限与库默认代理/心跳/帧限制；适配层只转换收发与关闭，不实现重连或另一套消息解析。OneBotForwardClient 继续唯一负责握手、重连、会话和公共事件交接，删除旧 _open_forward，没有 driver 客户端回退。
+
+显式注册原有三个 HTTP、三个反向 WebSocket 地址；正向启动不再受 WebSocketClientMixin 能力判断阻断。首轮全量暴露关闭钩子注册位置违反现有分层门槛，未放宽测试：组合根改为直接持有 Application.onebot_transport，不通过框架适配器全局注册表；传输关闭进入现有 shutdown_hooks，位于任务取消与共享资源关闭前，原生生命周期绑定仍是唯一 driver 生命周期注册处。重复 install 不会重复实例或关闭钩子。
+
+真实本机回环服务器测试在禁止导入 NoneBot 的独立进程完成有/无 Token、文本/二进制事件、RPC 回执、对端关闭、取消及上下文退出释放；不是生产机器人或外部平台验收。正向专项 29 passed，应用/层级/启动/官方及正向组合 148 passed；修正后的公共全量 6404 passed / 9 skipped。全仓 Ruff、公共及私有两套类型、compileall、静态和 diff 检查通过；Git fsck 无完整性错误，既有 dangling 对象未清理。私有 main/details 原生开启分别 50/72 passed，原有 uv.lock/tools 未跟踪内容保留，未修改私有仓库接口或配对引用。
+
+本步不更改 TOML/env、部署、数据库和业务路由，不 push、不部署。原生账号对象、配置与 ASGI 宿主仍在过渡；原生渲染二进制分发依赖和最终三模式验收也未关闭，整体保持约 97%。
+
+第八十四步移除生产链的 Native Bot/Adapter 中转：OneBotTransport 不再继承 SDK Adapter，不创建 SDK Bot。认证后的 OneBotWebSocketSession 本身就是公共连接；HTTP 使用绑定账号与唯一 HTTP API 的 OneBotHttpConnection。删除两份 session/Bot 中转映射和 _call_api 透传，不再登记 NoneBot 全局 Bot 或依靠驱动 Bot 钩子。连接登记与官方端一样通过 BotConnectionObserver 进入同一个应用生命周期，登记先于业务回调，迟到断线仅移除原连接。自身口令策略未删除或改名，仅删除职责不符的旧 self_commands 传输模块与路径，不保留 re-export。
+
+宿主绑定改为 nonebot_host.NoneBotHostBinding，只安装启动/关闭两类钩子。应用仍显式持有传输并通过公共关闭流程停止它。关闭拒绝新登记，避免迟到接收循环再生成通知任务；观察器失败仍清除登记、关闭 action 入口并取消/等待受管任务。传输仍使用原配置解析器及原生端点宿主，未谎称整个 NoneBot 依赖已移除，也没有改 TOML/env 或部署行为。
+
+实际连接、原始事件、HTTP、正反向 WS、通知及生命周期专项先通过 162 项；新增关闭故障注入及相关目录 69 passed，实际进程回环及自身回声/发送专项 19 passed。回声测试改用真实 HTTP action 协议，不再模拟 SDK Adapter._call_api。最终公共全量 6406 passed / 9 skipped，Ruff、公共及私有两套 BasedPyright、compileall、静态与 diff 检查通过；私有 main/details 原生开启 50/72 passed，原工作区未提交内容保留。
+
+新连接资源的 Bot/Adapter 导入门槛针对 transport.py；初次扩大扫描同时发现 context.py、message_input.py、session_identity.py 三份旧辅助模块只有测试引用，尚未清除，不能将该扫描误称为全仓无旧 API。它们列为下一完整清理步骤，保留真实行为测试，不把无运行时调用的适配器当正式 API。当前整体仍约 97%，配置、ASGI、原生分发与最终三模式验收未关闭；本步自动提交，不推送、不部署、不删除备份。
+
+第八十五步完成上一轮发现的测试专用生产 API 清理。全引用核对确认 context.py、message_input.py、session_identity.py 无生产调用，两个私有分支的源码与测试也无引用；直接删除三个模块，共移除 198 行生产代码，不保留旧 import、re-export 或兼容异常类型。旧群号透传、SDK 会话 key 和仅用于测试的通知 formatter 不迁入新生产模块。
+
+公共测试使用 tests/helpers/onebot_inputs.py 构造输入：将合成事件序列化后交给正式 decode_received_message 校验，再将事实交给唯一 decode_onebot_message；没有复制旧 getattr/segments 兜底和缺字段异常层。@/引用测试直接断言公共输入 kind，三项坏元数据测试改走实际接收解析器。删除旧 AI formatter 的两个无调用行为测试及采集时 NoneBot 初始化，正式通知来源由 test_onebot_notice_origin 和共享错误报告测试继续验证；没有把过时代码藏入测试目录维持伪 API。
+
+导入边界门槛扩大至整个 OneBot 协议目录，除当前尚待迁移的 Config 解析器外，禁止再引入 SDK 事件、Bot 或 Adapter。输入、@/引用、AI、正式通知与公共入口专项 96 passed；公共全量 6404 passed / 9 skipped，Ruff、公共及私有两套 BasedPyright、compileall、静态和 diff 检查通过。私有 main/details 原生开启分别 50/72 passed，两个私有仓库未修改；本步只变更公共代码/测试及说明，不更改 TOML/env、Docker/Unraid、生产数据库或命令语义，不 push、不部署，备份保留。
+
+整体仍约 97%；下一关键门槛为应用配置和 ASGI 宿主迁移、原生分发依赖及最终三模式核验。测试数量减少来自两个无运行时调用的旧 formatter 测试删除，不代表删掉真实通知失败或来源行为的覆盖。
+
 ## NoneBot 移除评估
 
 结论：不把保留 NoneBot/matcher 作为设计条件。可以移除，但不能只替换 WebSocket 接收函数就宣称完成。
 
-基线 AST 检索发现 71 个生产模块直接导入 NoneBot：根入口 1、app 6、integrations 22、plugins 42。这是当时的依赖分布证据，不是当前文件数或运行时注册数量。基线中的 scheduler 生命周期依赖已于第四十步移除，私有插件依赖于第七十八步移除，内置插件依赖于第七十九步移除；htmlkit 和应用宿主的框架依赖仍存在。
+基线 AST 检索发现 71 个生产模块直接导入 NoneBot：根入口 1、app 6、integrations 22、plugins 42。这是当时的依赖分布证据，不是当前文件数或运行时注册数量。基线中的 scheduler 生命周期依赖已于第四十步移除，私有插件依赖于第七十八步移除，内置插件依赖于第七十九步移除，渲染 Python/字体依赖于第八十一步移除；应用宿主和 native 分发包的间接安装依赖仍存在。
 
 替换必须覆盖：
 

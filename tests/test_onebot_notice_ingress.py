@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from nonebot.drivers import WebSocket
     from pytest import LogCaptureFixture
 
-    from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+    from ironsbot.integrations.onebot.transport import OneBotTransport
 
 pytest_plugins = ("tests.test_onebot_native_reverse",)
 T = TypeVar("T")
@@ -338,7 +338,7 @@ async def test_notice_spawn_failure_closes_coroutine_and_drains_accepted_tasks(
 
 @pytest.mark.asyncio
 async def test_reverse_poke_uses_real_shared_send_and_receipts_without_native_dispatch(
-    runtime: SimpleNamespace, adapter: SelfCommandAdapter, raw_path: SimpleNamespace
+    runtime: SimpleNamespace, adapter: OneBotTransport, raw_path: SimpleNamespace
 ) -> None:
     ingress = OneBotNoticeIngress(
         runtime.admission,

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.core.platform import Platform
-from ironsbot.integrations.nonebot_lifecycle import NoneBotLifecycleBinding
+from ironsbot.integrations.nonebot_host import NoneBotHostBinding
 
 if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ironsbot.extensions.registration import ExtensionServices
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
+    from ironsbot.integrations.onebot.transport import OneBotTransport
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.services.portable_commands import PortableCommandRouter
 
@@ -47,7 +48,8 @@ class Application:
     resource_startup_hooks: tuple[tuple[str, Any], ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
     lifecycle: ApplicationLifecycle | None = None
-    host_lifecycle: NoneBotLifecycleBinding | None = None
+    host_lifecycle: NoneBotHostBinding | None = None
+    onebot_transport: OneBotTransport | None = None
     _configured: bool = field(default=False, init=False)
     _installed: bool = field(default=False, init=False)
 
@@ -95,7 +97,7 @@ class Application:
         from ironsbot.integrations.onebot.received_messages import (
             OneBotReceivedMessages,
         )
-        from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+        from ironsbot.integrations.onebot.transport import OneBotTransport
 
         received = OneBotReceivedMessages(
             self.resources.onebot_admission,
@@ -120,15 +122,19 @@ class Application:
             audit=self.resources.team_audit if "team_audit" in installed else None,
             red_packets=received.red_packets,
         )
-        self.driver.register_adapter(
-            SelfCommandAdapter,
+        self.onebot_transport = OneBotTransport(
+            self.driver,
             spawn=self.task_owner.create,
             received=received.handle,
             notices=notices.handle,
             request_http=HttpxOneBotExchange(self.http_clients.origin),
+            connections=self.resources.onebot_connections,
+            observer=self.lifecycle,
         )
-        self.host_lifecycle = NoneBotLifecycleBinding(
-            self.driver, self.lifecycle, self.resources.onebot_connections
+        self.lifecycle.shutdown_hooks = (
+            *self.lifecycle.shutdown_hooks,
+            ("onebot_transport", self.onebot_transport.close),
         )
+        self.host_lifecycle = NoneBotHostBinding(self.driver, self.lifecycle)
         self.host_lifecycle.install()
         self._installed = True

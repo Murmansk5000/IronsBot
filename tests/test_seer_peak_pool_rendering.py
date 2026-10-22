@@ -394,20 +394,11 @@ async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C90
 
     native = os.environ.get("IRONSBOT_NATIVE_RENDER_TESTS") == "1"
     if native:
-        import nonebot
-
-        try:
-            driver = nonebot.get_driver()
-        except ValueError:
-            nonebot.init()
-            driver = nonebot.get_driver()
         if fontconfig := os.environ.get("IRONSBOT_RENDER_FONTCONFIG"):
-            monkeypatch.setattr(
-                driver.config, "fontconfig_file", fontconfig, raising=False
-            )
-        from nonebot_plugin_htmlkit import init_fontconfig
+            monkeypatch.setenv("FONTCONFIG_FILE", fontconfig)
+        from ironsbot.integrations.litehtml import initialize_fontconfig
 
-        init_fontconfig()
+        initialize_fontconfig()
 
     output = BytesIO()
     Image.new("RGB", (96, 96), "#159ca8").save(output, format="PNG")

@@ -12,8 +12,8 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.integrations.onebot.message_input import message_input_context
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from types import SimpleNamespace

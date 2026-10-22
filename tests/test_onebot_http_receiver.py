@@ -21,7 +21,7 @@ from tests.test_onebot_native_reverse import _reverse_message_case
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
-    from ironsbot.integrations.onebot.self_commands import SelfCommandAdapter
+    from ironsbot.integrations.onebot.transport import OneBotTransport
 
 pytest_plugins = ("tests.test_onebot_native_reverse",)
 _REQUEST_PAIR_SIZE = 2
@@ -172,7 +172,7 @@ def test_http_task_rejection_closes_created_coroutine(
 @pytest.mark.parametrize("wire_format", ["array", "cq"])
 async def test_http_reaches_same_business_and_receipt_without_native_dispatch(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
     source: str,
     wire_format: str,
@@ -206,7 +206,7 @@ async def test_http_reaches_same_business_and_receipt_without_native_dispatch(
 
 @pytest.mark.asyncio
 async def test_http_notice_uses_same_injected_notice_port(
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
 ) -> None:
     body = _body(notice_type="notify", sub_type="poke", target_id=1, user_id=101)
@@ -219,7 +219,9 @@ async def test_http_notice_uses_same_injected_notice_port(
     assert result.status_code == HTTPStatus.NO_CONTENT
     await asyncio.gather(*tuple(adapter.tasks))
     assert isinstance(adapter.notices, AsyncMock)
-    adapter.notices.assert_awaited_once_with(adapter.bots["1"], json.loads(body))
+    adapter.notices.assert_awaited_once_with(
+        adapter.accounts.get("1"), json.loads(body)
+    )
     raw_path.native_conversion.assert_not_called()
     raw_path.native_dispatch.assert_not_awaited()
 
@@ -227,7 +229,7 @@ async def test_http_notice_uses_same_injected_notice_port(
 @pytest.mark.asyncio
 async def test_http_concurrent_replay_claims_business_once(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
 ) -> None:
     payload, _, _ = _reverse_message_case(runtime, adapter, "group", "array")
@@ -243,7 +245,7 @@ async def test_http_concurrent_replay_claims_business_once(
     await asyncio.gather(*tuple(adapter.tasks))
     runtime.execute.assert_awaited_once()
     assert len(runtime.sends) == 1
-    assert len(adapter.bots) == 1
+    assert len(adapter.accounts.snapshot()) == 1
     assert len(raw_path.contexts) == _REQUEST_PAIR_SIZE
     raw_path.native_dispatch.assert_not_awaited()
 
@@ -251,7 +253,7 @@ async def test_http_concurrent_replay_claims_business_once(
 @pytest.mark.asyncio
 async def test_http_failure_uses_shared_release_and_management_only_error_details(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
 ) -> None:
     payload, _, _ = _reverse_message_case(runtime, adapter, "group", "array")
@@ -284,7 +286,7 @@ async def test_http_failure_uses_shared_release_and_management_only_error_detail
 @pytest.mark.asyncio
 async def test_http_silent_mode_never_executes_business_or_sends(
     runtime: SimpleNamespace,
-    adapter: SelfCommandAdapter,
+    adapter: OneBotTransport,
     raw_path: SimpleNamespace,
 ) -> None:
     from dataclasses import replace

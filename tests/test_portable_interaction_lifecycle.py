@@ -16,13 +16,13 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessions,
 )
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_inputs import message_input_context
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
