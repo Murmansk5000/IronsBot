@@ -20,6 +20,7 @@ from uuid import uuid4
 
 import tomllib
 
+from ironsbot.app.application_logging import configure_extension_logging
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.services.operations.docker_models import (
     DockerImageArchiveRequest,
@@ -127,6 +128,7 @@ class PrivateExtensionCatalog:
         contributions: list[PluginContribution] = []
         with self.plugin_import_path():
             for entry in self.entry_points:
+                configure_extension_logging(entry.module)
                 module = import_module(entry.module)
                 origin = getattr(module, "__file__", None)
                 if origin is None or not Path(origin).resolve().is_relative_to(
