@@ -15,9 +15,13 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.message import handle_event
 
 from ironsbot.config.models.messaging import RedPacketNoticeConfig
+from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot import red_packet as packet_protocol
+from ironsbot.integrations.onebot.notice_ingress import OneBotNoticeIngress
+from ironsbot.integrations.onebot.received_messages import OneBotReceivedMessages
 from ironsbot.plugins.onebot.messaging import red_packet
 from ironsbot.services.messaging.admin_notice import (
     AdminNoticeSendSummary,
@@ -151,12 +155,14 @@ async def test_zero_cooldown_keeps_existing_unlimited_semantics() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("notice_first", [False, True])
 @pytest.mark.parametrize("lookup_failure", [False, True])
+@pytest.mark.parametrize("source", ["native", "raw"])
 async def test_actual_dual_sources_send_only_to_configured_admin_targets(
     runtime: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
     *,
     notice_first: bool,
     lookup_failure: bool,
+    source: str,
 ) -> None:
     private_admin = ActorRef(Platform.ONEBOT, "303")
     admin_group = ConversationRef(Platform.ONEBOT, "group", "204")
@@ -185,7 +191,7 @@ async def test_actual_dual_sources_send_only_to_configured_admin_targets(
 
     monkeypatch.setattr(Adapter, "_call_api", api)
     debug = Mock()
-    monkeypatch.setattr(red_packet.logger, "debug", debug)
+    monkeypatch.setattr(packet_protocol.logger, "debug", debug)
     runtime.factory.priorities.red_packet_notice = 0
     red_packet.install(runtime.factory, service)
     message = group_message_event(
@@ -203,8 +209,26 @@ async def test_actual_dual_sources_send_only_to_configured_admin_targets(
         }
     )
     events = (notice, message) if notice_first else (message, notice)
+    messages = OneBotReceivedMessages(
+        runtime.admission,
+        runtime.router,
+        runtime.messenger,
+        red_packets=service,
+    )
+    notices = OneBotNoticeIngress(
+        runtime.admission,
+        runtime.messenger,
+        Mock(),
+        MatcherPriorityConfig(),
+        red_packets=service,
+    )
     for event in events:
-        await handle_event(runtime.bot, event)
+        if source == "native":
+            await handle_event(runtime.bot, event)
+        elif isinstance(event, NoticeEvent):
+            await notices.handle(runtime.bot, event.model_dump())
+        else:
+            await messages.handle(runtime.bot, event.model_dump())
 
     assert calls == ["get_group_info"]
     sender.send_admin_notice.assert_awaited_once()
