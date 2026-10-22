@@ -21,9 +21,10 @@ from ironsbot.integrations.onebot.red_packet import is_red_packet_payload
 from ironsbot.services.onebot_admission import OneBotAdmissionInput
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Coroutine
 
     from ironsbot.config.models.settings import MatcherPriorityConfig
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.onebot.connections import OneBotConnection
     from ironsbot.integrations.onebot.notice_events import OneBotNoticeEnvelope
     from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
@@ -49,6 +50,7 @@ class OneBotNoticeIngress:
     messenger: OneBotOutboundMessenger
     scheduler: Scheduler
     priorities: MatcherPriorityConfig
+    spawn: TaskSpawner
     poke: PokeReplyService | None = None
     audit: TeamAuditService | None = None
     red_packets: RedPacketNoticeService | None = None
@@ -79,9 +81,36 @@ class OneBotNoticeIngress:
             key=lambda call: call.priority,
         ):
             group = tuple(grouped)
-            await asyncio.gather(*(run(call) for call in group))
+            await self._run_group(group, run)
             if any(call.blocks for call in group):
                 break
+
+    async def _run_group(
+        self,
+        calls: tuple[_NoticeCall, ...],
+        run: Callable[[_NoticeCall], Coroutine[Any, Any, None]],
+    ) -> None:
+        tasks: list[asyncio.Task[None]] = []
+        try:
+            for call in calls:
+                coroutine = run(call)
+                try:
+                    tasks.append(self.spawn(coroutine, name="onebot.notice"))
+                except BaseException:
+                    coroutine.close()
+                    raise
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            # Child cancellation must drain siblings before resources can close.
+            drain = asyncio.gather(*tasks, return_exceptions=True)
+            while not drain.done():
+                try:
+                    await asyncio.shield(drain)
+                except asyncio.CancelledError:  # noqa: PERF203 - repeated cancellation must still drain
+                    continue
 
     def _calls(
         self,

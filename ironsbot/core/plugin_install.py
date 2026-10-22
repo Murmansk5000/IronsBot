@@ -23,8 +23,6 @@ NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
 # Help visibility consumes normalized identity and conversation facts so every
 # adapter presents the same feature directory.
 HelpVisibility: TypeAlias = Callable[["CommandContext"], bool]
-# Plugin installation is a core contract. The adapter keeps its matcher opaque.
-PluginInstall: TypeAlias = Callable[[Any], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,8 +57,6 @@ class PluginContribution:
     features: frozenset[Feature] = frozenset()
     help: HelpEntry | None = None
     commands: tuple[CommandContract, ...] = ()
-    install: PluginInstall | None = None
-    install_without_onebot_messages: bool = False
     hooks: PluginHooks = PluginHooks()
 
 

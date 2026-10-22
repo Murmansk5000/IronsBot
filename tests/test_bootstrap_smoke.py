@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_generator_bootstrap_resolves_shared_ingress_annotations(
+def test_generator_bootstrap_uses_shared_ingress_without_native_registration(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "bootstrap.toml"
@@ -22,9 +22,6 @@ import socket
 import sys
 import traceback
 import nonebot.dependencies as dependencies
-from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.matcher import Matcher
 from nonebot.log import logger
 
 def network_forbidden(*args, **kwargs):
@@ -43,16 +40,10 @@ registered = set()
 def checked_signature(call):
     signature = original(call)
     source = getattr(call, "func", call)
-    if getattr(source, "__module__", "") == (
-        "ironsbot.integrations.onebot.command_ingress"
-    ):
-        name = source.__qualname__
-        if name.endswith(("accepts", "handle")):
-            assert signature.parameters["event"].annotation is Event, name
-            assert signature.parameters["bot"].annotation is Bot, name
-            if name.endswith("handle"):
-                assert signature.parameters["matcher"].annotation is Matcher, name
-            registered.add(name)
+    if getattr(source, "__module__", "").startswith((
+        "ironsbot.plugins.", "ironsbot.integrations.onebot."
+    )):
+        registered.add(source.__qualname__)
     return signature
 dependencies.get_typed_signature = checked_signature
 from ironsbot.app.application import Application
@@ -61,20 +52,17 @@ def checked_install(self, router):
     assert self.lifecycle.scheduler is self.scheduler
     assert 'nonebot_plugin_apscheduler' not in sys.modules
     assert router.ingress.claims.spawn == self.task_owner.create_draining
-    assert self.resources.onebot_ingress.admission.features is self.resources.features
+    assert self.resources.onebot_admission.features is self.resources.features
     assert self.resources.onebot_messenger._self_commands is (
-        self.resources.onebot_ingress.admission.self_commands
+        self.resources.onebot_admission.self_commands
     )
     return original_install(self, router)
 Application.install = checked_install
 from scripts.generate_poke_command_introductions import _command_ids
 assert _command_ids()
-assert registered == {
-    "install_command_ingress.<locals>.accepts",
-    "install_command_ingress.<locals>.handle",
-}, registered
+assert not registered, registered
 assert not warnings, "\\n".join(warnings)
-print("AI_REGISTRATION_OK")
+print("SHARED_INGRESS_OK")
 """
     environment = os.environ.copy()
     for key in tuple(environment):
@@ -95,7 +83,7 @@ print("AI_REGISTRATION_OK")
         timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.strip() == "AI_REGISTRATION_OK"
+    assert result.stdout.strip() == "SHARED_INGRESS_OK"
 
 
 def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
@@ -138,14 +126,12 @@ import os
 import inspect
 import sys
 import nonebot
-from copy import deepcopy
-from functools import partial
 from typing import ForwardRef
 
 from nonebot.log import logger
 from nonebot.dependencies import utils
 import nonebot.dependencies as dependencies
-from nonebot.utils import is_coroutine_callable
+from nonebot.matcher import matchers
 
 logger.remove()
 
@@ -224,10 +210,8 @@ assert {"seer.team.query", "seer.pet.avatar"}.issubset(
 )
 assert len(state.contributions) > 0
 assert not state.onebot_message_handling_enabled
-assert len(state.matcher_factory.message_matchers) == 0
-assert len(state.matcher_factory.notice_matchers) == 0
-assert state.resources.onebot_ingress is not None
-assert state.resources.onebot_ingress.admission.errors is state.resources.command_errors
+assert not any(matchers.values())
+assert state.resources.onebot_admission.errors is state.resources.command_errors
 from ironsbot.integrations.storage.inbound_claims import SqliteInboundMessageClaims
 assert state.resources.identity_observer is not None
 assert isinstance(state.resources.identity_observer.claims, SqliteInboundMessageClaims)
@@ -246,22 +230,6 @@ assert state.resources.identity_observer.claims.path == (
     state.settings.paths.cache_root / "identity" / "observations.sqlite"
 )
 assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
-
-for matcher in (
-    *state.matcher_factory.message_matchers,
-    *state.matcher_factory.notice_matchers,
-):
-    deepcopy(matcher._default_state)
-    dependencies = (*matcher.rule.checkers, *matcher.handlers)
-    for dependency in dependencies:
-        call = dependency.call
-        wraps_async = (
-            isinstance(call, partial)
-            and inspect.iscoroutinefunction(call.func)
-        )
-        assert not wraps_async or is_coroutine_callable(call), (
-            f"unrecognized async partial in {matcher}: {call}"
-        )
 
 print("BOOTSTRAP_OK")
 """

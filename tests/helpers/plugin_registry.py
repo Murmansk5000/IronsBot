@@ -398,14 +398,9 @@ def build_test_plugin_registry(
         sendpic_plugin_contribution(service=resources.sendpic),
         meeting_plugin_contribution(commands=tuple(config.messaging.meeting.commands)),
         blacklist_plugin_contribution(),
-        red_packet_plugin_contribution(
-            service=resources.red_packet_notice,
-        ),
+        red_packet_plugin_contribution(),
         fire_manual_ad_plugin_contribution(),
-        poke_reply_plugin_contribution(
-            service=resources.poke_reply,
-            messenger=resources.onebot_messenger,
-        ),
+        poke_reply_plugin_contribution(),
         rank_help_plugin_contribution(player_id_resolver=resources.player_id_resolver),
         pet_config_plugin_contribution(
             features=runtime.features, config=config.pet_config

@@ -4,24 +4,13 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from nonebot.adapters import Event  # noqa: TC002 - preprocessor injection
-from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
-from nonebot.message import event_preprocessor, handle_event
-from nonebot.typing import T_State  # noqa: TC002 - preprocessor injection
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.models.transport import SelfCommandsConfig
-from ironsbot.core.outbound import ExecutionIdentity
 from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.integrations.onebot import ingress_facts
-from ironsbot.integrations.onebot.event_ingress import (
-    ADMITTED_MESSAGE_KEY,
-    AdmittedOneBotMessage,
-    OneBotEventIngress,
-)
-from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.services.command_ingress import CommandIngress
-from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.own_commands import OwnAccountCommandPolicy
 from tests.helpers.onebot_events import (
     group_message_event,
@@ -41,7 +30,7 @@ pytest_plugins = ("tests.test_shared_onebot_ingress",)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("private", [False, True])
 @pytest.mark.parametrize("mode", ["direct", "mention", "reply", "menu"])
-async def test_admitted_context_is_decoded_once_and_shared_through_delivery(
+async def test_input_context_is_projected_once_and_shared_through_delivery(
     runtime: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
@@ -93,7 +82,7 @@ async def test_admitted_context_is_decoded_once_and_shared_through_delivery(
         event.message = segment + Message(text)
         event.original_message = event.message.copy()
         event.raw_message = str(event.message)
-    await handle_event(runtime.bot, event)
+    await runtime.receive(runtime.bot, event)
     assert len(decoded) == 1
     assert received == decoded
     assert received[0] is decoded[0]
@@ -103,80 +92,29 @@ async def test_admitted_context_is_decoded_once_and_shared_through_delivery(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mode",
-    [
-        "missing",
-        "wrong_type",
-        "other_event",
-        "wrong_account",
-        "wrong_message",
-        "wrong_actor",
-        "wrong_conversation",
-        "wrong_platform",
-        "wrong_execution_platform",
-    ],
+    "field", ["context", "execution_identity", "_ironsbot_admitted_message"]
 )
-async def test_missing_or_mismatched_frame_never_decodes_or_runs_business(
-    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, mode: str
+async def test_provider_extensions_cannot_override_projected_command_identity(
+    runtime: SimpleNamespace,
+    field: str,
 ) -> None:
-    monkeypatch.setattr("nonebot.message._event_preprocessors", set())
-
-    def forbidden_decode(_facts: OneBotMessageFacts) -> MessageInputContext:
-        pytest.fail("command matcher must not decode unadmitted events")
-
-    monkeypatch.setattr(ingress_facts, "decode_onebot_message", forbidden_decode)
-
-    @event_preprocessor
-    async def corrupt(event: Event, state: T_State) -> None:
-        assert isinstance(event, MessageEvent)
-        if mode in {"missing", "wrong_type"}:
-            state.update(
-                {ADMITTED_MESSAGE_KEY: object()} if mode == "wrong_type" else {}
-            )
-            return
-        context = message_input_context(event)
-        if mode == "wrong_account":
-            context = replace(
-                context, execution_identity=ExecutionIdentity(Platform.ONEBOT, "2")
-            )
-        elif mode == "wrong_message":
-            context = replace(
-                context, message=replace(context.message, message_id="different")
-            )
-        elif mode == "wrong_actor":
-            context = replace(
-                context,
-                message=replace(
-                    context.message, actor=ActorRef(Platform.ONEBOT, "999")
-                ),
-            )
-        elif mode == "wrong_conversation":
-            context = replace(
-                context,
-                message=replace(
-                    context.message,
-                    conversation=replace(context.message.conversation, id="999"),
-                ),
-            )
-        elif mode == "wrong_platform":
-            context = replace(
-                context,
-                message=replace(
-                    context.message,
-                    platform=Platform.QQ_OFFICIAL,
-                ),
-            )
-        elif mode == "wrong_execution_platform":
-            context = replace(
-                context, execution_identity=ExecutionIdentity(Platform.QQ_OFFICIAL, "1")
-            )
-        source = event.model_copy() if mode == "other_event" else event
-        state[ADMITTED_MESSAGE_KEY] = AdmittedOneBotMessage(source, context)
-
-    await handle_event(runtime.bot, group_message_event("执行", user_id=101))
-    runtime.execute.assert_not_awaited()
-    runtime.ai.chat_reply.assert_not_awaited()
-    assert runtime.sends == []
+    payload = group_message_event("执行", user_id=101).model_dump()
+    payload[field] = {
+        "platform": "qq_official",
+        "actor": "999",
+        "account_id": "2",
+        "message_id": "forged",
+        "conversation": "other",
+    }
+    await runtime.received.handle(runtime.bot, payload)
+    runtime.execute.assert_awaited_once()
+    context = runtime.execute.call_args.args[1]
+    assert context.message.actor.id == "101"
+    assert context.message.conversation.id == "456"
+    assert context.message.message_id == "3"
+    assert context.request_bot_id == "1"
+    assert context.execution_identity.platform is Platform.ONEBOT
+    assert len(runtime.sends) == 1
 
 
 @pytest.mark.asyncio
@@ -185,13 +123,9 @@ async def test_own_command_normalizes_public_context_without_decoding_again(
 ) -> None:
     monkeypatch.setattr("nonebot.message._event_preprocessors", set())
     gate = OwnAccountCommandPolicy(SelfCommandsConfig(enabled=True, prefixes=["demo "]))
-    OneBotEventIngress(
-        OneBotAdmissionService(
-            messages_enabled=True,
-            features=runtime.limits.features,
-            self_commands=gate,
-        )
-    ).install()
+    runtime.received = replace(
+        runtime.received, admission=replace(runtime.admission, self_commands=gate)
+    )
     contexts: list[MessageInputContext] = []
     original_decode = ingress_facts.decode_onebot_message
 
@@ -202,7 +136,7 @@ async def test_own_command_normalizes_public_context_without_decoding_again(
 
     monkeypatch.setattr(ingress_facts, "decode_onebot_message", decode)
     event = self_command_event("demo 执行")
-    await handle_event(runtime.bot, event)
+    await runtime.receive(runtime.bot, event)
     assert [context.text for context in contexts] == ["demo 执行"]
     runtime.execute.assert_awaited_once()
     normalized = runtime.execute.call_args.args[1]
@@ -220,6 +154,6 @@ async def test_incoming_self_message_cannot_impersonate_admitted_sent_command(
     runtime: SimpleNamespace,
 ) -> None:
     event = group_message_event("执行", user_id=int(runtime.bot.self_id))
-    await handle_event(runtime.bot, event)
+    await runtime.receive(runtime.bot, event)
     runtime.execute.assert_not_awaited()
     assert runtime.sends == []
