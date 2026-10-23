@@ -236,6 +236,30 @@ def test_missing_official_cycle_never_exposes_legacy_weekly_items() -> None:
     )
 
 
+def test_pending_maintenance_is_not_reported_as_empty_content() -> None:
+    class Repository:
+        def load(self) -> NewContentIndex:
+            return NewContentIndex(
+                config_version="20261016152146",
+                weekly_cycle="2026-10-09T10:00:00+08:00",
+                baseline_established=True,
+                items=(NewContentItem("pet", 1, "old", 1, {}),),
+                category_states=(),
+                cycle_start="2026-10-09T10:00:00+08:00",
+                cycle_status="cycle_unavailable",
+                cycle_kind="maintenance",
+            )
+
+    snapshot = NewContentService(
+        Repository(), now=lambda: datetime(2026, 10, 16, 10, tzinfo=timezone.utc)
+    ).snapshot()
+    assert not snapshot.is_current_week
+    assert snapshot.items == ()
+    assert plan_new_content_menu(snapshot, ("pet",)) == (
+        "尚未取得可信的官方维护更新批次，暂无法生成新增内容。"
+    )
+
+
 def test_new_content_order_places_peak_pools_before_skins() -> None:
     assert NEW_CONTENT_CATEGORIES[:8] == (
         "pet",

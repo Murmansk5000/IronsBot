@@ -363,7 +363,13 @@ class NewContentService:
             status = (
                 "syncing" if index.cycle_status == "scheduled" else index.cycle_status
             )
-            return replace(snapshot, cycle_status=status, items=(), category_states=())
+            return replace(
+                snapshot,
+                is_current_week=status != "cycle_unavailable",
+                cycle_status=status,
+                items=(),
+                category_states=(),
+            )
         return snapshot
 
     def require_snapshot(self, expected: NewContentSnapshot) -> None:
