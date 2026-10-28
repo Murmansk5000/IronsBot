@@ -23,6 +23,11 @@ from ironsbot.services.seer.new_content import (
     is_new_content_category_auto_expanded,
     new_content_category_preview_items,
 )
+from ironsbot.services.seer.new_content_diff import (
+    compared_text_values,
+    present_field_changes,
+    without_compared_skill_text,
+)
 from ironsbot.services.seer.render_paths import PET_INFO_IMAGES_PATH
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.new_content import (
@@ -199,7 +204,7 @@ def _cache_key(  # noqa: PLR0913
     auto_expand_max_items: int,
 ) -> str:
     return render_request_cache_key(
-        "new_content",
+        "new_content_diff_v1",
         (
             snapshot,
             display_categories,
@@ -270,13 +275,20 @@ def _initial_rows(  # noqa: PLR0913 - the render inputs remain explicit
 
 def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuItem:
     details = prepared.details
+    diffs, notice = present_field_changes(prepared.item)
+    compared = compared_text_values(prepared.item)
+    side_description = (
+        "" if details.side_description.strip() in compared else details.side_description
+    )
     return NewContentMenuItem(
         code=code,
         name=prepared.item.name,
-        description=details.description,
+        description=""
+        if details.description.strip() in compared
+        else details.description,
         metadata=details.metadata,
-        side_title=details.side_title,
-        side_description=details.side_description,
+        side_title=details.side_title if side_description else "",
+        side_description=side_description,
         stats=details.stats,
         stats_layout=details.stats_layout,
         stats_total=details.stats_total,
@@ -291,9 +303,11 @@ def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuI
         is_category=False,
         expanded=False,
         image=None,
-        skill=details.skill,
-        friend_skill=details.friend_skill,
+        skill=without_compared_skill_text(details.skill, compared),
+        friend_skill=without_compared_skill_text(details.friend_skill, compared),
         entity_key=(prepared.item.category, prepared.item.entity_id),
+        diff_fields=diffs,
+        diff_notice=notice,
     )
 
 

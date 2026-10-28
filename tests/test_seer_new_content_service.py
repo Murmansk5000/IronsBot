@@ -246,11 +246,7 @@ def test_pending_maintenance_is_not_reported_as_empty_content() -> None:
                 config_version="20261016152146",
                 weekly_cycle="2026-10-09T10:00:00+08:00",
                 baseline_established=True,
-                items=(
-                    NewContentIndexItem(
-                        "pet", 1, "old", 1, {}, change_kind="added",
-                    ),
-                ),
+                items=(NewContentIndexItem("pet", 1, "old", 1, {}, "added"),),
                 category_states=(),
                 cycle_start="2026-10-09T10:00:00+08:00",
                 cycle_status="cycle_unavailable",
