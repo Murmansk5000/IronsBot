@@ -5,8 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from ironsbot.config.models.messaging import (
-    MessageKeywordReplyAction,
-    MessageScheduledAction,
+    MessageAction,
 )
 from ironsbot.core.commands import command_text_matches
 from ironsbot.services.messaging.service import (
@@ -137,16 +136,14 @@ def test_contains_preserves_order_and_skips_disabled_or_denied() -> None:
 
 def test_keyword_match_mode_defaults_and_validation() -> None:
     fields = {"id": "example", "keywords": ["test"], "messages": ["reply"]}
-    assert MessageKeywordReplyAction.model_validate(fields).match_mode == "exact"
+    assert MessageAction.model_validate(fields).match_mode == "exact"
     assert (
-        MessageKeywordReplyAction.model_validate(
-            {**fields, "match_mode": "contains"}
-        ).match_mode
+        MessageAction.model_validate({**fields, "match_mode": "contains"}).match_mode
         == "contains"
     )
     for invalid in ("partial", "CONTAINS", "", True, 1, None):
         with pytest.raises(ValidationError):
-            MessageKeywordReplyAction.model_validate({**fields, "match_mode": invalid})
+            MessageAction.model_validate({**fields, "match_mode": invalid})
 
 
 def test_build_schedule_trigger_kwargs_omits_empty_day_of_week() -> None:
@@ -178,10 +175,14 @@ def test_build_schedule_trigger_kwargs_preserves_seconds() -> None:
 
 def test_scheduled_action_normalizes_minute_input_with_seconds() -> None:
     assert (
-        MessageScheduledAction(id="daily", messages=["text"], time="08:30").time
+        MessageAction(
+            feature="text_push", id="daily", messages=["text"], time="08:30"
+        ).time
         == "08:30:00"
     )
     assert (
-        MessageScheduledAction(id="precise", messages=["text"], time="08:30:45").time
+        MessageAction(
+            feature="text_push", id="precise", messages=["text"], time="08:30:45"
+        ).time
         == "08:30:45"
     )

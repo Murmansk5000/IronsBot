@@ -88,12 +88,15 @@ from ironsbot.services.portable_seer_commands import build_portable_seer_operati
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
 )
-from ironsbot.services.seer.query_commands import is_query_input_syntax
+from ironsbot.services.seer.query_commands import (
+    is_query_input_syntax,
+    is_retired_autocard_input,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from ironsbot.config.models.messaging import MessageReplyAction
+    from ironsbot.config.models.messaging import MessageAction
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.inbound_claims import InboundMessageClaims
@@ -294,7 +297,7 @@ class PortableCommandRouter:
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
-        if self.is_blocked(context):
+        if self.is_blocked(context) or is_retired_autocard_input(context.text):
             return None
         raw_command = context.text
         command = _command_text(context.text)
@@ -469,9 +472,7 @@ class PortableCommandRouter:
             message.conversation,
         )
 
-    def _keyword_action(
-        self, context: MessageInputContext
-    ) -> MessageReplyAction | None:
+    def _keyword_action(self, context: MessageInputContext) -> MessageAction | None:
         if self._messaging is None or not context.text.strip():
             return None
         message = context.message
@@ -563,7 +564,9 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             player_id_resolver,
             sessions,
             player_operations["seer.player.query"],
-            features, player_shortcut=player_operations["seer.player.default"]),
+            features,
+            player_shortcut=player_operations["seer.player.default"],
+        ),
     )
     rank_admin_operations = _catalog_operation_family(
         catalog,

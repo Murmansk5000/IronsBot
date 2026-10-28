@@ -685,26 +685,16 @@ class Settings(BaseModel):
             self.seer.team_resource.default_at_users,
             location="seer.team_resource.default_at_users",
         )
-        for index, action in enumerate(self.messaging.commands):
+        for index, action in enumerate(self.messaging.messages):
             references.resolve_users(
                 action.at_user_ids,
-                location=f"messaging.commands[{index}].at_user_ids",
-            )
-        for index, action in enumerate(self.messaging.keyword_replies):
-            references.resolve_users(
-                action.at_user_ids,
-                location=f"messaging.keyword_replies[{index}].at_user_ids",
-            )
-        self._validate_mention_reply_references(platform_references)
-        for index, action in enumerate(self.messaging.schedules):
-            references.resolve_users(
-                action.at_user_ids,
-                location=f"messaging.schedules[{index}].at_user_ids",
+                location=f"messaging.messages[{index}].at_user_ids",
             )
             references.resolve_groups(
                 action.target_groups,
-                location=f"messaging.schedules[{index}].target_groups",
+                location=f"messaging.messages[{index}].target_groups",
             )
+        self._validate_mention_reply_references(platform_references)
 
     def _validate_mention_reply_references(
         self,

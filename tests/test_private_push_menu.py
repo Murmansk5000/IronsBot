@@ -4,7 +4,7 @@ from ironsbot.config.message_schedule_targets import (
     build_message_schedule_targets,
 )
 from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.config.models.messaging import MessageConfig, MessageScheduledAction
+from ironsbot.config.models.messaging import MessageAction, MessageConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -62,8 +62,10 @@ def test_private_td_time_and_preferences_follow_selected_bot(tmp_path: Path) -> 
         frozenset(),
     )
     config = MessageConfig(
-        schedules=[
-            MessageScheduledAction(id="daily", messages=["reminder"], time="12:00")
+        messages=[
+            MessageAction(
+                feature="text_push", id="daily", messages=["reminder"], time="12:00"
+            )
         ]
     )
     runtime = build_test_runtime()
