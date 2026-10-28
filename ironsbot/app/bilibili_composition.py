@@ -28,10 +28,9 @@ from ironsbot.integrations.storage.bilibili_history import (
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
-from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.content import DynamicContentCompactor
-from ironsbot.services.bilibili.delivery_recovery import BiliStartupRecovery
+from ironsbot.services.bilibili.delivery_recovery import BiliDeliveryRecovery
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.login_notice import send_bili_login_notice
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
@@ -153,7 +152,6 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
     proactive_delivery: ProactiveMessageDelivery,
     ai_service: AiService,
     config: BiliConfig,
-    cache_paths: CachePaths | None = None,
 ) -> BilibiliMonitorService:
     """Assemble monitoring with platform-neutral notice and push delivery."""
     notice_sender = partial(send_bili_login_notice, admin_notices)
@@ -172,6 +170,7 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         delivery=proactive_delivery,
         subscriptions=subscriptions,
         content_compactor=compactor,
+        stage_eligible=service.targets.stage_eligible,
         history=service.history,
         can_query_history=service.targets.can_conversation_query_history,
         admin_notices=admin_notices,
@@ -183,8 +182,7 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         combine_images=config.push.combine_images,
         ledger=SqliteDynamicDeliveryLedger(
             Path(config.storage.data_dir) / "delivery_stages.sqlite",
-            media_root=(cache_paths or CachePaths(Path("cache"))).assets_dir()
-            / "bilibili",
+            media_root=Path(config.storage.data_dir) / "delivery_media",
         ),
         category_labels=lambda uid, keys: tuple(
             definition.label
@@ -199,5 +197,5 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         service,
         auth_invalid,
         push_delivery.send,
-        startup_recovery=BiliStartupRecovery(push_delivery, service.targets),
+        delivery_recovery=BiliDeliveryRecovery(push_delivery, service.targets),
     )

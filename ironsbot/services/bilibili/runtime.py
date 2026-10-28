@@ -35,7 +35,7 @@ class BilibiliMonitorService:
     _on_auth_invalid: AuthInvalidHandler
     _send_push: DynamicPushSender
     check_second: int | None = None
-    startup_recovery: Callable[[str], Awaitable[None]] | None = None
+    delivery_recovery: Callable[[str], Awaitable[None]] | None = None
 
     async def notify_auth_invalid(self, reason: str) -> None:
         await self._on_auth_invalid(reason)
@@ -95,6 +95,6 @@ class BilibiliMonitorService:
     async def check_on_connect(self, bot_id: str) -> None:
         logger.info("Bilibili monitor saw bot connected: %s", bot_id)
         await asyncio.sleep(2)
-        if self.startup_recovery is not None:
-            await self.startup_recovery(bot_id)
+        if self.delivery_recovery is not None:
+            await self.delivery_recovery(bot_id)
         await self.check(is_startup_check=True)

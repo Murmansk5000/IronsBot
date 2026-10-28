@@ -5,27 +5,36 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ironsbot.core.outbound import DeliveryFailureKind
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.tasks import run_owned_blocking
 from ironsbot.services.bilibili.target_models import BiliPushTargets
 
 _LOGGER = logging.getLogger(__name__)
+MEDIA_CLEANUP_INTERVAL_SECONDS = 3600
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ConversationRef
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.services.bilibili.outbound_delivery import (
         BilibiliDynamicOutboundSender,
     )
     from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.messaging.delivery_tasks import DeliveryTaskStore
 
 
 @dataclass(slots=True)
-class BiliStartupRecovery:
+class BiliDeliveryRecovery:
     sender: BilibiliDynamicOutboundSender
     targets: BiliTargetService
-    _connections: set[str] = field(default_factory=set)
+    notify: Callable[[str, str], Awaitable[None]] | None = None
+    accounts: DeliveryTaskStore | None = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _last_media_cleanup: float | None = None
 
     def __post_init__(self) -> None:
         # Recover before any connection or polling task can start new sends.
@@ -33,12 +42,15 @@ class BiliStartupRecovery:
             self.sender.ledger.recover()
 
     async def __call__(self, connection_key: str = "startup") -> None:
+        _LOGGER.debug("Bilibili recovery triggered: source=%s", connection_key)
         async with self._lock:
-            if connection_key in self._connections or self.sender.ledger is None:
+            if self.sender.ledger is None:
                 return
             ledger = self.sender.ledger
-            self._connections.add(connection_key)
+            await self._cleanup_media()
             for entry in ledger.pending():
+                dynamic_id = str(entry["item"].get("id_str", ""))
+                before = ledger.state_counts(dynamic_id)
                 categories = tuple(entry["categories"])
                 current = self.targets.push_targets_for_dynamic(
                     entry["uid"], categories=categories
@@ -48,15 +60,58 @@ class BiliStartupRecovery:
                     for values in entry["targets"].values()
                     for value in values
                 }
+                original_links = {
+                    (value["platform"], value["kind"], value["id"], value["account_id"])
+                    for name in (
+                        "link_group_conversations",
+                        "link_private_conversations",
+                    )
+                    for value in entry["targets"][name]
+                }
+                current_full = {
+                    *current.full_group_conversations,
+                    *current.full_private_conversations,
+                }
+                current_all = current_full | {
+                    *current.link_group_conversations,
+                    *current.link_private_conversations,
+                }
+                for platform, kind, ident, account in allowed:
+                    target = ConversationRef(
+                        Platform(platform), kind, ident, account_id=account
+                    )
+                    for stage in ("link", "text", "image"):
+                        if target not in (
+                            current_all if stage == "link" else current_full
+                        ):
+                            ledger.skip_stage(dynamic_id, target, stage)
 
                 def retained(
                     name: str,
                     current: BiliPushTargets = current,
                     allowed: set[tuple[str, str, str, str | None]] = allowed,
+                    original_links: set[
+                        tuple[str, str, str, str | None]
+                    ] = original_links,
                 ) -> list[ConversationRef]:
+                    candidates = list(getattr(current, name))
+                    if name.startswith("link_"):
+                        candidates.extend(
+                            target
+                            for target in getattr(
+                                current, name.replace("link_", "full_")
+                            )
+                            if (
+                                target.platform.value,
+                                target.kind,
+                                target.id,
+                                target.account_id,
+                            )
+                            in original_links
+                        )
                     return [
                         target
-                        for target in getattr(current, name)
+                        for target in candidates
                         if (
                             target.platform.value,
                             target.kind,
@@ -64,6 +119,19 @@ class BiliStartupRecovery:
                             target.account_id,
                         )
                         in allowed
+                        and (
+                            name.startswith("link_")
+                            or (
+                                target.platform.value,
+                                target.kind,
+                                target.id,
+                                target.account_id,
+                            )
+                            not in original_links
+                        )
+                        and (
+                            self.accounts is None or self.accounts.account_ready(target)
+                        )
                     ]
 
                 selected = BiliPushTargets(
@@ -73,6 +141,10 @@ class BiliStartupRecovery:
                     link_private_conversations=retained("link_private_conversations"),
                 )
                 try:
+                    if not selected.has_targets:
+                        ledger.skip_remaining(dynamic_id)
+                        await self._report(dynamic_id, before)
+                        continue
                     await self.sender.send(
                         entry["item"],
                         entry["pub_ts"],
@@ -81,8 +153,94 @@ class BiliStartupRecovery:
                         categories,
                         resume=True,
                     )
+                    self._backoff(dynamic_id, selected)
+                    await self._report(dynamic_id, before)
                 except Exception:
                     _LOGGER.exception(
-                        "Bilibili startup recovery failed: dynamic=%s",
+                        "Bilibili recovery failed: dynamic=%s",
                         entry["item"].get("id_str"),
                     )
+
+    async def _cleanup_media(self) -> None:
+        now = time.monotonic()
+        if (
+            self._last_media_cleanup is not None
+            and now - self._last_media_cleanup < MEDIA_CLEANUP_INTERVAL_SECONDS
+        ):
+            return
+        self._last_media_cleanup = now
+        assert self.sender.ledger is not None
+        try:
+            async with asyncio.TaskGroup() as tasks:
+                result = await run_owned_blocking(
+                    self.sender.ledger.cleanup_media,
+                    spawn=tasks.create_task,
+                    name="bilibili.media.cleanup",
+                )
+            if result.deleted_files or result.errors:
+                log = _LOGGER.warning if result.errors else _LOGGER.info
+                log(
+                    "Bilibili media cleanup: deleted=%d bytes=%d "
+                    "retained=%d errors=%d reason=%s",
+                    result.deleted_files,
+                    result.deleted_bytes,
+                    result.retained_entries,
+                    result.errors,
+                    result.reason,
+                )
+        except Exception as error:  # noqa: BLE001 - maintenance cannot stop delivery
+            _LOGGER.warning(
+                "Bilibili media cleanup deferred: exception=%s", type(error).__name__
+            )
+
+    def _backoff(self, dynamic_id: str, selected: BiliPushTargets) -> None:
+        if self.accounts is None or self.sender.ledger is None:
+            return
+        targets = {
+            *selected.full_group_conversations,
+            *selected.link_group_conversations,
+            *selected.full_private_conversations,
+            *selected.link_private_conversations,
+        }
+        failed_accounts: set[tuple[str, str | None]] = set()
+        for target, _stage, result in self.sender.ledger.failures(dynamic_id):
+            account = (target.platform.value, target.account_id)
+            if (
+                target in targets
+                and account not in failed_accounts
+                and result.failure_kind
+                in {
+                    DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
+                    DeliveryFailureKind.RETRYABLE,
+                }
+            ):
+                self.accounts.account_failed(target)
+                failed_accounts.add(account)
+
+    async def _report(self, dynamic_id: str, before: dict[str, int]) -> None:
+        ledger = self.sender.ledger
+        if ledger is None or self.notify is None:
+            return
+        counts = ledger.state_counts(dynamic_id)
+        unresolved = any(
+            counts.get(key, 0) for key in ("waiting", "retry", "failed", "uncertain")
+        )
+        if not (unresolved or before.get("waiting", 0) or before.get("retry", 0)):
+            return
+        if ledger.claim_recovery_report(dynamic_id, counts):
+            labels = {
+                "waiting": "等待恢复",
+                "retry": "正在重试",
+                "failed": "永久失败或预算耗尽",
+                "uncertain": "结果不确定，待确认",
+                "success": "已送达",
+            }
+            await self.notify(
+                dynamic_id,
+                f"B站推送恢复状态\n动态ID：{dynamic_id}\n"
+                + "\n".join(
+                    f"{label}：{counts[key]}"
+                    for key, label in labels.items()
+                    if counts.get(key)
+                ),
+            )

@@ -174,12 +174,14 @@ assert state.resources.onebot_messenger._router.connections is (
 assert 'nonebot_plugin_apscheduler' not in sys.modules
 assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
     "fontconfig",
+    "push_tasks_recover",
     "identity_links",
     "data_sync",
     "qq_official",
     "onebot_transport",
 ]
 from ironsbot.core.platform import Platform
+assert state.lifecycle.startup_hooks[-1][0] == "push_recovery"
 assert state.lifecycle.first_connection_platforms == frozenset({Platform.QQ_OFFICIAL})
 assert state.resources.qq_official._connection_observer is state.lifecycle
 assert state.resources.qq_official._spawn_connection_event == state.task_owner.create
@@ -262,7 +264,9 @@ enabled = {str(onebot).lower()}
 app_id = "10001"
 """
     config_path.write_text(config, encoding="utf-8")
-    script = NO_FRAMEWORK + """
+    script = (
+        NO_FRAMEWORK
+        + """
 import socket
 from loguru import logger
 logger.remove()
@@ -287,6 +291,7 @@ assert ("qq_official" in names) == official
 assert not any(name.startswith("nonebot.") for name in sys.modules)
 print("MODE_OK")
 """
+    )
     environment = {
         key: value
         for key, value in os.environ.items()

@@ -18,6 +18,34 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+async def prepare_dynamic_image_message(
+    item: dict[str, Any],
+    collage: ImageCollageService | None,
+    *,
+    combine_images: bool = True,
+) -> OutboundMessage | None:
+    original = render_dynamic_image_message(item)
+    if original is None or collage is None or not combine_images:
+        return original
+    urls = tuple(
+        part.url for part in original.parts if isinstance(part, RemoteImagePart)
+    )
+    if len(urls) <= 1:
+        return original
+    prepared = await collage.prepare_urls(urls)
+    parts = tuple(
+        RemoteImagePart(image.url)
+        if image.url is not None
+        else BinaryImagePart(
+            image.content or b"",
+            image.content_type,
+            image.filename,
+        )
+        for image in prepared
+    )
+    return OutboundMessage(parts) if parts else None
+
+
 async def iter_dynamic_image_messages(
     item: dict[str, Any],
     collage: ImageCollageService | None,
