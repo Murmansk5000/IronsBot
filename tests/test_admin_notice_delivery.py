@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ironsbot.config.models.features import (
@@ -13,6 +15,9 @@ from ironsbot.services.messaging.admin_notice import (
     AdminNoticeSendSummary,
     AdminNoticeService,
 )
+
+if TYPE_CHECKING:
+    from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 
 
 class FakeAdminNoticeSender:
@@ -28,7 +33,9 @@ class FakeAdminNoticeSender:
         subscription_key: str,
         action_name: str,
         interval_seconds: float,
+        intent: DeliveryIntent | None = None,
     ) -> AdminNoticeSendSummary:
+        del intent
         self.calls.append(
             {
                 "message": message,

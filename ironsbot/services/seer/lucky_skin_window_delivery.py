@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from ironsbot.core.message_input import MessageInputContext
@@ -19,6 +20,10 @@ from ironsbot.core.platform import (
     Platform,
     private_conversation_for_actor,
     reference_digest,
+)
+from ironsbot.core.time import TZ_CN
+from ironsbot.services.messaging.delivery_tasks import (
+    DeliveryIntent,
 )
 from ironsbot.services.seer.lucky_skin_window import LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY
 
@@ -139,6 +144,23 @@ class LuckySkinWindowOutboundSender:
                 interval_seconds=0,
                 subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
                 max_attempts=1,
+                intent=DeliveryIntent(
+                    f"{key}:{day}",
+                    (
+                        datetime.fromisoformat(day).replace(tzinfo=TZ_CN)
+                        + timedelta(days=1)
+                    ).timestamp(),
+                    feature="lucky_skin_window",
+                    source_id=actor.id,
+                    source_platform=actor.platform.value,
+                    source_account=actor.account_id,
+                    skin_choices=tuple(
+                        (offer.skin_id, offer.resource_id, offer.name)
+                        for offer in message.offers
+                    )
+                    if not isinstance(message, str)
+                    else (),
+                ),
             )
             receipt = dict(summary.results).get(conversation)
             if receipt is not None and receipt.delivered:

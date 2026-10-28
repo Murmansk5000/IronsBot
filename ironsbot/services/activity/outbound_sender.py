@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import private_conversation_for_actor
+from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 
 if TYPE_CHECKING:
     from ironsbot.services.activity.delivery import ActivityReminderDelivery
@@ -36,5 +37,12 @@ class ActivityReminderOutboundSender:
             interval_seconds=0,
             subscription_key="seer_activity_push",
             include_promotions=True,
+            intent=DeliveryIntent(
+                reminder.business_id,
+                reminder.expires_at,
+                feature="seer_activity_push",
+            )
+            if reminder.expires_at is not None
+            else None,
         )
         return bool(summary.succeeded)

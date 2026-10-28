@@ -21,6 +21,7 @@ from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.integrations.storage.bilibili_delivery_ledger import (
     SqliteDynamicDeliveryLedger,
 )
+from ironsbot.integrations.storage.proactive_tasks import SqliteProactiveTasks
 from ironsbot.integrations.storage.sqlite import SqliteDatabase
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
 from ironsbot.services.bilibili.target_models import BiliPushTargets
@@ -65,8 +66,9 @@ class _SelectiveApi(_FakeApi):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["retryable", "uncertain"])
+@pytest.mark.parametrize("durable", [False, True])
 async def test_shared_upload_keeps_per_group_receipts_retries_and_restart_dedup(
-    tmp_path: Path, failure: Literal["retryable", "uncertain"]
+    tmp_path: Path, failure: Literal["retryable", "uncertain"], *, durable: bool
 ) -> None:
     first, second = _FakeUploader(), _FakeUploader()
     owner = TaskOwner()
@@ -84,6 +86,10 @@ async def test_shared_upload_keeps_per_group_receipts_retries_and_restart_dedup(
     messenger = QQOfficialOutboundMessenger({"app-a": True, "app-b": True}, clients.get)
     delivery, _, subscriptions = _delivery()
     delivery = replace(delivery, messenger=messenger)
+    if durable:
+        delivery = replace(
+            delivery, outbox=SqliteProactiveTasks(tmp_path / "outbox.sqlite")
+        )
     targets = [
         ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a", account_id="app-a"),
         ConversationRef(Platform.QQ_OFFICIAL, "group", "group-b", account_id="app-a"),
