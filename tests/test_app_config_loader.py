@@ -18,10 +18,9 @@ from ironsbot.config.models.features import build_feature_service
 from ironsbot.config.models.messaging import (
     CommandCooldownConfig,
     CommandCooldownWindowConfig,
-    MessageCommandAction,
+    MessageAction,
     MessageConfig,
     MessageMentionReplyAction,
-    MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
     ProactiveDeliveryConfig,
@@ -360,14 +359,18 @@ def test_example_config_has_no_unknown_fields() -> None:
 
 
 def test_scheduled_push_requires_stable_id() -> None:
-    with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
-        MessageScheduledAction(
+    with pytest.raises(
+        ValidationError, match="command message action requires a non-empty id"
+    ):
+        MessageAction(
+            feature="text_push",
             messages=["私聊定时推送"],
             time="23:00",
         )
 
-    with pytest.raises(ValidationError, match="只能包含英文字母"):
-        MessageScheduledAction(
+    with pytest.raises(ValidationError, match="id may only contain"):
+        MessageAction(
+            feature="text_push",
             id="每日 提醒",
             messages=["私聊定时推送"],
             time="23:00",
@@ -376,7 +379,7 @@ def test_scheduled_push_requires_stable_id() -> None:
 
 def test_scheduled_push_rejects_legacy_hour_and_minute() -> None:
     with pytest.raises(ValidationError, match="hour"):
-        MessageScheduledAction.model_validate(
+        MessageAction.model_validate(
             {
                 "id": "daily",
                 "messages": ["私聊定时推送"],
@@ -387,15 +390,17 @@ def test_scheduled_push_rejects_legacy_hour_and_minute() -> None:
 
 
 def test_scheduled_push_ids_are_globally_unique() -> None:
-    with pytest.raises(ValidationError, match="定时推送 id 必须全局唯一: daily"):
+    with pytest.raises(ValidationError, match="消息 id 必须全局唯一: daily"):
         MessageConfig(
-            schedules=[
-                MessageScheduledAction(
+            messages=[
+                MessageAction(
+                    feature="text_push",
                     id="daily",
                     messages=["私聊定时推送"],
                     time="23:00",
                 ),
-                MessageScheduledAction(
+                MessageAction(
+                    feature="text_push",
                     id="daily",
                     messages=["群聊定时推送"],
                     time="23:00",
@@ -409,7 +414,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action requires a non-empty id",
     ):
-        MessageCommandAction(
+        MessageAction(
             commands=["hello"],
             messages=["world"],
         )
@@ -418,7 +423,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action id may only contain",
     ):
-        MessageCommandAction(
+        MessageAction(
             id="daily reminder",
             commands=["hello"],
             messages=["world"],
@@ -427,7 +432,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
 
 def test_message_actions_reject_removed_singular_message_field() -> None:
     with pytest.raises(ValidationError, match="message"):
-        MessageCommandAction.model_validate(
+        MessageAction.model_validate(
             {"id": "hello", "commands": ["hello"], "message": "world"}
         )
 
@@ -549,7 +554,7 @@ unknown_top_level = "value-that-must-not-be-logged"
 [seer.player]
 old_player_setting = true
 
-[[messaging.commands]]
+[[messaging.messages]]
 id = "hello"
 commands = ["hello"]
 messages = ["world"]
@@ -561,12 +566,12 @@ unknown_command_field = true
 
     config = load_settings(config_path)
 
-    assert config.messaging.commands[0].id == "hello"
+    assert config.messaging.command_actions[0].id == "hello"
     assert not hasattr(config, "unknown_top_level")
     assert "unknown_top_level" in caplog.text
     assert "value-that-must-not-be-logged" not in caplog.text
     assert "seer.player.old_player_setting" in caplog.text
-    assert "messaging.commands[0].unknown_command_field" in caplog.text
+    assert "messaging.messages[0].unknown_command_field" in caplog.text
 
 
 @pytest.mark.parametrize("with_new_route", [False, True])
@@ -682,14 +687,14 @@ def test_unified_message_actions_parse_as_toml_arrays_of_tables(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[messaging.commands]]
+[[messaging.messages]]
 id = "activity_link"
 commands = ["activity"]
 messages = ["activity link"]
-feature = "web_activity_link"
+feature = "web_activity"
 at_user_ids = [123456789]
 
-[[messaging.schedules]]
+[[messaging.messages]]
 id = "daily_reminder"
 name = "Daily reminder"
 time = "23:00"
@@ -701,10 +706,10 @@ at_user_ids = [123456789]
     )
 
     config = load_settings(config_path)
-    assert config.messaging.commands[0].id == "activity_link"
-    assert config.messaging.commands[0].at_user_ids == [123456789]
-    assert config.messaging.schedules[0].id == "daily_reminder"
-    assert config.messaging.schedules[0].at_user_ids == [123456789]
+    assert config.messaging.command_actions[0].id == "activity_link"
+    assert config.messaging.command_actions[0].at_user_ids == [123456789]
+    assert config.messaging.scheduled_actions[0].id == "daily_reminder"
+    assert config.messaging.scheduled_actions[0].at_user_ids == [123456789]
 
 
 def test_keyword_reply_actions_parse_and_register_features(
@@ -719,7 +724,7 @@ main = 123456789
 [features.group_policy]
 main = ["chuchu_reply"]
 
-[[messaging.keyword_replies]]
+[[messaging.messages]]
 id = "chuchu_reply"
 keywords = ["出出"]
 messages = ["出出是蛆"]
@@ -730,7 +735,7 @@ feature = "chuchu_reply"
 
     config = load_settings(config_path)
 
-    assert config.messaging.keyword_replies[0].keywords == ["出出"]
+    assert config.messaging.keyword_actions[0].keywords == ["出出"]
     assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
 
 
@@ -821,7 +826,7 @@ standard = ["seerinfo_link"]
 [features.group_policy]
 main = ["standard"]
 
-[[messaging.commands]]
+[[messaging.messages]]
 id = "seerinfo_page"
 commands = ["xm", "xrym"]
 messages = ["https://seerinfo.yuyuqaq.cn/"]
@@ -859,7 +864,7 @@ owner = 123456789
 [features.user_policy]
 owner = ["custom_reminder"]
 
-[[messaging.schedules]]
+[[messaging.messages]]
 id = "custom_reminder"
 time = "23:00"
 messages = ["remember"]
@@ -983,14 +988,14 @@ main_group = "primary"
 [bot.onebot.routing.users]
 owner = "primary"
 
-[[messaging.commands]]
+[[messaging.messages]]
 id = "custom_command"
 commands = ["custom"]
 messages = ["custom reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", "202"]
 
-[[messaging.schedules]]
+[[messaging.messages]]
 id = "custom_schedule"
 time = "12:00"
 messages = ["scheduled reply"]
@@ -1038,14 +1043,14 @@ unknown_group = ["seer"]
         ),
         (
             """
-[[messaging.commands]]
+[[messaging.messages]]
 id = "custom_command"
 commands = ["custom"]
 messages = ["custom reply"]
 feature = "text"
 at_user_ids = ["unknown_user"]
 """,
-            "messaging.commands[0].at_user_ids[0]",
+            "messaging.messages[0].at_user_ids[0]",
         ),
     ],
 )

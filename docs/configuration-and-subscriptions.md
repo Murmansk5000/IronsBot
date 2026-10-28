@@ -99,7 +99,7 @@ example = ["standard", "meeting", "team_resource_subscription"]
 [features.user_policy]
 owner = ["all", "admin_notice"]
 
-[[messaging.commands]]
+[[messaging.messages]]
 id = "seerinfo_page"
 commands = ["xm", "xrym", "雷小伊", "重聚"]
 messages = ["https://seerinfo.yuyuqaq.cn/"]
@@ -146,6 +146,9 @@ B站推送只补发明确未提交成功的内容，失败后按 2、5、10 秒�
 补发按上一轮失败会话数二分批执行，并遵守 `max_parallel_targets` 上限；
 `retry_batch_divisor` 默认为 2，可在主动推送配置中调整。
 链接、正文与每张原图、拼图或动图独立记账，成功内容不重复发送。
+自动拼图采用等高横排、等宽竖排或铺满分行，保持原始顺序、完整内容和比例，
+每行宽度一致，不为凑正方形增加大片留白；小图可以放大，大图可以缩小。
+布局优先避免某张图过度缩小，再比较实际显示面积和形状；原图自身的空白不会裁掉。
 24 小时内的安全未完成任务可在重启后恢复，次数不重置；消息提交结果不确定、
 永久错误和缺少逐图回执的旧失败记录不自动重放。
 准备好的图片存放在统一缓存目录，缓存丢失时不猜测重建发送清单。
@@ -164,8 +167,8 @@ DNS、TLS、连接/读取/写入/连接池超时分别标记，不记录签名�
 [config.example.toml](../config.example.toml)。查询权限和推送权限是分开的功能名，
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
 `all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
-游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
-声明自己的 feature 名：`[[messaging.commands]]` 和 `[[messaging.schedules]]`
+游戏外活动链接使用 `web_activity`。消息动作可以
+声明自己的 feature 名：`[[messaging.messages]]`
 中的 `feature` 会注册为原子权限，随后可在 `[features.bundles]`、
 `group_policy` 和 `user_policy` 中引用，不需要修改 Python 枚举。动作的 `id`
 只负责唯一标识动作，不会自动成为权限名。未被内置功能或消息动作声明的权限仍会
@@ -246,13 +249,51 @@ thinking = false
 
 ## 会议、图片与定时消息
 
+### 统一消息与文本拼接
+
+一项消息只定义一次内容和权限，`commands`、`keywords`、`time` 至少配置一种；
+同时填写即同时启用相应触发方式。固定口令优先，多个关键词命中只回复一次。
+`feature` 默认是 `text`；建议显式填写业务权限名，所有触发共用该权限。
+
+```toml
+[messaging.variables]
+seerinfo_domain = "https://seerinfo.yuyuqaq.cn"
+activity_text = "今天的活动与签到提醒。"
+activity_message = "${activity_text}\n${seerinfo_domain}/"
+
+[[messaging.messages]]
+id = "web_activity"
+name = "网页活动提醒"
+feature = "web_activity"
+commands = ["活动", "签到"]
+time = "23:00:00"
+subscription_id = "web_activity_push"
+messages = ["${activity_message}"]
+```
+
+活动、签到和定时提醒统一授予 `web_activity`；旧 `web_activity_link`、
+`web_activity_push` 权限已删除。上例的 `subscription_id` 只是原订阅标识，
+用于延续 TD 和推送时间记录；不填写则使用消息 ID。TD 退订只关闭主动投递，不关闭查询。
+
+变量名使用英文字母、数字和下划线，不以数字开头；变量值必须是字符串。
+`${变量名}` 支持递归拼接，只替换消息文本，不替换 ID、权限或触发词。
+未知变量、循环引用、展开后的空消息均报错；不执行表达式、不读取环境变量。
+消息数组的每项仍单独发送，不自动添加换行；私有定时渲染器在变量展开后执行。
+
+旧 `messaging.commands`、`messaging.keyword_replies`、`messaging.schedules`
+不再读取，也不自动转换；加载时告警并忽略，不影响其他有效配置启动。
+须手动迁入 `messaging.messages` 才会恢复对应回复与定时任务。
+迁移时保留原订阅标识，并在用户、群和组合权限中同步修改活动权限。
+定时专用的 `target_groups`、`day_of_week`、`subscription_id`、`renderer`、
+`renderer_parameters`、`unresolved_mentions`、`mention_fallback_name` 必须配合 `time`。
+
 ```toml
 [messaging.meeting]
 number = "1234567890"
 commands = ["开播", "会议"]
 template = "会议号：{meeting_number}\n{meeting_url}"
 
-[[messaging.schedules]]
+[[messaging.messages]]
 id = "daily-example"
 name = "每日提醒"
 feature = "daily_example"
@@ -274,7 +315,7 @@ messages = ["今天的提醒内容。"]
 ## 关键词与订阅菜单
 
 ```toml
-[[messaging.keyword_replies]]
+[[messaging.messages]]
 id = "example-winrate"
 keywords = ["竞技胜率", "竞技胜率榜"]
 match_mode = "contains"
@@ -298,7 +339,3 @@ messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/sports/monster"]
 
 [返回 README](../README.md) · [玩家查询](player-query-guide.md) ·
 [平台接入细节](qq-platform-guide.md) · [运维](operations-guide.md)
-
-自动拼图采用等高横排、等宽竖排或铺满分行，保持原始顺序、完整内容和比例，
-每行宽度一致，不为凑正方形增加大片留白；小图可以放大，大图可以缩小。
-布局优先避免某张图过度缩小，再比较实际显示面积和形状；原图自身的空白不会裁掉。

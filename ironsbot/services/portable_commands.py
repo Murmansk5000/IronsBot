@@ -93,7 +93,7 @@ from ironsbot.services.seer.query_commands import is_query_input_syntax
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from ironsbot.config.models.messaging import MessageReplyAction
+    from ironsbot.config.models.messaging import MessageAction
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.inbound_claims import InboundMessageClaims
@@ -471,7 +471,7 @@ class PortableCommandRouter:
 
     def _keyword_action(
         self, context: MessageInputContext
-    ) -> MessageReplyAction | None:
+    ) -> MessageAction | None:
         if self._messaging is None or not context.text.strip():
             return None
         message = context.message

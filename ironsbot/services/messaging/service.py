@@ -21,6 +21,7 @@ from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
     push_subscription_command_texts,
+    schedule_key,
 )
 from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
@@ -33,9 +34,9 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
+        MessageAction,
         MessageConfig,
         MessageMentionReplyAction,
-        MessageReplyAction,
     )
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
@@ -112,10 +113,12 @@ class MessagingService:
         return self._features
 
     @property
-    def portable_command_actions(self) -> tuple[MessageReplyAction, ...]:
+    def portable_command_actions(self) -> tuple[MessageAction, ...]:
         """Return enabled commands for both platform adapters."""
 
-        return tuple(action for action in self._config.commands if action.enabled)
+        return tuple(
+            action for action in self._config.command_actions if action.enabled
+        )
 
     def command_mentions(self, action_id: str) -> tuple[ActorRef, ...]:
         return self._command_mentions.get(action_id, ())
@@ -139,8 +142,8 @@ class MessagingService:
         actor: ActorRef,
         conversation: ConversationRef,
         interaction: ReplyInteraction,
-    ) -> MessageReplyAction | None:
-        def is_allowed(action: MessageReplyAction) -> bool:
+    ) -> MessageAction | None:
+        def is_allowed(action: MessageAction) -> bool:
             return self._features.is_feature_allowed(
                 actor,
                 conversation,
@@ -149,7 +152,7 @@ class MessagingService:
 
         command = find_command_action(
             text,
-            self._config.commands,
+            self._config.command_actions,
             is_allowed=is_allowed,
         )
         if interaction == "direct":
@@ -158,7 +161,7 @@ class MessagingService:
             return None
         return find_keyword_reply_action(
             text,
-            self._config.keyword_replies,
+            self._config.keyword_actions,
             is_allowed=is_allowed,
         )
 
@@ -459,7 +462,7 @@ class MessagingService:
     ) -> list[PushSubscriptionOption]:
         from .schedules import eligible_group_schedule_conversations
 
-        tasks = self._config.schedules
+        tasks = self._config.scheduled_actions
         features = {task.feature for task in tasks if task.enabled}
         options = build_schedule_subscription_options(
             conversation=conversation,
@@ -471,7 +474,7 @@ class MessagingService:
             store=self._store,
         )
         restricted_keys = {
-            task.id
+            schedule_key(index, task)
             for index, task in enumerate(tasks, start=1)
             if task.target_groups
             and conversation

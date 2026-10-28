@@ -162,7 +162,7 @@ async def test_public_route_and_ai_obey_literal_command_ownership(
 def _normalized_contracts() -> tuple[CommandContract, ...]:
     config = MessageConfig.model_validate(
         {
-            "commands": [
+            "messages": [
                 {
                     "id": "example",
                     "commands": ["Hello World"],
@@ -205,7 +205,7 @@ def test_explicit_normalization_keeps_existing_domain_language(
     if id_ == "messaging.example":
         config = MessageConfig.model_validate(
             {
-                "commands": [
+                "messages": [
                     {
                         "id": "example",
                         "commands": [name],
@@ -216,7 +216,9 @@ def test_explicit_normalization_keeps_existing_domain_language(
             }
         )
         assert (
-            find_command_action(text, config.commands, is_allowed=lambda _feature: True)
+            find_command_action(
+                text, config.command_actions, is_allowed=lambda _feature: True
+            )
             is not None
         )
 

@@ -40,7 +40,7 @@ def references() -> PlatformReferenceResolver:
 
 
 @pytest.mark.parametrize(
-    "missing", ["retired_link_example", "retired_push_example", "uninstalled_feature"]
+    "missing", ["web_activity_link", "web_activity_push", "uninstalled_feature"]
 )
 def test_bundle_skips_only_unregistered_entries_on_both_platforms(
     missing: str, caplog: pytest.LogCaptureFixture
@@ -131,6 +131,7 @@ def test_ignored_permissions_do_not_disable_explicit_blacklist() -> None:
     )
     for group, actor in zip(GROUPS, USERS, strict=True):
         assert features.conversation_has_feature(group, "blacklist")
+        assert not features.is_feature_allowed(actor, group, "help")
         assert features.actor_has_feature(actor, "admin_notice")
 
 
@@ -158,7 +159,7 @@ def test_config_cli_accepts_retired_features_without_restoring_old_permissions(
         f"""[bot]
 driver = "retired"
 [features.bundles]
-standard = ["seer_player", "retired_link_example", "retired_push_example"]
+standard = ["seer_player", "web_activity_link", "web_activity_push"]
 [features.group_policy]
 "{GROUP_ID}" = ["standard", "not_available"]
 """,

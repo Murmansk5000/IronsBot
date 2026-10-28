@@ -2393,7 +2393,7 @@ QQ 官方活动查询随后接入同一便携执行注册表。`快结束活动`
 `seer_activity_query`。
 
 配置型被动消息随后复用同一便携执行注册表。无 OneBot `at_user_ids` 的
-`messaging.commands` 直接返回配置文本；`messaging.sendpic.configs` 继续通过共享
+`messaging.messages` 的指令触发直接返回配置文本；`messaging.sendpic.configs` 继续通过共享
 `SendpicService` 读取 local/CNB 后端并产生 `BinaryImagePart`，QQ 适配器只负责上传。
 命令目录与执行表按同一命令 ID 求交，所以未启用 feature、未配置以及依赖数字 QQ 提及
 的动作不会出现在官方帮助或被官方路由认领。图片未复制进代码或镜像，也没有新增依赖、

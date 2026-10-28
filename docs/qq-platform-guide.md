@@ -19,7 +19,7 @@ AppID 和 Secret 环境变量，QQ 官方就会自动成为唯一出站平台；
 同一个 AI 服务；已注册查询始终优先。没有为任一 `[ai.providers.<别名>]`
 配置对应的 `AI_KEY_<大写别名>` 时，不会开放 AI 聊天入口。提供商按
 `ai.provider_order` 切换，每个提供商内部再按 `models` 顺序切换模型。
-`[[messaging.commands]]` 中的文本口令，以及
+`[[messaging.messages]]` 中的文本口令，以及
 `[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把文本口令的
 `feature` 或图片功能 `image` 加入相应群／用户策略。本地图片继续从挂载目录
 读取，远程图片继续使用已配置后端，不会复制进机器人镜像。带数字 QQ 提醒对象的文本

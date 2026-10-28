@@ -25,7 +25,7 @@ def help_visible(
     features: FeatureService,
     config: MessageConfig,
 ) -> bool:
-    actions = [*config.commands, *config.keyword_replies, *config.schedules]
+    actions = config.messages
     return feature_help_visible(
         context, features=features, feature="push_topics"
     ) or any(
@@ -55,8 +55,7 @@ def plugin_contribution(
             {
                 Feature.TEXT,
                 Feature.TEXT_PUSH,
-                Feature.WEB_ACTIVITY_LINK,
-                Feature.WEB_ACTIVITY_PUSH,
+                Feature.WEB_ACTIVITY,
                 Feature.SEERINFO,
                 Feature.PUSH_TOPICS,
             }

@@ -43,7 +43,7 @@ def messaging_command_contracts(
             features_any=(action.feature,),
             show_in_poke=True,
         )
-        for action in config.commands
+        for action in config.command_actions
         if action.enabled
     )
     keyword_replies = tuple(
@@ -61,7 +61,7 @@ def messaging_command_contracts(
             features_any=(action.feature,),
             interaction="automatic",
         )
-        for action in config.keyword_replies
+        for action in config.keyword_actions
         if action.enabled
     )
     schedules = tuple(
@@ -80,7 +80,7 @@ def messaging_command_contracts(
             features_any=(action.feature,),
             interaction="automatic",
         )
-        for action in config.schedules
+        for action in config.scheduled_actions
         if action.enabled
     )
     return (

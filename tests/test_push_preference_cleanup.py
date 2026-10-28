@@ -9,8 +9,8 @@ from ironsbot.config.message_schedule_targets import (
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import (
+    MessageAction,
     MessageConfig,
-    MessageScheduledAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.core.platform import ConversationRef, Platform
@@ -69,8 +69,9 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
     )
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(),
-        schedules=[
-            MessageScheduledAction(
+        messages=[
+            MessageAction(
+                feature="text_push",
                 id="daily",
                 messages=["每日提醒"],
                 time="23:00",

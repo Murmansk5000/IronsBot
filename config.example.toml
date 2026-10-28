@@ -27,7 +27,7 @@
 #   群订阅由群主/管理员管理；TD 可切换已有订阅，无需新增环境变量。
 # - image：图片发送；meeting：会议回复。
 # - bili_query / bili_push：B 站动态查询 / 推送。
-# - web_activity_link / web_activity_push：游戏外签到链接查询 / 定时提醒。
+# - web_activity：游戏外签到链接查询 / 定时提醒。
 # - seer_activity_query / seer_activity_push：游戏内活动结束提醒查询 / 推送。
 # - server_status_query：开服状态查询。
 # - ai_chat / ai_intent：AI聊天 / AI意图分析。
@@ -279,7 +279,7 @@ superuser_bypass = true
 # `all` appends custom atomic feature names to the built-in all bundle, which
 # declares those extension feature names for target policies.
 # ZH: 可复用功能组合。值可引用单项功能、内置组合或其他自定义组合；
-# `messaging.commands` / `messaging.schedules` 声明的 feature 也可在这里引用。
+# `messaging.messages` 声明的 feature 也可在这里引用。
 # `all` 可追加自定义原子 feature，并同时声明它们可用于目标策略。
 # 普通组合及目标策略中的未注册功能项只告警并忽略，不授予权限或自动替换为其他功能。
 # 名称不能覆盖已有 feature；admin_notice 和 blacklist 必须在目标策略中显式授予。
@@ -289,8 +289,7 @@ standard = [
     "lucky_skin_window",
     "player_lineup_private",
     "image",
-    "web_activity_link",
-    "web_activity_push",
+    "web_activity",
     "seerinfo",
     "bili_query",
     "bili_push",
@@ -334,7 +333,7 @@ lite = [
 # 如果某个群不想开放精灵/刻印这类宽泛匹配功能，就不要写 seer，
 # 改写 seer_player、seer_rank、seer_autocard 等精细子功能。
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
-# 游戏外活动链接使用 web_activity_link / web_activity_push。
+# 游戏外活动链接使用 web_activity。
 # fire_manual_ad 控制主动推送末尾的火火手册链接。
 # ai_intent_fire_manual 控制“手册”AI 意图识别。
 # ai_intent_team_recommend 控制“想加战队”AI 战队推荐动作。
@@ -736,41 +735,63 @@ patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
 # that key may then be referenced by features.bundles/group_policy/user_policy.
 # `id` 唯一标识这条动作；`feature` 同时声明它的权限名，随后可在
 # features.bundles/group_policy/user_policy 中引用，不需要修改 Python 代码。
-# Add each action with `[[messaging.commands]]`; omit this table when no action is needed.
+# 配置统一使用 [[messaging.messages]]；commands、keywords、time 至少配置一种。
+# 同时配置多种触发时共用 messages 和 feature。所有消息 id 必须唯一。
+# feature 默认是 text；建议为业务消息显式填写权限名。
+# 旧 messaging.commands / keyword_replies / schedules 只告警并忽略，不自动转换。
+# 文本变量仅在配置加载时展开，不读取环境变量、不执行表达式。
+# 未知变量、循环引用、展开后空消息会报配置错误。
 #
-# [[messaging.commands]]
+# [messaging.variables]
+# seerinfo_domain = "https://seerinfo.yuyuqaq.cn"
+# activity_text = "这里填写活动与签到正文"
+#
+# [[messaging.messages]]
+# id = "web_activity"
+# name = "网页活动提醒"
+# commands = ["活动", "签到"]
+# time = "23:00:00"
+# subscription_id = "web_activity_push" # 保留原 TD 和推送时间记录，不是权限名
+# feature = "web_activity"
+# messages = ["${activity_text}"]
+# target_groups = ["example"] # 可选；指定后只向这些群定时投递
+#
+# 仅 commands：指令回复；仅 keywords：关键词回复；仅 time：定时提醒。
+# match_mode 仅用于 keywords；time 缺失时不能配置定时专用字段。
+#
+# [[messaging.messages]]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
-# messages = ["https://seerinfo.yuyuqaq.cn/"]
+# messages = ["${seerinfo_domain}/"]
 # feature = "seerinfo"
 
 # 四模式胜率网页关键词回复：显式包含匹配，沿用 seerinfo 权限；按需复制启用。
-# [[messaging.keyword_replies]]
+# [[messaging.messages]]
 # id = "peak_standard_win_rate_page"
 # keywords = ["竞技胜率榜", "竞技精灵胜率榜"]
 # match_mode = "contains"
-# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/sports/monster"]
+# messages = ["${seerinfo_domain}/peak/pvprank/sports/monster"]
 # feature = "seerinfo"
 #
-# [[messaging.keyword_replies]]
+# [[messaging.messages]]
 # id = "peak_wild_win_rate_page"
 # keywords = ["狂野胜率榜", "狂野精灵胜率榜"]
 # match_mode = "contains"
-# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/wild/monster"]
+# messages = ["${seerinfo_domain}/peak/pvprank/wild/monster"]
 # feature = "seerinfo"
 #
-# [[messaging.keyword_replies]]
+# [[messaging.messages]]
 # id = "peak_expert_win_rate_page"
 # keywords = ["专家胜率榜", "专家精灵胜率榜"]
 # match_mode = "contains"
-# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/expert/monster"]
+# messages = ["${seerinfo_domain}/peak/pvprank/expert/monster"]
 # feature = "seerinfo"
 #
-# [[messaging.keyword_replies]]
+# [[messaging.messages]]
 # id = "peak_master_win_rate_page"
 # keywords = ["大师胜率榜", "大师精灵胜率榜"]
 # match_mode = "contains"
-# messages = ["https://seerinfo.yuyuqaq.cn/peak/pvprank/master/monster"]
+# messages = ["${seerinfo_domain}/peak/pvprank/master/monster"]
 # feature = "seerinfo"
 
 # Default: []
@@ -784,7 +805,7 @@ patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
 # 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
 # 帮助中会显示为自动回复。
 #
-# [[messaging.keyword_replies]]
+# [[messaging.messages]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
 # match_mode = "exact"
@@ -817,9 +838,8 @@ patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
 # Like command actions, a schedule's feature is registered from TOML and may
 # be referenced by bundles and target policies.
 # 与命令动作相同，定时动作的 feature 会从 TOML 注册，可被组合和目标策略引用。
-# `id` is required, must stay stable, and must be globally unique. Renaming it
-# resets TD and push-time preferences for that schedule.
-# `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
+# `subscription_id` optionally pins the persistent subscription key independently of id.
+# `id` 必填且全局唯一；subscription_id 默认使用 id。迁移时保留原订阅标识以延续 TD 和时间覆盖。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
 # Example task fields: id, name, enabled, feature, messages, time,
 # day_of_week, at_user_ids, target_groups.
@@ -830,7 +850,7 @@ patterns = ["创作", "二创", "同人", "征稿", "投稿", "作品征集"]
 # `renderer_parameters` is passed to that renderer. `unresolved_mentions =
 # "text"` permits text-only delivery if an official group member cannot be
 # resolved; otherwise the existing skip behavior applies.
-# Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
+# Add each task with `[[messaging.messages]]`; omit this table when no task is needed.
 
 [messaging.proactive_delivery]
 # Generic proactive fan-out policy shared by every push producer.

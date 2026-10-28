@@ -29,7 +29,7 @@ from ironsbot.services.portable_reply import PortableReply
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from ironsbot.config.models.messaging import MessageReplyAction
+    from ironsbot.config.models.messaging import MessageAction
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.messaging import PicConfig
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -344,7 +344,7 @@ def build_portable_sendpic_operations(
 
 
 def build_portable_text_operation(
-    action: MessageReplyAction,
+    action: MessageAction,
     configured_mentions: tuple[ActorRef, ...],
     identity_principals: IdentityPrincipalService | None,
 ) -> PortableOperation:

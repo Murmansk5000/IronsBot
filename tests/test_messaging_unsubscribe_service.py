@@ -67,7 +67,7 @@ def test_schedule_label_uses_configured_name_before_internal_id() -> None:
     task = FakeSchedule(
         id="web_activity_daily_private",
         name="周年庆签到提醒",
-        feature="web_activity_push",
+        feature="web_activity",
     )
 
     assert schedule_label(1, task) == "周年庆签到提醒（每日 23:00:00）"
@@ -76,7 +76,7 @@ def test_schedule_label_uses_configured_name_before_internal_id() -> None:
 def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
     task = FakeSchedule(
         id="web_activity_daily_private",
-        feature="web_activity_push",
+        feature="web_activity",
         messages=["周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"],
     )
 
@@ -86,7 +86,7 @@ def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
 def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> None:
     task = FakeSchedule(
         id="web_activity_daily_private",
-        feature="web_activity_push",
+        feature="web_activity",
         messages=["https://seerm.61.com/events/17years/#sign"],
     )
 

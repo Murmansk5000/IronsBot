@@ -7,8 +7,8 @@ import pytest
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
+    MessageAction,
     MessageConfig,
-    MessageKeywordReplyAction,
     MessageMentionReplyAction,
 )
 from ironsbot.core.action_categories import RequestCategory
@@ -236,8 +236,8 @@ async def test_official_unaddressed_keyword_reply_precedes_ai(
     ai = _Ai(action=ACTION)
     features = _features()
     config = MessageConfig(
-        keyword_replies=[
-            MessageKeywordReplyAction(
+        messages=[
+            MessageAction(
                 id="example-keyword",
                 keywords=["示例触发词"],
                 match_mode=cast("Any", mode),
@@ -295,8 +295,8 @@ async def test_official_win_rate_contains_reply_requires_seerinfo(
     )
     url = f"https://seerinfo.yuyuqaq.cn/peak/pvprank/{slug}/monster"
     config = MessageConfig(
-        keyword_replies=[
-            MessageKeywordReplyAction(
+        messages=[
+            MessageAction(
                 id="win-rate",
                 keywords=[f"{mode}胜率榜", f"{mode}精灵胜率榜"],
                 match_mode="contains",
