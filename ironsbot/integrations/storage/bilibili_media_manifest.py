@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, RemoteImagePart
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def encode_media(message: OutboundMessage | None, root: Path) -> str:
@@ -53,7 +56,15 @@ def decode_media(payload: str, root: Path) -> OutboundMessage | None:
         ):
             msg = "Invalid frozen media fingerprint"
             raise ValueError(msg)
-        content = (root / digest).read_bytes()
+        try:
+            content = (root / digest).read_bytes()
+        except OSError as error:
+            _LOGGER.warning(
+                "Frozen Bilibili media unavailable: sha256=%s reason=%s",
+                digest,
+                type(error).__name__,
+            )
+            raise
         if hashlib.sha256(content).hexdigest() != digest:
             msg = "Frozen media fingerprint mismatch"
             raise ValueError(msg)

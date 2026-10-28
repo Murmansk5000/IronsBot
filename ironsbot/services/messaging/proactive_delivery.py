@@ -471,16 +471,20 @@ class ProactiveMessageDelivery:
             )
         if result.delivered:
             return result
-        _LOGGER.warning(
-            "%s failed: platform=%s kind=%s ref=%s code=%s failure_kind=%s trace_id=%s",
-            action_name,
-            request.conversation.platform.value,
-            request.conversation.kind,
-            reference_digest(request.conversation.id),
-            result.error_code,
-            result.failure_kind.value if result.failure_kind is not None else None,
-            result.trace_id,
-        )
+        if result.error_code == "ledger:not-claimed" and not result.attempted:
+            _LOGGER.info("Shared delivery unit already owned; no platform request made")
+        else:
+            _LOGGER.warning(
+                "%s failed: platform=%s kind=%s ref=%s code=%s "
+                "failure_kind=%s trace_id=%s",
+                action_name,
+                request.conversation.platform.value,
+                request.conversation.kind,
+                reference_digest(request.conversation.id),
+                result.error_code,
+                result.failure_kind.value if result.failure_kind is not None else None,
+                result.trace_id,
+            )
         return result
 
 

@@ -6,24 +6,32 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import asdict
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.delivery_attempt import delivery_execution
 from ironsbot.core.outbound import DeliveryFailureKind, ExecutionIdentity, SendResult
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.storage.bilibili_delivery_lifecycle import (
+    TERMINAL_STATES,
+    predecessors,
+)
+from ironsbot.integrations.storage.bilibili_media_cleanup import cleanup_media
 from ironsbot.integrations.storage.bilibili_media_manifest import (
     decode_media,
     encode_media,
 )
-from ironsbot.integrations.storage.sqlite import SqliteDatabase
+from ironsbot.integrations.storage.bilibili_media_preparation import (
+    MediaPreparationStore,
+)
+from ironsbot.integrations.storage.frozen_message import freeze_message, thaw_message
 from ironsbot.services.bilibili.delivery_rounds import BILI_RETRY_DELAYS
 from ironsbot.services.bilibili.parser import dynamic_content, dynamic_image_urls
 
 if TYPE_CHECKING:
-    import sqlite3
-    from contextlib import AbstractContextManager
+    from pathlib import Path
 
     from ironsbot.core.outbound import OutboundMessage
+    from ironsbot.services.bilibili.delivery_ledger import MediaCleanupResult
     from ironsbot.services.bilibili.target_models import BiliPushTargets
 
 RETENTION_SECONDS = 86400
@@ -31,15 +39,11 @@ RETRY_DELAYS = BILI_RETRY_DELAYS
 MAX_ATTEMPTS = len(RETRY_DELAYS) + 1
 
 
-class SqliteDynamicDeliveryLedger:
+class SqliteDynamicDeliveryLedger(MediaPreparationStore):
     def __init__(self, path: Path, *, media_root: Path | None = None) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        from ironsbot.runtime.cache_paths import CachePaths
-
-        self.media_root = (
-            media_root or CachePaths(Path("cache")).assets_dir() / "bilibili"
-        )
+        self.media_root = media_root or path.parent / "delivery_media"
         with self._connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS deliveries (
@@ -49,11 +53,29 @@ class SqliteDynamicDeliveryLedger:
                     state TEXT NOT NULL, result TEXT,
                     PRIMARY KEY(dynamic_id, target, stage));
                 CREATE TABLE IF NOT EXISTS notifications (dynamic_id TEXT PRIMARY KEY);
+                CREATE TABLE IF NOT EXISTS recovery_reports (
+                    dynamic_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS media_manifests (
                     dynamic_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS text_manifests (
+                    dynamic_id TEXT PRIMARY KEY, payload TEXT);
+                CREATE TABLE IF NOT EXISTS unit_messages (
+                    dynamic_id TEXT NOT NULL, target TEXT NOT NULL,
+                    stage TEXT NOT NULL, payload TEXT NOT NULL,
+                    PRIMARY KEY(dynamic_id,target,stage));
                 CREATE TABLE IF NOT EXISTS delivery_rounds (
                     dynamic_id TEXT PRIMARY KEY, count INTEGER NOT NULL,
                     completed INTEGER NOT NULL DEFAULT 1);
+                CREATE TABLE IF NOT EXISTS delivery_executions (
+                    id TEXT PRIMARY KEY, owner TEXT NOT NULL, expires REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS media_preparations (
+                    dynamic_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+                    started REAL NOT NULL, deadline REAL NOT NULL,
+                    attempts INTEGER NOT NULL, status TEXT NOT NULL,
+                    diagnostics TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS media_sources (
+                    dynamic_id TEXT NOT NULL, source_key TEXT NOT NULL,
+                    payload TEXT NOT NULL, PRIMARY KEY(dynamic_id,source_key));
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(stages)")}
             for name, definition in (
@@ -61,16 +83,14 @@ class SqliteDynamicDeliveryLedger:
                 ("next_retry", "REAL NOT NULL DEFAULT 0"),
                 ("retry_enabled", "INTEGER NOT NULL DEFAULT 0"),
                 ("last_round", "INTEGER NOT NULL DEFAULT 0"),
+                ("started_at", "REAL NOT NULL DEFAULT 0"),
+                ("deadline_at", "REAL NOT NULL DEFAULT 0"),
             ):
                 if name not in columns:
                     db.execute(f"ALTER TABLE stages ADD COLUMN {name} {definition}")
 
-    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
-        return SqliteDatabase(self.path).connect()
-
-    @staticmethod
-    def _target(target: ConversationRef) -> str:
-        return json.dumps(asdict(target), sort_keys=True)
+    def _now(self) -> float:
+        return time.time()
 
     def prepare(
         self,
@@ -116,10 +136,19 @@ class SqliteDynamicDeliveryLedger:
 
     def recover(self) -> None:
         with self._connect() as db:
-            db.execute("UPDATE stages SET state='uncertain' WHERE state='sending'")
+            db.execute(
+                "UPDATE stages SET state='uncertain' WHERE state='sending' "
+                "AND dynamic_id NOT IN "
+                "(SELECT id FROM delivery_executions WHERE expires>?)",
+                (time.time(),),
+            )
+            db.execute(
+                "UPDATE stages SET state='failed' WHERE state='retry' AND attempts>=?",
+                (MAX_ATTEMPTS,),
+            )
             db.execute(
                 "UPDATE stages SET state='expired' "
-                "WHERE state IN ('pending','retry') AND dynamic_id IN "
+                "WHERE state IN ('pending','retry','waiting') AND dynamic_id IN "
                 "(SELECT id FROM deliveries WHERE created < ? "
                 "OR json_extract(payload, '$.pub_ts') < ?)",
                 (time.time() - RETENTION_SECONDS, time.time() - RETENTION_SECONDS),
@@ -132,13 +161,18 @@ class SqliteDynamicDeliveryLedger:
                 for row in db.execute(
                     "SELECT payload FROM deliveries WHERE created >= ? AND id IN "
                     "(SELECT dynamic_id FROM stages "
-                    "WHERE state IN ('pending','retry') OR "
+                    "WHERE state IN ('pending','retry','waiting') OR "
                     "(retry_enabled=1 AND state IN ('failed','uncertain') "
                     "AND dynamic_id NOT IN (SELECT dynamic_id FROM notifications))) "
                     "ORDER BY created",
                     (time.time() - RETENTION_SECONDS,),
                 )
             ]
+
+    def cleanup_media(self) -> MediaCleanupResult:
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            return cleanup_media(db, self.media_root, time.time(), RETENTION_SECONDS)
 
     def claim_notification(self, dynamic_id: str) -> bool:
         with self._connect() as db:
@@ -150,34 +184,60 @@ class SqliteDynamicDeliveryLedger:
                 == 1
             )
 
+    def claim_recovery_report(self, dynamic_id: str, counts: dict[str, int]) -> bool:
+        payload = json.dumps(counts, sort_keys=True)
+        with self._connect() as db:
+            return (
+                db.execute(
+                    "INSERT INTO recovery_reports VALUES (?,?) "
+                    "ON CONFLICT(dynamic_id) DO UPDATE SET payload=excluded.payload "
+                    "WHERE recovery_reports.payload!=excluded.payload",
+                    (dynamic_id, payload),
+                ).rowcount
+                == 1
+            )
+
     def claim(self, dynamic_id: str, target: ConversationRef, stage: str) -> bool:
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            ownership = delivery_execution.get()
+            if ownership is not None and ownership[0] == dynamic_id:
+                owner = db.execute(
+                    "SELECT 1 FROM delivery_executions "
+                    "WHERE id=? AND owner=? AND expires>?",
+                    (*ownership, time.time()),
+                ).fetchone()
+                if owner is None:
+                    return False
+            for previous in () if stage == "image" else predecessors(stage):
+                row = db.execute(
+                    "SELECT state FROM stages WHERE dynamic_id=? "
+                    "AND target=? AND stage=?",
+                    (dynamic_id, self._target(target), previous),
+                ).fetchone()
+                if row and row[0] not in TERMINAL_STATES:
+                    return False
             return (
                 db.execute(
                     "UPDATE stages SET state='sending', attempts=attempts+1, "
                     "last_round=COALESCE((SELECT count FROM delivery_rounds "
                     "WHERE dynamic_id=stages.dynamic_id),0) "
                     "WHERE dynamic_id=? "
-                    "AND target=? AND stage=? AND state IN ('pending','retry') "
+                    "AND target=? AND stage=? "
+                    "AND state IN ('pending','retry','waiting') "
+                    "AND (deadline_at=0 OR deadline_at>?) "
                     "AND next_retry<=? AND attempts<4 AND dynamic_id IN "
                     "(SELECT id FROM deliveries WHERE created>=? "
                     "AND json_extract(payload,'$.pub_ts')>=?) "
                     "AND (COALESCE((SELECT count FROM delivery_rounds "
                     "WHERE dynamic_id=stages.dynamic_id),0)=0 OR "
                     "last_round < (SELECT count FROM delivery_rounds "
-                    "WHERE dynamic_id=stages.dynamic_id)) "
-                    "AND (stage NOT LIKE 'image:%' OR NOT EXISTS "
-                    "(SELECT 1 FROM stages AS previous WHERE "
-                    "previous.dynamic_id=stages.dynamic_id "
-                    "AND previous.target=stages.target "
-                    "AND previous.stage LIKE 'image:%' "
-                    "AND CAST(substr(previous.stage,7) AS INTEGER) "
-                    "< CAST(substr(stages.stage,7) AS INTEGER) "
-                    "AND previous.state!='success'))",
+                    "WHERE dynamic_id=stages.dynamic_id))",
                     (
                         dynamic_id,
                         self._target(target),
                         stage,
+                        time.time(),
                         time.time(),
                         time.time() - RETENTION_SECONDS,
                         time.time() - RETENTION_SECONDS,
@@ -192,8 +252,8 @@ class SqliteDynamicDeliveryLedger:
                 db.execute(
                     "SELECT 1 FROM stages WHERE dynamic_id=? AND target=? "
                     "AND (stage=? OR (?='image' AND stage LIKE 'image:%')) "
-                    "AND state IN ('pending','retry')",
-                    (dynamic_id, self._target(target), stage, stage),
+                    "AND state IN ('pending','retry','waiting') AND attempts<?",
+                    (dynamic_id, self._target(target), stage, stage, MAX_ATTEMPTS),
                 ).fetchone()
                 is not None
             )
@@ -202,7 +262,9 @@ class SqliteDynamicDeliveryLedger:
         self, dynamic_id: str, target: ConversationRef, stage: str, result: SendResult
     ) -> None:
         state = "success" if result.delivered else "failed"
-        if not result.attempted:
+        if result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE:
+            state = "waiting"
+        elif not result.attempted:
             state = (
                 "skipped"
                 if result.failure_kind is DeliveryFailureKind.PERMANENT
@@ -221,21 +283,44 @@ class SqliteDynamicDeliveryLedger:
                 (dynamic_id, self._target(target), stage),
             ).fetchone()
             if row is None:
+                current = db.execute(
+                    "SELECT state FROM stages WHERE dynamic_id=? "
+                    "AND target=? AND stage=?",
+                    (dynamic_id, self._target(target), stage),
+                ).fetchone()
+                if current and current[0] == "uncertain":
+                    self._block_following_db(
+                        db, dynamic_id, self._target(target), stage
+                    )
+                    db.execute(
+                        "UPDATE stages SET state=?,result=? WHERE dynamic_id=? "
+                        "AND target=? AND stage=? AND state='uncertain'",
+                        (
+                            "success"
+                            if result.delivered
+                            else "failed"
+                            if result.failure_kind
+                            in {
+                                DeliveryFailureKind.PERMANENT,
+                                DeliveryFailureKind.RETRYABLE,
+                            }
+                            else "uncertain",
+                            json.dumps(asdict(result)),
+                            dynamic_id,
+                            self._target(target),
+                            stage,
+                        ),
+                    )
                 return
             next_retry = 0.0
-            round_row = db.execute(
-                "SELECT count FROM delivery_rounds WHERE dynamic_id=?", (dynamic_id,)
-            ).fetchone()
-            round_number = round_row[0] if round_row else row[0]
             if (
                 result.attempted
                 and result.failure_kind is DeliveryFailureKind.RETRYABLE
                 and row[1]
                 and row[0] < MAX_ATTEMPTS
-                and round_number < MAX_ATTEMPTS
             ):
                 state = "retry"
-                next_retry = time.time() + RETRY_DELAYS[max(0, round_number - 1)]
+                next_retry = time.time() + RETRY_DELAYS[max(0, row[0] - 1)]
             db.execute(
                 "UPDATE stages SET state=?, result=?, next_retry=? "
                 "WHERE dynamic_id=? AND target=? "
@@ -249,9 +334,13 @@ class SqliteDynamicDeliveryLedger:
                     stage,
                 ),
             )
-            if not result.attempted or result.error_code == "bot_unavailable":
+            if (
+                not result.attempted
+                or result.error_code == "bot_unavailable"
+                or result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+            ):
                 db.execute(
-                    "UPDATE stages SET attempts=MAX(0,attempts-1) "
+                    "UPDATE stages SET attempts=MAX(0,attempts-1),last_round=0 "
                     "WHERE dynamic_id=? AND target=? AND stage=?",
                     (dynamic_id, self._target(target), stage),
                 )
@@ -282,7 +371,33 @@ class SqliteDynamicDeliveryLedger:
             return max(0, row[0] - (not row[1])) if row else 0
 
     def begin_round(self, dynamic_id: str) -> bool:
+        self.expire_due(dynamic_id)
+        ownership = delivery_execution.get()
+        if (
+            ownership is not None
+            and ownership[0] == dynamic_id
+            and not self.renew_execution(*ownership)
+        ):
+            return False
         with self._connect() as db:
+            if (
+                db.execute(
+                    "SELECT 1 FROM stages WHERE dynamic_id=? "
+                    "AND state IN ('pending','retry','waiting') "
+                    "AND attempts<? AND next_retry<=? AND dynamic_id IN "
+                    "(SELECT id FROM deliveries WHERE created>=? "
+                    "AND json_extract(payload,'$.pub_ts')>=?) LIMIT 1",
+                    (
+                        dynamic_id,
+                        MAX_ATTEMPTS,
+                        time.time(),
+                        time.time() - RETENTION_SECONDS,
+                        time.time() - RETENTION_SECONDS,
+                    ),
+                ).fetchone()
+                is None
+            ):
+                return False
             db.execute(
                 "INSERT OR IGNORE INTO delivery_rounds (dynamic_id,count) VALUES (?,0)",
                 (dynamic_id,),
@@ -292,11 +407,21 @@ class SqliteDynamicDeliveryLedger:
                 (dynamic_id,),
             ).fetchone()
             if row is not None and not row[0]:
-                return True
+                ownership = delivery_execution.get()
+                return (
+                    ownership is not None
+                    and ownership[0] == dynamic_id
+                    and db.execute(
+                        "SELECT 1 FROM delivery_executions "
+                        "WHERE id=? AND owner=? AND expires>?",
+                        (*ownership, time.time()),
+                    ).fetchone()
+                    is not None
+                )
             return (
                 db.execute(
                     "UPDATE delivery_rounds SET count=count+1,completed=0 "
-                    "WHERE dynamic_id=? AND count<4",
+                    "WHERE dynamic_id=?",
                     (dynamic_id,),
                 ).rowcount
                 == 1
@@ -305,7 +430,12 @@ class SqliteDynamicDeliveryLedger:
     def finish_round(self, dynamic_id: str) -> None:
         with self._connect() as db:
             db.execute(
-                "UPDATE delivery_rounds SET completed=1 WHERE dynamic_id=?",
+                "UPDATE delivery_rounds SET completed=1, "
+                "count=CASE WHEN EXISTS (SELECT 1 FROM stages "
+                "WHERE stages.dynamic_id=delivery_rounds.dynamic_id "
+                "AND last_round=delivery_rounds.count AND attempts>0) "
+                "THEN count ELSE MAX(0,count-1) END "
+                "WHERE dynamic_id=? AND completed=0",
                 (dynamic_id,),
             )
 
@@ -319,9 +449,11 @@ class SqliteDynamicDeliveryLedger:
             return row[0] if row else 0
 
     def retry_delay(self, dynamic_id: str) -> float | None:
+        self.expire_due(dynamic_id)
         with self._connect() as db:
             row = db.execute(
-                "SELECT MAX(next_retry) FROM stages "
+                "SELECT MIN(CASE WHEN deadline_at>0 "
+                "THEN MIN(next_retry,deadline_at) ELSE next_retry END) FROM stages "
                 "WHERE dynamic_id=? AND state='retry'",
                 (dynamic_id,),
             ).fetchone()
@@ -336,7 +468,7 @@ class SqliteDynamicDeliveryLedger:
             rows = db.execute(
                 "SELECT target,stage,result,state FROM stages WHERE dynamic_id=? "
                 "AND retry_enabled=1 "
-                "AND state IN ('failed','uncertain','retry','blocked')",
+                "AND state IN ('failed','uncertain','retry','waiting','blocked')",
                 (dynamic_id,),
             ).fetchall()
         result = []
@@ -352,13 +484,15 @@ class SqliteDynamicDeliveryLedger:
                     "failure_kind": "uncertain",
                 }
             )
-            if state == "blocked":
+            if state == "blocked" and raw_result is None:
                 data = {
                     "delivered": False,
                     "error_code": "preceding_image_failed",
                     "failure_kind": "permanent",
                     "attempt_count": 0,
                 }
+            if state == "failed" and data.get("failure_kind") == "retryable":
+                data["failure_kind"] = "permanent"
             if data.get("failure_kind"):
                 data["failure_kind"] = DeliveryFailureKind(data["failure_kind"])
             if identity := data.get("execution_identity"):
@@ -374,30 +508,102 @@ class SqliteDynamicDeliveryLedger:
             ).fetchone()
         return (True, decode_media(row[0], self.media_root)) if row else (False, None)
 
+    def freeze_unit(
+        self,
+        dynamic_id: str,
+        target: ConversationRef,
+        stage: str,
+        message: OutboundMessage,
+    ) -> OutboundMessage:
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            previous = db.execute(
+                "SELECT payload FROM unit_messages "
+                "WHERE dynamic_id=? AND target=? AND stage=?",
+                (dynamic_id, self._target(target), stage),
+            ).fetchone()
+            if previous:
+                return thaw_message(previous[0], self.media_root)
+            db.execute(
+                "INSERT INTO unit_messages VALUES (?,?,?,?)",
+                (
+                    dynamic_id,
+                    self._target(target),
+                    stage,
+                    freeze_message(message, self.media_root),
+                ),
+            )
+        return message
+
+    def load_text(self, dynamic_id: str) -> tuple[bool, OutboundMessage | None]:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload FROM text_manifests WHERE dynamic_id=?",
+                (dynamic_id,),
+            ).fetchone()
+        return (
+            (True, thaw_message(row[0], self.media_root) if row[0] else None)
+            if row
+            else (False, None)
+        )
+
+    def freeze_text(
+        self, dynamic_id: str, message: OutboundMessage | None
+    ) -> OutboundMessage | None:
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            previous = db.execute(
+                "SELECT payload FROM text_manifests WHERE dynamic_id=?", (dynamic_id,)
+            ).fetchone()
+            if previous:
+                return (
+                    thaw_message(previous[0], self.media_root) if previous[0] else None
+                )
+            payload = freeze_message(message, self.media_root) if message else None
+            db.execute(
+                "INSERT OR IGNORE INTO text_manifests VALUES (?,?)",
+                (dynamic_id, payload),
+            )
+            return thaw_message(payload, self.media_root) if payload else None
+
     def freeze_media(
         self, dynamic_id: str, message: OutboundMessage | None
     ) -> OutboundMessage | None:
-        found, previous = self.load_media(dynamic_id)
-        if found:
-            return previous
-        payload = encode_media(message, self.media_root)
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            previous = db.execute(
+                "SELECT payload FROM media_manifests WHERE dynamic_id=?", (dynamic_id,)
+            ).fetchone()
+            if previous:
+                return decode_media(previous[0], self.media_root)
+            payload = encode_media(message, self.media_root)
             db.execute(
                 "INSERT OR IGNORE INTO media_manifests VALUES (?,?)",
                 (dynamic_id, payload),
             )
-        return self.load_media(dynamic_id)[1]
+            return decode_media(payload, self.media_root)
 
-    def image_units(self, dynamic_id: str, target: ConversationRef, count: int) -> None:
+    def image_units(self, dynamic_id: str, target: ConversationRef, count: int) -> bool:
         with self._connect() as db:
-            # Never expand an attempted legacy whole-image stage.
+            db.execute("BEGIN IMMEDIATE")
+            # Preparation is proven not to have submitted a chat message.
             row = db.execute(
                 "SELECT state,result FROM stages "
                 "WHERE dynamic_id=? AND target=? AND stage='image'",
                 (dynamic_id, self._target(target)),
             ).fetchone()
-            if row is None or row[0] != "pending" or row[1] is not None:
-                return
+            if row is None:
+                return False
+            prepared_retry = (
+                row[0] == "retry"
+                and row[1] is not None
+                and str(json.loads(row[1]).get("error_code", "")).startswith(
+                    "media_prepare:"
+                )
+                and json.loads(row[1]).get("failure_kind") == "retryable"
+            )
+            if not ((row[0] == "pending" and row[1] is None) or prepared_retry):
+                return False
             db.execute(
                 "UPDATE stages SET state='delegated' "
                 "WHERE dynamic_id=? AND target=? AND stage='image'",
@@ -410,13 +616,50 @@ class SqliteDynamicDeliveryLedger:
                     "VALUES (?,?,?,'pending',1)",
                     (dynamic_id, self._target(target), f"image:{index + 1}"),
                 )
+            db.execute(
+                "UPDATE stages SET started_at=(SELECT started_at FROM stages AS p "
+                "WHERE p.dynamic_id=stages.dynamic_id AND p.target=stages.target "
+                "AND p.stage='image'),"
+                "deadline_at=(SELECT deadline_at FROM stages AS p "
+                "WHERE p.dynamic_id=stages.dynamic_id "
+                "AND p.target=stages.target AND p.stage='image') "
+                "WHERE dynamic_id=? AND target=? AND stage='image:1' AND deadline_at=0",
+                (dynamic_id, self._target(target)),
+            )
+            return True
+
+    def fail_media(
+        self, dynamic_id: str, target: ConversationRef, result: SendResult
+    ) -> None:
+        if result.failure_kind is not DeliveryFailureKind.PERMANENT:
+            msg = "Only permanent media preparation failures can terminate image units"
+            raise ValueError(msg)
+        with self._connect() as db:
+            db.execute(
+                "UPDATE stages SET state='failed',result=?,next_retry=0 "
+                "WHERE dynamic_id=? AND target=? "
+                "AND (stage='image' OR stage LIKE 'image:%') "
+                "AND state IN ('pending','retry','waiting')",
+                (json.dumps(asdict(result)), dynamic_id, self._target(target)),
+            )
+
+    def skip_stage(self, dynamic_id: str, target: ConversationRef, stage: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE stages SET state='skipped',result=NULL,next_retry=0 "
+                "WHERE dynamic_id=? AND target=? "
+                "AND (stage=? OR (?='image' AND stage LIKE 'image:%')) "
+                "AND state IN ('pending','retry','waiting')",
+                (dynamic_id, self._target(target), stage, stage),
+            )
 
     def skip_remaining(self, dynamic_id: str) -> bool:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             if (
                 db.execute(
-                    "SELECT 1 FROM stages WHERE dynamic_id=? AND state='sending'",
+                    "SELECT 1 FROM stages WHERE dynamic_id=? "
+                    "AND state IN ('sending','waiting','retry')",
                     (dynamic_id,),
                 ).fetchone()
                 is not None

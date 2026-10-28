@@ -7,49 +7,58 @@ import asyncio
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.delivery_attempt import controlled_delivery, reuse_media_uploads
+from ironsbot.core.delivery_attempt import (
+    controlled_delivery,
+    delivery_round,
+    reuse_media_uploads,
+)
 from ironsbot.core.outbound import (
-    BinaryImagePart,
     DeliveryFailureKind,
     OutboundMessage,
-    RemoteImagePart,
     SendResult,
     TextPart,
 )
 from ironsbot.core.platform import ConversationRef, reference_digest
-from ironsbot.core.time import TZ_CN
 from ironsbot.services.bilibili import delivery_logging as diagnostics
 from ironsbot.services.bilibili import image_messages
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
+from ironsbot.services.bilibili.delivery_lifecycle import OrderedStages, own_delivery
 from ironsbot.services.bilibili.delivery_notices import delivery_failure_text
+from ironsbot.services.bilibili.delivery_preparation import (
+    bounded_preparation,
+    preparation_failure,
+    prepare_frozen_text,
+)
 from ironsbot.services.bilibili.delivery_rounds import DynamicRetryPlan
-from ironsbot.services.bilibili.media_freeze import materialize_media
+from ironsbot.services.bilibili.delivery_targets import canonical_targets
+from ironsbot.services.bilibili.image_messages import (
+    prepare_dynamic_image_message as prepare_dynamic_image_message,  # noqa: PLC0414 - public helper export
+)
+from ironsbot.services.bilibili.link_message import render_dynamic_link_message
+from ironsbot.services.bilibili.media_preparation import prepare_shared_media
 from ironsbot.services.bilibili.parser import (
     dynamic_body_hydration_reason,
     dynamic_content,
     dynamic_delivery_content,
-    dynamic_url,
-    item_author_mid,
     item_author_name,
 )
 from ironsbot.services.bilibili.preferences import (
-    bili_all_subscription_key,
-    bili_media_subscription_key,
     bili_stage_subscription_key,
 )
-from ironsbot.services.bilibili.target_models import BiliPushTargets
+from ironsbot.services.bilibili.stage_subscriptions import DynamicStagePolicy
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     append_outbound_text_once,
 )
 
 if TYPE_CHECKING:
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.bilibili.content import DynamicContentCompactor
     from ironsbot.services.bilibili.delivery_ledger import DynamicDeliveryLedger
     from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
+    from ironsbot.services.bilibili.target_models import BiliPushTargets
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.proactive_delivery import (
@@ -93,8 +102,12 @@ class BilibiliDynamicOutboundSender:
     image_collage: ImageCollageService | None = None
     combine_images: bool = True
     ledger: DynamicDeliveryLedger | None = None
+    spawn: TaskSpawner | None = None
+    stage_eligible: (
+        Callable[[ConversationRef, int, str, tuple[str, ...]], bool] | None
+    ) = None
 
-    async def send(  # noqa: C901, PLR0913, PLR0915 - ordered independent target stages
+    async def send(  # noqa: PLR0913 - public frozen delivery identity
         self,
         item: dict[str, Any],
         pub_ts: int,
@@ -104,7 +117,23 @@ class BilibiliDynamicOutboundSender:
         *,
         resume: bool = False,
     ) -> None:
-        targets = self._canonical_targets(targets)
+        async with own_delivery(self.ledger, str(item.get("id_str", ""))) as owned:
+            if owned:
+                await self._send_owned(
+                    item, pub_ts, author_mid, targets, categories, resume=resume
+                )
+
+    async def _send_owned(  # noqa: C901, PLR0913, PLR0915 - ordered independent target stages
+        self,
+        item: dict[str, Any],
+        pub_ts: int,
+        author_mid: int,
+        targets: BiliPushTargets,
+        categories: tuple[str, ...] = (),
+        *,
+        resume: bool = False,
+    ) -> None:
+        targets = canonical_targets(self.delivery.private_routes, targets)
         dynamic_id = str(item.get("id_str", ""))
         started = diagnostics.push_started(
             dynamic_id, author_mid, targets, resume=resume
@@ -145,33 +174,41 @@ class BilibiliDynamicOutboundSender:
             if resume and self.ledger is not None
             else {}
         )
+        stage_policy = DynamicStagePolicy(
+            self.subscriptions,
+            self.ledger,
+            dynamic_id,
+            author_mid,
+            categories,
+            self.stage_eligible,
+            failures,
+        )
         full_targets = targets
-        link_targets = self.subscriptions.filter_subscribed_conversations(
-            [
-                *targets.link_group_conversations,
-                *targets.link_private_conversations,
-            ],
-            subscription_key,
-        )
+        # Keep disabled targets in the round so their durable retries can be
+        # terminally skipped rather than resurrected when a switch is reopened.
+        link_targets = [
+            *targets.link_group_conversations,
+            *targets.link_private_conversations,
+        ]
 
-        text_targets = self._subscribed_full_targets(
-            full_targets, bili_media_subscription_key(author_mid, "text")
-        )
+        text_targets = stage_policy.full_targets(full_targets, "text")
         text_targets = self._pending_targets(text_targets, dynamic_id, "text")
-        image_targets = self._subscribed_full_targets(
-            full_targets, bili_media_subscription_key(author_mid, "image")
-        )
+        image_targets = stage_policy.full_targets(full_targets, "image")
         image_targets = self._pending_targets(image_targets, dynamic_id, "image")
         text_task = (
-            asyncio.gather(self._prepare_text_message(item))
+            asyncio.gather(
+                bounded_preparation(
+                    prepare_frozen_text(
+                        self.ledger,
+                        dynamic_id,
+                        lambda: self._prepare_text_message(item),
+                    )
+                )
+            )
             if text_targets.has_targets
             else None
         )
-        image_task = (
-            asyncio.gather(self._prepare_frozen_images(item, dynamic_id))
-            if image_targets.has_targets
-            else None
-        )
+        image_task: asyncio.Future[tuple[OutboundMessage | None]] | None = None
         full_conversations = tuple(
             dict.fromkeys(
                 (
@@ -193,6 +230,53 @@ class BilibiliDynamicOutboundSender:
             )
         )
         completed: set[FailureKey] = set()
+        ordered = OrderedStages(
+            self.ledger, dynamic_id, failures, completed, spawn=self.spawn
+        )
+        preparation_rounds: dict[str, int] = {}
+        stage_allowed = stage_policy.allowed
+
+        async def prepared_message(stage: str) -> OutboundMessage | None:
+            nonlocal image_task, text_task
+            if stage == "image" and image_task is None:
+                image_task = asyncio.gather(
+                    self._prepare_frozen_images(item, dynamic_id)
+                )
+            task = image_task if stage == "image" else text_task
+            if task is None:
+                return None
+            if (
+                stage in preparation_rounds
+                and preparation_rounds[stage] != delivery_round.get()
+                and task.done()
+                and not task.cancelled()
+                and task.exception() is not None
+            ):
+                task = asyncio.gather(
+                    bounded_preparation(self._prepare_frozen_images(item, dynamic_id))
+                    if stage == "image"
+                    else bounded_preparation(
+                        prepare_frozen_text(
+                            self.ledger,
+                            dynamic_id,
+                            lambda: self._prepare_text_message(item),
+                        )
+                    )
+                )
+                if stage == "image":
+                    image_task = task
+                else:
+                    text_task = task
+            try:
+                return (await task)[0]
+            except Exception as error:
+                if (
+                    stage == "image"
+                    and preparation_rounds.get(stage) != delivery_round.get()
+                ):
+                    diagnostics.preparation_failed(dynamic_id, error)
+                preparation_rounds[stage] = delivery_round.get()
+                raise
 
         def eligible(conversation: ConversationRef, stage: str) -> bool:
             if self.ledger is not None:
@@ -203,83 +287,127 @@ class BilibiliDynamicOutboundSender:
                 or previous.failure_kind is DeliveryFailureKind.RETRYABLE
             )
 
+        def image_preparation_failed(
+            conversation: ConversationRef, error: Exception
+        ) -> None:
+            failure = preparation_failure(error)
+            if self.ledger is not None:
+                if failure.failure_kind is DeliveryFailureKind.PERMANENT:
+                    self.ledger.fail_media(dynamic_id, conversation, failure)
+                elif self.ledger.claim(dynamic_id, conversation, "image"):
+                    self.ledger.finish(dynamic_id, conversation, "image", failure)
+            failures[(conversation, "image")] = failure
+
         async def send_images(conversation: ConversationRef) -> None:
-            if image_task is None or conversation not in image_conversations:
+            if (
+                not stage_allowed(conversation, "image")
+                or conversation not in image_conversations
+            ):
                 return
             try:
-                image_message = (await image_task)[0]
+
+                async def prepare_image() -> None:
+                    nonlocal image_message
+                    image_message = await prepared_message("image")
+
+                image_message: OutboundMessage | None = None
+                await ordered.run(conversation, "image", prepare_image)
             except Exception as error:  # noqa: BLE001 - preparation cannot submit messages
-                diagnostics.preparation_failed(dynamic_id, error)
-                failure = SendResult(
-                    delivered=False,
-                    error_code=f"media_prepare:{type(error).__name__}",
-                    failure_kind=DeliveryFailureKind.PERMANENT,
-                )
-                if self.ledger is not None and self.ledger.claim(
-                    dynamic_id, conversation, "image"
-                ):
-                    self.ledger.finish(dynamic_id, conversation, "image", failure)
-                failures[(conversation, "image")] = failure
+                image_preparation_failed(conversation, error)
                 return
-            if image_message is None:
+            if image_message is None or not stage_allowed(conversation, "image"):
                 return
-            if self.ledger is not None:
-                self.ledger.image_units(
-                    dynamic_id, conversation, len(image_message.parts)
-                )
+            if ordered.failed(conversation, "image"):
+                return
+            if self.ledger is None or self.ledger.image_units(
+                dynamic_id, conversation, len(image_message.parts)
+            ):
+                failures.pop((conversation, "image"), None)
             for index, part in enumerate(image_message.parts, 1):
                 stage = f"image:{index}"
                 if eligible(conversation, stage):
-                    await self._send_content(
-                        OutboundMessage((part,)),
+                    await ordered.run(
                         conversation,
-                        failures,
-                        dynamic_id=dynamic_id,
-                        stage=stage,
-                    )
-                    if (conversation, stage) not in failures:
-                        completed.add((conversation, stage))
-                if (conversation, stage) in failures:
-                    break  # Preserve image order across retry rounds and restarts.
-
-        async def send_target(conversation: ConversationRef, *, full: bool) -> None:
-            async def deliver() -> None:
-                if eligible(conversation, "link"):
-                    await self._send_link_message(
-                        link_message,
-                        (conversation,) if conversation.kind == "group" else (),
-                        (conversation,) if conversation.kind == "private" else (),
-                        action_name=(
-                            f"{FULL_DYNAMIC_PUSH_ACTION} link"
-                            if full
-                            else LINK_DYNAMIC_PUSH_ACTION
-                        ),
-                        subscription_key=subscription_key,
-                        author_mid=author_mid,
-                        dynamic_id=dynamic_id,
-                        failures=failures,
-                    )
-                    if (conversation, "link") not in failures:
-                        completed.add((conversation, "link"))
-                if not full:
-                    return
-                if (
-                    text_task is not None
-                    and conversation in text_conversations
-                    and eligible(conversation, "text")
-                ):
-                    content_message = (await text_task)[0]
-                    if content_message is not None:
-                        await self._send_content(
-                            content_message,
+                        stage,
+                        lambda part=part, stage=stage: self._send_content(
+                            OutboundMessage((part,)),
                             conversation,
                             failures,
                             dynamic_id=dynamic_id,
-                            stage="text",
-                        )
-                        if (conversation, "text") not in failures:
-                            completed.add((conversation, "text"))
-                await send_images(conversation)
+                            stage=stage,
+                        ),
+                    )
+                    ordered.record_completion(conversation, stage)
+                if not ordered.advance(conversation, stage) or not stage_allowed(
+                    conversation, "image"
+                ):
+                    break  # Preserve image order across retry rounds and restarts.
+
+        async def send_text(conversation: ConversationRef) -> None:
+            if not stage_allowed(conversation, "text"):
+                return
+            if text_task is None:
+                if self.ledger is not None:
+                    self.ledger.skip_stage(dynamic_id, conversation, "text")
+                return
+            if conversation not in text_conversations or not eligible(
+                conversation, "text"
+            ):
+                return
+
+            async def prepare_and_send() -> None:
+                message = await prepared_message("text")
+                if message is not None and stage_allowed(conversation, "text"):
+                    await self._send_content(
+                        message,
+                        conversation,
+                        failures,
+                        dynamic_id=dynamic_id,
+                        stage="text",
+                    )
+                elif self.ledger is not None:
+                    self.ledger.skip_stage(dynamic_id, conversation, "text")
+
+            try:
+                await ordered.run(conversation, "text", prepare_and_send)
+            except Exception as error:  # noqa: BLE001 - preparation failure is unsent
+                failure = preparation_failure(error)
+                if self.ledger is not None and self.ledger.claim(
+                    dynamic_id, conversation, "text"
+                ):
+                    self.ledger.finish(dynamic_id, conversation, "text", failure)
+                failures[(conversation, "text")] = failure
+            ordered.record_completion(conversation, "text")
+
+        async def send_target(conversation: ConversationRef, *, full: bool) -> None:
+            async def deliver() -> None:
+                if stage_allowed(conversation, "link") and eligible(
+                    conversation, "link"
+                ):
+                    await ordered.run(
+                        conversation,
+                        "link",
+                        lambda: self._send_link_message(
+                            link_message,
+                            (conversation,) if conversation.kind == "group" else (),
+                            (conversation,) if conversation.kind == "private" else (),
+                            action_name=(
+                                f"{FULL_DYNAMIC_PUSH_ACTION} link"
+                                if full
+                                else LINK_DYNAMIC_PUSH_ACTION
+                            ),
+                            subscription_key=subscription_key,
+                            author_mid=author_mid,
+                            dynamic_id=dynamic_id,
+                            failures=failures,
+                        ),
+                    )
+                    ordered.record_completion(conversation, "link")
+                if not full or not ordered.advance(conversation, "link"):
+                    return
+                await send_text(conversation)
+                if ordered.advance(conversation, "text"):
+                    await send_images(conversation)
 
             token = controlled_delivery.set(True)
             try:
@@ -312,7 +440,11 @@ class BilibiliDynamicOutboundSender:
             if task is image_task:
                 continue  # Media preparation errors were recorded against each target.
             if isinstance(result, BaseException):
-                raise result
+                _LOGGER.warning(
+                    "Bilibili preparation deferred: dynamic=%s error_type=%s",
+                    dynamic_id,
+                    type(result).__name__,
+                )
         await self._finish_delivery(item, author_mid, failures, started=started)
 
     async def _prepare_frozen_images(
@@ -321,61 +453,16 @@ class BilibiliDynamicOutboundSender:
         dynamic_id: str,
     ) -> OutboundMessage | None:
         started = diagnostics.media_started(dynamic_id)
-        if self.ledger is not None:
-            found, message = self.ledger.load_media(dynamic_id)
-            if found:
-                diagnostics.media_ready(dynamic_id, message, started, cached=True)
-                return message
-        message = await prepare_dynamic_image_message(
+        message = await prepare_shared_media(
             item,
+            dynamic_id,
             self.image_collage,
-            combine_images=self.combine_images,
-        )
-        if self.ledger is not None and self.image_collage is not None:
-            message = await materialize_media(message, self.image_collage)
-        message = (
-            self.ledger.freeze_media(dynamic_id, message)
-            if self.ledger is not None
-            else message
+            self.ledger,
+            combine=self.combine_images,
+            spawn=self.spawn,
         )
         diagnostics.media_ready(dynamic_id, message, started, cached=False)
         return message
-
-    def _canonical_targets(self, targets: BiliPushTargets) -> BiliPushTargets:
-        routes = self.delivery.private_routes
-
-        def selected(conversations: Iterable[ConversationRef]) -> list[ConversationRef]:
-            result = []
-            for target in conversations:
-                decision = routes.decision_for(target) if routes else None
-                if decision is not None and decision.status == "skipped":
-                    _LOGGER.info(
-                        "Bilibili target skipped by routing policy: "
-                        "recipient=%s reason=%s",
-                        reference_digest(target.id),
-                        decision.reason,
-                    )
-                    continue
-                result.append(decision.target if decision is not None else target)
-            return list(dict.fromkeys(result))
-
-        full_groups = selected(targets.full_group_conversations)
-        full_privates = selected(targets.full_private_conversations)
-        full = {*full_groups, *full_privates}
-        return BiliPushTargets(
-            full_group_conversations=full_groups,
-            link_group_conversations=[
-                target
-                for target in selected(targets.link_group_conversations)
-                if target not in full
-            ],
-            full_private_conversations=full_privates,
-            link_private_conversations=[
-                target
-                for target in selected(targets.link_private_conversations)
-                if target not in full
-            ],
-        )
 
     async def _prepare_text_message(
         self, item: dict[str, Any]
@@ -409,6 +496,11 @@ class BilibiliDynamicOutboundSender:
     ) -> None:
         dynamic_id = str(item.get("id_str", ""))
         if self.ledger is not None:
+            failures.clear()
+            failures.update(
+                ((target, stage), result)
+                for target, stage, result in self.ledger.failures(dynamic_id)
+            )
             if not self.ledger.skip_remaining(dynamic_id):
                 diagnostics.push_finished(
                     dynamic_id,
@@ -418,13 +510,11 @@ class BilibiliDynamicOutboundSender:
                     deferred=True,
                 )
                 return
-            failed_targets = {target for target, _ in failures}
-            for target, stage, result in self.ledger.failures(dynamic_id):
-                if (
-                    target in failed_targets
-                    and result.error_code == "preceding_image_failed"
-                ):
-                    failures[(target, stage)] = result
+            failures.clear()
+            failures.update(
+                ((target, stage), result)
+                for target, stage, result in self.ledger.failures(dynamic_id)
+            )
         diagnostics.push_finished(
             dynamic_id,
             started,
@@ -444,7 +534,7 @@ class BilibiliDynamicOutboundSender:
     def _stage_delivery(self, dynamic_id: str, stage: str) -> ProactiveMessageDelivery:
         if self.ledger is None:
             return self.delivery
-        delivery = replace(self.delivery, private_failure_notice=None)
+        delivery = replace(self.delivery, private_failure_notice=None, outbox=None)
         return replace(
             delivery,
             messenger=StageMessenger(
@@ -486,18 +576,6 @@ class BilibiliDynamicOutboundSender:
         dynamic_id: str,
         failures: dict[FailureKey, SendResult],
     ) -> None:
-        group_conversations = self.subscriptions.filter_subscribed_conversations(
-            group_conversations, subscription_key
-        )
-        private_conversations = self.subscriptions.filter_subscribed_conversations(
-            private_conversations, subscription_key
-        )
-        group_conversations = self.subscriptions.filter_subscribed_conversations(
-            group_conversations, bili_all_subscription_key("link")
-        )
-        private_conversations = self.subscriptions.filter_subscribed_conversations(
-            private_conversations, bili_all_subscription_key("link")
-        )
         summary = await self._stage_delivery(dynamic_id, "link").send_many(
             (
                 ProactiveDeliveryRequest(
@@ -518,7 +596,7 @@ class BilibiliDynamicOutboundSender:
             include_promotions=True,
             max_attempts=1,
         )
-        self._capture_failures(summary, failures, stage="link")
+        self._capture_failures(summary, failures, stage="link", dynamic_id=dynamic_id)
 
     async def _send_content(
         self,
@@ -536,7 +614,7 @@ class BilibiliDynamicOutboundSender:
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             max_attempts=1,
         )
-        self._capture_failures(summary, failures, stage=stage)
+        self._capture_failures(summary, failures, stage=stage, dynamic_id=dynamic_id)
 
     def _capture_failures(
         self,
@@ -544,11 +622,19 @@ class BilibiliDynamicOutboundSender:
         failures: dict[FailureKey, SendResult],
         *,
         stage: str,
+        dynamic_id: str,
     ) -> None:
         failed = set(summary.failed)
         recorded: set[ConversationRef] = set()
         for conversation, result in summary.results:
             recorded.add(conversation)
+            if (
+                self.ledger is not None
+                and result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+            ):
+                self.ledger.defer_stage(dynamic_id, conversation, stage, result)
+            if result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE:
+                failures[(conversation, stage)] = result
             if result.delivered:
                 failures.pop((conversation, stage), None)
             if (
@@ -611,31 +697,6 @@ class BilibiliDynamicOutboundSender:
             action_name=FULL_DYNAMIC_CONTENT_FAILURE_ACTION,
         )
 
-    def _subscribed_full_targets(
-        self,
-        targets: BiliPushTargets,
-        subscription_key: str,
-    ) -> BiliPushTargets:
-        stage = subscription_key.rsplit(":", 1)[-1]
-        if subscription_key.startswith("bili_media:"):
-            targets = self._subscribed_full_targets(
-                targets, bili_all_subscription_key(stage)
-            )
-        return BiliPushTargets(
-            full_group_conversations=self.subscriptions.filter_subscribed_conversations(
-                targets.full_group_conversations,
-                subscription_key,
-            ),
-            link_group_conversations=[],
-            full_private_conversations=(
-                self.subscriptions.filter_subscribed_conversations(
-                    targets.full_private_conversations,
-                    subscription_key,
-                )
-            ),
-            link_private_conversations=[],
-        )
-
     def _target_link_message(
         self,
         message: OutboundMessage,
@@ -664,37 +725,6 @@ class BilibiliDynamicOutboundSender:
         return result
 
 
-def render_dynamic_link_message(
-    item: dict[str, Any],
-    pub_ts: int,
-    *,
-    fallback_name: str | None = None,
-) -> OutboundMessage | None:
-    """Render the portable link-only representation of a Bilibili dynamic."""
-
-    try:
-        author_name = item_author_name(item)
-        author_mid = item_author_mid(item)
-        if fallback_name and author_name in {f"UID {author_mid}", "该账号"}:
-            author_name = fallback_name
-        time_str = datetime.fromtimestamp(pub_ts, tz=TZ_CN).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-        return OutboundMessage(
-            (
-                TextPart(
-                    f"🔔 【{author_name}】发布了一条B站动态\n"
-                    f"👤 UID：{author_mid or '未知'}\n"
-                    f"⏰ 发布时间：{time_str}\n\n"
-                    f"传送门：{dynamic_url(item)}"
-                ),
-            )
-        )
-    except (TypeError, ValueError, KeyError):
-        _LOGGER.exception("failed to render Bilibili dynamic link")
-        return None
-
-
 def render_dynamic_text_message(
     item: dict[str, Any],
     content_override: str | None = None,
@@ -720,30 +750,6 @@ def render_dynamic_content_message(
     parts = (
         *(text.parts if text is not None else ()),
         *(images.parts if images is not None else ()),
-    )
-    return OutboundMessage(parts) if parts else None
-
-
-async def prepare_dynamic_image_message(
-    item: dict[str, Any],
-    collage: ImageCollageService | None,
-    *,
-    combine_images: bool = True,
-) -> OutboundMessage | None:
-    original = image_messages.render_dynamic_image_message(item)
-    if original is None or collage is None or not combine_images:
-        return original
-    urls = tuple(
-        part.url for part in original.parts if isinstance(part, RemoteImagePart)
-    )
-    if len(urls) <= 1:
-        return original
-    prepared = await collage.prepare_urls(urls)
-    parts = tuple(
-        RemoteImagePart(image.url)
-        if image.url is not None
-        else BinaryImagePart(image.content or b"", image.content_type, image.filename)
-        for image in prepared
     )
     return OutboundMessage(parts) if parts else None
 

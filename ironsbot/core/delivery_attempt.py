@@ -11,6 +11,9 @@ from secrets import token_hex
 controlled_delivery: ContextVar[bool] = ContextVar("controlled_delivery", default=False)
 delivery_unit: ContextVar[str] = ContextVar("delivery_unit", default="")
 delivery_round: ContextVar[int] = ContextVar("delivery_round", default=0)
+delivery_execution: ContextVar[tuple[str, str] | None] = ContextVar(
+    "delivery_execution", default=None
+)
 
 
 @dataclass(eq=False, slots=True)

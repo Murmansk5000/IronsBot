@@ -6,7 +6,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ class PreparedImage:
     content: bytes | None = None
     content_type: str = "image/png"
     filename: str = "dynamic.png"
+    degradation_reason: str | None = None
 
     def __post_init__(self) -> None:
         if (self.url is None) == (self.content is None):
@@ -44,6 +46,20 @@ class ImageCollageError(RuntimeError):
     """Raised when a complete collage cannot be produced safely."""
 
     retryable: bool = False
+
+    @property
+    def diagnostic_code(self) -> str:
+        known = {
+            "image download failed": "download_failed",
+            "invalid image response content type": "invalid_content_type",
+            "image response is empty": "empty_response",
+            "image exceeds source byte limit": "source_too_large",
+            "image dimensions are invalid": "invalid_dimensions",
+            "animated image cannot be collaged": "unsupported_animation",
+            "image decoding failed": "decode_failed",
+            "image collage rendering failed": "compose_failed",
+        }
+        return known.get(str(self), "collage_error")
 
     @classmethod
     def invalid_count(cls, count: int, maximum: int) -> ImageCollageError:
@@ -242,7 +258,11 @@ class ImageCollageService:
         if animated is None or len(group) == 1:
             return (_original_image(group[0][0]),)
         if len(group) > self.max_images:
-            return tuple(_original_image(source) for source, _content in group)
+            return tuple(
+                replace(_original_image(source), degradation_reason="image_count_limit")
+                for source, _content in group
+            )
+        started = time.monotonic()
         try:
             content = (
                 await self._compose_animation([item[1] for item in group])
@@ -251,9 +271,21 @@ class ImageCollageService:
                     [item[1] for item in group], horizontal=horizontal
                 )
             )
-        except ImageCollageError:
-            _LOGGER.warning("Image collage unavailable; using original images")
-            return tuple(_original_image(source) for source, _content in group)
+        except ImageCollageError as error:
+            _LOGGER.warning(
+                "Image collage fallback: phase=compose reason=%s "
+                "images=%d bytes=%d elapsed=%.3f",
+                error.diagnostic_code,
+                len(group),
+                sum(len(part) for _, part in group),
+                time.monotonic() - started,
+            )
+            return tuple(
+                replace(
+                    _original_image(source), degradation_reason=error.diagnostic_code
+                )
+                for source, _content in group
+            )
         return (
             PreparedImage(
                 content=content,
