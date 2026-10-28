@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.onebot.transport import OneBotTransport
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
+    from ironsbot.services.messaging.delivery_recovery import ProactiveRecovery
     from ironsbot.services.portable_commands import PortableCommandRouter
 
 
@@ -49,6 +50,7 @@ class Application:
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
     lifecycle: ApplicationLifecycle | None = None
     onebot_transport: OneBotTransport | None = None
+    push_recovery: ProactiveRecovery | None = None
     _configured: bool = field(default=False, init=False)
     _installed: bool = field(default=False, init=False)
 
@@ -79,6 +81,15 @@ class Application:
             resource_shutdown_hooks=self.resource_shutdown_hooks,
         )
         self.lifecycle.first_connection_platforms = self.first_connection_platforms
+        if self.push_recovery is not None:
+            self.lifecycle.startup_hooks = (
+                *self.lifecycle.startup_hooks,
+                ("push_recovery", self.push_recovery.start),
+            )
+            self.lifecycle.bot_connect_hooks = (
+                *self.lifecycle.bot_connect_hooks,
+                ("push_recovery", self.push_recovery.connected),
+            )
         if self.resources.qq_official is not None:
             self.resources.qq_official.bind_lifecycle(
                 self.lifecycle, spawn=self.task_owner.create

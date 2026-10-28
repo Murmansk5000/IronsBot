@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, replace
@@ -13,6 +14,8 @@ from ironsbot.core.outbound import DeliveryFailureKind, SendResult
 from ironsbot.core.platform import reference_digest
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ironsbot.core.outbound import (
         DeliveryCapabilities,
         OutboundMessage,
@@ -25,7 +28,53 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class MediaCleanupResult:
+    deleted_files: int = 0
+    deleted_bytes: int = 0
+    retained_entries: int = 0
+    errors: int = 0
+    reason: str | None = None
+
+
 class DynamicDeliveryLedger(Protocol):
+    path: Path
+
+    def begin_media_preparation(
+        self, dynamic_id: str, fingerprint: str
+    ) -> tuple[int, float]: ...
+    def finish_media_preparation(
+        self, dynamic_id: str, status: str, diagnostics: dict[str, object]
+    ) -> None: ...
+    def load_media_source(self, dynamic_id: str, source_key: str) -> bytes | None: ...
+    def save_media_source(
+        self, dynamic_id: str, source_key: str, content: bytes
+    ) -> None: ...
+
+    def acquire_execution(self, key: str, owner: str) -> bool: ...
+    def renew_execution(self, key: str, owner: str) -> bool: ...
+    def release_execution(self, key: str, owner: str) -> None: ...
+    def stage_state(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> str: ...
+    def stage_result(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> SendResult | None: ...
+    def predecessors_done(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> bool: ...
+    def start_stage(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> float: ...
+    def expire_stage(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> None: ...
+    def block_following(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> None: ...
+    def defer_stage(
+        self, dynamic_id: str, target: ConversationRef, stage: str, result: SendResult
+    ) -> None: ...
     def prepare(
         self,
         item: dict[str, Any],
@@ -40,8 +89,15 @@ class DynamicDeliveryLedger(Protocol):
         self, dynamic_id: str, target: ConversationRef, stage: str, result: SendResult
     ) -> None: ...
     def skip_remaining(self, dynamic_id: str) -> bool: ...
+    def skip_stage(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> None: ...
     def recover(self) -> None: ...
+    def cleanup_media(self) -> MediaCleanupResult: ...
     def claim_notification(self, dynamic_id: str) -> bool: ...
+    def claim_recovery_report(
+        self, dynamic_id: str, counts: dict[str, int]
+    ) -> bool: ...
     def unattempted(
         self, dynamic_id: str, target: ConversationRef, stage: str
     ) -> bool: ...
@@ -49,8 +105,22 @@ class DynamicDeliveryLedger(Protocol):
         self, dynamic_id: str, message: OutboundMessage | None
     ) -> OutboundMessage | None: ...
     def load_media(self, dynamic_id: str) -> tuple[bool, OutboundMessage | None]: ...
+    def freeze_unit(
+        self,
+        dynamic_id: str,
+        target: ConversationRef,
+        stage: str,
+        message: OutboundMessage,
+    ) -> OutboundMessage: ...
+    def load_text(self, dynamic_id: str) -> tuple[bool, OutboundMessage | None]: ...
+    def freeze_text(
+        self, dynamic_id: str, message: OutboundMessage | None
+    ) -> OutboundMessage | None: ...
     def image_units(
         self, dynamic_id: str, target: ConversationRef, count: int
+    ) -> bool: ...
+    def fail_media(
+        self, dynamic_id: str, target: ConversationRef, result: SendResult
     ) -> None: ...
     def retry_delay(self, dynamic_id: str) -> float | None: ...
     def attempts(self, dynamic_id: str, target: ConversationRef, stage: str) -> int: ...
@@ -77,6 +147,19 @@ class StageMessenger:
     async def send(
         self, conversation: ConversationRef, message: OutboundMessage
     ) -> SendResult:
+        try:
+            message = self.ledger.freeze_unit(
+                self.dynamic_id, conversation, self.stage, message
+            )
+        except (OSError, ValueError):
+            result = SendResult(
+                delivered=False,
+                error_code="frozen_media_unavailable",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
+            if self.ledger.claim(self.dynamic_id, conversation, self.stage):
+                self.ledger.finish(self.dynamic_id, conversation, self.stage, result)
+            return result
         if not self.ledger.claim(self.dynamic_id, conversation, self.stage):
             _LOGGER.info(
                 "Bilibili unit skipped: dynamic=%s unit=%s round=%d "
@@ -86,11 +169,14 @@ class StageMessenger:
                 delivery_round.get(),
                 reference_digest(conversation.id),
             )
+            if recorded := self.ledger.stage_result(
+                self.dynamic_id, conversation, self.stage
+            ):
+                return recorded
             return SendResult(
                 delivered=False,
                 error_code="ledger:not-claimed",
                 attempted=False,
-                failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
         token = delivery_unit.set(
             f"dynamic={self.dynamic_id} unit={self.stage} round={delivery_round.get()} "
@@ -108,6 +194,19 @@ class StageMessenger:
         )
         try:
             result = await self.messenger.send(conversation, message)
+        except asyncio.CancelledError:
+            self.ledger.finish(
+                self.dynamic_id,
+                conversation,
+                self.stage,
+                SendResult(
+                    delivered=False,
+                    error_code="interrupted_send",
+                    failure_kind=DeliveryFailureKind.UNCERTAIN,
+                ),
+            )
+            self.ledger.block_following(self.dynamic_id, conversation, self.stage)
+            raise
         except Exception as error:  # noqa: BLE001 - a raised transport result is ambiguous
             result = SendResult(
                 delivered=False,

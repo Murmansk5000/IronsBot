@@ -7,6 +7,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
+from itertools import count
 from typing import TYPE_CHECKING
 
 from ironsbot.core.delivery_attempt import delivery_round
@@ -47,7 +48,14 @@ class DynamicRetryPlan:
         first_round = (
             self.ledger.completed_round_count(self.dynamic_id) if self.ledger else 0
         )
-        for round_index in range(first_round, len(BILI_RETRY_DELAYS) + 1):
+        # Durable budgets belong to units, not to the whole dynamic. A later
+        # stage must retain its own retries after an earlier stage exhausts.
+        rounds = (
+            count(first_round)
+            if self.ledger
+            else iter(range(first_round, len(BILI_RETRY_DELAYS) + 1))
+        )
+        for round_index in rounds:
             if not pending:
                 break
             if round_index or resume:
@@ -58,7 +66,7 @@ class DynamicRetryPlan:
                     if round_index
                     else 0.0
                 )
-                if delay is None and round_index > first_round:
+                if delay is None and round_index > first_round and self.ledger is None:
                     logger.info(
                         "Bilibili retries stopped: dynamic=%s "
                         "reason=no_retryable_units",
@@ -162,6 +170,11 @@ class DynamicRetryPlan:
             )
             if self.ledger is not None:
                 self.ledger.finish_round(self.dynamic_id)
+                failures.clear()
+                failures.update(
+                    ((target, stage), result)
+                    for target, stage, result in self.ledger.failures(self.dynamic_id)
+                )
             pending = list(
                 dict.fromkeys(
                     target

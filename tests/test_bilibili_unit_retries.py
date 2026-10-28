@@ -402,9 +402,11 @@ async def test_restart_finishes_unattempted_units_in_interrupted_final_round(
     assert ledger.prepare(
         item, int(clock.now), 123, BiliPushTargets([TARGET], [], [], []), ()
     )
-    for _ in range(TOTAL_ATTEMPTS - 1):
-        assert ledger.begin_round(item["id_str"])
-        ledger.finish_round(item["id_str"])
+    with SqliteDatabase(ledger.path).connect() as db:
+        db.execute(
+            "INSERT INTO delivery_rounds (dynamic_id,count,completed) VALUES (?,?,1)",
+            (item["id_str"], TOTAL_ATTEMPTS - 1),
+        )
     assert ledger.begin_round(item["id_str"])
     for stage in ("link", "text"):
         assert ledger.claim(item["id_str"], TARGET, stage)
@@ -468,6 +470,9 @@ def test_claim_prevents_overtaking_inflight_image_and_early_finalization(
     )
     ledger.image_units(dynamic_id, TARGET, 2)
     assert not ledger.claim(dynamic_id, TARGET, "image:2")
+    assert not ledger.claim(dynamic_id, TARGET, "image:1")
+    ledger.skip_stage(dynamic_id, TARGET, "link")
+    ledger.skip_stage(dynamic_id, TARGET, "text")
     assert ledger.claim(dynamic_id, TARGET, "image:1")
     assert not ledger.skip_remaining(dynamic_id)
     assert ledger.unattempted(dynamic_id, TARGET, "image:2")

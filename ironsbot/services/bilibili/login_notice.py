@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from base64 import b64decode
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 
 if TYPE_CHECKING:
     from ironsbot.services.bilibili.login import BiliLoginNotice
@@ -46,4 +49,10 @@ async def send_bili_login_notice(
         action_name="Bilibili login notice",
         interval_seconds=0,
         subscription_key="bili_login_notice",
+        intent=DeliveryIntent(
+            uuid.uuid4().hex,
+            min(notice.expires_at or time.time() + 86400, time.time() + 86400),
+            feature="admin_notice",
+            supersedes="bilibili_login",
+        ),
     )
