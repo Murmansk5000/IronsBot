@@ -15,6 +15,8 @@ from ironsbot.services.seer.render_paths import (
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from ironsbot.services.seer.new_content_diff import FieldDiff
+
     from . import HtmlTemplateRenderer
     from .custom_pet_models import SkillDict
     from .new_content_pool_changes import PoolChangePreview
@@ -46,6 +48,8 @@ class NewContentMenuItem:
     pool_preview: PoolChangePreview | None = None
     image_notice: str = ""
     entity_key: tuple[str, int] | None = None
+    diff_fields: tuple[FieldDiff, ...] = ()
+    diff_notice: str = ""
 
 
 @dataclass(frozen=True, slots=True)

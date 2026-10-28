@@ -54,10 +54,10 @@
     .pool-other-row { display: flex; gap: 12px; padding: 6px 0; }
     .pool-other-direction { flex: 0 0 180px; color: #91e7ff; font-weight: 700; }
     .item {
-      display: flex; align-items: stretch; min-height: 100px; margin-left: 16px;
+      display: flex; flex-wrap: wrap; align-items: flex-start; margin-left: 16px;
       padding: 10px 14px; background: #0c2744; border-left: 3px solid #3d88c8;
     }
-    .item.no-image { min-height: 58px; }
+    .item.no-image { min-height: 0; }
     .item.skill-item { min-height: 0; }
     .skill-content { flex: 1; min-width: 0; }
     .skill-item .sk-card { margin: 0; }
@@ -79,11 +79,10 @@
       display: block; max-width: 100%; max-height: 100%; width: auto; height: auto;
       object-fit: contain;
     }
-    .content { display: flex; min-width: 0; flex: 1; gap: 16px; }
+    .content { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 6px; }
     .content-main { min-width: 0; flex: 1 1 auto; padding-top: 1px; }
     .content-side {
-      flex: 0 0 330px; min-width: 0; padding-left: 14px;
-      border-left: 1px solid #285878;
+      min-width: 0;
     }
     .item-name { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
     .metadata {
@@ -127,6 +126,17 @@
       border-top: 1px solid #285b87; font-size: 14px;
     }
     .footer kbd { padding: 1px 6px; color: #dff7ff; background: #1b5385; border-radius: 2px; }
+    .diff-wrap { flex: 0 0 calc(100% - 42px); min-width: 0; margin: 10px 0 0 42px; }
+    .diff-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; line-height: 1.6; }
+    .diff-table th, .diff-table td { width: 50%; padding: 6px 10px; border: 1px solid #315570; vertical-align: top; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .diff-table .diff-heading { color: #b8d2e4; background: #112e48; }
+    .diff-table .diff-field { width: 100%; background: #10293f; color: #bdd5e6; font-weight: 600; }
+    .diff-fragment.old { color: #ffb6bd; background: #582735; }
+    .diff-fragment.new { color: #a0efbb; background: #164532; }
+    .diff-prefix { display: inline-block; width: 16px; font-weight: 800; }
+    .diff-prefix.old { color: #ffb6bd; }
+    .diff-prefix.new { color: #a0efbb; }
+    .diff-notice { padding: 6px 0; color: #f4dc8f; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -250,6 +260,27 @@
                   </div>
                 {% endif %}
                 </aside>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if item.diff_fields or item.diff_notice %}
+            <div class="diff-wrap">
+              {% if item.diff_notice %}<div class="diff-notice">{{ item.diff_notice | e }}</div>{% endif %}
+              {% if item.diff_fields %}
+              <table class="diff-table">
+                <thead><tr><th class="diff-heading">修改前</th><th class="diff-heading">修改后</th></tr></thead>
+                <tbody>
+                {% for field in item.diff_fields %}
+                  <tr><th colspan="2" class="diff-field">{{ field.label | e }}</th></tr>
+                  {% for line in field.lines %}
+                  <tr>
+                    <td>{% if line.old | selectattr('changed') | list %}<span class="diff-prefix old">−</span>{% endif %}{% for fragment in line.old %}<span{% if fragment.changed %} class="diff-fragment old"{% endif %}>{{ fragment.text | e }}</span>{% endfor %}</td>
+                    <td>{% if line.new | selectattr('changed') | list %}<span class="diff-prefix new">+</span>{% endif %}{% for fragment in line.new %}<span{% if fragment.changed %} class="diff-fragment new"{% endif %}>{{ fragment.text | e }}</span>{% endfor %}</td>
+                  </tr>
+                  {% endfor %}
+                {% endfor %}
+                </tbody>
+              </table>
               {% endif %}
             </div>
             {% endif %}

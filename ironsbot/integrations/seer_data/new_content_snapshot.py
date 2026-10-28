@@ -400,6 +400,17 @@ def _fallback_details(item: NewContentItem) -> NewContentItemDetails:
     change = "修改" if item.change_kind == "modified" else "新增"
     if item.category == "autocard_chip":
         current = str(item.payload.get("description", "")).strip()
+        if item.payload.get("field_changes_version") == 1:
+            rarity = item.payload.get("rarity")
+            rarity_name = {"1": "普通", "2": "稀有", "3": "传说"}.get(str(rarity))
+            category = str(item.payload.get("category", "战斗芯片"))
+            return NewContentItemDetails(
+                metadata=f"{change}｜ID：{item.entity_id}｜{category}"
+                + (f"｜档位：{rarity_name}" if rarity_name else ""),
+                description="",
+                side_title="芯片效果" if current else "",
+                side_description=current,
+            )
         previous = str(item.payload.get("previous_description", "")).strip()
         summary = item.payload.get("change_summary", [])
         changes = []
