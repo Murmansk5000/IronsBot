@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import (
@@ -12,7 +14,7 @@ from ironsbot.core.outbound import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ironsbot.core.outbound import OutboundMessage, OutboundMessenger, ReplyContext
     from ironsbot.core.platform import ConversationRef, Platform
@@ -26,6 +28,7 @@ _UNSUPPORTED = DeliveryCapabilities(
     supports_private_context=False,
     supports_images=False,
 )
+logger = logging.getLogger(__name__)
 
 
 class PlatformOutboundMessenger:
@@ -33,6 +36,7 @@ class PlatformOutboundMessenger:
 
     def __init__(self, messengers: Mapping[Platform, OutboundMessenger]) -> None:
         self._messengers = dict(messengers)
+        self.on_available: Callable[[ConversationRef], None] | None = None
 
     def capabilities_for(
         self,
@@ -53,7 +57,9 @@ class PlatformOutboundMessenger:
         messenger = self._messengers.get(conversation.platform)
         if messenger is None:
             return _unsupported_result(conversation)
-        return await messenger.send(conversation, message)
+        result = await messenger.send(conversation, message)
+        self._available(conversation, result)
+        return result
 
     async def reply(
         self,
@@ -63,7 +69,22 @@ class PlatformOutboundMessenger:
         messenger = self._messengers.get(context.conversation.platform)
         if messenger is None:
             return _unsupported_result(context.conversation)
-        return await messenger.reply(context, message)
+        result = await messenger.reply(context, message)
+        self._available(context.conversation, result)
+        return result
+
+    def _available(self, target: ConversationRef, result: SendResult) -> None:
+        if not result.delivered or self.on_available is None:
+            return
+        actual = (
+            replace(target, account_id=result.execution_identity.account_id)
+            if result.execution_identity
+            else target
+        )
+        try:
+            self.on_available(actual)
+        except Exception:
+            logger.exception("delivery recovery wake failed after accepted message")
 
 
 def _unsupported_result(conversation: ConversationRef) -> SendResult:

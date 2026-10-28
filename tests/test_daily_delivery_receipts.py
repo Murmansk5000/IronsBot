@@ -33,6 +33,7 @@ from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
 )
 from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
+from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowResult
 from ironsbot.services.seer.lucky_skin_window_delivery import (
     LuckySkinWindowOutboundSender,
 )
@@ -173,7 +174,7 @@ async def test_daily_window_uses_trusted_route_and_receipt_commit(
         verify_history=history_check,
         verify_onebot_history=True,
     )
-    result = cast("Any", object())
+    result = LuckySkinWindowResult("2026-09-23", 700001001, (), from_cache=False)
     assert await sender.send_daily_notice(actor, result, day="2026-09-23") == (
         outcome == "success"
     )
@@ -246,7 +247,9 @@ async def test_daily_onebot_history_check_never_retries_accepted_send(
     )
 
     assert await sender.send_daily_notice(
-        actor, cast("Any", object()), day="2026-09-23"
+        actor,
+        LuckySkinWindowResult("2026-09-23", 700001001, (), from_cache=False),
+        day="2026-09-23",
     )
     history_check.assert_awaited_once_with(target, receipt)
     delivery.send.assert_awaited_once()

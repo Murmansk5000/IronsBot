@@ -22,6 +22,7 @@ class ScheduledMessageDelivery:
     subscription_key: str
     unresolved_mentions_as_text: bool = False
     mention_fallback_name: str = ""
+    feature: str = ""
 
 
 class ScheduledMessageSender(Protocol):

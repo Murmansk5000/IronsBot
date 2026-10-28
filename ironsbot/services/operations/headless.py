@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import scheduled_clock_time
+from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
@@ -399,6 +400,13 @@ class HeadlessService:
                 f"剩余时间：{remaining // 60}分{remaining % 60}秒",
                 action_name="headless maintenance notice",
                 subscription_key="headless_seer_notice",
+                intent=DeliveryIntent(
+                    f"maintenance:{scheduled_at.isoformat()}",
+                    min(
+                        scheduled_at.timestamp(), (now + timedelta(days=1)).timestamp()
+                    ),
+                    feature="admin_notice",
+                ),
             )
         except Exception:
             logger.exception("headless maintenance delivery failed")
@@ -659,6 +667,12 @@ class HeadlessService:
             ),
             action_name="headless state notice",
             subscription_key="headless_seer_notice",
+            intent=DeliveryIntent(
+                f"headless:{worker.user_id}:{now.isoformat()}",
+                (now + timedelta(days=1)).timestamp(),
+                feature="admin_notice",
+                supersedes=f"headless:{reference_digest(str(worker.user_id))}",
+            ),
         )
 
     def _worker_for_user_id(
