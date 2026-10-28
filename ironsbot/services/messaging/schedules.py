@@ -26,7 +26,7 @@ from .push_time import daily_time_parts_for_push
 from .service import build_schedule_job_id, build_schedule_trigger_kwargs
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.messaging import MessageScheduledAction
+    from ironsbot.config.models.messaging import MessageAction
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def render_schedule_messages(
-    task: MessageScheduledAction, *, messaging: MessagingService
+    task: MessageAction, *, messaging: MessagingService
 ) -> tuple[str, ...]:
     if not task.renderer:
         return tuple(task.messages)
@@ -68,7 +68,7 @@ def render_schedule_messages(
 
 
 async def send_private_schedule(
-    task: MessageScheduledAction,
+    task: MessageAction,
     index: int = 1,
     target_conversations: tuple[ConversationRef, ...] | None = None,
     *,
@@ -115,7 +115,7 @@ async def send_private_schedule(
 
 
 async def send_group_schedule(
-    task: MessageScheduledAction,
+    task: MessageAction,
     index: int = 1,
     target_conversations: tuple[ConversationRef, ...] | None = None,
     *,
@@ -161,7 +161,7 @@ async def send_group_schedule(
 
 
 def eligible_group_schedule_conversations(
-    task: MessageScheduledAction, index: int, *, messaging: MessagingService
+    task: MessageAction, index: int, *, messaging: MessagingService
 ) -> tuple[ConversationRef, ...]:
     eligible = tuple(messaging._features.conversations_for_feature(task.feature))
     if task.target_groups:
@@ -185,7 +185,7 @@ def eligible_group_schedule_conversations(
 
 
 async def send_schedule(
-    task: MessageScheduledAction,
+    task: MessageAction,
     index: int = 1,
     *,
     messaging: MessagingService,
@@ -225,7 +225,7 @@ def schedule_override_job_id(
 
 
 def schedule_override_trigger_kwargs(
-    task: MessageScheduledAction,
+    task: MessageAction,
     value: str,
 ) -> dict[str, Any]:
     hour, minute, second = daily_time_parts_for_push(value)
@@ -239,7 +239,7 @@ def schedule_override_trigger_kwargs(
 def _register_private_schedule_overrides(
     registry: JobRegistry,
     index: int,
-    task: MessageScheduledAction,
+    task: MessageAction,
     messaging: MessagingService,
 ) -> None:
     if task.target_groups:
@@ -281,7 +281,7 @@ def _register_private_schedule_overrides(
 def _register_group_schedule_overrides(
     registry: JobRegistry,
     index: int,
-    task: MessageScheduledAction,
+    task: MessageAction,
     messaging: MessagingService,
 ) -> None:
     key = schedule_key(index, task)
@@ -320,7 +320,7 @@ def _register_group_schedule_overrides(
 def _register_schedule(
     registry: JobRegistry,
     index: int,
-    task: MessageScheduledAction,
+    task: MessageAction,
     messaging: MessagingService,
 ) -> None:
     if not task.enabled:
@@ -342,7 +342,7 @@ async def register_message_schedules(
     messaging: MessagingService,
 ) -> None:
     def register_jobs(registry: JobRegistry) -> None:
-        for index, task in enumerate(messaging._config.schedules, start=1):
+        for index, task in enumerate(messaging._config.scheduled_actions, start=1):
             _register_schedule(registry, index, task, messaging)
 
     JobRegistry(

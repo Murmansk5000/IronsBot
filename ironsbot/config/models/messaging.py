@@ -5,9 +5,17 @@ import re
 from string import Formatter
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 from typing_extensions import Self
 
+from ironsbot.config.message_variables import expand_message_variables
 from ironsbot.config.qq_references import (  # noqa: TC001 - Pydantic resolves aliases
     QQReferenceList,
 )
@@ -17,8 +25,6 @@ from ironsbot.core.commands import (  # noqa: TC001 - Pydantic resolves aliases
 from ironsbot.core.messaging import SendpicBehaviorConfig
 from ironsbot.core.time import normalize_daily_time_with_seconds
 
-ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
-ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
 ENABLED_MENTION_USERS_REQUIRED_ERROR = "已启用的提及回复必须配置 users"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
 COMMAND_MESSAGES_EMPTY_ERROR = "messages 中的消息内容不能为空"
@@ -46,10 +52,16 @@ OUTBOUND_RATE_LIMIT_WINDOWS_DUPLICATE_ERROR = (
 PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
-SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
-SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
-SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
-SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM or HH:MM:SS"
+MESSAGE_ID_DUPLICATE_ERROR = "消息 id 必须全局唯一"
+MESSAGE_TRIGGER_ERROR = "message requires commands, keywords or time"
+MESSAGE_SCHEDULE_FIELDS_ERROR = "schedule-only fields require time"
+MESSAGE_MATCH_MODE_ERROR = "match_mode requires keywords"
+MESSAGE_SUBSCRIPTION_ERROR = "subscription_id must be a stable message identifier"
+MESSAGE_SUBSCRIPTION_DUPLICATE_ERROR = (
+    "scheduled message subscription_id must be unique"
+)
+RETIRED_ACTIVITY_FEATURE_ERROR = "retired activity feature; use web_activity"
+SCHEDULE_TIME_ERROR = "messaging.messages.time must use HH:MM or HH:MM:SS"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR = (
     "messaging.command_cooldown.cooldown_message must not be empty"
@@ -74,11 +86,11 @@ COMMAND_COOLDOWN_EMPTY_ID_ERROR = (
 )
 
 
-class DuplicateScheduleIdError(ValueError):
+class DuplicateMessageIdError(ValueError):
     @classmethod
-    def from_ids(cls, schedule_ids: set[str]) -> DuplicateScheduleIdError:
-        duplicate_text = ", ".join(sorted(schedule_ids))
-        return cls(f"{SCHEDULE_ID_DUPLICATE_ERROR}: {duplicate_text}")
+    def from_ids(cls, message_ids: set[str]) -> DuplicateMessageIdError:
+        duplicate_text = ", ".join(sorted(message_ids))
+        return cls(f"{MESSAGE_ID_DUPLICATE_ERROR}: {duplicate_text}")
 
 
 class CommandCooldownWindowConfig(BaseModel):
@@ -214,7 +226,7 @@ class CommandCooldownConfig(BaseModel):
         return tuple(self.commands.get(command_id, self.windows))
 
 
-class BaseMessageAction(BaseModel):
+class MessageAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = ""
@@ -222,6 +234,54 @@ class BaseMessageAction(BaseModel):
     enabled: bool = True
     feature: str = "text"
     messages: list[str] = Field(min_length=1)
+    commands: NormalizedStringList = Field(default_factory=list)
+    keywords: NormalizedStringList = Field(default_factory=list)
+    match_mode: Literal["exact", "contains"] = "exact"
+    at_user_ids: QQReferenceList = Field(default_factory=list)
+    target_groups: QQReferenceList = Field(default_factory=list)
+    time: str = ""
+    day_of_week: str | None = None
+    subscription_id: str = ""
+    renderer: str = ""
+    renderer_parameters: dict[str, str] = Field(default_factory=dict)
+    unresolved_mentions: Literal["skip", "text"] = "skip"
+    mention_fallback_name: str = ""
+
+    @field_validator("time")
+    @classmethod
+    def normalize_time(cls, value: str) -> str:
+        return normalize_daily_time_with_seconds(
+            value, error_message=SCHEDULE_TIME_ERROR
+        )
+
+    @model_validator(mode="after")
+    def validate_triggers(self) -> Self:
+        if not self.id:
+            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
+        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
+            raise ValueError(COMMAND_ID_FORMAT_ERROR)
+        if not (self.commands or self.keywords or self.time):
+            raise ValueError(MESSAGE_TRIGGER_ERROR)
+        schedule_fields = {
+            "target_groups",
+            "day_of_week",
+            "subscription_id",
+            "renderer",
+            "renderer_parameters",
+            "unresolved_mentions",
+            "mention_fallback_name",
+        }
+        if not self.time and schedule_fields & self.model_fields_set:
+            raise ValueError(MESSAGE_SCHEDULE_FIELDS_ERROR)
+        if "match_mode" in self.model_fields_set and not self.keywords:
+            raise ValueError(MESSAGE_MATCH_MODE_ERROR)
+        if self.subscription_id:
+            self.subscription_id = self.subscription_id.strip()
+            if not _SCHEDULE_ID_PATTERN.fullmatch(self.subscription_id):
+                raise ValueError(MESSAGE_SUBSCRIPTION_ERROR)
+        if self.feature in {"web_activity_link", "web_activity_push"}:
+            raise ValueError(RETIRED_ACTIVITY_FEATURE_ERROR)
+        return self
 
     @field_validator("id", "name")
     @classmethod
@@ -241,39 +301,6 @@ class BaseMessageAction(BaseModel):
         if any(not message for message in messages):
             raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
         return messages
-
-
-class MessageReplyAction(BaseMessageAction):
-    at_user_ids: QQReferenceList = Field(default_factory=list)
-
-
-class MessageCommandAction(MessageReplyAction):
-    commands: NormalizedStringList = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_enabled_command_action(self) -> Self:
-        if not self.id:
-            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
-        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
-            raise ValueError(COMMAND_ID_FORMAT_ERROR)
-        if self.enabled and not self.commands:
-            raise ValueError(ENABLED_COMMANDS_REQUIRED_ERROR)
-        return self
-
-
-class MessageKeywordReplyAction(MessageReplyAction):
-    keywords: NormalizedStringList = Field(default_factory=list)
-    match_mode: Literal["exact", "contains"] = "exact"
-
-    @model_validator(mode="after")
-    def validate_enabled_keyword_reply_action(self) -> Self:
-        if not self.id:
-            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
-        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
-            raise ValueError(COMMAND_ID_FORMAT_ERROR)
-        if self.enabled and not self.keywords:
-            raise ValueError(ENABLED_KEYWORDS_REQUIRED_ERROR)
-        return self
 
 
 class MessageMentionReplyAction(BaseModel):
@@ -308,35 +335,6 @@ class MessageMentionReplyAction(BaseModel):
             raise ValueError(COMMAND_ID_FORMAT_ERROR)
         if self.enabled and not self.users:
             raise ValueError(ENABLED_MENTION_USERS_REQUIRED_ERROR)
-        return self
-
-
-class MessageScheduledAction(BaseMessageAction):
-    feature: str = "text_push"
-    at_user_ids: QQReferenceList = Field(default_factory=list)
-    target_groups: QQReferenceList = Field(default_factory=list)
-    time: str
-    day_of_week: str | None = None
-    renderer: str = ""
-    renderer_parameters: dict[str, str] = Field(default_factory=dict)
-    unresolved_mentions: Literal["skip", "text"] = "skip"
-    mention_fallback_name: str = ""
-
-    @field_validator("time")
-    @classmethod
-    def normalize_time(cls, value: str) -> str:
-        return normalize_daily_time_with_seconds(
-            value,
-            error_message=SCHEDULE_TIME_ERROR,
-        )
-
-    @model_validator(mode="after")
-    def validate_schedule_id(self) -> Self:
-        schedule_id = self.id.strip()
-        if not schedule_id:
-            raise ValueError(SCHEDULE_ID_REQUIRED_ERROR)
-        if not _SCHEDULE_ID_PATTERN.fullmatch(schedule_id):
-            raise ValueError(SCHEDULE_ID_FORMAT_ERROR)
         return self
 
 
@@ -517,10 +515,9 @@ class MessageConfig(BaseModel):
     red_packet_notice: RedPacketNoticeConfig = Field(
         default_factory=RedPacketNoticeConfig
     )
-    commands: list[MessageCommandAction] = Field(default_factory=list)
-    keyword_replies: list[MessageKeywordReplyAction] = Field(default_factory=list)
+    variables: dict[str, StrictStr] = Field(default_factory=dict)
+    messages: list[MessageAction] = Field(default_factory=list)
     mention_replies: list[MessageMentionReplyAction] = Field(default_factory=list)
-    schedules: list[MessageScheduledAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
     team_audit_welcome: TeamAuditWelcomeConfig = Field(
         default_factory=TeamAuditWelcomeConfig
@@ -530,21 +527,46 @@ class MessageConfig(BaseModel):
     @property
     def command_feature_keys(self) -> frozenset[str]:
         return frozenset(
-            action.feature for action in (*self.commands, *self.keyword_replies)
+            action.feature
+            for action in self.messages
+            if action.commands or action.keywords
         )
 
     @property
     def schedule_feature_keys(self) -> frozenset[str]:
-        return frozenset(action.feature for action in self.schedules)
+        return frozenset(action.feature for action in self.scheduled_actions)
+
+    @property
+    def command_actions(self) -> tuple[MessageAction, ...]:
+        return tuple(action for action in self.messages if action.commands)
+
+    @property
+    def keyword_actions(self) -> tuple[MessageAction, ...]:
+        return tuple(action for action in self.messages if action.keywords)
+
+    @property
+    def scheduled_actions(self) -> tuple[MessageAction, ...]:
+        return tuple(action for action in self.messages if action.time)
 
     @model_validator(mode="after")
-    def validate_unique_schedule_ids(self) -> Self:
+    def validate_messages(self) -> Self:
         seen: set[str] = set()
         duplicates: set[str] = set()
-        for task in self.schedules:
+        for task in self.messages:
             if task.id in seen:
                 duplicates.add(task.id)
             seen.add(task.id)
         if duplicates:
-            raise DuplicateScheduleIdError.from_ids(duplicates)
+            raise DuplicateMessageIdError.from_ids(duplicates)
+        subscriptions = [
+            task.subscription_id or task.id for task in self.scheduled_actions
+        ]
+        if len(subscriptions) != len(set(subscriptions)):
+            raise ValueError(MESSAGE_SUBSCRIPTION_DUPLICATE_ERROR)
+
+        self.variables, expanded = expand_message_variables(
+            self.variables, [action.messages for action in self.messages]
+        )
+        for action, messages in zip(self.messages, expanded, strict=True):
+            action.messages = messages
         return self

@@ -27,11 +27,9 @@ from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.config.models.messaging import (
     CommandCooldownConfig,
     CommandCooldownWindowConfig,
-    MessageCommandAction,
+    MessageAction,
     MessageConfig,
-    MessageKeywordReplyAction,
     MessageMentionReplyAction,
-    MessageScheduledAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
@@ -107,8 +105,9 @@ def _schedule(
     at_user_ids: Sequence[str | int] | None = None,
     schedule_id: str = "daily",
     time: str = "23:00",
-) -> MessageScheduledAction:
-    return MessageScheduledAction(
+) -> MessageAction:
+    return MessageAction(
+        feature="text_push",
         id=schedule_id,
         messages=[message],
         at_user_ids=list(at_user_ids or []),
@@ -136,11 +135,11 @@ class FakeScheduler:
 def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     data_path: Path,
     *,
-    commands: list[MessageCommandAction] | None = None,
-    keyword_replies: list[MessageKeywordReplyAction] | None = None,
+    commands: Sequence[MessageAction] | None = None,
+    keyword_replies: Sequence[MessageAction] | None = None,
     mention_replies: list[MessageMentionReplyAction] | None = None,
     mention_reply_targets: tuple[tuple[ActorRef, ...], ...] = (),
-    schedules: list[MessageScheduledAction] | None = None,
+    schedules: list[MessageAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
@@ -151,10 +150,8 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
 ) -> MessagingService:
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(),
-        commands=commands or [],
-        keyword_replies=keyword_replies or [],
+        messages=[*(commands or []), *(keyword_replies or []), *(schedules or [])],
         mention_replies=mention_replies or [],
-        schedules=schedules or [],
     )
     resources = build_test_runtime(
         feature_config=FeatureConfig(
@@ -218,6 +215,166 @@ def _capture_scheduled_deliveries(
 
     monkeypatch.setattr(ScheduledMessageOutboundSender, "send", capture)
     return deliveries
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("allowed", [False, True])
+async def test_shared_message_reply_schedule_and_preferences(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    platform: Platform,
+    *,
+    allowed: bool,
+) -> None:
+    sent = _capture_scheduled_deliveries(monkeypatch)
+    config = MessageConfig.model_validate(
+        {
+            "variables": {"domain": "https://example.invalid", "text": "活动"},
+            "messages": [
+                {
+                    "id": "web_activity",
+                    "feature": "web_activity",
+                    "messages": ["${text}\n${domain}/checkin", "第二条"],
+                    "commands": ["活动", "签到"],
+                    "time": "23:00",
+                    "subscription_id": "web_activity_push",
+                }
+            ],
+        }
+    )
+    actor = ActorRef(platform, "2001")
+    conversation = ConversationRef(platform, "group", "1001")
+    features = frozenset({"web_activity"}) if allowed else frozenset()
+    messaging = replace(
+        _messaging_resources(tmp_path / "subscriptions.sqlite"),
+        _config=config,
+        _features=FeatureService({conversation: features}, {}, frozenset()),
+    )
+    messaging._store.unsubscribe(conversation, "web_activity_push", "web_activity")
+    messaging._store.set_time_preference(
+        conversation, "web_activity_push", CRON_TIME_PREFERENCE, "22:30"
+    )
+    # Menu rebuild/cleanup must not discard preferences when the message id changes.
+    messaging._prune_stale_preferences()
+    options = messaging._schedule_subscription_options(conversation)
+    if allowed:
+        assert len(options) == 1
+        assert options[0].key == "web_activity_push"
+        assert options[0].unsubscribed
+        assert "22:30" in options[0].label
+        assert messaging.push_time_options(conversation)[0].key == "web_activity_push"
+    else:
+        assert options == []
+    router = _messaging_router(config, messaging)
+    for text in ("活动", "签到"):
+        context = MessageInputContext(
+            IncomingMessageRef(platform, actor, conversation, text, text),
+            mentions_bot=True,
+        )
+        reply = await router.dispatch(context)
+        if not allowed:
+            assert reply is None
+            continue
+        assert reply is not None
+        assert reply.message == OutboundMessage.from_text(
+            config.messages[0].messages[0]
+        )
+    await message_schedules.send_schedule(config.messages[0], messaging=messaging)
+    assert sent[-1].group_conversations == ()
+    await message_schedules.send_group_schedule(
+        config.messages[0], target_conversations=(conversation,), messaging=messaging
+    )
+    group_delivery = sent[-1]
+    assert group_delivery.messages == tuple(config.messages[0].messages)
+    assert group_delivery.group_conversations == ((conversation,) if allowed else ())
+    assert group_delivery.subscription_key == "web_activity_push"
+
+
+def test_shared_message_subscription_id_does_not_bypass_group_restriction(
+    tmp_path: Path,
+) -> None:
+    task = MessageAction(
+        id="activity",
+        subscription_id="old_activity",
+        feature="web_activity",
+        time="23:00",
+        target_groups=[1001],
+        messages=["activity"],
+    )
+    messaging = _messaging_resources(
+        tmp_path / "subscriptions.sqlite",
+        schedules=[task],
+        group_policy={"1002": ["web_activity"]},
+    )
+    assert messaging._schedule_subscription_options(_group(1002)) == []
+
+
+@pytest.mark.asyncio
+async def test_unified_message_through_official_event_parser(tmp_path: Path) -> None:
+    import httpx
+
+    from ironsbot.core.outbound import OutboundMessenger
+    from ironsbot.integrations.qq_official.runtime import (
+        QQOfficialRuntime,
+        QQOfficialRuntimeAccount,
+    )
+
+    config = MessageConfig.model_validate(
+        {
+            "variables": {"domain": "https://example.invalid"},
+            "messages": [
+                {
+                    "id": "activity",
+                    "commands": ["活动", "签到"],
+                    "time": "23:00",
+                    "feature": "web_activity",
+                    "messages": ["签到：${domain}/checkin", "第二条"],
+                }
+            ],
+        }
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL, "group", "fictional-group", account_id="test-app"
+    )
+    messaging = replace(
+        _messaging_resources(tmp_path / "subscriptions.sqlite"),
+        _config=config,
+        _features=FeatureService(
+            {conversation: frozenset({"web_activity"})}, {}, frozenset()
+        ),
+    )
+    messenger = Mock(spec=OutboundMessenger)
+    messenger.reply = AsyncMock(
+        return_value=SendResult(delivered=True, message_id="test-reply")
+    )
+    async with httpx.AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (QQOfficialRuntimeAccount("test-app", "test-secret"),),
+            http_client=client,
+            session_root=tmp_path,
+        )
+        runtime.bind(_messaging_router(config, messaging), messenger)
+        for text in ("活动", "签到"):
+            await runtime.handle_event(
+                "test-app",
+                "GROUP_AT_MESSAGE_CREATE",
+                {
+                    "id": text,
+                    "content": text,
+                    "timestamp": "2099-01-01T00:00:00+08:00",
+                    "group_openid": "fictional-group",
+                    "author": {"member_openid": "fictional-member"},
+                },
+            )
+    assert messenger.reply.await_count == len(config.messages[0].messages) * 2
+    texts = [
+        "".join(
+            part.text for part in call.args[1].parts if isinstance(part, TextPart)
+        ).strip()
+        for call in messenger.reply.await_args_list
+    ]
+    assert texts == config.messages[0].messages * 2
 
 
 def test_messaging_startup_prunes_preferences_before_registering_jobs(
@@ -345,17 +502,15 @@ def test_td_displays_effective_schedule_and_activity_times(tmp_path: Path) -> No
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
         schedules=[
-            MessageScheduledAction(
+            MessageAction(
                 id="web_daily",
                 name="网页活动提醒",
-                feature="web_activity_push",
+                feature="web_activity",
                 messages=["提醒"],
                 time="19:00",
             )
         ],
-        user_policy={
-            "1001": ["web_activity_push", "seer_activity_push", "admin_notice"]
-        },
+        user_policy={"1001": ["web_activity", "seer_activity_push", "admin_notice"]},
         store=store,
     )
     messaging = replace(messaging, _activity=ActivityConfig(lead_hours=[11, 1]))
@@ -482,7 +637,12 @@ def _messaging_catalog(config: MessageConfig) -> CommandCatalog:
                 id="messaging", commands=messaging_command_contracts(config)
             ),
         ),
-        known_features={"text", "ai_chat"},
+        known_features={
+            "text",
+            "ai_chat",
+            *config.command_feature_keys,
+            *config.schedule_feature_keys,
+        },
     )
     return catalog
 
@@ -590,20 +750,32 @@ async def test_shared_router_prefers_enabled_exact_reply_over_keyword(
     tmp_path: Path, *, configured: bool, keyword: bool, enabled: bool
 ) -> None:
     config = MessageConfig(
-        commands=[
-            MessageCommandAction(
-                id="example", commands=["示例"], messages=["exact"], enabled=enabled
-            )
-        ]
-        if configured
-        else [],
-        keyword_replies=[
-            MessageKeywordReplyAction(
-                id="example", keywords=["示例"], messages=["keyword"], enabled=enabled
-            )
-        ]
-        if keyword
-        else [],
+        messages=[
+            *(
+                [
+                    MessageAction(
+                        id="example",
+                        commands=["示例"],
+                        messages=["exact"],
+                        enabled=enabled,
+                    )
+                ]
+                if configured
+                else []
+            ),
+            *(
+                [
+                    MessageAction(
+                        id="example_keyword",
+                        keywords=["示例"],
+                        messages=["keyword"],
+                        enabled=enabled,
+                    )
+                ]
+                if keyword
+                else []
+            ),
+        ],
     )
     messaging = replace(
         _messaging_resources(tmp_path / "qq.sqlite", user_policy={"1002": ["text"]}),
@@ -684,7 +856,7 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
     messaging = _messaging_resources(
         tmp_path / "qq.sqlite",
         commands=[
-            MessageCommandAction(
+            MessageAction(
                 id="same",
                 commands=["示例"],
                 messages=["exact"],
@@ -693,17 +865,17 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
             )
         ],
         keyword_replies=[
-            MessageKeywordReplyAction(
-                id="same",
+            MessageAction(
+                id="same_keyword",
                 keywords=["示例"],
                 messages=["keyword"],
-                feature="web_activity_link",
+                feature="web_activity",
             )
         ],
         user_policy={
             "1002": [
                 *(["seerinfo"] if exact_allowed else []),
-                *(["web_activity_link"] if keyword_allowed else []),
+                *(["web_activity"] if keyword_allowed else []),
             ]
         },
     )
@@ -727,10 +899,8 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
 
 def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None:
     config = MessageConfig(
-        keyword_replies=[
-            MessageKeywordReplyAction(
-                id="example", keywords=["示例"], messages=["keyword"]
-            )
+        messages=[
+            MessageAction(id="example_keyword", keywords=["示例"], messages=["keyword"])
         ]
     )
     catalog = _messaging_catalog(config)
@@ -739,7 +909,7 @@ def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None
     )
     context = CommandContext(_actor(SUPERUSER_ID), _private(SUPERUSER_ID))
     assert not catalog.claims_direct_input(context, runtime.features, "示例")
-    assert "messaging.keyword.example" not in {
+    assert "messaging.keyword.example_keyword" not in {
         c.id for c in catalog.poke_candidates_for_context(context, runtime.features)
     }
 
@@ -751,19 +921,21 @@ async def test_reply_cooldown_keys_distinguish_same_named_action_families(
     platform: Platform,
 ) -> None:
     config = MessageConfig(
-        commands=[
-            MessageCommandAction(id="same", commands=["指令"], messages=["direct"])
-        ],
-        keyword_replies=[
-            MessageKeywordReplyAction(
-                id="same", keywords=["触发"], messages=["keyword"]
-            )
+        messages=[
+            *([MessageAction(id="same", commands=["指令"], messages=["direct"])]),
+            *(
+                [
+                    MessageAction(
+                        id="same_keyword", keywords=["触发"], messages=["keyword"]
+                    )
+                ]
+            ),
         ],
     )
     messaging = _messaging_resources(
         tmp_path / "qq.sqlite",
-        commands=config.commands,
-        keyword_replies=config.keyword_replies,
+        commands=config.command_actions,
+        keyword_replies=config.keyword_actions,
         user_policy={"2001": ["text"]},
         superusers=(),
     )
@@ -813,8 +985,8 @@ async def test_reply_cooldown_keys_distinguish_same_named_action_families(
     assert "操作过于频繁" in messages[-1]
     assert [call.kwargs["command_id"] for call in cooldown.admit.call_args_list] == [
         "messaging.same",
-        "messaging.keyword.same",
-        "messaging.keyword.same",
+        "messaging.keyword.same_keyword",
+        "messaging.keyword.same_keyword",
     ]
 
 
@@ -825,10 +997,8 @@ async def test_keyword_reply_preserves_active_subscription_menu(
     tmp_path: Path, platform: Platform, *, group: bool
 ) -> None:
     config = MessageConfig(
-        keyword_replies=[
-            MessageKeywordReplyAction(
-                id="example", keywords=["触发"], messages=["keyword"]
-            )
+        messages=[
+            MessageAction(id="example_keyword", keywords=["触发"], messages=["keyword"])
         ]
     )
     actor = ActorRef(platform, "2001")
@@ -837,7 +1007,7 @@ async def test_keyword_reply_preserves_active_subscription_menu(
     messaging = replace(
         _messaging_resources(
             tmp_path / "qq.sqlite",
-            keyword_replies=config.keyword_replies,
+            keyword_replies=config.keyword_actions,
             store=store,
             extra_push_options=lambda _conversation: [
                 PushSubscriptionOption("example", "示例", "text")
@@ -891,7 +1061,7 @@ async def test_onebot_configured_reply_sends_messages_in_order(
         sent.append("".join(p.text for p in message.parts if isinstance(p, TextPart)))
         return SendResult(delivered=True, message_id=str(len(sent)))
 
-    action = MessageCommandAction(
+    action = MessageAction(
         id="sequence",
         commands=["连续回复"],
         messages=["第一条", "第二条", "第三条"],
@@ -902,7 +1072,7 @@ async def test_onebot_configured_reply_sends_messages_in_order(
         user_policy={str(SUPERUSER_ID): ["text"]},
     )
     reply = await _messaging_router(
-        MessageConfig(commands=[action]), messaging
+        MessageConfig(messages=[action]), messaging
     ).dispatch(
         message_input_context(private_message_event("连续回复", user_id=SUPERUSER_ID))
     )
@@ -925,7 +1095,7 @@ async def test_onebot_configured_reply_addresses_explicit_member_targets(
         )
         return SendResult(delivered=True, message_id="targeted")
 
-    action = MessageCommandAction(
+    action = MessageAction(
         id="targeted",
         commands=["加群"],
         messages=["加群信息"],
@@ -944,7 +1114,7 @@ async def test_onebot_configured_reply_addresses_explicit_member_targets(
         _command_mentions={"targeted": (_actor(790),)},
     )
     reply = await _messaging_router(
-        MessageConfig(commands=[action]), messaging
+        MessageConfig(messages=[action]), messaging
     ).dispatch(message_input_context(event))
     assert reply is not None
     await deliver_portable_reply(reply, record)
@@ -958,16 +1128,16 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
         commands=[
-            MessageCommandAction(
+            MessageAction(
                 id="activity_link",
                 commands=["activity"],
-                feature="web_activity_link",
+                feature="web_activity",
                 messages=["activity link"],
                 at_user_ids=[3001],
             )
         ],
-        user_policy={"2001": ["web_activity_link"]},
-        group_policy={"1001": ["web_activity_link"]},
+        user_policy={"2001": ["web_activity"]},
+        group_policy={"1001": ["web_activity"]},
     )
 
     private_action = messaging.match_action(
@@ -994,7 +1164,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
         commands=[
-            MessageCommandAction(
+            MessageAction(
                 id="exact_reply",
                 commands=["出出"],
                 feature="text",
@@ -1002,7 +1172,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
             )
         ],
         keyword_replies=[
-            MessageKeywordReplyAction(
+            MessageAction(
                 id="keyword_reply",
                 keywords=["出出", "自动词"],
                 feature="text",
@@ -1048,7 +1218,7 @@ def test_onebot_contains_reply_permissions_and_fixed_command_priority(
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
         commands=[
-            MessageCommandAction(
+            MessageAction(
                 id="fixed",
                 commands=["竞技胜率榜"],
                 feature="seerinfo",
@@ -1056,14 +1226,14 @@ def test_onebot_contains_reply_permissions_and_fixed_command_priority(
             )
         ],
         keyword_replies=[
-            MessageKeywordReplyAction(
+            MessageAction(
                 id="webpage",
                 keywords=["竞技胜率榜", "竞技精灵胜率榜"],
                 match_mode="contains",
                 feature="seerinfo",
                 messages=["https://example.com/sports"],
             ),
-            MessageKeywordReplyAction(
+            MessageAction(
                 id="second",
                 keywords=["胜率榜"],
                 match_mode="contains",
@@ -1259,7 +1429,7 @@ def test_private_renderer_limits_countdown_to_configured_group(
     tmp_path: Path,
 ) -> None:
     sent = _capture_scheduled_deliveries(monkeypatch)
-    task = MessageScheduledAction(
+    task = MessageAction(
         id="exam_countdown",
         feature="text_push",
         messages=["{days} days"],
@@ -1294,7 +1464,7 @@ def test_private_renderer_limits_countdown_to_configured_group(
 def test_targeted_schedule_only_appears_in_target_group_subscription_menu(
     tmp_path: Path,
 ) -> None:
-    task = MessageScheduledAction(
+    task = MessageAction(
         id="exam_countdown",
         name="Exam countdown",
         feature="text_push",
@@ -1322,7 +1492,7 @@ def test_target_group_follows_verified_official_group_link(
     tmp_path: Path,
 ) -> None:
     sent = _capture_scheduled_deliveries(monkeypatch)
-    task = MessageScheduledAction(
+    task = MessageAction(
         id="exam_countdown",
         feature="text_push",
         messages=["Reminder"],
@@ -1367,7 +1537,7 @@ def test_missing_private_renderer_never_sends_template(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     sent = _capture_scheduled_deliveries(monkeypatch)
-    task = MessageScheduledAction(
+    task = MessageAction(
         id="exam_countdown",
         feature="text_push",
         messages=["{days} days"],
@@ -1514,7 +1684,8 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         CRON_TIME_PREFERENCE,
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
-    task = MessageScheduledAction(
+    task = MessageAction(
+        feature="text_push",
         messages=["group push"],
         at_user_ids=[],
         id="daily",

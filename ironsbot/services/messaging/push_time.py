@@ -111,7 +111,7 @@ def _schedule_time_options(
     store: PushSubscriptionRepository,
     eligible_conversations: EligibleConversations,
 ) -> list[PushTimeOption]:
-    tasks = config.schedules
+    tasks = config.scheduled_actions
     features = {task.feature for task in tasks if task.enabled}
     eligible = eligible_conversations(conversation.kind, features)
 

@@ -46,8 +46,7 @@ class Feature(str, Enum):
     TEAM_RESOURCE_SUBSCRIPTION = "team_resource_subscription"
     TEXT = "text"
     TEXT_PUSH = "text_push"
-    WEB_ACTIVITY_LINK = "web_activity_link"
-    WEB_ACTIVITY_PUSH = "web_activity_push"
+    WEB_ACTIVITY = "web_activity"
 
 
 FIRE_MANUAL_AD_FEATURE: Final = Feature.FIRE_MANUAL_AD.value

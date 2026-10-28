@@ -126,7 +126,7 @@ def _messaging_router(service: Mock, sessions: PortableQuerySessions):
     )
 
     operations = build_portable_messaging_operations(service, sessions)
-    config = MessageConfig(commands=list(service.portable_command_actions))
+    config = MessageConfig(messages=list(service.portable_command_actions))
     catalog = CommandCatalog()
     catalog.load(
         (
@@ -354,17 +354,31 @@ async def test_onebot_public_entry_uses_shared_rank_candidates_and_final_target(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("command", ["活动", "签到"])
 async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
     ingress: SimpleNamespace,
     explicit: bool,  # noqa: FBT001
+    command: str,
 ) -> None:
-    from ironsbot.config.models.messaging import MessageCommandAction
+    from ironsbot.config.models.messaging import MessageConfig
     from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
     service = _subscription_service()
-    action = MessageCommandAction(
-        id="example", commands=["示例"], messages=["示例内容"], at_user_ids=[304]
+    config = MessageConfig.model_validate(
+        {
+            "variables": {"activity_text": "活动正文"},
+            "messages": [
+                {
+                    "id": "example",
+                    "commands": ["活动", "签到"],
+                    "messages": ["${activity_text}"],
+                    "at_user_ids": [304],
+                    "time": "23:00",
+                }
+            ],
+        }
     )
+    action = config.messages[0]
     service.portable_command_actions = (action,)
     service.command_mentions = Mock(return_value=(ActorRef(Platform.ONEBOT, "304"),))
     service.feature_policy = FeatureService(
@@ -375,12 +389,14 @@ async def test_onebot_configured_text_real_ingress_has_only_selected_targets(
     receive = _received(
         ingress, _messaging_router(service, ingress.sessions), service.feature_policy
     )
-    message = Message("示例")
+    message = Message(command)
     if explicit:
         message += MessageSegment.at(303) + MessageSegment.at(303)
     await receive(ingress.bots[0], group_message_event(message=message, user_id=101))
     assert len(ingress.sends) == 1
     sent = ingress.sends[0]["message"]
+    assert "活动正文" in str(sent)
+    assert "${" not in str(sent)
     assert [part["data"]["qq"] for part in sent if part["type"] == "at"] == [
         "303" if explicit else "304"
     ]

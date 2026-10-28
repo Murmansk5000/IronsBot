@@ -144,13 +144,11 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                 action.id: tuple(
                     settings.qq_references.actor_refs(
                         action.at_user_ids,
-                        location=f"messaging.commands.{action.id}.at_user_ids",
+                        location=f"messaging.messages.{action.id}.at_user_ids",
                     )
                 )
-                for action in (
-                    *settings.messaging.commands,
-                    *settings.messaging.keyword_replies,
-                )
+                for action in settings.messaging.messages
+                if action.commands or action.keywords
             },
             _actor_principal=identity_principals.actor_principal,
             _private_routes=private_routes,
