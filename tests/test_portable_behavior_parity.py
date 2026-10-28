@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ironsbot.config.models.messaging import MessageCommandAction
+from ironsbot.config.models.messaging import MessageAction
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -75,7 +75,7 @@ async def test_text_target_priority_and_no_extra_sender(
         ),
     )
     operation = build_portable_text_operation(
-        MessageCommandAction(id="example", commands=["示例"], messages=["示例文本"]),
+        MessageAction(id="example", commands=["示例"], messages=["示例文本"]),
         (configured,),
         principals,
     )
@@ -97,7 +97,7 @@ async def test_text_target_priority_and_no_extra_sender(
 @pytest.mark.asyncio
 async def test_missing_official_mention_does_not_send_configured_body() -> None:
     operation = build_portable_text_operation(
-        MessageCommandAction(id="example", commands=["示例"], messages=["不应发送"]),
+        MessageAction(id="example", commands=["示例"], messages=["不应发送"]),
         (ActorRef(Platform.ONEBOT, "710002"),),
         Mock(official_group_member_for_qq=Mock(return_value=None)),
     )

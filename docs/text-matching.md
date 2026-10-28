@@ -22,9 +22,11 @@ provides exact/partial phases that are combined and deduplicated by stable ID.
 `TextMatchRule.contains_pattern` escapes `%`, `_`, and backslashes;
 pass `escape="\\"` to SQL LIKE. Existing ignored separators remain ignored.
 
-For fixed commands and configured reply/AI-intent keywords, use
-`command_text_matches` (complete normalized text only), not `select` with partial
-matching. Name/alias substring searches belong only to explicit query inputs.
+For fixed commands and AI-intent keywords, use `command_text_matches` (complete
+normalized text only), not `select` with partial matching. Unified
+`messaging.messages` keyword triggers default to `match_mode = "exact"`; only an
+explicit `"contains"` enables whole-message substring matching. Name/alias
+substring searches belong only to explicit query inputs.
 
 An initial query with no candidates returns `None`/an empty `QueryResult` and
 releases its pending interaction. Explicit query syntax must not fall through

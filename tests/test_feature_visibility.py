@@ -16,7 +16,7 @@ from ironsbot.config.models.features import (
     FeatureConfig,
     build_feature_service,
 )
-from ironsbot.config.models.messaging import MessageCommandAction
+from ironsbot.config.models.messaging import MessageAction
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
@@ -61,8 +61,8 @@ def _settings(
     settings.ai.intent_actions_enabled = ai_intent_enabled
     settings.seer.team_resource.enabled = team_resource_enabled
     if messaging_enabled:
-        settings.messaging.commands = [
-            MessageCommandAction(
+        settings.messaging.messages = [
+            MessageAction(
                 id="test_message",
                 commands=["测试消息"],
                 feature="text",
