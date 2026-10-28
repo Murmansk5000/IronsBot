@@ -12,6 +12,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class AdminNoticeSender(Protocol):
         subscription_key: str,
         action_name: str,
         interval_seconds: float,
+        intent: DeliveryIntent | None = None,
     ) -> AdminNoticeSendSummary: ...
 
 
@@ -67,7 +69,7 @@ class AdminNoticeService:
             else tuple(self.features.conversations_for_feature(ADMIN_NOTICE_FEATURE)),
         )
 
-    async def send(
+    async def send(  # noqa: PLR0913 - explicit notice policy and durable intent
         self,
         text: str,
         *,
@@ -75,6 +77,7 @@ class AdminNoticeService:
         action_name: str,
         interval_seconds: float = 0,
         superusers_only: bool = False,
+        intent: DeliveryIntent | None = None,
     ) -> AdminNoticeSendSummary:
         return await self.send_message(
             OutboundMessage.from_text(text),
@@ -82,9 +85,10 @@ class AdminNoticeService:
             action_name=action_name,
             interval_seconds=interval_seconds,
             superusers_only=superusers_only,
+            intent=intent,
         )
 
-    async def send_message(
+    async def send_message(  # noqa: PLR0913 - explicit notice policy and durable intent
         self,
         message: OutboundMessage,
         *,
@@ -92,6 +96,7 @@ class AdminNoticeService:
         action_name: str,
         interval_seconds: float = 0,
         superusers_only: bool = False,
+        intent: DeliveryIntent | None = None,
     ) -> AdminNoticeSendSummary:
         targets = self.targets(superusers_only=superusers_only)
         if targets.is_empty:
@@ -105,6 +110,7 @@ class AdminNoticeService:
             action_name=action_name,
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
+            intent=intent,
         )
 
     async def send_private_to_superusers(
@@ -114,6 +120,7 @@ class AdminNoticeService:
         subscription_key: str,
         action_name: str,
         interval_seconds: float = 0,
+        intent: DeliveryIntent | None = None,
     ) -> AdminNoticeSendSummary:
         """Compatibility entrypoint; only explicit private notice opt-ins receive it."""
 
@@ -129,4 +136,5 @@ class AdminNoticeService:
             action_name=action_name,
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
+            intent=intent,
         )

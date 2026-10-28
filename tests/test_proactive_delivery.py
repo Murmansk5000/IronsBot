@@ -723,6 +723,8 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
 @pytest.mark.asyncio
 async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
     class RecordingDelivery:
+        outbox = None
+
         def __init__(self) -> None:
             self.requests: list[ProactiveDeliveryRequest] = []
             self.private_routes = None
@@ -782,6 +784,8 @@ async def test_scheduled_mentions_skip_only_unresolved_official_group() -> None:
 @pytest.mark.asyncio
 async def test_scheduled_mentions_can_fall_back_to_text_for_one_task() -> None:
     class RecordingDelivery:
+        outbox = None
+
         def __init__(self) -> None:
             self.requests: list[ProactiveDeliveryRequest] = []
             self.private_routes = None

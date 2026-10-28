@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 
 import httpx
 import pytest
@@ -11,6 +13,7 @@ from ironsbot.integrations.qq_official.api_errors import (
     qq_official_exception_result,
 )
 from ironsbot.integrations.qq_official.delivery_diagnostics import delivery_phase
+from ironsbot.integrations.storage.proactive_tasks import decode_result
 
 MAX_EXPLANATION = 256
 NOT_FOUND = 404
@@ -30,7 +33,7 @@ def test_platform_explanation_is_bounded_and_redacted() -> None:
 
 
 @pytest.mark.asyncio
-async def test_platform_details_survive_phase_and_receipt() -> None:
+async def test_platform_details_survive_phase_and_receipt_storage() -> None:
     async def respond(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             404,
@@ -46,7 +49,7 @@ async def test_platform_details_survive_phase_and_receipt() -> None:
                     "https://api.test/v2/groups/private-group/upload_part_finish",
                 )
     result = qq_official_exception_result(caught.value)
-    restored = result
+    restored = decode_result(json.dumps(asdict(result)))
     assert restored.failure_phase == "upload_confirm"
     assert restored.http_status == NOT_FOUND
     assert restored.request_method == "POST"

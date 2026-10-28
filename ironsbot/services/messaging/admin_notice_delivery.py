@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -12,6 +14,7 @@ from ironsbot.services.messaging.admin_notice import (
     AdminNoticeRecipient,
     AdminNoticeSendSummary,
 )
+from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 if TYPE_CHECKING:
@@ -40,6 +43,7 @@ class OutboundAdminNoticeSender:
         subscription_key: str,
         action_name: str,
         interval_seconds: float,
+        intent: DeliveryIntent | None = None,
     ) -> AdminNoticeSendSummary:
         scoped = tuple(actor for actor in private_actors if actor.kind == "member")
         for actor in scoped:
@@ -65,6 +69,12 @@ class OutboundAdminNoticeSender:
             action_name=action_name,
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
+            intent=intent
+            or DeliveryIntent(
+                uuid.uuid4().hex,
+                time.time() + 86400,
+                feature="admin_notice",
+            ),
         )
         recipient_by_conversation = dict(recipients)
         result = AdminNoticeSendSummary(
