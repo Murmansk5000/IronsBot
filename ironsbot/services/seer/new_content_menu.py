@@ -65,7 +65,9 @@ def plan_new_content_menu(
     if requested is not None and not set(requested).issubset(available):
         return "当前群未开放此新增内容分类。"
     if not snapshot.is_current_week or snapshot.cycle_status in {
-        "cycle_unavailable", "baseline_unavailable", "syncing"
+        "cycle_unavailable",
+        "baseline_unavailable",
+        "syncing",
     }:
         return _cycle_menu_message(snapshot)
     categories = available if requested is None else requested
