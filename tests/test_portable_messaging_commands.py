@@ -13,9 +13,8 @@ if TYPE_CHECKING:
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
-    MessageCommandAction,
+    MessageAction,
     MessageConfig,
-    MessageScheduledAction,
 )
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
@@ -99,13 +98,13 @@ def _group_context(
 async def test_portable_text_commands_include_configured_mention_targets() -> None:
     messaging = MessagingService(
         MessageConfig(
-            commands=[
-                MessageCommandAction(
+            messages=[
+                MessageAction(
                     id="portable",
                     commands=["链接"],
                     messages=["第一条", "https://example.test"],
                 ),
-                MessageCommandAction(
+                MessageAction(
                     id="onebot-only",
                     commands=["提醒"],
                     messages=["提醒内容"],
@@ -148,8 +147,8 @@ async def test_official_configured_mention_requires_verified_member() -> None:
     principals = IdentityPrincipalService()
     messaging = MessagingService(
         MessageConfig(
-            commands=[
-                MessageCommandAction(
+            messages=[
+                MessageAction(
                     id="notice",
                     commands=["提醒"],
                     messages=["提醒内容"],
@@ -193,8 +192,8 @@ async def test_official_configured_mention_requires_verified_member() -> None:
 async def test_portable_text_command_addresses_explicit_member_targets() -> None:
     messaging = MessagingService(
         MessageConfig(
-            commands=[
-                MessageCommandAction(
+            messages=[
+                MessageAction(
                     id="portable",
                     commands=["链接"],
                     messages=["第一条", "第二条"],
@@ -323,8 +322,9 @@ async def test_portable_push_time_updates_qq_official_conversation(
     store = PushUnsubscribeStore(tmp_path / "qq_state.sqlite")
     messaging = MessagingService(
         MessageConfig(
-            schedules=[
-                MessageScheduledAction(
+            messages=[
+                MessageAction(
+                    feature="text_push",
                     id="daily",
                     name="每日消息",
                     messages=["消息"],

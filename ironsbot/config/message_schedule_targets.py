@@ -23,18 +23,20 @@ def build_message_schedule_targets(
             tuple(
                 references.actor_refs(
                     schedule.at_user_ids,
-                    location=(f"messaging.schedules[{index}].at_user_ids"),
+                    location=(f"messaging.messages[{index}].at_user_ids"),
                 )
             )
-            for index, schedule in enumerate(config.schedules)
+            for index, schedule in enumerate(config.messages)
+            if schedule.time
         ),
         group_targets=tuple(
             tuple(
                 references.group_conversation_refs(
                     schedule.target_groups,
-                    location=f"messaging.schedules[{index}].target_groups",
+                    location=f"messaging.messages[{index}].target_groups",
                 )
             )
-            for index, schedule in enumerate(config.schedules)
+            for index, schedule in enumerate(config.messages)
+            if schedule.time
         ),
     )

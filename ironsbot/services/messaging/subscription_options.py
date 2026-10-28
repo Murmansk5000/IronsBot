@@ -37,7 +37,7 @@ class ScheduledPushKeyError(ValueError):
 
 
 def schedule_key(index: int, task: ScheduledPushTask) -> str:
-    raw_id = task.id.strip()
+    raw_id = (getattr(task, "subscription_id", "") or task.id).strip()
     if not raw_id:
         raise ScheduledPushKeyError.missing_id(index)
     return raw_id
@@ -104,7 +104,7 @@ def _schedule_display_name_from_feature(
 ) -> str:
     feature_names = {
         "text_push": "定时文本推送",
-        "web_activity_push": "游戏外活动推送",
+        "web_activity": "游戏外活动推送",
     }
     if task.feature in feature_names:
         return feature_names[task.feature]
@@ -162,9 +162,11 @@ def build_push_subscription_menu(
         title=title,
         items=tuple(
             SelectionMenuItem(
-                label=f"{option.label}（仅超管可修改）"
-                if option.requires_superuser(conversation_kind)
-                else option.label,
+                label=(
+                    f"{option.label}（仅超管可修改）"
+                    if option.requires_superuser(conversation_kind)
+                    else option.label
+                ),
                 prefix="❌" if option.unsubscribed else "✅",
             )
             for option in options

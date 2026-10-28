@@ -178,8 +178,8 @@ def test_manifest_messaging_owns_its_commands_and_schedule() -> None:
         {
             Feature.TEXT,
             Feature.TEXT_PUSH,
-            Feature.WEB_ACTIVITY_LINK,
-            Feature.WEB_ACTIVITY_PUSH,
+            Feature.WEB_ACTIVITY,
+            Feature.WEB_ACTIVITY,
             Feature.SEERINFO,
             Feature.PUSH_TOPICS,
         }
