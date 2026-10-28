@@ -19,9 +19,10 @@ from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_delivery_ledger import (
     SqliteDynamicDeliveryLedger,
 )
+from ironsbot.integrations.storage.proactive_tasks import SqliteProactiveTasks
 from ironsbot.integrations.storage.sqlite import SqliteDatabase
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
-from ironsbot.services.bilibili.delivery_recovery import BiliStartupRecovery
+from ironsbot.services.bilibili.delivery_recovery import BiliDeliveryRecovery
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
 from ironsbot.services.bilibili.target_models import BiliPushTargets
 from tests.test_bilibili_outbound_delivery import _item
@@ -47,13 +48,13 @@ async def test_recovery_excludes_new_targets_and_does_not_touch_new_inflight(
     targets.push_targets_for_dynamic.return_value = BiliPushTargets(
         [TARGET, new_target], [], [], []
     )
-    recovery = BiliStartupRecovery(
+    recovery = BiliDeliveryRecovery(
         cast("BilibiliDynamicOutboundSender", sender),
         cast("BiliTargetService", targets),
     )
     assert ledger.claim("1", TARGET, "link")
     await recovery("bot1")
-    sender.send.assert_awaited_once()
+    assert sender.send.await_count == 1
     assert sender.send.await_args.args[3].full_group_conversations == [TARGET]
     assert sender.send.await_args.kwargs == {"resume": True}
     with SqliteDatabase(ledger.path).connect() as db:
@@ -62,7 +63,7 @@ async def test_recovery_excludes_new_targets_and_does_not_touch_new_inflight(
             == "sending"
         )
     await recovery("bot1")
-    sender.send.assert_awaited_once()
+    assert sender.send.await_count == len(("first", "reconnected"))
 
 
 @pytest.mark.asyncio
@@ -76,6 +77,42 @@ async def test_concurrent_stage_claim_sends_only_once(tmp_path: Path) -> None:
         stage.send(TARGET, OutboundMessage.from_text("link")),
     )
     messenger.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_recovery_respects_account_backoff_and_reconnect(tmp_path: Path) -> None:
+    ledger = prepare(tmp_path / "delivery.sqlite")
+    assert ledger.claim("1", TARGET, "link")
+    ledger.finish(
+        "1",
+        TARGET,
+        "link",
+        SendResult(
+            delivered=False,
+            error_code="bot_unavailable",
+            failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
+        ),
+    )
+    accounts = SqliteProactiveTasks(tmp_path / "tasks.sqlite")
+    sender = Mock(ledger=ledger, send=AsyncMock())
+    targets = Mock()
+    targets.push_targets_for_dynamic.return_value = BiliPushTargets(
+        [TARGET], [], [], []
+    )
+    recovery = BiliDeliveryRecovery(
+        cast("BilibiliDynamicOutboundSender", sender),
+        cast("BiliTargetService", targets),
+        accounts=accounts,
+    )
+    accounts.account_failed(TARGET)
+    await recovery("scan")
+    sender.send.assert_not_awaited()
+    accounts.wake(platform=Platform.ONEBOT)
+    await recovery("reconnected")
+    sender.send.assert_awaited_once()
+    assert not accounts.account_ready(TARGET)
+    await recovery("scan")
+    sender.send.assert_awaited_once()
 
 
 @pytest.mark.asyncio

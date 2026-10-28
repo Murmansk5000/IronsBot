@@ -16,6 +16,7 @@ from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
 from ironsbot.integrations.onebot.connections import OneBotConnections
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.storage.proactive_tasks import SqliteProactiveTasks
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
@@ -237,6 +238,13 @@ def build_common_components(
             else PushRouteDecision("unavailable", conversation, "platform_disabled")
         ),
     )
+    push_tasks = SqliteProactiveTasks(
+        settings.paths.qq_state.parent / "proactive_tasks.sqlite"
+    )
+    outbound_messenger.on_available = lambda target: push_tasks.wake(
+        target.account_id or "",
+        platform=target.platform,
+    )
     proactive_delivery = ProactiveMessageDelivery(
         outbound_messenger,
         features,
@@ -256,6 +264,7 @@ def build_common_components(
             ),
         ),
         private_routes=private_routes,
+        outbox=push_tasks,
     )
     admin_notices = AdminNoticeService(
         features,

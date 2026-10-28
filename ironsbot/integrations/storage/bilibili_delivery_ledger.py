@@ -15,6 +15,7 @@ from ironsbot.integrations.storage.bilibili_media_manifest import (
     decode_media,
     encode_media,
 )
+from ironsbot.integrations.storage.frozen_message import freeze_message, thaw_message
 from ironsbot.integrations.storage.sqlite import SqliteDatabase
 from ironsbot.services.bilibili.delivery_rounds import BILI_RETRY_DELAYS
 from ironsbot.services.bilibili.parser import dynamic_content, dynamic_image_urls
@@ -49,8 +50,16 @@ class SqliteDynamicDeliveryLedger:
                     state TEXT NOT NULL, result TEXT,
                     PRIMARY KEY(dynamic_id, target, stage));
                 CREATE TABLE IF NOT EXISTS notifications (dynamic_id TEXT PRIMARY KEY);
+                CREATE TABLE IF NOT EXISTS recovery_reports (
+                    dynamic_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS media_manifests (
                     dynamic_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS text_manifests (
+                    dynamic_id TEXT PRIMARY KEY, payload TEXT);
+                CREATE TABLE IF NOT EXISTS unit_messages (
+                    dynamic_id TEXT NOT NULL, target TEXT NOT NULL,
+                    stage TEXT NOT NULL, payload TEXT NOT NULL,
+                    PRIMARY KEY(dynamic_id,target,stage));
                 CREATE TABLE IF NOT EXISTS delivery_rounds (
                     dynamic_id TEXT PRIMARY KEY, count INTEGER NOT NULL,
                     completed INTEGER NOT NULL DEFAULT 1);
@@ -119,7 +128,7 @@ class SqliteDynamicDeliveryLedger:
             db.execute("UPDATE stages SET state='uncertain' WHERE state='sending'")
             db.execute(
                 "UPDATE stages SET state='expired' "
-                "WHERE state IN ('pending','retry') AND dynamic_id IN "
+                "WHERE state IN ('pending','retry','waiting') AND dynamic_id IN "
                 "(SELECT id FROM deliveries WHERE created < ? "
                 "OR json_extract(payload, '$.pub_ts') < ?)",
                 (time.time() - RETENTION_SECONDS, time.time() - RETENTION_SECONDS),
@@ -132,7 +141,7 @@ class SqliteDynamicDeliveryLedger:
                 for row in db.execute(
                     "SELECT payload FROM deliveries WHERE created >= ? AND id IN "
                     "(SELECT dynamic_id FROM stages "
-                    "WHERE state IN ('pending','retry') OR "
+                    "WHERE state IN ('pending','retry','waiting') OR "
                     "(retry_enabled=1 AND state IN ('failed','uncertain') "
                     "AND dynamic_id NOT IN (SELECT dynamic_id FROM notifications))) "
                     "ORDER BY created",
@@ -150,6 +159,19 @@ class SqliteDynamicDeliveryLedger:
                 == 1
             )
 
+    def claim_recovery_report(self, dynamic_id: str, counts: dict[str, int]) -> bool:
+        payload = json.dumps(counts, sort_keys=True)
+        with self._connect() as db:
+            return (
+                db.execute(
+                    "INSERT INTO recovery_reports VALUES (?,?) "
+                    "ON CONFLICT(dynamic_id) DO UPDATE SET payload=excluded.payload "
+                    "WHERE recovery_reports.payload!=excluded.payload",
+                    (dynamic_id, payload),
+                ).rowcount
+                == 1
+            )
+
     def claim(self, dynamic_id: str, target: ConversationRef, stage: str) -> bool:
         with self._connect() as db:
             return (
@@ -158,7 +180,8 @@ class SqliteDynamicDeliveryLedger:
                     "last_round=COALESCE((SELECT count FROM delivery_rounds "
                     "WHERE dynamic_id=stages.dynamic_id),0) "
                     "WHERE dynamic_id=? "
-                    "AND target=? AND stage=? AND state IN ('pending','retry') "
+                    "AND target=? AND stage=? "
+                    "AND state IN ('pending','retry','waiting') "
                     "AND next_retry<=? AND attempts<4 AND dynamic_id IN "
                     "(SELECT id FROM deliveries WHERE created>=? "
                     "AND json_extract(payload,'$.pub_ts')>=?) "
@@ -192,7 +215,7 @@ class SqliteDynamicDeliveryLedger:
                 db.execute(
                     "SELECT 1 FROM stages WHERE dynamic_id=? AND target=? "
                     "AND (stage=? OR (?='image' AND stage LIKE 'image:%')) "
-                    "AND state IN ('pending','retry')",
+                    "AND state IN ('pending','retry','waiting')",
                     (dynamic_id, self._target(target), stage, stage),
                 ).fetchone()
                 is not None
@@ -202,7 +225,9 @@ class SqliteDynamicDeliveryLedger:
         self, dynamic_id: str, target: ConversationRef, stage: str, result: SendResult
     ) -> None:
         state = "success" if result.delivered else "failed"
-        if not result.attempted:
+        if result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE:
+            state = "waiting"
+        elif not result.attempted:
             state = (
                 "skipped"
                 if result.failure_kind is DeliveryFailureKind.PERMANENT
@@ -223,19 +248,14 @@ class SqliteDynamicDeliveryLedger:
             if row is None:
                 return
             next_retry = 0.0
-            round_row = db.execute(
-                "SELECT count FROM delivery_rounds WHERE dynamic_id=?", (dynamic_id,)
-            ).fetchone()
-            round_number = round_row[0] if round_row else row[0]
             if (
                 result.attempted
                 and result.failure_kind is DeliveryFailureKind.RETRYABLE
                 and row[1]
                 and row[0] < MAX_ATTEMPTS
-                and round_number < MAX_ATTEMPTS
             ):
                 state = "retry"
-                next_retry = time.time() + RETRY_DELAYS[max(0, round_number - 1)]
+                next_retry = time.time() + RETRY_DELAYS[max(0, row[0] - 1)]
             db.execute(
                 "UPDATE stages SET state=?, result=?, next_retry=? "
                 "WHERE dynamic_id=? AND target=? "
@@ -296,7 +316,7 @@ class SqliteDynamicDeliveryLedger:
             return (
                 db.execute(
                     "UPDATE delivery_rounds SET count=count+1,completed=0 "
-                    "WHERE dynamic_id=? AND count<4",
+                    "WHERE dynamic_id=?",
                     (dynamic_id,),
                 ).rowcount
                 == 1
@@ -336,7 +356,7 @@ class SqliteDynamicDeliveryLedger:
             rows = db.execute(
                 "SELECT target,stage,result,state FROM stages WHERE dynamic_id=? "
                 "AND retry_enabled=1 "
-                "AND state IN ('failed','uncertain','retry','blocked')",
+                "AND state IN ('failed','uncertain','retry','waiting','blocked')",
                 (dynamic_id,),
             ).fetchall()
         result = []
@@ -373,6 +393,56 @@ class SqliteDynamicDeliveryLedger:
                 "SELECT payload FROM media_manifests WHERE dynamic_id=?", (dynamic_id,)
             ).fetchone()
         return (True, decode_media(row[0], self.media_root)) if row else (False, None)
+
+    def freeze_unit(
+        self,
+        dynamic_id: str,
+        target: ConversationRef,
+        stage: str,
+        message: OutboundMessage,
+    ) -> OutboundMessage:
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            previous = db.execute(
+                "SELECT payload FROM unit_messages "
+                "WHERE dynamic_id=? AND target=? AND stage=?",
+                (dynamic_id, self._target(target), stage),
+            ).fetchone()
+            if previous:
+                return thaw_message(previous[0], self.media_root)
+            db.execute(
+                "INSERT INTO unit_messages VALUES (?,?,?,?)",
+                (
+                    dynamic_id,
+                    self._target(target),
+                    stage,
+                    freeze_message(message, self.media_root),
+                ),
+            )
+        return message
+
+    def load_text(self, dynamic_id: str) -> tuple[bool, OutboundMessage | None]:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload FROM text_manifests WHERE dynamic_id=?",
+                (dynamic_id,),
+            ).fetchone()
+        return (
+            (True, thaw_message(row[0], self.media_root) if row[0] else None)
+            if row
+            else (False, None)
+        )
+
+    def freeze_text(
+        self, dynamic_id: str, message: OutboundMessage | None
+    ) -> OutboundMessage | None:
+        payload = freeze_message(message, self.media_root) if message else None
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO text_manifests VALUES (?,?)",
+                (dynamic_id, payload),
+            )
+        return self.load_text(dynamic_id)[1]
 
     def freeze_media(
         self, dynamic_id: str, message: OutboundMessage | None
@@ -416,7 +486,8 @@ class SqliteDynamicDeliveryLedger:
             db.execute("BEGIN IMMEDIATE")
             if (
                 db.execute(
-                    "SELECT 1 FROM stages WHERE dynamic_id=? AND state='sending'",
+                    "SELECT 1 FROM stages WHERE dynamic_id=? "
+                    "AND state IN ('sending','waiting','retry')",
                     (dynamic_id,),
                 ).fetchone()
                 is not None

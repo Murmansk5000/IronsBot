@@ -45,7 +45,12 @@ class DynamicRetryPlan:
     ) -> None:
         pending = targets
         first_round = (
-            self.ledger.completed_round_count(self.dynamic_id) if self.ledger else 0
+            min(
+                self.ledger.completed_round_count(self.dynamic_id),
+                len(BILI_RETRY_DELAYS),
+            )
+            if self.ledger
+            else 0
         )
         for round_index in range(first_round, len(BILI_RETRY_DELAYS) + 1):
             if not pending:

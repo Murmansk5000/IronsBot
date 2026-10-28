@@ -31,7 +31,7 @@ from ironsbot.integrations.storage.bilibili_preferences import (
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.content import DynamicContentCompactor
-from ironsbot.services.bilibili.delivery_recovery import BiliStartupRecovery
+from ironsbot.services.bilibili.delivery_recovery import BiliDeliveryRecovery
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.login_notice import send_bili_login_notice
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
@@ -199,5 +199,5 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         service,
         auth_invalid,
         push_delivery.send,
-        startup_recovery=BiliStartupRecovery(push_delivery, service.targets),
+        delivery_recovery=BiliDeliveryRecovery(push_delivery, service.targets),
     )

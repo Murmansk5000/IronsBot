@@ -620,8 +620,21 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     query_sessions.interactions.cooldown = CommandCooldownService(
         settings.messaging.command_cooldown, features
     )
+    from ironsbot.app.push_recovery_composition import build_push_recovery
+
+    push_recovery = build_push_recovery(
+        settings,
+        common,
+        task_owner,
+        seer_components,
+        messaging,
+        bilibili_monitor,
+        query_sessions,
+    )
+    assert common.proactive_delivery.outbox is not None
     resource_startup_hooks: list[NamedLifecycleHook] = [
         ("fontconfig", initialize_fontconfig),
+        ("push_tasks_recover", common.proactive_delivery.outbox.recover),
         (
             "identity_links",
             partial(
@@ -656,6 +669,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         resource_startup_hooks.append(("qq_official", common.qq_official.start))
         resource_shutdown_hooks.append(("qq_official", common.qq_official.stop))
 
+    resource_shutdown_hooks.append(("push_recovery", push_recovery.stop))
+
     return Application(
         settings=settings,
         asgi=FastAPI(openapi_url=None, docs_url=None, redoc_url=None),
@@ -667,6 +682,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         contributions=(),
         extension_services=extension_services,
         task_owner=task_owner,
+        push_recovery=push_recovery,
         known_features=(
             *(feature.value for feature in Feature),
             *settings.messaging.command_feature_keys,
