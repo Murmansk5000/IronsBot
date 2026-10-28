@@ -7,6 +7,7 @@ import asyncio
 import logging
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage
 from ironsbot.core.platform import ActorRef, ConversationRef
+from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.messaging.topic_models import (
     PushTopic,
@@ -264,6 +266,11 @@ class PushTopicService:
                 (target,),
                 action_name=f"push_topic:{key}",
                 subscription_key=topic_subscription_key(key),
+                intent=DeliveryIntent(
+                    f"topic:{key}:{publication.dedup_key or uuid.uuid4().hex}",
+                    time.time() + 86400,
+                    feature="push_topics",
+                ),
             )
             if summary.succeeded:
                 status = "delivered"

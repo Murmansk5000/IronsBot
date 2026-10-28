@@ -110,6 +110,7 @@ async def send_private_schedule(
             group_mentions=(),
             action_name=f"private scheduled message {task.id or '<unnamed>'}",
             subscription_key=schedule_key(index, task),
+            feature=task.feature,
         )
     )
 
@@ -156,6 +157,7 @@ async def send_group_schedule(
             subscription_key=schedule_key(index, task),
             unresolved_mentions_as_text=task.unresolved_mentions == "text",
             mention_fallback_name=task.mention_fallback_name,
+            feature=task.feature,
         )
     )
 

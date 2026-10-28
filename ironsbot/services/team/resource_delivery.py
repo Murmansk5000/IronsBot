@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import MentionPart, OutboundMessage, TextPart
 from ironsbot.core.platform import private_conversation_for_actor
+from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
@@ -47,5 +50,11 @@ class TeamResourceOutboundSender:
             (conversation,),
             action_name="team resource subscription notice",
             interval_seconds=0,
+            intent=DeliveryIntent(
+                uuid.uuid4().hex,
+                time.time() + 86400,
+                feature="team_resource_subscription",
+                supersedes="team_resource_status",
+            ),
         )
         return bool(summary.succeeded)
