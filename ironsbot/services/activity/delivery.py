@@ -40,6 +40,8 @@ class ActivityReminderDelivery:
     group_conversations: tuple[ConversationRef, ...] = ()
     private_actors: tuple[ActorRef, ...] = ()
     action_name: str = ""
+    expires_at: float | None = None
+    business_id: str = ""
 
     @property
     def should_send(self) -> bool:
@@ -104,6 +106,12 @@ def build_reminder_delivery(
         group_conversations=targets.group_conversations,
         private_actors=targets.private_actors,
         action_name=f"activity ending reminder {lead_hours}h",
+        expires_at=min(reminder.end_time.timestamp() for reminder in reminders),
+        business_id=f"activity:{lead_hours}:"
+        + ",".join(
+            f"{reminder.activity_id}:{reminder.end_time.isoformat()}"
+            for reminder in reminders
+        ),
     )
 
 

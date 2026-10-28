@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import ceil
 from typing import TYPE_CHECKING
 
@@ -29,6 +29,10 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
+    from ironsbot.services.messaging.delivery_tasks import (
+        DeliveryIntent,
+        DeliveryTaskStore,
+    )
     from ironsbot.services.messaging.subscriptions import PushDeliverySubscriptions
     from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
@@ -43,6 +47,8 @@ class ProactiveDeliveryRequest:
 
     conversation: ConversationRef
     message: OutboundMessage
+    delivery_id: str = ""
+    intent: DeliveryIntent | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +92,7 @@ class ProactiveMessageDelivery:
         Callable[[str, ProactiveDeliverySummary], Awaitable[None]] | None
     ) = None
     private_routes: PrivateConversationRoutes | None = None
+    outbox: DeliveryTaskStore | None = None
 
     async def send(  # noqa: PLR0913 - explicit active delivery policy controls
         self,
@@ -99,12 +106,13 @@ class ProactiveMessageDelivery:
         max_attempts: int | None = None,
         retry_delays_seconds: tuple[float, ...] | None = None,
         split_failed_targets: bool = False,
+        intent: DeliveryIntent | None = None,
     ) -> ProactiveDeliverySummary:
         """Deliver one message to many conversations with shared push policy."""
 
         return await self.send_many(
             (
-                ProactiveDeliveryRequest(conversation, message)
+                ProactiveDeliveryRequest(conversation, message, intent=intent)
                 for conversation in conversations
             ),
             action_name=action_name,
@@ -136,6 +144,25 @@ class ProactiveMessageDelivery:
         if not selected:
             return ProactiveDeliverySummary((), (), skipped=policy_skipped)
 
+        if self.outbox is not None:
+            from ironsbot.services.messaging.proactive_prepare import persist_requests
+
+            selected = persist_requests(
+                self,
+                selected,
+                action_name=action_name,
+                subscription_key=subscription_key,
+                include_promotions=include_promotions,
+                attempts=(
+                    len(retry_delays_seconds) + 1
+                    if retry_delays_seconds is not None
+                    else max_attempts or self.policy.max_attempts
+                ),
+                delays=retry_delays_seconds,
+            )
+            include_promotions = False
+            # The frozen message already contains the hint and promotions.
+
         blocked = unavailable.intersection(request.conversation for request in selected)
         pending = [
             request for request in selected if request.conversation not in blocked
@@ -147,11 +174,18 @@ class ProactiveMessageDelivery:
                     delivered=False,
                     error_code="private_route_unavailable",
                     attempted=False,
-                    failure_kind=DeliveryFailureKind.PERMANENT,
+                    failure_kind=(
+                        DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+                        if self.outbox is not None
+                        else DeliveryFailureKind.PERMANENT
+                    ),
                 )
                 for conversation in blocked
             },
         )
+        from ironsbot.services.messaging.proactive_prepare import record_unavailable
+
+        record_unavailable(self.outbox, selected, state.results)
         attempts = (
             len(retry_delays_seconds) + 1
             if retry_delays_seconds is not None
@@ -250,6 +284,11 @@ class ProactiveMessageDelivery:
         for request in requests:
             decision = routes.decision_for(request.conversation)
             target = decision.target
+            if request.delivery_id and target != request.conversation:
+                if self.outbox is not None:
+                    self.outbox.skip(request.delivery_id, "route_changed")
+                skipped[request.conversation] = None
+                continue
             if decision.status == "skipped":
                 skipped[target] = None
                 _LOGGER.info(
@@ -268,16 +307,18 @@ class ProactiveMessageDelivery:
                     target.platform.value,
                     reference_digest(target.id),
                 )
-            selected.setdefault(
-                target, ProactiveDeliveryRequest(target, request.message)
-            )
+            selected.setdefault(target, replace(request, conversation=target))
         return tuple(selected.values()), unavailable, tuple(skipped)
 
     async def _notify_private_failures(
         self, action_name: str, summary: ProactiveDeliverySummary
     ) -> None:
-        if self.private_failure_notice is None or not any(
-            conversation.kind == "private" for conversation in summary.failed
+        if (
+            self.outbox is not None
+            or self.private_failure_notice is None
+            or not any(
+                conversation.kind == "private" for conversation in summary.failed
+            )
         ):
             return
         try:
@@ -357,6 +398,28 @@ class ProactiveMessageDelivery:
         subscription_key: str | None,
         include_promotions: bool,
     ) -> SendResult:
+        if self.outbox is not None and request.delivery_id:
+            from ironsbot.services.messaging.proactive_prepare import (
+                allowed_request,
+                send_claimed,
+            )
+
+            if not allowed_request(self, request, subscription_key):
+                self.outbox.skip(request.delivery_id, "current_policy_rejected")
+                return self.outbox.result(request.delivery_id)
+
+            return await send_claimed(
+                self.outbox,
+                request,
+                lambda: self._send_one(
+                    replace(request, delivery_id=""),
+                    index=index,
+                    action_name=action_name,
+                    interval_seconds=interval_seconds,
+                    subscription_key=None,
+                    include_promotions=False,
+                ),
+            )
         if index > 0 and interval_seconds > 0:
             await asyncio.sleep(index * interval_seconds)
 

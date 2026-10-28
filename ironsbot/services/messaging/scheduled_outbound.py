@@ -5,12 +5,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import MentionPart, OutboundMessage, TextPart
 from ironsbot.core.platform import Platform, reference_digest
+from ironsbot.services.messaging.delivery_tasks import (
+    DeliveryIntent,
+    daily_delivery_expiry,
+)
 from ironsbot.services.messaging.proactive_delivery import ProactiveDeliveryRequest
+from ironsbot.services.messaging.proactive_prepare import persist_requests
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -88,14 +94,55 @@ class ScheduledMessageOutboundSender:
         async def send_sequence(
             conversation: ConversationRef, messages: list[OutboundMessage]
         ) -> None:
-            for message in messages:
-                await self.delivery.send(
+            if self.delivery.outbox is None:
+                for message in messages:
+                    await self.delivery.send(
+                        message,
+                        (conversation,),
+                        action_name=delivery.action_name,
+                        subscription_key=delivery.subscription_key,
+                        include_promotions=True,
+                    )
+                return
+            sequence = uuid.uuid4().hex
+            prepared = []
+            for position, message in enumerate(messages):
+                request = ProactiveDeliveryRequest(
+                    conversation,
                     message,
-                    (conversation,),
+                    intent=DeliveryIntent(
+                        f"schedule:{delivery.subscription_key}:{sequence}:{position}",
+                        daily_delivery_expiry(),
+                        feature=delivery.feature,
+                        sequence=sequence,
+                        position=position,
+                    ),
+                )
+                selected, _, _ = self.delivery._select_requests((request,))
+                if delivery.subscription_key:
+                    selected = self.delivery._filter_subscribed(
+                        selected, delivery.subscription_key
+                    )
+                if self.delivery.outbox is not None:
+                    selected = persist_requests(
+                        self.delivery,
+                        selected,
+                        action_name=delivery.action_name,
+                        subscription_key=delivery.subscription_key,
+                        include_promotions=True,
+                        attempts=self.delivery.policy.max_attempts,
+                        delays=None,
+                    )
+                prepared.extend(selected)
+            for request in prepared:
+                summary = await self.delivery.send_many(
+                    (request,),
                     action_name=delivery.action_name,
                     subscription_key=delivery.subscription_key,
                     include_promotions=True,
                 )
+                if self.delivery.outbox is not None and not summary.succeeded:
+                    break
 
         limit = self.delivery.policy.max_parallel_targets
         semaphore = asyncio.Semaphore(limit) if limit > 0 else None
