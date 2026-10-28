@@ -37,6 +37,7 @@ LOGIN_POLL_ERROR_NOTICE = (
 class BiliLoginNotice:
     text: str
     qrcode: LoginQrMessageParts | None = None
+    expires_at: float | None = None
 
 
 @dataclass(slots=True)
@@ -83,7 +84,9 @@ class BilibiliLoginService:
             return
 
         self.state.last_notice_at = now
-        await send_notice(BiliLoginNotice(_login_required(reason), qrcode))
+        await send_notice(
+            BiliLoginNotice(_login_required(reason), qrcode, self.state.expires_at)
+        )
 
     async def _request_qrcode(
         self,

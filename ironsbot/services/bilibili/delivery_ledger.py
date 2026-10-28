@@ -40,8 +40,14 @@ class DynamicDeliveryLedger(Protocol):
         self, dynamic_id: str, target: ConversationRef, stage: str, result: SendResult
     ) -> None: ...
     def skip_remaining(self, dynamic_id: str) -> bool: ...
+    def skip_stage(
+        self, dynamic_id: str, target: ConversationRef, stage: str
+    ) -> None: ...
     def recover(self) -> None: ...
     def claim_notification(self, dynamic_id: str) -> bool: ...
+    def claim_recovery_report(
+        self, dynamic_id: str, counts: dict[str, int]
+    ) -> bool: ...
     def unattempted(
         self, dynamic_id: str, target: ConversationRef, stage: str
     ) -> bool: ...
@@ -49,6 +55,17 @@ class DynamicDeliveryLedger(Protocol):
         self, dynamic_id: str, message: OutboundMessage | None
     ) -> OutboundMessage | None: ...
     def load_media(self, dynamic_id: str) -> tuple[bool, OutboundMessage | None]: ...
+    def freeze_unit(
+        self,
+        dynamic_id: str,
+        target: ConversationRef,
+        stage: str,
+        message: OutboundMessage,
+    ) -> OutboundMessage: ...
+    def load_text(self, dynamic_id: str) -> tuple[bool, OutboundMessage | None]: ...
+    def freeze_text(
+        self, dynamic_id: str, message: OutboundMessage | None
+    ) -> OutboundMessage | None: ...
     def image_units(
         self, dynamic_id: str, target: ConversationRef, count: int
     ) -> None: ...
@@ -77,6 +94,19 @@ class StageMessenger:
     async def send(
         self, conversation: ConversationRef, message: OutboundMessage
     ) -> SendResult:
+        try:
+            message = self.ledger.freeze_unit(
+                self.dynamic_id, conversation, self.stage, message
+            )
+        except (OSError, ValueError):
+            result = SendResult(
+                delivered=False,
+                error_code="frozen_media_unavailable",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
+            if self.ledger.claim(self.dynamic_id, conversation, self.stage):
+                self.ledger.finish(self.dynamic_id, conversation, self.stage, result)
+            return result
         if not self.ledger.claim(self.dynamic_id, conversation, self.stage):
             _LOGGER.info(
                 "Bilibili unit skipped: dynamic=%s unit=%s round=%d "
