@@ -1,0 +1,87 @@
+name: Append Original History Snapshot
+
+on:
+  workflow_call:
+    inputs:
+      source_branch:
+        required: true
+        type: string
+      tooling_revision:
+        required: true
+        type: string
+    secrets:
+      archive_deploy_key:
+        required: false
+
+jobs:
+  archive:
+    if: >-
+      (github.repository == 'Murmansk5000/IronsBot' &&
+       inputs.source_branch == 'main' && github.ref == 'refs/heads/main') ||
+      (github.repository == 'Murmansk5000/ironsbot-private' &&
+       (inputs.source_branch == 'main' || inputs.source_branch == 'details') &&
+       github.ref == format('refs/heads/{0}', inputs.source_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: original-history-${{ github.repository }}-${{ inputs.source_branch }}
+      cancel-in-progress: false
+    steps:
+      - name: Validate immutable tooling revision
+        shell: bash
+        env:
+          TOOLING_REVISION: ${{ inputs.tooling_revision }}
+        run: |
+          [[ "$TOOLING_REVISION" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Checkout pinned archive tooling
+        uses: actions/checkout@v7
+        with:
+          repository: Murmansk5000/IronsBot
+          ref: ${{ inputs.tooling_revision }}
+          path: tooling
+          persist-credentials: false
+
+      - name: Checkout latest trusted source branch
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.source_branch }}
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout cumulative archive
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository == 'Murmansk5000/IronsBot' && 'Murmansk5000/IronsBot-History-Archive' || github.repository }}
+          ref: main
+          fetch-depth: 0
+          path: history
+          ssh-key: ${{ secrets.archive_deploy_key }}
+          ssh-strict: true
+
+      - name: Set up archive Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Append verified source snapshot
+        shell: bash
+        env:
+          SOURCE_NAME: ${{ github.repository }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+        run: |
+          set -euo pipefail
+          python tooling/scripts/archive_history.py \
+            --source-repo "$GITHUB_WORKSPACE/source" \
+            --target-repo "$GITHUB_WORKSPACE/history" \
+            --source-name "$SOURCE_NAME" \
+            --source-branch "$SOURCE_BRANCH" \
+            --attempts 3 | tee "$RUNNER_TEMP/history-archive-result.json"
+
+      - name: Record archive result
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-history-${{ github.repository_id }}-${{ inputs.source_branch }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/history-archive-result.json
+          if-no-files-found: error
