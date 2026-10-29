@@ -54,6 +54,10 @@ factory directory. No application plugin relies on framework discovery or an
 installation ContextVar. Rendering and font startup use the framework-independent
 binding under `integrations/litehtml`, not NoneBot plugin loading.
 
+Published lineup snapshots expose an optional skin name from the same bound data
+generation, only when the selected skin belongs to the requested pet. Missing or
+mismatched records remain unknown; extensions do not query ORM data or infer names.
+
 OneBot HTTP action delivery uses `HttpxOneBotExchange` over the root-owned
 `HttpClients.origin`, not a NoneBot driver HTTP session. The shared OneBot HTTP
 protocol still owns timeout and receipt interpretation; the transport only maps
@@ -2036,6 +2040,20 @@ transitional, not alternative patterns to copy. Existing Bandit findings with
 no high-severity result remain tracked rather than silently suppressed.
 
 ## Enforcement
+
+### Original History Ownership
+
+Runtime changes and repository history have separate ownership. Authorized pushes
+to the active public main and private main/details branches must append verified
+source snapshots to their cumulative backup branches. Archive links preserve both
+the old archive tip and the original source commit and use the exact source tree;
+they do not represent a business merge or a deployment.
+
+The history repository is private, writable, and has Actions disabled. Archive
+branches are never force-updated or deleted by automation. Before source history
+rewrites or branch deletion, old heads must be verified reachable in cumulative
+archives or permanent original-history tags, with a restored E-drive bundle.
+See [engineering workflow](docs/engineering-workflow.md#原始历史累计备份).
 
 The repository must include tests that prove:
 
