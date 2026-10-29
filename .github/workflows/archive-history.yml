@@ -1,0 +1,19 @@
+name: Accumulate Original History
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/archive-history-reusable.yml
+    with:
+      source_branch: main
+      tooling_revision: ${{ github.sha }}
+    secrets:
+      archive_deploy_key: ${{ secrets.HISTORY_ARCHIVE_SSH_KEY }}
