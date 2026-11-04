@@ -10,8 +10,9 @@ from pathlib import PurePath
 from traceback import extract_tb
 from typing import TYPE_CHECKING, Literal
 
+from ironsbot.core.failure_text import safe_platform_message
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -47,15 +48,16 @@ class CommandErrorReporter:
     async def report(
         self,
         context: MessageInputContext | CommandContext,
-        error: Exception,
+        error: Exception | SendResult,
         stage: ExecutionFailureStage | Literal["operation", "notice"] = "operation",
     ) -> None:
-        frames = extract_tb(error.__traceback__)
+        receipt = error if isinstance(error, SendResult) else None
+        frames = extract_tb(error.__traceback__) if isinstance(error, Exception) else []
         frame = frames[-1] if frames else None
         location = (
             f"{PurePath(frame.filename).name}:{frame.lineno}:{frame.name}"
             if frame is not None
-            else "unknown"
+            else "平台未提供异常调用栈"
         )
         platform = (
             context.message.platform
@@ -67,7 +69,28 @@ class CommandErrorReporter:
             if isinstance(context, MessageInputContext)
             else context.conversation
         ).kind
-        error_type = type(error).__name__
+        error_type = (
+            receipt.exception_type or "发送回执失败"
+            if receipt is not None
+            else type(error).__name__
+        )
+        detail = ""
+        if receipt is not None:
+            location = receipt.request_endpoint or "平台未提供接口模板"
+            identity = receipt.execution_identity
+            explanation = safe_platform_message(
+                receipt.error_message
+                if receipt.request_endpoint and receipt.http_status
+                else None
+            )
+            detail = (
+                f"\n执行机器人：{identity.describe() if identity else '未确定'}"
+                f"\n发送阶段：{receipt.failure_phase or '平台未提供'}"
+                f"\nHTTP：{receipt.http_status or '平台未提供'}"
+                f"｜错误码：{receipt.error_code or '平台未提供'}"
+                f"\n说明：{explanation}"
+                f"\nTrace ID：{receipt.trace_id or '平台未提供'}"
+            )
         logger.error(
             "Command failed: platform=%s kind=%s stage=%s error_type=%s location=%s",
             platform,
@@ -76,6 +99,8 @@ class CommandErrorReporter:
             error_type,
             location,
         )
+        if receipt is not None:
+            logger.warning("Command receipt failure:%s", detail)
         if (
             self.admin_notices is not None
             and self._limiter.hit(
@@ -91,7 +116,8 @@ class CommandErrorReporter:
                     await self.admin_notices.send(
                         "⚠️ 指令处理异常\n"
                         f"平台：{platform}\n会话类型：{kind}\n阶段：{stage}\n"
-                        f"异常类型：{error_type}\n代码位置：{location}",
+                        f"{'失败类型' if receipt else '异常类型'}：{error_type}\n"
+                        f"{'接口' if receipt else '代码位置'}：{location}{detail}",
                         subscription_key="command_error_notice",
                         action_name="Command failure notice",
                     )
