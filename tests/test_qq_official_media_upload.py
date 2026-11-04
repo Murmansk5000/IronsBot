@@ -224,3 +224,36 @@ async def test_batch_exit_cleans_upload_after_all_waiters_cancel(
     assert uploader.cancelled
     assert not media._batches
     assert not await asyncio.to_thread(lambda: list(tmp_path.iterdir()))
+
+
+@pytest.mark.asyncio
+async def test_reuse_diagnostics_distinguish_batch_format_and_upload_origin(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    uploader = _FakeUploader()
+    media = QQOfficialMediaUpload(
+        uploader, tmp_path, account_id="fictional-app", spawn=TaskOwner().create
+    )
+    with caplog.at_level(logging.INFO):
+        async with reuse_media_uploads():
+            await asyncio.gather(
+                media.upload_image(
+                    "group",
+                    "private-target-a",
+                    QQOfficialImagePayload(content=b"same", filename="a.PNG"),
+                ),
+                media.upload_image(
+                    "group",
+                    "private-target-b",
+                    QQOfficialImagePayload(content=b"same", filename="b.png"),
+                ),
+            )
+    assert len(uploader.calls) == 1
+    assert "reused=True" in caplog.text and "batch=" in caplog.text
+    assert "format=.png" in caplog.text
+    assert "upload_target=" in caplog.text and "receipt_target=" in caplog.text
+    assert "private-target-a" not in caplog.text
+    assert "private-target-b" not in caplog.text
+    assert not media._upload_origins

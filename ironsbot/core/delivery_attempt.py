@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from secrets import token_hex
 
 # A durable caller owns retries; adapters must not start another retry loop.
 controlled_delivery: ContextVar[bool] = ContextVar("controlled_delivery", default=False)
@@ -17,6 +18,7 @@ class MediaReuseBatch:
     """Own transport resources only for one active delivery, including retries."""
 
     cleanups: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
+    diagnostic_id: str = field(default_factory=lambda: token_hex(6))
 
 
 media_reuse_batch: ContextVar[MediaReuseBatch | None] = ContextVar(

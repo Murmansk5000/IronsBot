@@ -21,6 +21,7 @@ from ironsbot.core.delivery_attempt import (
     delivery_unit,
     media_reuse_batch,
 )
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.delivery_diagnostics import delivery_phase
 
 if TYPE_CHECKING:
@@ -55,6 +56,9 @@ class QQOfficialMediaUpload:
     _batches: dict[MediaReuseBatch, dict[MediaKey, asyncio.Task[str]]] = field(
         default_factory=dict, init=False, compare=False, repr=False
     )
+    _upload_origins: dict[asyncio.Task[str], str] = field(
+        default_factory=dict, init=False, compare=False, repr=False
+    )
 
     async def upload_image(
         self,
@@ -78,8 +82,9 @@ class QQOfficialMediaUpload:
                 self._batches[batch] = uploads
 
                 async def close() -> None:
-                    tasks = self._batches.pop(batch, {}).values()
+                    tasks = tuple(self._batches.pop(batch, {}).values())
                     for pending in tasks:
+                        self._upload_origins.pop(pending, None)
                         if not pending.done():
                             pending.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
@@ -95,13 +100,19 @@ class QQOfficialMediaUpload:
                     coroutine.close()
                     raise
                 uploads[key] = task
+                self._upload_origins[task] = reference_digest(target_id)
             logger.info(
-                "QQ upload reuse: unit=%s account=%s scope=%s media=%s reused=%s",
+                "QQ upload reuse: unit=%s account=%s scope=%s media=%s reused=%s "
+                "batch=%s format=%s upload_target=%s receipt_target=%s",
                 delivery_unit.get(),
                 self.account_id or "isolated-client",
                 scope,
                 fingerprint[:12],
                 reused,
+                batch.diagnostic_id,
+                key[2],
+                self._upload_origins.get(task),
+                reference_digest(target_id),
             )
             try:
                 return await asyncio.shield(task)
@@ -111,6 +122,7 @@ class QQOfficialMediaUpload:
                 )
                 if failed and uploads.get(key) is task:
                     uploads.pop(key)
+                    self._upload_origins.pop(task, None)
                 raise
 
     async def _upload_image(

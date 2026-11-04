@@ -32,7 +32,7 @@ assuming that concurrency caused the platform rejection.
 | --- | --- | --- |
 | Safe diagnostics | Response redaction, phase and durable receipt round trips | verified |
 | Receipt reporting | No fabricated exception, concise contextual notices | verified |
-| Reuse investigation | Boundary diagnostics, concurrency and cancellation tests | planned |
+| Reuse investigation | Boundary diagnostics, concurrency and cancellation tests | verified; live access unavailable |
 
 ## Validation
 
@@ -58,3 +58,12 @@ test run stalled and was interrupted; it is not counted as passing evidence.
 2026-11-04: shared receipt reporting and existing upload/batch regression:
 153 tests passed. Raw unstructured transport errors remain excluded from notices;
 only HTTP-boundary diagnostics expose a sanitized platform explanation.
+
+2026-11-04: upload boundary tests: 48 passed, including persistent-outbox
+integration and case-insensitive PNG reuse, failure cleanup and cancellation.
+Production read-only discovery found no trusted mapping for development AppID
+1904152026 in either configured test group (robot, huohuo_test). No live upload
+or chat message was issued. Concurrent duplicate-upload failure was not
+reproduced; no speculative serialization or retry expansion was introduced.
+Batch/format/session/origin diagnostics now allow a subsequent failure to be
+correlated. Exact historical 11001 cause remains unknown.
