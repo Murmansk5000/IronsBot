@@ -1,6 +1,6 @@
 # QQ Upload Failure Diagnostics
 
-Status: `in-progress`
+Status: `verified-with-limitations`
 
 Contract: `baseline`
 
@@ -31,8 +31,8 @@ assuming that concurrency caused the platform rejection.
 | Slice | Acceptance | Status |
 | --- | --- | --- |
 | Safe diagnostics | Response redaction, phase and durable receipt round trips | verified |
-| Receipt reporting | No fabricated exception, concise contextual notices | planned |
-| Reuse investigation | Boundary diagnostics, concurrency and cancellation tests | planned |
+| Receipt reporting | No fabricated exception, concise contextual notices | verified |
+| Reuse investigation | Boundary diagnostics, concurrency and cancellation tests | verified; live access unavailable |
 
 ## Validation
 
@@ -49,8 +49,41 @@ snapshot. No development branch publication or historical rewrite is authorized.
 
 2026-11-04: production logs confirm COS HTTP 200 followed by confirmation HTTP
 404/code 11001. The historical explanation and upload IDs were not retained;
-the exact cause remains unconfirmed. No tests or live probes completed yet.
+the exact cause remains unconfirmed. This initial observation preceded testing.
 
 2026-11-04: HTTP explanation, phase propagation and receipt JSON round trip:
 30 targeted tests passed in the normal test environment. An initial sandbox
 test run stalled and was interrupted; it is not counted as passing evidence.
+
+2026-11-04: shared receipt reporting and existing upload/batch regression:
+153 tests passed. Raw unstructured transport errors remain excluded from notices;
+only HTTP-boundary diagnostics expose a sanitized platform explanation.
+
+2026-11-04: upload boundary tests: 48 passed, including persistent-outbox
+integration and case-insensitive PNG reuse, failure cleanup and cancellation.
+Production read-only discovery found no trusted mapping for development AppID
+1904152026 in either configured test group (robot, huohuo_test). No live upload
+or chat message was issued. Concurrent duplicate-upload failure was not
+reproduced; no speculative serialization or retry expansion was introduced.
+Batch/format/session/origin diagnostics now allow a subsequent failure to be
+correlated. Exact historical 11001 cause remains unknown.
+
+## Final Verification
+
+2026-11-04: isolated committed source
+`f82f14735d38d40970955032e33974759b552091`: **6707 passed, 9 skipped**
+in 362.09 seconds. Ruff, BasedPyright (zero diagnostics), compileall, static
+repository checks and git diff --check passed. Only committed copies in E-drive
+isolation were used for the full suite; the reserved working files were not
+edited, staged, formatted or restored.
+
+The first full run had 6706 passes, nine skips and one privacy-fixture failure:
+a log-derived identifier accidentally appeared in a newly added test. It was
+replaced with a runtime-generated synthetic value; no runtime behavior changed.
+Initial failure evidence is retained beside the final results at
+`E:/IronsBot-history-validation/upload-diagnostics-20261104/`.
+
+Delivery limitations: zero live uploads (no trusted development test-group
+mapping), no reproduction of the platform 11001 cause, no speculative upload
+serialization, no retry expansion, no historical resend, no development-branch
+publication and no production deployment/configuration change.

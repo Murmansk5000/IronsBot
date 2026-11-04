@@ -62,7 +62,7 @@ class CommandReplyDelivery:
                 ):
                     await self.errors.report(
                         context,
-                        ConnectionError("Command delivery was not confirmed"),
+                        result,
                         "send",
                     )
                 return result
