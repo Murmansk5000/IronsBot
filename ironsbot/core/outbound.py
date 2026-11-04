@@ -349,6 +349,11 @@ class SendResult:
     attempted: bool = True
     reply_anchor_ids: tuple[str, ...] = ()
     attempt_count: int = 1
+    failure_phase: str | None = None
+    http_status: int | None = None
+    request_method: str | None = None
+    request_endpoint: str | None = None
+    exception_type: str | None = None
 
     def __post_init__(self) -> None:
         if self.delivered and not (self.message_id or "").strip():

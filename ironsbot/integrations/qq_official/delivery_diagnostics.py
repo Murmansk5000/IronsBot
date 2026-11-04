@@ -52,6 +52,12 @@ class QQDeliveryPhaseError(RuntimeError):
             response.status_code if response is not None else None
         )
         self.api_code = getattr(detail, "api_code", None)
+        self.request_method = getattr(detail, "method", None)
+        self.request_endpoint = getattr(detail, "endpoint", None)
+        # Only the HTTP boundary's already-sanitized platform explanation is safe.
+        self.platform_message = (
+            str(detail) if hasattr(detail, "api_code") else "平台未提供错误说明"
+        )
         self.network_errno = next(
             (
                 item.errno
@@ -70,6 +76,7 @@ class QQDeliveryPhaseError(RuntimeError):
         super().__init__(
             f"{phase}: {self.original_type}"
             f" (HTTP={self.http_status}, code={self.api_code})"
+            f": {self.platform_message}"
         )
 
 
@@ -88,7 +95,8 @@ async def delivery_phase(phase: str) -> AsyncIterator[None]:
         # Never interpolate the exception text: httpx errors may contain signed URLs.
         logger.warning(
             "QQ delivery failed: phase=%s exception=%s chain=%s elapsed_ms=%d "
-            "http_status=%s api_code=%s trace_id=%s unit=%s category=%s errno=%s",
+            "http_status=%s api_code=%s trace_id=%s unit=%s category=%s errno=%s "
+            "method=%s endpoint=%s explanation=%s",
             phase,
             error.original_type,
             exception_types(cause),
@@ -99,6 +107,9 @@ async def delivery_phase(phase: str) -> AsyncIterator[None]:
             delivery_unit.get(),
             error.failure_category,
             error.network_errno,
+            error.request_method,
+            error.request_endpoint,
+            error.platform_message,
         )
         raise error from cause
     else:
