@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from ironsbot.core.delivery_attempt import delivery_unit
+from ironsbot.core.failure_text import safe_platform_message
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -56,7 +57,9 @@ class QQDeliveryPhaseError(RuntimeError):
         self.request_endpoint = getattr(detail, "endpoint", None)
         # Only the HTTP boundary's already-sanitized platform explanation is safe.
         self.platform_message = (
-            str(detail) if hasattr(detail, "api_code") else "平台未提供错误说明"
+            safe_platform_message(str(detail))
+            if hasattr(detail, "api_code")
+            else "平台未提供错误说明"
         )
         self.network_errno = next(
             (

@@ -31,7 +31,7 @@ assuming that concurrency caused the platform rejection.
 | Slice | Acceptance | Status |
 | --- | --- | --- |
 | Safe diagnostics | Response redaction, phase and durable receipt round trips | verified |
-| Receipt reporting | No fabricated exception, concise contextual notices | planned |
+| Receipt reporting | No fabricated exception, concise contextual notices | verified |
 | Reuse investigation | Boundary diagnostics, concurrency and cancellation tests | planned |
 
 ## Validation
@@ -54,3 +54,7 @@ the exact cause remains unconfirmed. No tests or live probes completed yet.
 2026-11-04: HTTP explanation, phase propagation and receipt JSON round trip:
 30 targeted tests passed in the normal test environment. An initial sandbox
 test run stalled and was interrupted; it is not counted as passing evidence.
+
+2026-11-04: shared receipt reporting and existing upload/batch regression:
+153 tests passed. Raw unstructured transport errors remain excluded from notices;
+only HTTP-boundary diagnostics expose a sanitized platform explanation.

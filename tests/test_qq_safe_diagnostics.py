@@ -6,13 +6,13 @@ from dataclasses import asdict
 import httpx
 import pytest
 
+from ironsbot.core.failure_text import safe_platform_message
 from ironsbot.integrations.qq_official.api_errors import (
     QQOfficialApiError,
     QQOfficialHttpClient,
     qq_official_exception_result,
 )
 from ironsbot.integrations.qq_official.delivery_diagnostics import delivery_phase
-from ironsbot.integrations.qq_official.safe_diagnostics import safe_platform_message
 from ironsbot.integrations.storage.proactive_tasks import decode_result
 
 MAX_EXPLANATION = 256

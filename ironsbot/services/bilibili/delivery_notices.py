@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ironsbot.core.failure_text import safe_platform_message
+
 if TYPE_CHECKING:
     from ironsbot.core.outbound import SendResult
     from ironsbot.core.platform import ConversationRef
@@ -33,6 +35,13 @@ def delivery_failure_text(
         identity = "、".join(item.describe() for item in identities)
         reasons = "；".join(
             f"{_failure_reason(result)}（已尝试{result.attempt_count}次）"
+            + (
+                f"｜HTTP {result.http_status or '未提供'}"
+                f"｜说明：{safe_platform_message(result.error_message)}"
+                f"｜Trace ID：{result.trace_id or '未提供'}"
+                if result.request_endpoint is not None
+                else ""
+            )
             for _, result in results
         )
         lines.append(

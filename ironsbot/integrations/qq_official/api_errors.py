@@ -8,12 +8,10 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ironsbot.core.failure_text import safe_platform_message
 from ironsbot.core.outbound import DeliveryFailureKind, SendResult
 from ironsbot.integrations.qq_official.delivery_diagnostics import QQDeliveryPhaseError
-from ironsbot.integrations.qq_official.safe_diagnostics import (
-    request_endpoint,
-    safe_platform_message,
-)
+from ironsbot.integrations.qq_official.safe_diagnostics import request_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
