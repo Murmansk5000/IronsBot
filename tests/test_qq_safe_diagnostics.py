@@ -22,10 +22,12 @@ NOT_FOUND = 404
 def test_platform_explanation_is_bounded_and_redacted() -> None:
     text = safe_platform_message(
         "missing upload_id=opaque-secret\nhttps://cos.test/private?sign=secret "
-        "C48E6DA04773305806E3D1A3B665564E authorization: shortsecret " + "x" * 500
+        + "A" * 32
+        + " authorization: shortsecret "
+        + "x" * 500
     )
     assert len(text) <= MAX_EXPLANATION
-    for secret in ("opaque-secret", "cos.test", "shortsecret", "C48E6", "\n"):
+    for secret in ("opaque-secret", "cos.test", "shortsecret", "A" * 32, "\n"):
         assert secret not in text
     assert safe_platform_message({"unexpected": "secret"}) == "平台未提供错误说明"
 
