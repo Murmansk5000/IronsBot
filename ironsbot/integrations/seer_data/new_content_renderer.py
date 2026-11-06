@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
+
+from PIL import Image, ImageOps
 
 from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import (
@@ -20,7 +23,6 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentSnapshot,
     format_new_content_category_count,
-    is_new_content_category_auto_expanded,
     new_content_category_preview_items,
 )
 from ironsbot.services.seer.new_content_diff import (
@@ -88,14 +90,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         category
         for category in display_categories
         if category in expanded_categories
-        or (
-            focused_category is None
-            and is_new_content_category_auto_expanded(
-                snapshot,
-                category,
-                auto_expand_max_items,
-            )
-        )
+        and category not in PEAK_POOL_NEW_CONTENT_CATEGORIES
     )
     builder = NewContentSnapshotBuilder(data, autocard)
     preview_items = {
@@ -127,7 +122,10 @@ async def render_new_content_menu(  # noqa: PLR0913
         )
     visuals, (pool_previews, pool_images_complete) = await asyncio.gather(
         asyncio.gather(
-            *(_item_visuals(images, prepared) for prepared in prepared_items)
+            *(
+                _item_visuals(images, prepared, preview=focused_category is None)
+                for prepared in prepared_items
+            )
         ),
         _pool_change_previews(images, snapshot, display_categories, focused_category),
     )
@@ -204,7 +202,7 @@ def _cache_key(  # noqa: PLR0913
     auto_expand_max_items: int,
 ) -> str:
     return render_request_cache_key(
-        "new_content_diff_v1",
+        "new_content_revision_v2",
         (
             snapshot,
             display_categories,
@@ -265,7 +263,7 @@ def _initial_rows(  # noqa: PLR0913 - the render inputs remain explicit
         )
         if category in expanded_categories:
             rows.extend(
-                _content_row(f"{code}{item_index}", prepared)
+                _content_row(f"{code}{item_index}", prepared, preview=True)
                 for item_index, prepared in enumerate(
                     prepared_by_category[category], start=1
                 )
@@ -273,14 +271,16 @@ def _initial_rows(  # noqa: PLR0913 - the render inputs remain explicit
     return rows
 
 
-def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuItem:
+def _content_row(
+    code: str, prepared: NewContentPreparedItem, *, preview: bool = False
+) -> NewContentMenuItem:
     details = prepared.details
     diffs, notice = present_field_changes(prepared.item)
     compared = compared_text_values(prepared.item)
     side_description = (
         "" if details.side_description.strip() in compared else details.side_description
     )
-    return NewContentMenuItem(
+    row = NewContentMenuItem(
         code=code,
         name=prepared.item.name,
         description=""
@@ -308,7 +308,24 @@ def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuI
         entity_key=(prepared.item.category, prepared.item.entity_id),
         diff_fields=diffs,
         diff_notice=notice,
+        preview=preview,
+        change_label="修改" if prepared.item.change_kind == "modified" else "新增",
     )
+    if preview:
+        return replace(
+            row,
+            description="",
+            metadata="",
+            side_title="",
+            side_description="",
+            stats=(),
+            stats_total="",
+            skill=None,
+            friend_skill=None,
+            diff_fields=(),
+            diff_notice="",
+        )
+    return row
 
 
 async def _pool_change_images(
@@ -359,19 +376,22 @@ async def _pool_change_image(
     item: NewContentItem,
 ) -> str | None:
     try:
-        return to_data_uri(
-            await images.fetch("pet_head", str(item.entity_id), fallback=False)
+        return _fitted_image(
+            await images.fetch("pet_head", str(item.entity_id), fallback=False),
+            (42, 42),
         )
-    except (ImageSourceError, RuntimeError, TypeError, ValueError):
+    except (ImageSourceError, RuntimeError, TypeError, ValueError, OSError):
         return None
 
 
 async def _item_visuals(
     images: SeerImageSource,
     prepared: NewContentPreparedItem,
+    *,
+    preview: bool = False,
 ) -> tuple[str | None, str | None]:
     image, type_icon = await asyncio.gather(
-        _asset_data_uri(images, prepared.asset),
+        _asset_data_uri(images, prepared.asset, preview=preview),
         _type_icon(images, prepared.details.type_id),
     )
     return image, type_icon
@@ -380,17 +400,37 @@ async def _item_visuals(
 async def _asset_data_uri(
     images: SeerImageSource,
     request: NewContentAssetRequest | None,
+    *,
+    preview: bool = False,
 ) -> str | None:
     if request is None:
         return None
     try:
         if request.kind and request.key:
-            return to_data_uri(
-                await images.fetch(request.kind, request.key, fallback=False)  # type: ignore[arg-type]
+            size = (74, 102) if request.layout == "portrait" else (102, 102)
+            if preview:
+                size = (28, 40) if request.layout == "portrait" else (40, 40)
+            return _fitted_image(
+                await images.fetch(request.kind, request.key, fallback=False),  # type: ignore[arg-type]
+                size,
             )
-    except (ImageSourceError, RuntimeError, TypeError, ValueError):
+    except (ImageSourceError, RuntimeError, TypeError, ValueError, OSError):
         return None
     return None
+
+
+def _fitted_image(raw: bytes, size: tuple[int, int]) -> str:
+    # Fit before HTML layout: the native renderer does not implement object-fit.
+    with Image.open(io.BytesIO(raw)) as image:
+        fitted = ImageOps.pad(
+            image.convert("RGBA"),
+            size,
+            method=Image.Resampling.LANCZOS,
+            color=(0, 0, 0, 0),
+        )
+    output = io.BytesIO()
+    fitted.save(output, format="PNG")
+    return to_data_uri(output.getvalue())
 
 
 async def _type_icon(

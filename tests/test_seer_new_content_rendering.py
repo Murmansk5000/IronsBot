@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
+import io
 from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from PIL import Image
 from seerapi_models import (
     EquipORM,
     MintmarkORM,
@@ -40,6 +43,18 @@ from ironsbot.services.seer.new_content import (
 from ironsbot.services.seer.render_cache import RenderCacheEntry
 
 FLASH_TEST_MOUNT_ID = 1301170
+
+
+def _image_bytes(size: tuple[int, int] = (20, 30)) -> bytes:
+    output = io.BytesIO()
+    Image.new("RGBA", size, "#4eaf99").save(output, format="PNG")
+    return output.getvalue()
+
+
+def _image_size(uri: str) -> tuple[int, int]:
+    with Image.open(io.BytesIO(base64.b64decode(uri.split(",", 1)[1]))) as image:
+        return image.size
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -122,7 +137,7 @@ class _Images:
             from ironsbot.services.seer.images import ImageSourceError
 
             raise ImageSourceError("missing")
-        return f"{kind}:{key}".encode()
+        return _image_bytes()
 
 
 class _Autocard:
@@ -532,7 +547,7 @@ async def test_generated_mount_asset_is_rendered_and_cached() -> None:
     )
 
     item_row = next(row for row in captured["items"] if row.code == "1")
-    assert item_row.image == "data:image/png;base64,bW91bnQ6MTMwMTE3MA=="
+    assert _image_size(item_row.image) == (102, 102)
     assert item_row.image_notice == ""
     assert cache.saved == b"menu-image"
 
@@ -584,7 +599,7 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         expanded_categories=frozenset({"autocard_sanctuary_effect"}),
     )
 
-    assert [row.code for row in captured["items"]] == ["a", "a1", "a2", "b"]
+    assert [row.code for row in captured["items"]] == ["a", "a1", "a2", "a3", "b"]
     assert [row.expanded for row in captured["items"] if row.is_category] == [
         True,
         False,
