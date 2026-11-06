@@ -4,14 +4,17 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from itertools import zip_longest
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.new_content import NewContentItem
     from ironsbot.services.seer.rendering.custom_pet_models import SkillDict
+
+_DIFF_TOKEN_RE = re.compile(r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?|[\s\S]")
 
 _LABELS = {
     "name": "名称",
@@ -45,25 +48,25 @@ _LABELS = {
     "learning_level": "学习等级",
     "must_hit": "必中",
     "crit_rate": "暴击率",
+    "BuffParam": "技能参数",
+    "buff_param": "技能参数",
+    "buffParam": "技能参数",
+    "health": "生命值",
+    "skillTxt": "技能效果",
+    "cardTxt": "卡牌效果",
 }
 
 
 @dataclass(frozen=True, slots=True)
 class DiffFragment:
     text: str
-    changed: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class DiffLine:
-    old: tuple[DiffFragment, ...]
-    new: tuple[DiffFragment, ...]
+    kind: Literal["equal", "delete", "insert"] = "equal"
 
 
 @dataclass(frozen=True, slots=True)
 class FieldDiff:
     label: str
-    lines: tuple[DiffLine, ...]
+    fragments: tuple[DiffFragment, ...]
 
 
 def _text(value: object) -> str:
@@ -72,30 +75,39 @@ def _text(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)
 
 
-def _fragments(old: str, new: str) -> DiffLine:
-    before: list[DiffFragment] = []
-    after: list[DiffFragment] = []
+def _replacement(old: str, new: str) -> tuple[DiffFragment, ...]:
+    return tuple(
+        DiffFragment(text, kind)
+        for text, kind in ((old, "delete"), (new, "insert"))
+        if text
+    )
+
+
+def _fragments(old: str, new: str) -> tuple[DiffFragment, ...]:
+    result: list[DiffFragment] = []
+    # Numbers are indivisible; surrounding prose still gets character-level edits.
+    before, after = _DIFF_TOKEN_RE.findall(old), _DIFF_TOKEN_RE.findall(new)
     for operation, a, b, c, d in SequenceMatcher(
-        None, old, new, autojunk=False
+        None, before, after, autojunk=False
     ).get_opcodes():
-        if a != b:
-            before.append(DiffFragment(old[a:b], operation != "equal"))
-        if c != d:
-            after.append(DiffFragment(new[c:d], operation != "equal"))
-    return DiffLine(tuple(before), tuple(after))
+        if operation == "equal":
+            result.append(DiffFragment("".join(before[a:b])))
+        else:
+            result.extend(_replacement("".join(before[a:b]), "".join(after[c:d])))
+    return tuple(result)
 
 
-def _lines(old: str, new: str) -> tuple[DiffLine, ...]:
-    result: list[DiffLine] = []
-    before, after = old.splitlines(), new.splitlines()
+def _lines(old: str, new: str) -> tuple[DiffFragment, ...]:
+    result: list[DiffFragment] = []
+    before, after = old.splitlines(keepends=True), new.splitlines(keepends=True)
     for operation, a, b, c, d in SequenceMatcher(
         None, before, after, autojunk=False
     ).get_opcodes():
         for left, right in zip_longest(before[a:b], after[c:d], fillvalue=""):
             if operation == "equal":
-                result.append(DiffLine((DiffFragment(left),), (DiffFragment(right),)))
+                result.append(DiffFragment(left))
             else:
-                result.append(_fragments(left, right))
+                result.extend(_fragments(left, right))
     return tuple(result)
 
 
@@ -131,7 +143,12 @@ def present_field_changes(item: NewContentItem) -> tuple[tuple[FieldDiff, ...], 
             for part in path
             if part != "payload"
         )
-        fields.append(FieldDiff(label or "内容", _lines(old, new)))
+        fragments = (
+            _replacement(old, new)
+            if path and path[-1] in {"BuffParam", "buff_param", "buffParam"}
+            else _lines(old, new)
+        )
+        fields.append(FieldDiff(label or "内容", fragments))
     return tuple(fields), "部分旧值未提供，无法完整对比" if incomplete else ""
 
 

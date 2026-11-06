@@ -1,5 +1,7 @@
 <!doctype html>
 {% from "skill_card_macro.html.j2" import skill_card %}
+{# Short inline runs provide native line-break opportunities without changing text. #}
+{% macro bounded_text(value) -%}{% for chunk in value | batch(12) %}<span>{{ chunk | join | e }}</span>{% endfor %}{%- endmacro %}
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -10,26 +12,29 @@
       color: #eaf6ff;
       font-family: "Microsoft YaHei", "Source Han Sans SC", "Source Han Sans CN", sans-serif;
     }
-    .panel { width: 100%; padding: 24px; }
+    .panel { display: block; width: 1080px; max-width: 100%; padding: 24px; }
+    .panel, .list, .item, .pool-preview { min-width: 0; }
+    .header, .category, .item-heading, .content, .item-body { max-width: 100%; min-width: 0; }
     .header {
       display: flex; align-items: end; justify-content: space-between;
       padding: 0 4px 16px; border-bottom: 2px solid #4796d8;
       margin-bottom: 14px;
     }
-    .title { font-size: 29px; font-weight: 800; letter-spacing: 1px; }
+    .title { font-size: 29px; font-weight: 800; letter-spacing: 0; min-width: 0; overflow-wrap: anywhere; }
     .cycle { color: #8bb9e4; font-size: 13px; }
-    .list { display: flex; flex-direction: column; gap: 8px; }
+    .list { display: block; }
     .category {
       display: flex; align-items: center; min-height: 54px; padding: 10px 14px;
       background: linear-gradient(90deg, #184d82, #10345b);
       border: 1px solid #4995d4; border-radius: 4px;
+      margin-bottom: 8px;
     }
     .key {
       flex: 0 0 42px; color: #91e7ff; font-weight: 800; font-size: 21px;
       text-transform: lowercase;
     }
-    .category-name { flex: 1; font-size: 20px; font-weight: 700; }
-    .category-count { color: #a9cde8; font-size: 15px; }
+    .category-name { flex: 1; min-width: 0; font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
+    .category-count { flex: 0 0 auto; color: #a9cde8; font-size: 15px; }
     .arrow { margin-right: 8px; color: #86e6ff; }
     .pool-preview { margin-left: 16px; padding: 14px; background: #0b223c; border-left: 3px solid #3d88c8; }
     .pool-title { margin-bottom: 10px; color: #d9f4ff; font-size: 18px; font-weight: 800; }
@@ -40,9 +45,9 @@
     .pool-corner { font-size: 12px; }
     .pool-corner span { display: block; }
     .pool-diagonal { text-align: center; vertical-align: middle; color: #688aa5; font-size: 18px; }
-    .pool-pets { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-    .pool-avatar { width: 48px; height: 48px; object-fit: contain; padding: 2px; background: #071426; border: 1px solid #315f8a; border-radius: 3px; }
-    .pool-avatar-missing { width: 48px; height: 48px; background: #102f50; border: 1px dashed #426d91; border-radius: 3px; }
+    .pool-pets { display: block; min-width: 0; max-width: 100%; }
+    .pool-avatar { display: inline-block; vertical-align: middle; margin: 2px; width: 48px; height: 48px; object-fit: contain; padding: 2px; background: #071426; border: 1px solid #315f8a; border-radius: 3px; }
+    .pool-avatar-missing { display: inline-block; vertical-align: middle; margin: 2px; width: 48px; height: 48px; background: #102f50; border: 1px dashed #426d91; border-radius: 3px; }
     .expert-transitions { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .expert-direction, .expert-names { min-width: 0; min-height: 52px; padding: 10px 12px; border: 1px solid #315f8a; }
     .expert-direction { width: 150px; text-align: center; vertical-align: middle; background: #123b62; color: #91e7ff; font-size: 15px; font-weight: 800; }
@@ -54,9 +59,15 @@
     .pool-other-row { display: flex; gap: 12px; padding: 6px 0; }
     .pool-other-direction { flex: 0 0 180px; color: #91e7ff; font-weight: 700; }
     .item {
-      display: flex; flex-wrap: wrap; align-items: flex-start; margin-left: 16px;
+      margin-left: 16px;
       padding: 10px 14px; background: #0c2744; border-left: 3px solid #3d88c8;
+      margin-bottom: 8px;
     }
+    .item-heading { display: flex; align-items: flex-start; }
+    .item-body { margin-left: 42px; margin-top: 8px; }
+    .item.preview .thumbnail-frame.square { flex-basis: 48px; width: 48px; height: 48px; }
+    .item.preview .thumbnail-frame.portrait { flex-basis: 36px; width: 36px; height: 48px; }
+    .change-label { display: inline; margin-left: 8px; font-size: 12px; color: #a9cde8; font-weight: 400; }
     .item.no-image { min-height: 0; }
     .item.skill-item { min-height: 0; }
     .skill-content { flex: 1; min-width: 0; }
@@ -68,8 +79,8 @@
       justify-content: center; margin-right: 13px; padding: 3px;
       background: #071426; border: 1px solid #315f8a; border-radius: 3px;
     }
-    .thumbnail-frame.square { flex: 0 0 110px; height: 110px; }
-    .thumbnail-frame.portrait { flex: 0 0 82px; height: 110px; }
+    .thumbnail-frame.square { flex: 0 0 110px; width: 110px; height: 110px; }
+    .thumbnail-frame.portrait { flex: 0 0 82px; width: 82px; height: 110px; }
     .thumbnail-frame.pending {
       padding: 12px; text-align: center; color: #a9cde8;
       background: linear-gradient(135deg, #102f50, #0b2038);
@@ -79,14 +90,14 @@
       display: block; max-width: 100%; max-height: 100%; width: auto; height: auto;
       object-fit: contain;
     }
-    .content { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 6px; }
+    .content { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; gap: 6px; }
     .content-main { min-width: 0; flex: 1 1 auto; padding-top: 1px; }
     .content-side {
-      min-width: 0;
+      display: block; min-width: 0;
     }
     .item-name { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
     .metadata {
-      display: flex; align-items: center; gap: 4px; margin-top: 2px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px;
       color: #8dc9eb; font-size: 12px; overflow-wrap: anywhere;
     }
     .metadata-icon { width: 16px; height: 16px; object-fit: contain; }
@@ -95,7 +106,7 @@
       overflow-wrap: anywhere;
     }
     .stat-grid {
-      display: flex; flex-wrap: nowrap; gap: 3px;
+      display: flex; flex-wrap: wrap; gap: 3px;
       margin-top: 3px;
     }
     .stat-grid.skill { flex-wrap: wrap; margin-top: 0; }
@@ -110,7 +121,7 @@
       gap: 2px; padding: 2px 3px;
       color: #9dc7df; background: #102f50; border: 1px solid #285878; font-size: 11px;
     }
-    .stat span { white-space: nowrap; }
+    .stat span, .stat strong { min-width: 0; overflow-wrap: anywhere; }
     .stat strong { color: #f4dc8f; font-weight: 700; }
     .stat-total {
       margin-top: 7px; color: #f4dc8f; font-size: 12px; font-weight: 700;
@@ -126,16 +137,18 @@
       border-top: 1px solid #285b87; font-size: 14px;
     }
     .footer kbd { padding: 1px 6px; color: #dff7ff; background: #1b5385; border-radius: 2px; }
-    .diff-wrap { flex: 0 0 calc(100% - 42px); min-width: 0; margin: 10px 0 0 42px; }
-    .diff-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; line-height: 1.6; }
-    .diff-table th, .diff-table td { width: 50%; padding: 6px 10px; border: 1px solid #315570; vertical-align: top; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; }
-    .diff-table .diff-heading { color: #b8d2e4; background: #112e48; }
-    .diff-table .diff-field { width: 100%; background: #10293f; color: #bdd5e6; font-weight: 600; }
-    .diff-fragment.old { color: #ffb6bd; background: #582735; }
-    .diff-fragment.new { color: #a0efbb; background: #164532; }
-    .diff-prefix { display: inline-block; width: 16px; font-weight: 800; }
-    .diff-prefix.old { color: #ffb6bd; }
-    .diff-prefix.new { color: #a0efbb; }
+    .diff-wrap { min-width: 0; max-width: 100%; margin-top: 4px; }
+    .revision-field { margin-top: 4px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+    .diff-field { color: #bdd5e6; font-size: 12px; font-weight: 600; margin-right: 6px; }
+    .revision-text { color: #d5e5ef; white-space: pre-wrap; }
+    .revision-arrow { color: #9dc7df; text-decoration: none; }
+    .revision-text del { color: #ffb6bd; text-decoration: line-through; }
+    .revision-text ins { color: #a0efbb; text-decoration: underline; }
+    .revision-text, .item-name, .metadata, .item-description, .side-description, .skill-content { overflow-wrap: anywhere; word-wrap: break-word; word-break: break-all; }
+    .item-body .sk-card { width: auto; max-width: 100%; min-width: 0; margin: 0; }
+    .item-body .sk-header { flex-wrap: wrap; }
+    .item-body .sk-name { flex: 1 1 200px; }
+    .item-body .sk-type-icon { flex: 0 0 32px; }
     .diff-notice { padding: 6px 0; color: #f4dc8f; font-size: 13px; }
   </style>
 </head>
@@ -160,16 +173,16 @@
               {% if item.pool_preview.kind in ('standard', 'master') %}
                 <table class="pool-matrix">
                   <thead><tr>
-                    <th class="pool-cell pool-corner"><span>{{ '原竞技点' if item.pool_preview.kind == 'master' else '原限制' }} ↓</span><span>{{ '新竞技点' if item.pool_preview.kind == 'master' else '新限制' }} →</span></th>
-                    {% for header in item.pool_preview.headers %}<th class="pool-cell pool-column">{{ header }}</th>{% endfor %}
+                    <th class="pool-cell pool-corner" style="width: 14%"><span>{{ '原竞技点' if item.pool_preview.kind == 'master' else '原限制' }} ↓</span><span>{{ '新竞技点' if item.pool_preview.kind == 'master' else '新限制' }} →</span></th>
+                    {% for header in item.pool_preview.headers %}<th class="pool-cell pool-column" style="width: {{ 86 / (item.pool_preview.headers | length) }}%">{{ header }}</th>{% endfor %}
                   </tr></thead>
                   <tbody>
                   {% for row in item.pool_preview.matrix_rows %}
                     {% set row_index = loop.index0 %}
                     <tr>
-                      <th class="pool-cell pool-row-label">{{ row.label }}</th>
+                      <th class="pool-cell pool-row-label" style="width: 14%">{{ row.label }}</th>
                       {% for pets in row.cells %}
-                        <td class="pool-cell{% if loop.index0 == row_index %} pool-diagonal{% endif %}">
+                        <td class="pool-cell{% if loop.index0 == row_index %} pool-diagonal{% endif %}" style="width: {{ 86 / (item.pool_preview.headers | length) }}%">
                           {% if loop.index0 == row_index %}—{% elif pets %}<div class="pool-pets">{% for pet in pets %}{% if pet.image %}<img class="pool-avatar" src="{{ pet.image }}" alt="">{% else %}<span class="pool-avatar-missing"></span>{% endif %}{% endfor %}</div>{% endif %}
                         </td>
                       {% endfor %}
@@ -196,15 +209,9 @@
             </div>
           {% endif %}
         {% else %}
-          <div class="item{% if not item.image and not item.image_notice %} no-image{% endif %}{% if item.skill %} skill-item{% endif %}">
+          <div class="item{% if not item.image and not item.image_notice %} no-image{% endif %}{% if item.skill %} skill-item{% endif %}{% if item.preview %} preview{% endif %}">
+            <div class="item-heading">
             <div class="key">{{ item.code }}</div>
-            {% if item.skill %}
-              <div class="skill-content">
-                {{ skill_card(item.skill, skill_type_icons) }}
-                {% if item.friend_skill %}{{ skill_card(item.friend_skill, skill_type_icons) }}{% endif %}
-                {% if item.description %}<div class="skill-links">{{ item.description }}</div>{% endif %}
-              </div>
-            {% else %}
             {% if item.image or item.image_notice %}
               <div class="thumbnail-frame {{ item.image_layout }}{% if item.image_notice %} pending{% endif %}">
                 {% if item.image %}
@@ -216,10 +223,10 @@
             {% endif %}
             <div class="content">
               <div class="content-main">
-                <div class="item-name">{{ item.name }}</div>
-                {% if item.metadata or item.type_icon or item.gender_icon %}
+                <div class="item-name">{{ bounded_text(item.name) }}{% if item.change_label %}<span class="change-label">{{ item.change_label }}</span>{% endif %}</div>
+                {% if not item.preview and (item.metadata or item.type_icon or item.gender_icon) %}
                   <div class="metadata">
-                    {{ item.metadata }}
+                    {{ bounded_text(item.metadata) }}
                     {% if item.type_icon %}
                       <span>|</span><img class="metadata-icon" src="{{ item.type_icon }}">{{ item.type_name }}
                     {% endif %}
@@ -228,8 +235,18 @@
                     {% endif %}
                   </div>
                 {% endif %}
-                {% if item.description %}<div class="item-description">{{ item.description }}</div>{% endif %}
               </div>
+            </div>
+            </div>
+            {% if not item.preview %}
+            <div class="item-body">
+              {% if item.skill %}
+              <div class="skill-content">
+                {{ skill_card(item.skill, skill_type_icons, bounded_text) }}
+                {% if item.friend_skill %}{{ skill_card(item.friend_skill, skill_type_icons, bounded_text) }}{% endif %}
+              </div>
+              {% endif %}
+              {% if item.description %}<div class="item-description">{{ bounded_text(item.description) }}</div>{% endif %}
               {% if item.side_title or item.side_description or item.stats_total or item.stats %}
                 <aside class="content-side">
                 {% if item.stats_layout == "skill" and item.stats %}
@@ -239,8 +256,8 @@
                     {% endfor %}
                   </div>
                 {% endif %}
-                {% if item.side_title %}<div class="side-title">{{ item.side_title }}</div>{% endif %}
-                {% if item.side_description %}<div class="side-description">{{ item.side_description }}</div>{% endif %}
+                {% if item.side_title %}<div class="side-title">{{ bounded_text(item.side_title) }}</div>{% endif %}
+                {% if item.side_description %}<div class="side-description">{{ bounded_text(item.side_description) }}</div>{% endif %}
                 {% if item.stats_total %}<div class="stat-total">总和：{{ item.stats_total }}</div>{% endif %}
                 {% if item.stats_layout == "two_column" and item.stats %}
                   <div class="stat-grid two-column">
@@ -261,27 +278,16 @@
                 {% endif %}
                 </aside>
               {% endif %}
-            </div>
-            {% endif %}
             {% if item.diff_fields or item.diff_notice %}
             <div class="diff-wrap">
               {% if item.diff_notice %}<div class="diff-notice">{{ item.diff_notice | e }}</div>{% endif %}
               {% if item.diff_fields %}
-              <table class="diff-table">
-                <thead><tr><th class="diff-heading">修改前</th><th class="diff-heading">修改后</th></tr></thead>
-                <tbody>
                 {% for field in item.diff_fields %}
-                  <tr><th colspan="2" class="diff-field">{{ field.label | e }}</th></tr>
-                  {% for line in field.lines %}
-                  <tr>
-                    <td>{% if line.old | selectattr('changed') | list %}<span class="diff-prefix old">−</span>{% endif %}{% for fragment in line.old %}<span{% if fragment.changed %} class="diff-fragment old"{% endif %}>{{ fragment.text | e }}</span>{% endfor %}</td>
-                    <td>{% if line.new | selectattr('changed') | list %}<span class="diff-prefix new">+</span>{% endif %}{% for fragment in line.new %}<span{% if fragment.changed %} class="diff-fragment new"{% endif %}>{{ fragment.text | e }}</span>{% endfor %}</td>
-                  </tr>
-                  {% endfor %}
+                  <div class="revision-field"><span class="diff-field">{{ field.label | e }}：</span><span class="revision-text">{% for fragment in field.fragments %}{% if fragment.kind == 'delete' %}<del>{{ bounded_text(fragment.text) }}</del>{% elif fragment.kind == 'insert' %}{% if loop.previtem is defined and loop.previtem.kind == 'delete' %}<span class="revision-arrow" aria-hidden="true"> → </span>{% endif %}<ins>{{ bounded_text(fragment.text) }}</ins>{% else %}{{ bounded_text(fragment.text) }}{% endif %}{% endfor %}</span></div>
                 {% endfor %}
-                </tbody>
-              </table>
               {% endif %}
+            </div>
+            {% endif %}
             </div>
             {% endif %}
           </div>

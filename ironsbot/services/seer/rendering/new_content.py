@@ -50,6 +50,8 @@ class NewContentMenuItem:
     entity_key: tuple[str, int] | None = None
     diff_fields: tuple[FieldDiff, ...] = ()
     diff_notice: str = ""
+    preview: bool = False
+    change_label: str = ""
 
 
 @dataclass(frozen=True, slots=True)

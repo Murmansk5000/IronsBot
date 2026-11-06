@@ -216,14 +216,16 @@ def new_content_category_preview_items(
 
     if max_items <= 0:
         return ()
-    return _new_content_category_preview_additions(snapshot, category)[:max_items]
+    return _new_content_category_preview_additions(snapshot, category)[
+        : min(max_items, 5)
+    ]
 
 
 def _new_content_category_preview_additions(
     snapshot: NewContentSnapshot,
     category: NewContentCategory,
 ) -> tuple[NewContentItem, ...]:
-    if category == "autocard_chip":
+    if category != "skill":
         return snapshot.items_for(category)
     additions = tuple(
         item for item in snapshot.items_for(category) if item.change_kind == "added"
