@@ -49,7 +49,9 @@ def _snapshot(*categories: NewContentCategory) -> NewContentSnapshot:
 
 def test_plan_filters_unavailable_and_empty_categories() -> None:
     snapshot = _snapshot("pet", "skill")
-    layout = plan_new_content_menu(snapshot, ("skill", "achievement"))
+    layout = plan_new_content_menu(
+        snapshot, ("skill", "achievement"), expanded_categories=frozenset({"skill"})
+    )
 
     assert isinstance(layout, NewContentMenuLayout)
     assert layout.display_categories == ("skill",)
@@ -90,7 +92,9 @@ def test_chip_modifications_preview_five_and_join_autocard_menu() -> None:
             ),
         ),
     )
-    layout = plan_new_content_menu(snapshot, ("autocard_chip",))
+    layout = plan_new_content_menu(
+        snapshot, ("autocard_chip",), expanded_categories=frozenset({"autocard_chip"})
+    )
     assert isinstance(layout, NewContentMenuLayout)
     assert "autocard_chip" in layout.expanded_categories
     menu = build_new_content_menu(snapshot, layout)
@@ -125,6 +129,16 @@ def test_explicit_denied_category_returns_notice() -> None:
     assert plan_new_content_menu(_snapshot("pet"), ("skill",), ("pet",)) == (
         "当前群未开放此新增内容分类。"
     )
+
+
+def test_pool_categories_never_expand_as_ordinary_item_previews() -> None:
+    snapshot = _snapshot("peak_pool", "peak_expert_pool", "peak_master_pool")
+    categories = ("peak_pool", "peak_expert_pool", "peak_master_pool")
+    layout = plan_new_content_menu(
+        snapshot, categories, expanded_categories=frozenset(categories)
+    )
+    assert isinstance(layout, NewContentMenuLayout)
+    assert not layout.expanded_categories
 
 
 def test_stale_week_notice_preserves_permission_denial() -> None:
@@ -169,16 +183,26 @@ def test_focus_preserves_item_order_and_uses_numeric_adapter_keys() -> None:
     ]
 
 
-@pytest.mark.parametrize(("count", "expanded"), [(5, True), (6, False)])
-def test_auto_expansion_has_one_shared_threshold(count: int, *, expanded: bool) -> None:
+@pytest.mark.parametrize("count", [1, 5, 6, 9])
+def test_root_expands_only_configured_categories(count: int) -> None:
     categories: tuple[NewContentCategory, ...] = ("pet",) * count
     snapshot = _snapshot(*categories)
     layout = plan_new_content_menu(snapshot, ("pet",))
     assert isinstance(layout, NewContentMenuLayout)
-    assert ("pet" in layout.expanded_categories) is expanded
-    assert len(build_new_content_menu(snapshot, layout).choices) == (
-        count + 1 if expanded else 1
+    assert not layout.expanded_categories
+    assert len(build_new_content_menu(snapshot, layout).choices) == 1
+    configured = plan_new_content_menu(
+        snapshot,
+        ("pet",),
+        expanded_categories=frozenset({"pet"}),
+        preview_max_items=20,
     )
+    assert isinstance(configured, NewContentMenuLayout)
+    assert (
+        len(build_new_content_menu(snapshot, configured).choices) == min(count, 5) + 1
+    )
+    focused = focus_new_content_category(configured, "pet")
+    assert len(build_new_content_menu(snapshot, focused).choices) == count
 
 
 def test_explicit_preview_is_bounded_and_keeps_corrections_folded() -> None:

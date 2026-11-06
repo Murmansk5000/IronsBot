@@ -8,8 +8,6 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
-from ironsbot.services.ai.analysis_parser import AnalyzeDescParser
-
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -26,6 +24,7 @@ from ironsbot.services.seer.pet_info_views import (
 )
 
 from .analyze_description import (
+    annotate_soulmark_boss_effects,
     format_analyze_description,
     format_plain_analyze_description,
 )
@@ -261,19 +260,9 @@ def _format_soulmark_description(
         value = _RICH_TEXT_TAG_RE.sub("", value.replace("</color>", "[/color]"))
     else:
         value = soulmark.desc
-    lines: list[str] = []
-    for raw in value.split("|"):
-        annotated = raw
-        line = AnalyzeDescParser(raw).lines[0]
-        if line.plain_text.strip() and not re.search(
-            r"BOSS有效|BOSS无效", line.plain_text, re.IGNORECASE
-        ):
-            if line.sprite == "dot1":
-                annotated += "（BOSS有效）"
-            elif line.sprite == "dot4":
-                annotated += "（BOSS无效）"
-        lines.append(annotated)
-    return format_analyze_description("|".join(lines), effect_colors)
+    return format_analyze_description(
+        annotate_soulmark_boss_effects(value), effect_colors
+    )
 
 
 def _soulmark_display_addition_views(
