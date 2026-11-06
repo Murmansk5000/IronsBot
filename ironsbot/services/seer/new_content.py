@@ -77,9 +77,9 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "suit": "新增套装",
     "equip": "新增部件",
     "mount": "新增座驾",
-    "autocard_card": "新增群星",
+    "autocard_card": "新增群星卡牌",
     "autocard_role": "新增群星角色",
-    "autocard_chip": "群星牌战斗芯片",
+    "autocard_chip": "新增群星芯片",
     "autocard_sanctuary_effect": "新增群星场地",
 }
 DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
@@ -216,14 +216,16 @@ def new_content_category_preview_items(
 
     if max_items <= 0:
         return ()
-    return _new_content_category_preview_additions(snapshot, category)[:max_items]
+    return _new_content_category_preview_additions(snapshot, category)[
+        : min(max_items, 5)
+    ]
 
 
 def _new_content_category_preview_additions(
     snapshot: NewContentSnapshot,
     category: NewContentCategory,
 ) -> tuple[NewContentItem, ...]:
-    if category == "autocard_chip":
+    if category != "skill":
         return snapshot.items_for(category)
     additions = tuple(
         item for item in snapshot.items_for(category) if item.change_kind == "added"

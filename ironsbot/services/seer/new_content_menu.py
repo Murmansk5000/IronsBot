@@ -10,11 +10,11 @@ from .new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     CATEGORY_NAMES,
     DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
+    PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
     format_new_content_item_description,
-    is_new_content_category_auto_expanded,
     new_content_category_preview_items,
     new_content_category_unavailable_message,
     new_content_stale_week_message,
@@ -97,12 +97,8 @@ def plan_new_content_menu(
                 category,
                 preview_max_items,
             )
-            and (
-                category in expanded_categories
-                or is_new_content_category_auto_expanded(
-                    snapshot, category, preview_max_items
-                )
-            )
+            and category in expanded_categories
+            and category not in PEAK_POOL_NEW_CONTENT_CATEGORIES
         ),
         preview_max_items=preview_max_items,
     )

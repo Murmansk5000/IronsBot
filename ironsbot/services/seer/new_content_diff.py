@@ -4,14 +4,22 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from itertools import zip_longest
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
+from .new_content_text import plain_weekly_text
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.new_content import NewContentItem
     from ironsbot.services.seer.rendering.custom_pet_models import SkillDict
+
+_DIFF_TOKEN_RE = re.compile(
+    r"（BOSS(?:有效|无效)）|"
+    r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?|[\s\S]"
+)
 
 _LABELS = {
     "name": "名称",
@@ -45,25 +53,49 @@ _LABELS = {
     "learning_level": "学习等级",
     "must_hit": "必中",
     "crit_rate": "暴击率",
+    "BuffParam": "技能参数",
+    "buff_param": "技能参数",
+    "buffParam": "技能参数",
+    "health": "生命值",
+    "skillTxt": "技能效果",
+    "cardTxt": "卡牌效果",
+    "soulmarks": "魂印",
+    "analyze_desc": "效果说明",
 }
+_PARAMETER_FIELDS = frozenset({"BuffParam", "buff_param", "buffParam"})
+_DESCRIPTION_FIELDS = frozenset(
+    {
+        "description",
+        "info",
+        "desc",
+        "analyze_desc",
+        "analyze_info",
+        "skill_text",
+        "skill_upgrade",
+        "skillTxt",
+        "cardTxt",
+        "suit_desc",
+        "text",
+        "effect",
+        "effects",
+        "skill_effect",
+        "skill_effect_desc",
+        "hide_effect_desc",
+        "analyze_description",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
 class DiffFragment:
     text: str
-    changed: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class DiffLine:
-    old: tuple[DiffFragment, ...]
-    new: tuple[DiffFragment, ...]
+    kind: Literal["equal", "delete", "insert"] = "equal"
 
 
 @dataclass(frozen=True, slots=True)
 class FieldDiff:
     label: str
-    lines: tuple[DiffLine, ...]
+    fragments: tuple[DiffFragment, ...]
 
 
 def _text(value: object) -> str:
@@ -72,31 +104,73 @@ def _text(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)
 
 
-def _fragments(old: str, new: str) -> DiffLine:
-    before: list[DiffFragment] = []
-    after: list[DiffFragment] = []
+def _replacement(old: str, new: str) -> tuple[DiffFragment, ...]:
+    return tuple(
+        fragment
+        for fragment in (DiffFragment(old, "delete"), DiffFragment(new, "insert"))
+        if fragment.text
+    )
+
+
+def _fragments(old: str, new: str) -> tuple[DiffFragment, ...]:
+    result: list[DiffFragment] = []
+    # Keep numbers and BOSS status labels whole; compare surrounding prose by character.
+    before, after = _DIFF_TOKEN_RE.findall(old), _DIFF_TOKEN_RE.findall(new)
     for operation, a, b, c, d in SequenceMatcher(
-        None, old, new, autojunk=False
+        None, before, after, autojunk=False
     ).get_opcodes():
-        if a != b:
-            before.append(DiffFragment(old[a:b], operation != "equal"))
-        if c != d:
-            after.append(DiffFragment(new[c:d], operation != "equal"))
-    return DiffLine(tuple(before), tuple(after))
+        if operation == "equal":
+            result.append(DiffFragment("".join(before[a:b])))
+        else:
+            result.extend(_replacement("".join(before[a:b]), "".join(after[c:d])))
+    return tuple(result)
 
 
-def _lines(old: str, new: str) -> tuple[DiffLine, ...]:
-    result: list[DiffLine] = []
-    before, after = old.splitlines(), new.splitlines()
+def _lines(old: str, new: str) -> tuple[DiffFragment, ...]:
+    result: list[DiffFragment] = []
+    before, after = old.splitlines(keepends=True), new.splitlines(keepends=True)
     for operation, a, b, c, d in SequenceMatcher(
         None, before, after, autojunk=False
     ).get_opcodes():
         for left, right in zip_longest(before[a:b], after[c:d], fillvalue=""):
             if operation == "equal":
-                result.append(DiffLine((DiffFragment(left),), (DiffFragment(right),)))
+                result.append(DiffFragment(left))
             else:
-                result.append(_fragments(left, right))
+                result.extend(_fragments(left, right))
     return tuple(result)
+
+
+def _visible_value(value: object, path: list[str]) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _visible_value(part, [*path, str(key)]) for key, part in value.items()
+        }
+    if isinstance(value, list):
+        return [_visible_value(part, path) for part in value]
+    if isinstance(value, str) and path and path[-1] in _DESCRIPTION_FIELDS:
+        return plain_weekly_text(
+            value, soulmark="soulmarks" in path or path[-1] == "analyze_desc"
+        )
+    return value
+
+
+def _display_values(value: dict) -> tuple[str, str] | None:
+    old_value = _visible_value(value.get("old"), value["path"])
+    new_value = _visible_value(value.get("new"), value["path"])
+    if (
+        value["old_exists"] == value["new_exists"]
+        and type(old_value) is type(new_value)
+        and old_value == new_value
+    ):
+        return None
+    old = _text(old_value) if value["old_exists"] else "（字段不存在）"
+    new = _text(new_value) if value["new_exists"] else "（字段不存在）"
+    if old == new:
+        if isinstance(old_value, str):
+            old += "（文本）"
+        if isinstance(new_value, str):
+            new += "（文本）"
+    return old, new
 
 
 def present_field_changes(item: NewContentItem) -> tuple[tuple[FieldDiff, ...], str]:
@@ -107,32 +181,40 @@ def present_field_changes(item: NewContentItem) -> tuple[tuple[FieldDiff, ...], 
         return (), "旧值未提供，无法对比"
     fields: list[FieldDiff] = []
     incomplete = False
+    style_only = False
     for value in values:
         if not _valid_change(value):
             incomplete = True
             continue
-        old_exists, new_exists = value["old_exists"], value["new_exists"]
-        old = _text(value["old"]) if old_exists else "（字段不存在）"
-        new = _text(value["new"]) if new_exists else "（字段不存在）"
         if (
-            old_exists == new_exists
+            value["old_exists"] == value["new_exists"]
             and type(value.get("old")) is type(value.get("new"))
             and value.get("old") == value.get("new")
         ):
             continue
-        if old == new:
-            if isinstance(value.get("old"), str):
-                old += "（文本）"
-            if isinstance(value.get("new"), str):
-                new += "（文本）"
+        visible = _display_values(value)
+        if visible is None:
+            style_only = True
+            continue
+        old, new = visible
         path = value["path"]
         label = " / ".join(
             f"ID {part[3:]}" if part.startswith("id=") else str(_LABELS.get(part, part))
             for part in path
             if part != "payload"
         )
-        fields.append(FieldDiff(label or "内容", _lines(old, new)))
-    return tuple(fields), "部分旧值未提供，无法完整对比" if incomplete else ""
+        fragments = (
+            _replacement(old, new)
+            if path and path[-1] in _PARAMETER_FIELDS
+            else _lines(old, new)
+        )
+        fields.append(FieldDiff(label or "内容", fragments))
+    notices = []
+    if incomplete:
+        notices.append("部分旧值未提供，无法完整对比")
+    if style_only:
+        notices.append("文本样式调整")
+    return tuple(fields), "；".join(notices)
 
 
 def _valid_change(value: object) -> bool:
@@ -157,11 +239,12 @@ def compared_text_values(item: NewContentItem) -> frozenset[str]:
     if not isinstance(values, list):
         return frozenset()
     return frozenset(
-        value["new"].strip()
+        str(_visible_value(value["new"], value["path"])).strip()
         for value in values
         if _valid_change(value)
         and value["new_exists"]
         and isinstance(value.get("new"), str)
+        and _display_values(value) is not None
     )
 
 

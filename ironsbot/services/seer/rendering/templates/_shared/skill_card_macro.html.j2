@@ -1,4 +1,5 @@
-{% macro skill_card(skill, type_icons) %}
+{% macro skill_text(value, renderer) -%}{{ renderer(value) if renderer else value }}{%- endmacro %}
+{% macro skill_card(skill, type_icons, text_renderer=none) %}
 <div class="sk-card">
     <div class="sk-header">
         {% if skill.category_id == 4 %}
@@ -6,7 +7,7 @@
         {% else %}
         <img class="sk-type-icon" src="{{ type_icons[skill.type_id] }}" />
         {% endif %}
-        <span class="sk-name">{{ skill.name }}</span>
+        <span class="sk-name">{{ skill_text(skill.name, text_renderer) }}</span>
         <div class="sk-badges">
             {% if skill.category_id == 1 %}
             <span class="sk-badge b-phys">{{ skill.category_name }}</span>
@@ -34,7 +35,7 @@
         {% endif %}
         <div class="sk-activation-item-content">
             <div class="sk-activation-item-name">
-                <span>激活道具</span>{{ skill.activation_item.name }}
+                <span>激活道具</span>{{ skill_text(skill.activation_item.name, text_renderer) }}
             </div>
             {% for price in skill.activation_item.prices %}
             <div class="sk-activation-item-price">
@@ -66,7 +67,7 @@
     <div class="sk-efx">
         {% for ef in skill.effects %}
         <div class="sk-ef">
-            · {{ ef.info }} <span style="font-size: 15px; color: #a0c0e0; opacity: 0.8;">(ID: {{
+            · {{ skill_text(ef.info, text_renderer) }} <span style="font-size: 15px; color: #a0c0e0; opacity: 0.8;">(ID: {{
                 ef.id }})</span>
         </div>
         {% endfor %}
@@ -74,11 +75,11 @@
     {% endif %}
     {% if skill.hide_effect_desc %}
     <div class="sk-hide-effect">
-        <span class="sk-hide-effect-label">隐藏效果:</span>{{ skill.hide_effect_desc }}
+        <span class="sk-hide-effect-label">隐藏效果:</span>{{ skill_text(skill.hide_effect_desc, text_renderer) }}
     </div>
     {% endif %}
     {% if skill.info %}
-    <div class="sk-desc">{{ skill.info }}</div>
+    <div class="sk-desc">{{ skill_text(skill.info, text_renderer) }}</div>
     {% endif %}
 </div>
 {% endmacro %}

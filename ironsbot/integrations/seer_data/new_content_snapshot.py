@@ -25,6 +25,7 @@ from ironsbot.services.seer.data import (
     DataUnavailableError,
     PublishedDataIncompleteError,
 )
+from ironsbot.services.seer.new_content_diff import compared_text_values
 
 from .new_content_details import (
     NewContentItemDetails,
@@ -160,7 +161,7 @@ class NewContentSnapshotBuilder:
                     else "暂无官方简介"
                 ),
                 stats=_two_column_stats(attributes),
-                stats_layout="two_column",
+                stats_layout="pet_header",
                 stats_total=_stats_total(attributes),
                 type_id=int(pet.type.id),
                 gender_id=int(pet.gender.id),
@@ -380,8 +381,9 @@ def _autocard_details(
 ) -> NewContentItemDetails:
     if entry is None:
         return _fallback_details(item)
-    skill_lines = [entry.skill_text]
-    if entry.skill_upgrade:
+    compared = compared_text_values(item)
+    skill_lines = [] if entry.skill_text.strip() in compared else [entry.skill_text]
+    if entry.skill_upgrade and entry.skill_upgrade.strip() not in compared:
         skill_lines.append(f"升级：{entry.skill_upgrade}")
     side_description = "\n".join(line for line in skill_lines if line)
     return NewContentItemDetails(

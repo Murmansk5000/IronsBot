@@ -21,6 +21,23 @@ _ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
 }
 
 
+def annotate_soulmark_boss_effects(value: str) -> str:
+    """Expose known soulmark sprite semantics without changing source tags."""
+    lines: list[str] = []
+    for raw in value.split("|"):
+        annotated = raw
+        line = AnalyzeDescParser(raw).lines[0]
+        if line.plain_text.strip() and not re.search(
+            r"BOSS有效|BOSS无效", line.plain_text, re.IGNORECASE
+        ):
+            if line.sprite == "dot1":
+                annotated += "（BOSS有效）"
+            elif line.sprite == "dot4":
+                annotated += "（BOSS无效）"
+        lines.append(annotated)
+    return "|".join(lines)
+
+
 def format_analyze_description(
     value: str | None,
     effect_colors: Mapping[str, str] | None = None,
