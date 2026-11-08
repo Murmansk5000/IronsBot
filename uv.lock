@@ -941,7 +941,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "qqbot-agent-sdk", marker = "extra == 'qq-official'", specifier = "==1.2.2" },
     { name = "qrcode", extras = ["pil"], specifier = ">=8.2" },
-    { name = "seerapi-models", git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=main" },
+    { name = "seerapi-models", git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=a773c9f4783a197b1f253b5530573781c2b86ef2" },
     { name = "uvicorn", specifier = ">=0.20.0,<1.0.0" },
     { name = "websockets", specifier = ">=15.0" },
 ]
@@ -2116,7 +2116,7 @@ wheels = [
 [[package]]
 name = "seerapi-models"
 version = "106.10.2"
-source = { git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=main#c3f8c0839e31e51f4437cea4b87dd6b97eceeebb" }
+source = { git = "https://github.com/Murmansk-Seer/seerapi.git?subdirectory=packages%2Fseerapi-models&rev=a773c9f4783a197b1f253b5530573781c2b86ef2#a773c9f4783a197b1f253b5530573781c2b86ef2" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlmodel" },
