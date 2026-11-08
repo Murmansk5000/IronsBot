@@ -13,7 +13,7 @@ dependencies = [
     "fastapi>=0.93.0,<1.0.0",
     "uvicorn>=0.20.0,<1.0.0",
     "websockets>=15.0",
-    "seerapi-models @ git+https://github.com/Murmansk-Seer/seerapi.git@main#subdirectory=packages/seerapi-models",
+    "seerapi-models @ git+https://github.com/Murmansk-Seer/seerapi.git@a773c9f4783a197b1f253b5530573781c2b86ef2#subdirectory=packages/seerapi-models",
     "ironsbot-litehtml-core==0.1.0rc5",
     "jinja2>=3.1.6",
     "loguru>=0.7.3,<0.8.0",
