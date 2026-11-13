@@ -287,6 +287,10 @@ class _PortablePlayerOperations:
             raise ValueError(msg)
 
         async def fetch(player_id: int, context: MessageInputContext) -> PortableReply:
+            if parsed.kind == "somua" and not self.features.is_feature_allowed(
+                context.message.actor, context.message.conversation, "seer_player"
+            ):
+                return _text_reply("该功能当前未对你开放。")
             if parsed.kind == "beast_rank":
                 if self.rank_queries is None or not self.features.is_feature_allowed(
                     context.message.actor, context.message.conversation, "seer_rank"
@@ -486,6 +490,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
         has_collection=pending.section_plan.has_collection,
         has_peak=pending.section_plan.needs_peak_section,
         has_autocard=pending.section_plan.has_autocard_rank,
+        has_somua=pending.section_plan.has_somua,
     )
     show_beast_rank = rank_queries is not None and features.is_feature_allowed(
         context.message.actor,

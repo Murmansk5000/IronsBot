@@ -54,6 +54,7 @@ from ironsbot.services.seer.query_commands import (
     pet_query_input,
     team_query_input_matcher,
 )
+from ironsbot.services.seer.query_guards import is_rank_query_text
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -109,6 +110,7 @@ def seer_command_contracts(
                     {
                         "routing_matcher": lambda text, context: (
                             not is_retired_autocard_input(text)
+                            and not is_rank_query_text(text)
                             and player_shortcut_input(text, context)
                         )
                     },

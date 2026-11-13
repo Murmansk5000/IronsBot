@@ -212,8 +212,8 @@ async def test_prepared_global_and_score_ranks_keep_only_rendered_players(
             return SimpleNamespace(
                 items=[SimpleNamespace(id=700011, nick="Alice", score=100)],
                 fetched_at=None,
-                incomplete_reason=None,
                 ranks=[listed_rank],
+                incomplete_reason=None,
             )
 
         @staticmethod
@@ -434,7 +434,9 @@ async def test_rank_batch_reports_progress_before_starting_headless_request() ->
             return False
 
         @staticmethod
-        async def fetch_visible_range_result(*_args: object, **kwargs: object) -> object:
+        async def fetch_visible_range_result(
+            *_args: object, **kwargs: object
+        ) -> object:
             events.append(f"fetch:{kwargs['count']}")
             return SimpleNamespace(items=[object()] * 20)
 

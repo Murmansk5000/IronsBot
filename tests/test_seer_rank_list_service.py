@@ -391,8 +391,9 @@ def test_parse_rank_list_command_uses_configured_default_limit() -> None:
     assert parse_rank_list_command("皮肤榜200-1") == RankListCommand(
         kind="global",
         rank_key="皮肤图鉴",
-        start_rank=1,
-        limit=100,
+        start_rank=200,
+        limit=1,
+        requested_end_rank=1,
     )
 
 
@@ -968,22 +969,21 @@ def test_build_rank_batch_admin_messages() -> None:
         "本次按 seer.local_rank.batch_limit 只处理前 20 个。"
     )
     assert build_rank_batch_result_message(
-            spec,
-            command,
-            item_count=20,
-            requested_count=50,
-            request_count=20,
-        ) == (
-            "⚠️【榜单区间缓存未全部完成】\n"
-            "榜单：测试榜\n"
-            "请求区间：第 1-50 名\n"
-            "执行区间：第 1-20 名\n"
-            "实际返回：20/50 条\n"
-            "数量预算：本次最多处理 20 条，剩余区间未请求。\n"
-            "写入榜单页缓存：20 条\n"
-            "样本缓存：未写入"
-        )
-
+        spec,
+        command,
+        item_count=20,
+        requested_count=50,
+        request_count=20,
+    ) == (
+        "⚠️【榜单区间缓存未全部完成】\n"
+        "榜单：测试榜\n"
+        "请求区间：第 1-50 名\n"
+        "执行区间：第 1-20 名\n"
+        "实际返回：20/50 条\n"
+        "数量预算：本次最多处理 20 条，剩余区间未请求。\n"
+        "写入榜单页缓存：20 条\n"
+        "样本缓存：未写入"
+    )
 
 
 def test_build_local_rank_cache_status_message() -> None:

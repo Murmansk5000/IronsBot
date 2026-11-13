@@ -498,7 +498,7 @@ def test_rank_page_cache_accepts_version_four_and_clears_legacy_misses(
     )
 
     with sqlite3.connect(cache_path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone() == (4,)
+        assert conn.execute("PRAGMA user_version").fetchone() == (5,)
     assert miss is None
 
 

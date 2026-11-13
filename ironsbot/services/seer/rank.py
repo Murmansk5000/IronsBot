@@ -666,6 +666,20 @@ class RankService(RankCacheQueryMixin):
         ]
         return (await self.run_player_lookup_jobs(jobs))["autocard"]
 
+    async def fetch_somua_summary(
+        self,
+        game: HeadlessGame,
+        user_id: int,
+        *,
+        score: int | None,
+        anchor_only: bool = False,
+    ) -> RankLookupResult:
+        from ironsbot.services.seer.rank_somua import fetch_somua_rank
+
+        return await fetch_somua_rank(
+            self, game, user_id, score=score, anchor_only=anchor_only
+        )
+
     async def fetch_player_summary(  # noqa: PLR0913
         self,
         game: HeadlessGame,

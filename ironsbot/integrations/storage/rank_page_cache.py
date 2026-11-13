@@ -106,6 +106,16 @@ _MIGRATIONS = (
     SqliteMigration(3, (_LAST_SEEN_SCHEMA, _LAST_SEEN_BACKFILL)),
     # Misses written before contiguous coverage proofs were not trustworthy.
     SqliteMigration(4, ("DELETE FROM player_rank_misses",)),
+    # The old Somua transport clipped these pages at raw index 999.
+    SqliteMigration(
+        5,
+        (
+            "DELETE FROM rank_pages WHERE key = 45965 AND sub_key = 1 "
+            "AND end_index >= 1000",
+            "DELETE FROM player_rank_misses WHERE key = 45965 AND sub_key = 1 "
+            "AND searched_limit > 1000",
+        ),
+    ),
 )
 _LOGGER = logging.getLogger(__name__)
 
