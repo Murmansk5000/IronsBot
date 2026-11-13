@@ -111,8 +111,6 @@ def test_ai_leaves_valid_rank_commands_to_the_catalog(
     "text",
     [
         "专家榜是什么",
-        "专家榜第0页",
-        "皮肤榜0-1",
         "样本群星之巅榜3149分",
         "样本成就榜123456",
         "群星之巅榜未知玩家",
@@ -128,6 +126,15 @@ def test_invalid_or_missing_prefix_input_is_not_claimed(
     catalog: CommandCatalog, text: str
 ) -> None:
     assert not catalog.claims_direct_input(
+        CommandContext(_ACTOR, _GROUP, "owner"), _features(superuser=True), text
+    )
+
+
+@pytest.mark.parametrize("text", ["专家榜第0页", "皮肤榜0-1", "苏摩榜20-1"])
+def test_invalid_rank_window_is_owned_for_explicit_validation(
+    catalog: CommandCatalog, text: str
+) -> None:
+    assert catalog.claims_direct_input(
         CommandContext(_ACTOR, _GROUP, "owner"), _features(superuser=True), text
     )
 

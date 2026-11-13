@@ -54,7 +54,14 @@ from ironsbot.services.seer.rank_player_query import (
     fetch_cached_rank_player_result,
     fetch_rank_player_result,
 )
-from ironsbot.services.seer.rank_ranges import MAX_LOCAL_RANK_POSITION, MAX_RANK_POSITION, RankRangeError, range_completion, range_failure, validate_rank_interval
+from ironsbot.services.seer.rank_ranges import (
+    MAX_LOCAL_RANK_POSITION,
+    MAX_RANK_POSITION,
+    RankRangeError,
+    range_completion,
+    range_failure,
+    validate_rank_interval,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -528,7 +535,7 @@ class RankQueryService:
             season_sub_key=season_sub_key,
         )
         return RankListPreparedReply(
-            (format_local_rank_message(
+            format_local_rank_message(
                 spec,
                 entries,
                 sample_count=sample_count,
@@ -537,7 +544,9 @@ class RankQueryService:
                 ),
                 start_rank=command.start_rank,
                 requested_count=command.limit,
-            )) + ("\n"
+            )
+            + (
+                "\n"
                 + range_completion(
                     command.start_rank,
                     command.end_rank - command.start_rank + 1,
@@ -546,7 +555,8 @@ class RankQueryService:
                     incomplete_reason="本地样本不足。",
                 )
                 if command.requested_end_rank is not None
-                else ""),
+                else ""
+            ),
             tuple(
                 RankListSelection(
                     rank=entry.rank,

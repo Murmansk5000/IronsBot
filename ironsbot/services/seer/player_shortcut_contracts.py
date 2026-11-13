@@ -14,6 +14,7 @@ from ironsbot.core.semantic_requests import (
     SemanticTarget,
 )
 from ironsbot.services.operations.request_feedback import request_feedback_scope
+from ironsbot.services.seer.query_guards import is_rank_query_text
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank import RankService
 
 
-PlayerShortcutKind = Literal["collection", "peak", "autocard", "beast_rank"]
+PlayerShortcutKind = Literal["collection", "peak", "autocard", "somua", "beast_rank"]
 PlayerShortcutStatusSender = Callable[[str], Awaitable[None]]
 
 
@@ -43,6 +44,7 @@ PLAYER_SHORTCUT_SPECS = (
     ),
     PlayerShortcutSpec("peak", "巅峰", "巅峰之战", "_player_peak_message"),
     PlayerShortcutSpec("autocard", "群星牌", "群星牌排名", "_player_autocard_message"),
+    PlayerShortcutSpec("somua", "苏摩", "苏摩竞技场", "_player_somua_message"),
     PlayerShortcutSpec("beast_rank", "神兽榜", "神兽榜"),
 )
 _KIND_BY_COMMAND: dict[str, PlayerShortcutKind] = {
@@ -93,6 +95,8 @@ def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | No
     """Parse a text shortcut without resolving its optional player target."""
 
     normalized = "".join(text.split())
+    if is_rank_query_text(text):
+        return None
     for command, kind in _KIND_BY_COMMAND.items():
         if normalized.startswith(command):
             return PlayerShortcutTargetCommand(

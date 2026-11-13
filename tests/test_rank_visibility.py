@@ -15,6 +15,7 @@ from ironsbot.services.seer.rank_list_global_messages import format_global_rank_
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS
 from ironsbot.services.seer.rank_models import RankEntry
 from ironsbot.services.seer.rank_pagination import RankPageConflictError
+from ironsbot.services.seer.rank_visibility import EXCLUSION_PREFIX_SIZE
 
 SIZE = 100
 TOTAL = 10_100
@@ -402,3 +403,25 @@ async def test_boundary_page_retry_refreshes_overlapping_prefix(tmp_path: Path) 
     assert [item.id for item in result.items] == [998, 999, 1001]
     assert result.ranks == [998, 999, 1000]
     assert boundary_attempts == MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_filtered_rank_rejects_unrepresentable_mapping_after_prefix(
+    tmp_path: Path,
+) -> None:
+    from ironsbot.services.seer.rank_ranges import MAX_RANK_POSITION, RankRangeError
+
+    rank, transport = service(tmp_path, (1,))
+    with pytest.raises(RankRangeError):
+        await rank.fetch_visible_range_result(
+            GAME,
+            rank_key="精灵图鉴",
+            key=158,
+            sub_key=1,
+            start_rank=MAX_RANK_POSITION,
+            count=1,
+        )
+    assert all(
+        call.kwargs["start"] < EXCLUSION_PREFIX_SIZE
+        for call in transport.await_args_list
+    )

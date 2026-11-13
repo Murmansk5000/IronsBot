@@ -46,11 +46,9 @@ def test_beiming_commands_and_beijing_completion_time() -> None:
         assert parse_rank_list_command(f"{alias}11-20") == RankListCommand(
             kind="global", rank_key="北冥试炼", start_rank=11, limit=10
         )
-        assert (
-            parse_rank_list_command(f"{alias}2-1")
-            == parse_rank_list_command(f"{alias}1-2")
-            == RankListCommand(kind="global", rank_key="北冥试炼", limit=2)
-        )
+        reversed_window = parse_rank_list_command(f"{alias}2-1")
+        assert reversed_window is not None and reversed_window.end_rank == 1
+        assert reversed_window.start_rank == reversed_window.end_rank + 1
         assert parse_rank_list_command(f"{alias}2-2") == RankListCommand(
             kind="global", rank_key="北冥试炼", start_rank=2, limit=1
         )
@@ -176,7 +174,11 @@ async def test_beiming_player_failure_is_not_reported_as_absence() -> None:
 async def test_beiming_list_accepts_ranks_beyond_thousand() -> None:
     beyond_thousand = 1001
     page_size = 10
-    fetch = AsyncMock(return_value=SimpleNamespace(items=[], fetched_at=0, ranks=[]))
+    fetch = AsyncMock(
+        return_value=SimpleNamespace(
+            items=[], fetched_at=0, ranks=[], incomplete_reason="服务端返回空页。"
+        )
+    )
     rank = SimpleNamespace(
         get_spec=lambda _key: GLOBAL_RANKS["北冥试炼"],
         spec_needs_sub_key=lambda _spec: False,
