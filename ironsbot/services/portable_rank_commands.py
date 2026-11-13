@@ -335,8 +335,17 @@ class _PortableRankOperations:
         reference: str | None,
         context: MessageInputContext,
     ) -> PortableReply | None:
-        if rank_key == "群星牌":
-            reply = await self.player_shortcut(f"群星牌{reference or ''}", context)
+        if rank_key in {"群星牌", "苏摩"}:
+            if rank_key == "苏摩" and not self.features.is_feature_allowed(
+                context.message.actor, context.message.conversation, "seer_player"
+            ):
+                reply = PortableReply(
+                    OutboundMessage.from_text("该功能当前未对你开放。")
+                )
+            else:
+                reply = await self.player_shortcut(
+                    f"{rank_key}{reference or ''}", context
+                )
             return as_portable_reply(reply) if reply is not None else None
 
         async def prepare(

@@ -28,6 +28,7 @@ PLAYER_BINDING_PREFIX = "绑定米米号"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 PLAYER_AUTOCARD_KEY = "_player_autocard_message"
+PLAYER_SOMUA_KEY = "_player_somua_message"
 PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
 PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY = "_player_detail_builtin_selections"
 PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY = "_player_detail_extension_selections"
@@ -41,6 +42,7 @@ class PlayerQuerySectionPlan:
     has_autocard_rank: bool
     needs_online_info: bool
     local_rank_enabled: bool
+    has_somua: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,6 +347,7 @@ def plan_player_query_sections(
         has_autocard_rank="autocard" in enabled_sections,
         needs_online_info="basic" in enabled_sections,
         local_rank_enabled=local_rank_enabled,
+        has_somua="somua" in enabled_sections,
     )
 
 
@@ -353,6 +356,7 @@ def available_player_detail_requests(
     has_collection: bool,
     has_peak: bool,
     has_autocard: bool,
+    has_somua: bool = False,
 ) -> tuple[PlayerDetailReplyRequest, ...]:
     requests: list[PlayerDetailReplyRequest] = []
     if has_collection:
@@ -361,21 +365,25 @@ def available_player_detail_requests(
         requests.append(_PLAYER_DETAIL_REQUESTS[1])
     if has_autocard:
         requests.append(_PLAYER_DETAIL_REQUESTS[2])
+    if has_somua:
+        requests.append(_PLAYER_DETAIL_REQUESTS[3])
     return tuple(requests)
 
 
-def plan_player_detail_prompt(
+def plan_player_detail_prompt(  # noqa: PLR0913 - explicit menu capability flags
     *,
     has_collection: bool,
     has_peak: bool,
     has_autocard: bool,
     supports_conversation: bool,
     extension_actions: Iterable[PlayerDetailExtensionAction] = (),
+    has_somua: bool = False,
 ) -> PlayerDetailPromptPlan:
     builtin_requests = available_player_detail_requests(
         has_collection=has_collection,
         has_peak=has_peak,
         has_autocard=has_autocard,
+        has_somua=has_somua,
     )
     extensions = tuple(extension_actions)
     builtin_selections = tuple(

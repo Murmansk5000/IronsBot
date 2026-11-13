@@ -64,6 +64,7 @@ from ironsbot.services.seer.rank_score_segments import (
 )
 from ironsbot.services.seer.rank_visibility import uses_filtered_prefix
 from ironsbot.services.seer.rank_work_cache import record_rank_page_work
+from ironsbot.services.seer.somua import SOMUA_RANK_LIMIT
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -663,6 +664,20 @@ class RankService(RankCacheQueryMixin):
         ]
         return (await self.run_player_lookup_jobs(jobs))["autocard"]
 
+    async def fetch_somua_summary(
+        self,
+        game: HeadlessGame,
+        user_id: int,
+        *,
+        score: int | None,
+        anchor_only: bool = False,
+    ) -> RankLookupResult:
+        from ironsbot.services.seer.rank_somua import fetch_somua_rank
+
+        return await fetch_somua_rank(
+            self, game, user_id, score=score, anchor_only=anchor_only
+        )
+
     async def fetch_player_summary(  # noqa: PLR0913
         self,
         game: HeadlessGame,
@@ -758,6 +773,8 @@ class RankService(RankCacheQueryMixin):
             else self.config.online_limit,
         )
         requested = configured if search_limit is None else max(0, search_limit)
+        if rank_key == "苏摩":
+            requested = min(requested, SOMUA_RANK_LIMIT)
         return min(requested, configured)
 
     def _score_search_limit(
@@ -772,6 +789,8 @@ class RankService(RankCacheQueryMixin):
             else self.config.limit,
         )
         requested = configured if search_limit is None else max(0, search_limit)
+        if rank_key == "苏摩":
+            requested = min(requested, SOMUA_RANK_LIMIT)
         return min(requested, configured)
 
     def _probe_limit(self, limit: int) -> int:

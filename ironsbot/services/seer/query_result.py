@@ -63,6 +63,8 @@ class QueryReply:
 
     @property
     def rank_lookup_should_charge_quota(self) -> bool:
+        if self.query_work is not None:
+            return bool(self.query_work.billable_units)
         # Shortcut implementations without rank-cost metadata retain the
         # historical successful-query quota behavior. Only an explicit,
         # complete set of anchor-page confirmations is free.

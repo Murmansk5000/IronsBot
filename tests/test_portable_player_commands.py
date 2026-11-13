@@ -527,6 +527,78 @@ def _resolver() -> PlayerIdResolver:
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("revoke", [False, True])
+async def test_somua_menu_follows_autocard_and_rechecks_permission(
+    platform: Platform, monkeypatch: pytest.MonkeyPatch, *, revoke: bool
+) -> None:
+    service = _PlayerService(team_id=9001)
+    original = service.query
+
+    async def query(*args: Any, **kwargs: Any) -> PlayerQueryResult:
+        result = await original(*args, **kwargs)
+        assert result.pending is not None
+        result.pending.section_plan = replace(
+            result.pending.section_plan, has_somua=True
+        )
+        return result
+
+    shortcut = AsyncMock(wraps=service.shortcut)
+    monkeypatch.setattr(service, "query", query)
+    monkeypatch.setattr(service, "shortcut", shortcut)
+    owner = _context("米米号700001", platform=platform)
+    policy = {owner.message.conversation: frozenset({"seer_player"})}
+    features = FeatureService(policy, {}, frozenset())
+    sessions = PortableQuerySessions()
+    operations = _build_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+        PlayerDetailExtensionRegistry(),
+    )
+    initial = await operations["seer.player.query"](owner.text, owner)
+    assert isinstance(initial, PortableReply)
+    assert "3. 【群星牌】\n4. 【苏摩】" in _text(initial)
+    shortcut.assert_not_awaited()
+    initial.delivered()
+    if revoke:
+        policy[owner.message.conversation] = frozenset()
+    selected = await sessions.select(
+        "4", _context("4", platform=platform), allow_deferred=True
+    )
+    if revoke:
+        shortcut.assert_not_awaited()
+        assert isinstance(selected, OutboundMessage)
+    else:
+        assert isinstance(selected, PortableReply)
+        assert ":somua:700001" in _text(selected)
+        shortcut.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("target", ["700001", "别名", "", "mention"])
+async def test_somua_direct_shortcut_uses_shared_player_resolution(
+    platform: Platform, target: str
+) -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    context = _context(
+        "苏摩" + (target if target != "mention" else ""),
+        platform=platform,
+        mentions=(ActorRef(platform, "target-openid"),) if target == "mention" else (),
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), sessions
+    )
+    reply = await operations["seer.player.default"](context.text, context)
+    assert isinstance(reply, PortableReply)
+    expected = 800001 if target == "mention" else 600001 if not target else 700001
+    assert f":somua:{expected}" in _text(reply)
+
+
 def build_portable_player_operations(
     service: PlayerService,
     resolver: PlayerIdResolver,
@@ -638,7 +710,9 @@ async def test_player_selection_rechecks_reference_visibility(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
-@pytest.mark.parametrize("prefix", ["米米号", "查询玩家信息", "收集", "巅峰", "群星牌"])
+@pytest.mark.parametrize(
+    "prefix", ["米米号", "查询玩家信息", "收集", "巅峰", "群星牌", "苏摩"]
+)
 @pytest.mark.parametrize("selection", ["2", "button", "0"])
 async def test_partial_player_queries_claim_input_and_keep_selection_safe(
     monkeypatch: pytest.MonkeyPatch,

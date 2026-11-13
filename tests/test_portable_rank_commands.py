@@ -56,6 +56,39 @@ class _Features:
         return True
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allowed", [False, True])
+async def test_somua_rank_player_delegates_to_shortcut_with_personal_permission(
+    *, allowed: bool
+) -> None:
+    service = _RankQueryService()
+    shortcut = AsyncMock(
+        return_value=PortableReply(OutboundMessage.from_text("苏摩个人结果"))
+    )
+    features = cast(
+        "FeatureService",
+        type(
+            "Policy", (), {"is_feature_allowed": staticmethod(lambda *_args: allowed)}
+        )(),
+    )
+    operations = build_portable_rank_operations(
+        cast("RankQueryService", service),
+        _resolver(),
+        PortableQuerySessions(),
+        AsyncMock(),
+        features,
+        player_shortcut=shortcut,
+    )
+    context = _context("苏摩榜700001")
+    result = await operations["rank.global_collection"](context.text, context)
+    assert isinstance(result, PortableReply)
+    if allowed:
+        shortcut.assert_awaited_once_with("苏摩700001", context)
+    else:
+        shortcut.assert_not_awaited()
+        assert "未对你开放" in _text(result.message)
+
+
 class _RankAdminService:
     def __init__(self, *, empty: bool = False) -> None:
         self.refresh_events: list[str] = []
@@ -319,6 +352,17 @@ async def test_portable_rank_dispatches_list_score_and_alias_player_queries() ->
     assert service.delivered == []
     player.delivered()
     assert service.delivered == [("成就点数", 700001)]
+
+
+@pytest.mark.asyncio
+async def test_somua_board_list_and_score_use_existing_public_operations() -> None:
+    service = _RankQueryService()
+    operation = _rank_operations(service, _resolver())["rank.global_collection"]
+    listed = await operation("苏摩榜21-40", _context("苏摩榜21-40"))
+    scored = await operation("苏摩榜90分", _context("苏摩榜90分"))
+    assert isinstance(listed, OutboundMessage) and isinstance(scored, OutboundMessage)
+    assert _text(listed) == "list:global:苏摩:21:20"
+    assert _text(scored) == "score:苏摩:90"
 
 
 @pytest.mark.asyncio

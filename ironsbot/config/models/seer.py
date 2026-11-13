@@ -41,6 +41,7 @@ PLAYER_SECTION_KEYS: tuple[str, ...] = (
     "collection",
     "rank",
     "autocard",
+    "somua",
     "local_rank",
     "achievement",
     "peak",

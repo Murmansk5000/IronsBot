@@ -111,6 +111,17 @@ async def fetch_player_shortcut_reply(
     anchor_only: bool = False,
 ) -> QueryReply:
     deadline = OperationDeadline.after(dependencies.detail_timeout_seconds)
+    if command.kind == "somua":
+        from ironsbot.services.seer.somua_query import fetch_somua_reply
+
+        return await fetch_somua_reply(
+            dependencies,
+            game,
+            command=command,
+            player_id=player_id,
+            deadline=deadline,
+            anchor_only=anchor_only,
+        )
     if command.kind == "collection":
         return await _fetch_collection_message(
             dependencies.rank,

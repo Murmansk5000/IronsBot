@@ -26,6 +26,7 @@ from ironsbot.services.seer.rank_constants import (
     STANDARD_PEAK_USER_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
 )
+from ironsbot.services.seer.somua import SOMUA_RANK_KEY, SOMUA_RANK_SUB_KEY
 
 RANK_LIST_SIZE = 10
 RANK_LIST_MAX_SIZE = 100
@@ -188,6 +189,7 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
     "群星牌": GlobalRankSpec(
         "群星之巅榜", AUTOCARD_RANK_KEY, AUTOCARD_RANK_SUB_KEY, "分"
     ),
+    "苏摩": GlobalRankSpec("苏摩榜", SOMUA_RANK_KEY, SOMUA_RANK_SUB_KEY, "分"),
     "北冥试炼": GlobalRankSpec(
         "北冥试炼·玄武榜",
         BEIMING_TRIAL_RANK_KEY,

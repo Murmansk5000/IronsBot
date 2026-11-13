@@ -1105,6 +1105,8 @@ detail_timeout_seconds = 90.0
 # Default: all player sections; EN: Enabled player sections.
 # ZH: 玩家展示区块；可填 basic/collection/rank/autocard/local_rank/peak 等，all 表示全部。
 sections = ["all"]
+# 苏摩（somua）位于玩家详情的群星牌之后，仅显示积分及全服前1000名定位。
+# 显式 sections 列表需包含 "somua" 才显示该菜单；不增加默认后台预热。
 
 [seer.player.binding]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
