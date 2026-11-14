@@ -43,12 +43,48 @@ from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.render_pipeline import (
+    RenderFailureError,
+    RenderRequest,
+    RenderResult,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
     from pathlib import Path
 
     from ironsbot.services.identity_observation import SilentIdentityObservationService
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+async def test_render_fallback_is_delivered_once_without_success_settlement(
+    platform: Platform,
+) -> None:
+    error = RenderFailureError(
+        RenderResult(
+            RenderRequest("fixture", "verified summary"),
+            None,
+            "failed",
+            "prepare",
+            "TimeoutError",
+        )
+    )
+    runtime = _runtime(platform, "dispatch", error)
+    send = AsyncMock(
+        return_value=SendResult(delivered=True, message_id="fallback-receipt")
+    )
+    assert await runtime.router.execute(runtime.context, send)
+    send.assert_awaited_once()
+    sent = send.await_args
+    assert sent is not None
+    message = sent.args[0]
+    assert "verified summary" in str(message.parts)
+    assert not message.request_succeeded
+    runtime.requests.finish.assert_not_called()
+    runtime.cooldown.finish.assert_not_called()
+    runtime.requests.release.assert_called_once()
+    runtime.cooldown.release.assert_called_once()
 
 
 def _runtime(

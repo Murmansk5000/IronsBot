@@ -746,7 +746,8 @@ async def test_peak_vote_reports_render_timeout(
 
     result = await service.vote(report)
 
-    assert result.message == "❌巅峰投票图片生成超时，请稍后再试。"
+    assert result.message == "图片生成失败，请稍后重试。"
+    assert result.failed
     assert not data.render_open
 
 

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ParamSpec
 
 from ironsbot.integrations.htmlkit import (
     HTML_TEMPLATE_RENDERER_SOURCE_PATH,
@@ -25,10 +25,13 @@ from ironsbot.services.seer.image_failure_notice import report_render_asset_fail
 from ironsbot.services.seer.render_assets import RenderAssetSession
 from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
+from ironsbot.services.seer.render_pipeline import RenderRequest, mark_render_degraded
 
 FINAL_RENDER_CACHE_INPUTS = (
     Path(__file__),
     SEER_RENDERING_PATH.parent / "render_assets.py",
+    SEER_RENDERING_PATH.parent / "render_pipeline.py",
+    SEER_RENDERING_PATH.parent / "render_coordinator.py",
     SEER_RENDERING_PATH,
     SEER_RENDERING_PATH.parent / "type_calc.py",
     SEER_RENDERING_PATH.parent / "type_query.py",
@@ -37,9 +40,10 @@ FINAL_RENDER_CACHE_INPUTS = (
     HTML_TEMPLATE_RENDERER_SOURCE_PATH.with_name("htmlkit_resources.py"),
     LITEHTML_SOURCE_PATH,
 )
+_P = ParamSpec("_P")
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Awaitable, Callable, Iterator
 
     from ironsbot.config.models.seer import RenderConfig
     from ironsbot.core.tasks import TaskSpawner
@@ -56,6 +60,39 @@ class SeerRenderInputs:
     data: SeerReadSnapshot
     images: SeerImageSource
     cache: RenderCache
+    coordinator: RenderCoordinator
+    version: str
+
+    def guard(
+        self,
+        template: str,
+        operation: Callable[_P, Awaitable[bytes]],
+        *,
+        fallback_text: str = "",
+        fallback: Callable[_P, str] | None = None,
+    ) -> Callable[_P, Awaitable[bytes]]:
+        async def image(*args: _P.args, **kwargs: _P.kwargs) -> bytes:
+            async def prepare() -> bytes:
+                result = await operation(*args, **kwargs)
+                if (
+                    isinstance(self.images, RenderAssetSession)
+                    and not self.images.complete
+                ):
+                    mark_render_degraded()
+                return result
+
+            return await self.coordinator.image(
+                RenderRequest(
+                    template,
+                    fallback(*args, **kwargs)
+                    if fallback is not None
+                    else fallback_text,
+                    self.version,
+                ),
+                prepare,
+            )
+
+        return image
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +103,7 @@ class SeerRenderSessions:
     cache: FileRenderCache
     versions: RenderCacheVersion
     spawn: TaskSpawner
+    coordinator: RenderCoordinator
     image_failure_reporter: ImageFailureReporter | None = None
 
     @contextmanager
@@ -84,9 +122,12 @@ class SeerRenderSessions:
                     self.versions.for_version(publication.version),
                     publication.category_available,
                 ),
+                timeout_seconds=self.coordinator.timeout_seconds,
             )
             try:
-                yield SeerRenderInputs(snapshot, assets, assets)
+                yield SeerRenderInputs(
+                    snapshot, assets, assets, self.coordinator, publication.version
+                )
             finally:
                 if assets.failures and self.image_failure_reporter is not None:
                     failures = tuple(
@@ -129,15 +170,18 @@ def build_seer_rendering_components(
         scope=current_project_url(),
     )
     resources = HtmlkitResources(http_clients)
+    coordinator = RenderCoordinator(
+        partial(
+            render_html_template,
+            img_fetch_fn=resources.image,
+            css_fetch_fn=resources.css,
+        ),
+        render_config.native_timeout_seconds,
+    )
     return (
         images,
-        RenderCoordinator(
-            partial(
-                render_html_template,
-                img_fetch_fn=resources.image,
-                css_fetch_fn=resources.css,
-            ),
-            render_config.native_timeout_seconds,
+        coordinator,
+        SeerRenderSessions(
+            seer_database, http_clients, images, cache, versions, spawn, coordinator
         ),
-        SeerRenderSessions(seer_database, http_clients, images, cache, versions, spawn),
     )
