@@ -35,6 +35,7 @@ from ironsbot.services.seer.peak_modes import (
     PeakType as PeakType,  # noqa: PLC0414
 )
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
+from ironsbot.services.seer.render_pipeline import RenderFailureError
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -384,10 +385,13 @@ class PeakQueryResult:
     text: str = ""
     image: bytes | None = None
     message: str = ""
+    failed: bool = False
 
     def to_outbound(self) -> OutboundMessage:
         if self.message:
-            return OutboundMessage.from_text(self.message)
+            return OutboundMessage.from_text(
+                self.message, request_succeeded=not self.failed
+            )
         if self.text:
             return OutboundMessage.from_text(self.text)
         if self.image is not None:
@@ -400,6 +404,8 @@ async def _render_peak_result(image: Awaitable[bytes], title: str) -> PeakQueryR
     """Report expected render failures; deadlines belong to the shared ports."""
     try:
         return PeakQueryResult(image=await image)
+    except RenderFailureError as error:
+        return PeakQueryResult(message=error.result.fallback_text, failed=True)
     except ImageSourceError:
         logger.exception("peak image assets unavailable: title=%s", title)
         return PeakQueryResult(message=f"❌{title}图片素材获取失败，请稍后再试。")

@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from httpx import AsyncClient, MockTransport, Request, Response
@@ -43,6 +43,7 @@ from ironsbot.services.seer.new_content import (
     NewContentService,
     NewContentSnapshotChangedError,
 )
+from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from tests.helpers.image_fixtures import png_fixture as _png
 
 if TYPE_CHECKING:
@@ -791,7 +792,13 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
         versions = RenderCacheVersion(data.version, ())
         cache = FileRenderCache(tmp_path / "renders", 1024, version_getter=versions)
         sessions = SeerRenderSessions(
-            data, clients, assets, cache, versions, TaskOwner().create
+            data,
+            clients,
+            assets,
+            cache,
+            versions,
+            TaskOwner().create,
+            RenderCoordinator(AsyncMock(return_value=b"unused"), 45),
         )
         try:
             await _check_bound_render_inputs(

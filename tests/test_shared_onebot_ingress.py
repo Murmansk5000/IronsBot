@@ -45,6 +45,11 @@ from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
 )
 from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.render_pipeline import (
+    RenderFailureError,
+    RenderRequest,
+    RenderResult,
+)
 from tests.helpers.onebot_events import SentGroupFixture
 from tests.helpers.onebot_inputs import message_input_context
 
@@ -52,6 +57,34 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ironsbot.core.message_input import MessageInputContext
+
+
+@pytest.mark.asyncio
+async def test_real_onebot_entry_sends_render_fallback_and_releases_request(
+    runtime: SimpleNamespace,
+) -> None:
+    from tests.helpers.onebot_events import group_message_event
+
+    runtime.execute.side_effect = RenderFailureError(
+        RenderResult(
+            RenderRequest("fixture", "verified summary"),
+            None,
+            "failed",
+            "queue",
+            "TimeoutError",
+        )
+    )
+    await runtime.receive(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=71)
+    )
+    assert len(runtime.sends) == 1
+    assert "verified summary" in str(runtime.sends[0])
+    await runtime.receive(
+        runtime.bot, group_message_event("执行", user_id=101, message_id=72)
+    )
+    expected_count = len((71, 72))
+    assert len(runtime.sends) == expected_count
+    assert runtime.execute.await_count == expected_count
 
 
 @pytest.fixture

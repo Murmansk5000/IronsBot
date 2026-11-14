@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _MAX_ERROR_LENGTH = 800
+_REPORT_TIMEOUT_SECONDS = 5.0
 
 
 def _safe_error_text(error: ImageSourceError) -> str:
@@ -55,10 +57,11 @@ async def report_render_asset_failures(
     if not failures:
         return
     try:
-        if isinstance(reporter, BatchImageFailureReporter):
-            await reporter.report_batch(failures, identity=identity, degraded=True)
-        else:
-            await reporter(*failures[0])
+        async with asyncio.timeout(_REPORT_TIMEOUT_SECONDS):
+            if isinstance(reporter, BatchImageFailureReporter):
+                await reporter.report_batch(failures, identity=identity, degraded=True)
+            else:
+                await reporter(*failures[0])
     except Exception:
         logger.exception("asset failure notice failed; continuing partial render")
 
