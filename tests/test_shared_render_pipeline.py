@@ -3,11 +3,13 @@ from __future__ import annotations
 import ast
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
+from ironsbot.integrations import litehtml
 from ironsbot.services.seer import image_failure_notice
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.images import ImageKind, ImageSourceError, placeholder_image
@@ -23,6 +25,40 @@ from ironsbot.services.seer.render_pipeline import (
 
 async def _renderer(*_args: Any, **_kwargs: Any) -> bytes:
     return b"png"
+
+
+@pytest.mark.asyncio
+async def test_native_resource_error_cannot_be_cached_as_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def native(*args: Any) -> bytes:
+        args[11](ValueError)
+        return b"incomplete native image"
+
+    monkeypatch.setattr(
+        litehtml, "_native_core", lambda: SimpleNamespace(_render_internal=native)
+    )
+
+    async def resource(_url: str) -> None:
+        return None
+
+    async def renderer(*_args: Any, **_kwargs: Any) -> bytes:
+        return await litehtml.render_html(
+            "<html></html>",
+            base_url="file:///",
+            max_width=500,
+            allow_refit=False,
+            img_fetch_fn=resource,
+            css_fetch_fn=resource,
+        )
+
+    coordinator = RenderCoordinator(renderer, 1)
+    result = await coordinator.execute(
+        RenderRequest("native"), lambda: coordinator.render("", "native", {})
+    )
+    assert result.status == "failed"
+    assert result.failure_stage == "render"
+    assert result.exception_type == "NativeResourceError"
 
 
 @pytest.mark.asyncio

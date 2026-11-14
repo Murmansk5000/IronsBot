@@ -28,6 +28,11 @@ from ironsbot.services.seer.new_content import (
     NewContentWeekExpiredError,
 )
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.render_pipeline import (
+    RenderFailureError,
+    RenderRequest,
+    RenderResult,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -85,6 +90,15 @@ class _MenuRenderer:
         if self.changed:
             raise NewContentSnapshotChangedError
         return b"rendered-menu"
+
+
+class _FailedMenuRenderer(_MenuRenderer):
+    async def __call__(self, *_args: object, **_kwargs: object) -> bytes:
+        raise RenderFailureError(
+            RenderResult(
+                RenderRequest("new_content"), None, "failed", "prepare", "TimeoutError"
+            )
+        )
 
 
 def _snapshot() -> NewContentSnapshot:
@@ -158,6 +172,50 @@ def _resources(
 def _text(message: OutboundMessage | None) -> str:
     assert message is not None
     return "".join(part.text for part in message.parts if isinstance(part, TextPart))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_failed_weekly_image_keeps_same_menu_navigation(
+    platform: Platform,
+) -> None:
+    sessions = PortableQuerySessions()
+    original = _context()
+    actor = ActorRef(platform, "fictional-user")
+    context = replace(
+        original,
+        message=replace(
+            original.message,
+            platform=platform,
+            actor=actor,
+            conversation=ConversationRef(platform, "private", actor.id),
+        ),
+    )
+    features = FeatureService(
+        group_features={},
+        actor_features={actor: frozenset({"seer_data", "seer_pet"})},
+        superusers=frozenset(),
+    )
+    operations = build_portable_new_content_operations(
+        _resources(_snapshot(), _FailedMenuRenderer()),
+        sessions,
+        features,
+        preview_max_items=0,
+    )
+    root = cast(
+        "OutboundMessage",
+        await operations["seer.data.new_content"]("更新内容", context),
+    )
+    assert "文字菜单" in _text(root)
+    assert "a. ▶ 新增精灵" in _text(root)
+    assert "0.【退出】" in _text(root)
+    category = await sessions.select("a", context)
+    assert "超级噗纽" in _text(category)
+    assert "0.【返回上级】" in _text(category)
+    detail = await sessions.select("1", context)
+    assert _text(detail) == "精灵详情:4927"
+    parent = await sessions.select("0", context)
+    assert "新增精灵" in _text(parent)
 
 
 @pytest.mark.asyncio

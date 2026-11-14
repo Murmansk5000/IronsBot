@@ -18,6 +18,14 @@ NATIVE_VERSION = "0.1.0rc5"
 SOURCE_PATH = Path(__file__).parent
 logger = logging.getLogger(__name__)
 
+
+class NativeResourceError(RuntimeError):
+    """Native callbacks failed, so the returned picture is not a complete result."""
+
+    def __init__(self) -> None:
+        super().__init__("native HTML resource callback failed")
+
+
 ImageFetcher = Callable[[str], Coroutine[Any, Any, bytes | None]]
 CssFetcher = Callable[[str], Coroutine[Any, Any, str | None]]
 
@@ -70,12 +78,16 @@ async def render_html(  # noqa: PLR0913 - exact render options and explicit reso
 ) -> bytes:
     """Preserve the existing template renderer's native options exactly."""
 
+    resource_failed = False
+
     def native_error(kind: type[BaseException], *_details: object) -> None:
+        nonlocal resource_failed
+        resource_failed = True
         logger.error("native HTML resource callback failed: %s", kind.__name__)
 
     native_data_scheme = True
     debug = False
-    return await _native_core()._render_internal(
+    rendered = await _native_core()._render_internal(
         html,
         base_url,
         96.0,
@@ -96,3 +108,6 @@ async def render_html(  # noqa: PLR0913 - exact render options and explicit reso
         native_data_scheme,
         debug,
     )
+    if resource_failed:
+        raise NativeResourceError
+    return rendered

@@ -1,6 +1,6 @@
 # Shared Render Pipeline And Reply Fallback
 
-Status: `in_progress`
+Status: `completed`
 
 Contract: `target`
 
@@ -31,10 +31,10 @@ corresponding weekly-menu receipt. Those logs do not prove its exact stuck stage
 
 | Slice | Acceptance | Status |
 | --- | --- | --- |
-| Shared lifecycle | bounded preparation/queue/render, structured failures | planned |
-| Entry migration | built-in templates and extension HTML port | planned |
-| Weekly reply | same-model text menu after image failure | planned |
-| Validation | targeted/full checks, architecture inventory | planned |
+| Shared lifecycle | bounded preparation/queue/render, structured failures | verified |
+| Entry migration | built-in templates and extension HTML port | verified |
+| Weekly reply | same-model text menu after image failure | verified |
+| Validation | targeted/full checks, architecture inventory | verified |
 
 ## Boundaries
 
@@ -96,5 +96,30 @@ without message contents, credentials or target identifiers.
 
 ## Evidence
 
-2026-11-14: read-only investigation and source review only; implementation and
-verification pending. No production root cause claimed beyond observed logs.
+| Date | Verification actually run | Result |
+| --- | --- | --- |
+| 2026-11-14 | Exact staged core tree: targeted pytest, Ruff, BasedPyright | 266 passed; lint/types clean |
+| 2026-11-14 | Final combined targeted pytest | 330 passed |
+| 2026-11-14 | Native binding, resource, packaging and pool compatibility | 73 passed, 2 skipped |
+| 2026-11-14 | Final exact combined snapshot: complete pytest | 7039 passed, 11 skipped |
+| 2026-11-14 | Final Ruff, BasedPyright, compileall, repository static checks, diff check | all passed; 0 type errors |
+| 2026-11-14 | Private main / details with the shared public checkout | 56 / 94 passed, 1 skip each |
+
+One earlier complete run failed the unchanged Bilibili immediate-image-retry
+assertion (3 sends rather than 4). Its isolated rerun passed; the final full run
+also passed. This task does not claim to have diagnosed or fixed that intermittent
+assertion, and does not modify Bilibili code or tests. Prior failed-check logs
+remain in the diagnostics attempts directory rather than being discarded.
+
+Native callback errors previously only logged and could still return image
+bytes. They now raise `NativeResourceError`, entering the same typed fallback
+instead of caching a nominally successful incomplete image. Normal prepared
+asset failures still use local placeholders, not this engine-failure branch.
+
+Raw evidence is retained under
+`E:/IronsBot-history-validation/shared-render-pipeline-20261114` (final logs,
+core-only checks, target logs, private compatibility and archive records).
+Tests use isolated committed reserved modules, never their protected working
+copies. No production root cause is claimed beyond the documented logs and
+reproduced lifecycle gaps. No production data, config, network, container or
+development branch publication was changed.
