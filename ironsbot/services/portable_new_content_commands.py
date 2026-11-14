@@ -34,6 +34,7 @@ from ironsbot.services.seer.new_content_menu import (
     plan_new_content_menu,
 )
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.render_pipeline import RenderFailureError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -150,6 +151,7 @@ class _PortableNewContentOperations:
         child: bool = False,
     ) -> OutboundMessage:
         menu = build_new_content_menu(snapshot, layout)
+        navigation = "返回上级" if menu_parent(child=child) is not None else "退出"
         try:
             image = await self.resources.new_content_menu(
                 snapshot,
@@ -158,8 +160,19 @@ class _PortableNewContentOperations:
                 "新增内容",
                 layout.expanded_categories,
                 layout.preview_max_items,
-                "返回上级" if menu_parent(child=child) is not None else "退出",
+                navigation,
             )
+            prompt = OutboundMessage((BinaryImagePart(image, "image/png"),))
+        except RenderFailureError:
+            lines = ["图片生成失败，已切换为文字菜单。", menu.title]
+            lines.extend(
+                f"{choice.key or index}. {choice.name}"
+                + (f"：{choice.description}" if choice.description else "")
+                for index, choice in enumerate(menu.choices, start=1)
+                if choice.is_visible
+            )
+            lines.append(f"0.【{navigation}】")
+            prompt = OutboundMessage.from_text("\n".join(lines))
         except (NewContentSnapshotChangedError, DataPublicationChangedError) as error:
             notice = (
                 new_content_stale_week_message(snapshot)
@@ -218,7 +231,7 @@ class _PortableNewContentOperations:
                 if not choice.is_visible
             ),
             select=select,
-            prompt=OutboundMessage((BinaryImagePart(image, "image/png"),)),
+            prompt=prompt,
             keep_open=True,
             child=child,
             shareable=True,

@@ -16,6 +16,7 @@ from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.render_pipeline import RenderFailureError
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
@@ -36,6 +37,11 @@ class CommandErrorReporter:
     async def reply(
         self, context: MessageInputContext, error: Exception
     ) -> OutboundMessage:
+        if isinstance(error, RenderFailureError):
+            await self.report(context, error)
+            return OutboundMessage.from_text(
+                error.result.fallback_text, request_succeeded=False
+            )
         if isinstance(error, DataUnavailableError):
             return OutboundMessage.from_text(
                 DATABASE_UNAVAILABLE_MESSAGE, request_succeeded=False
@@ -75,6 +81,13 @@ class CommandErrorReporter:
             else type(error).__name__
         )
         detail = ""
+        if isinstance(error, RenderFailureError):
+            result = error.result
+            detail = (
+                f"\n渲染模板：{result.request.template}"
+                f"\n失败阶段：{result.failure_stage}"
+                f"\n原始异常类型：{result.exception_type}"
+            )
         if receipt is not None:
             location = receipt.request_endpoint or "平台未提供接口模板"
             identity = receipt.execution_identity

@@ -119,6 +119,12 @@ from ironsbot.services.seer.rank_admin import RankAdminPolicy, RankAdminService
 from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_queries import RankQueryPolicy, RankQueryService
+from ironsbot.services.seer.render_fallbacks import (
+    peak_pet_rank_text,
+    peak_pool_text,
+    peak_vote_text,
+    type_matchup_text,
+)
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
@@ -310,13 +316,16 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         pet_id: int, *, execution_identity: ExecutionIdentity | None = None
     ) -> bytes:
         with render_sessions.open() as inputs:
-            return await render_published_pet_info(
+            return await inputs.guard(
+                "pet_info",
+                render_published_pet_info,
+                fallback_text=f"精灵 ID：{pet_id}。资料图片暂不可用。",
+            )(
                 inputs.cache,
                 inputs.data,
                 inputs.images,
                 render_coordinator.render,
                 pet_id,
-                image_failure_reporter=image_failure_reporter,
                 execution_identity=execution_identity,
             )
 
@@ -325,10 +334,14 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         with render_sessions.open() as inputs:
             yield TypeRenderSession(
                 PublishedTypeMatchupRepository(inputs.data),
-                partial(
-                    render_type_matchup,
-                    inputs.images,
-                    render_coordinator.render,
+                inputs.guard(
+                    "type_matchup",
+                    partial(
+                        render_type_matchup,
+                        inputs.images,
+                        render_coordinator.render,
+                    ),
+                    fallback=type_matchup_text,
                 ),
                 inputs.cache,
             )
@@ -338,24 +351,35 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         with render_sessions.open() as inputs:
             yield PeakRenderSession(
                 PublishedPeakRepository(inputs.data),
-                partial(
-                    render_peak_pool,
-                    inputs.cache,
-                    inputs.images,
-                    render_coordinator.render,
-                    image_failure_reporter=image_failure_reporter,
+                inputs.guard(
+                    "peak_pool",
+                    partial(
+                        render_peak_pool,
+                        inputs.cache,
+                        inputs.images,
+                        render_coordinator.render,
+                    ),
+                    fallback=peak_pool_text,
                 ),
-                partial(
-                    render_peak_pool_vote,
-                    inputs.cache,
-                    inputs.images,
-                    render_coordinator.render,
+                inputs.guard(
+                    "peak_pool_vote",
+                    partial(
+                        render_peak_pool_vote,
+                        inputs.cache,
+                        inputs.images,
+                        render_coordinator.render,
+                    ),
+                    fallback=peak_vote_text,
                 ),
-                partial(
-                    render_peak_pet_rank,
-                    inputs.cache,
-                    inputs.images,
-                    render_coordinator.render,
+                inputs.guard(
+                    "peak_pet_rank",
+                    partial(
+                        render_peak_pet_rank,
+                        inputs.cache,
+                        inputs.images,
+                        render_coordinator.render,
+                    ),
+                    fallback=peak_pet_rank_text,
                 ),
                 NewContentService(PublishedNewContentRepository(inputs.data)),
             )
@@ -364,7 +388,11 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         result: LuckySkinWindowResult, offers: tuple[LuckySkinWindowOffer, ...]
     ) -> bytes:
         with render_sessions.open() as inputs:
-            return await render_lucky_skin_window(
+            return await inputs.guard(
+                "lucky_skin_window",
+                render_lucky_skin_window,
+                fallback_text="\n".join(offer.name for offer in offers),
+            )(
                 inputs.cache,
                 inputs.data,
                 inputs.images,
@@ -381,7 +409,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 PlayerLineupRenderServices(
                     images=inputs.images,
                     cache=inputs.cache,
-                    render=render_coordinator.render,
+                    render=inputs.guard("player_lineup", render_coordinator.render),
                 ),
                 details=PublishedPlayerLineupDetailResolver(inputs.data),
             )
@@ -409,7 +437,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             NewContentService(
                 PublishedNewContentRepository(inputs.data)
             ).require_snapshot(snapshot)
-            return await render_new_content_menu(
+            return await inputs.guard("new_content", render_new_content_menu)(
                 inputs.cache,
                 inputs.data,
                 inputs.images,

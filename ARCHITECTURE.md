@@ -87,6 +87,17 @@ binary from pinned, hash-verified upstream wheels. It declares no runtime
 dependencies; the upstream plugin is only a development PNG baseline.
 Native artifact packaging and the application host are independent from NoneBot.
 
+Dynamic template generation enters the application-owned `RenderCoordinator`.
+Its structured request/result contract owns preparation, queue and native
+deadlines, complete/degraded/failed outcomes and transactional final-cache
+publication. Presentation adapters retain only domain facts, cache identities
+and template layouts; they do not choose another timeout or general fallback.
+The public command boundary sends typed render failures as text. Weekly menus
+use the same choice model for image and text so navigation and authorization do
+not depend on image availability. Source-image sends and media composition are
+not template renders. Private HTML ports use the same coordinator; their
+existing short-lived historical lineup fallback remains a query-domain rule.
+
 Application standard-library logs, privacy redaction and file sinks use Loguru
 directly; they do not import the framework logger. The application hierarchy has
 one idempotently installed bridge and does not propagate raw records to root

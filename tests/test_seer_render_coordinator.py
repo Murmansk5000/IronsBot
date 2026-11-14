@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ironsbot.services.seer.render_coordinator import RenderCoordinator
+from ironsbot.services.seer.render_pipeline import RenderFailureError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -75,6 +76,8 @@ async def test_render_coordinator_enforces_native_timeout() -> None:
 
     coordinator = RenderCoordinator(renderer, timeout_seconds=0.01)
 
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(RenderFailureError) as caught:
         await coordinator.render("", "slow", {})
     assert started.is_set()
+    assert caught.value.result.failure_stage == "render"
+    assert caught.value.result.exception_type == "TimeoutError"
