@@ -47,6 +47,9 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.core.qq_official_routing import QQOfficialIngressRouting
     from ironsbot.core.tasks import TaskSpawner
+    from ironsbot.integrations.qq_official.mention_diagnostics import (
+        QQMentionDiagnostics,
+    )
     from ironsbot.integrations.qq_official.recipient_state import (
         QQOfficialRecipientStateStore,
     )
@@ -252,6 +255,7 @@ class QQOfficialRuntime:
         startup_timeout_seconds: float = 15.0,
         recipient_state: QQOfficialRecipientStateStore | None = None,
         upload_spawn: TaskSpawner | None = None,
+        mention_diagnostics: QQMentionDiagnostics | None = None,
     ) -> None:
         if startup_timeout_seconds <= 0:
             msg = "QQ Official startup timeout must be positive"
@@ -261,6 +265,7 @@ class QQOfficialRuntime:
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
         self._recipient_state = recipient_state
+        self._mention_diagnostics = mention_diagnostics
         self._ingress_routing: QQOfficialIngressRouting | None = None
         self._connections: dict[str, _Connection] = {}
         self._connection_observer: BotConnectionObserver | None = None
@@ -437,6 +442,8 @@ class QQOfficialRuntime:
         event_type: str,
         raw: Mapping[str, object],
     ) -> None:
+        if self._mention_diagnostics is not None:
+            await self._mention_diagnostics.observe(app_id, event_type, raw)
         if is_recipient_state_event(event_type):
             if self._recipient_state is not None:
                 recorded = await self._recipient_state.record_event(

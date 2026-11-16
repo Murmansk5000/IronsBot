@@ -178,6 +178,10 @@ def build_common_components(
             raise RuntimeError(msg) from error
 
         recipient_state = QQOfficialRecipientStateStore(settings.paths.qq_state)
+        from ironsbot.integrations.qq_official.mention_diagnostics import (
+            diagnostics_from_settings,
+        )
+
         ingress_routing = _build_qq_official_ingress_routing(settings)
         qq_official = QQOfficialRuntime(
             tuple(
@@ -195,6 +199,7 @@ def build_common_components(
             startup_timeout_seconds=settings.bot.qq_official.startup_timeout_seconds,
             recipient_state=recipient_state,
             upload_spawn=task_owner.create,
+            mention_diagnostics=diagnostics_from_settings(settings),
         )
         qq_official.configure_ingress_routing(ingress_routing)
 
