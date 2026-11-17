@@ -136,7 +136,7 @@ def test_category_subscriptions_filter_and_toggle_per_conversation(
     text = options[1]
     assert text.key == bili_media_subscription_key(912345678, "text")
     assert service.toggle_subscription(conversation, text) == "已退订：动态正文。"
-    lottery = options[3]
+    lottery = next(option for option in options if option.label == "抽奖")
     assert lottery.unsubscribed
     assert service.toggle_subscription(conversation, lottery) == "已恢复订阅：抽奖。"
     assert service.push_targets_for_dynamic(
@@ -155,7 +155,13 @@ def test_normal_account_has_three_independent_stage_options(
     submenu = service.subscription_submenu(conversation, root, read_only=False)
     assert submenu is not None
     options, prompt = submenu
-    assert [option.label for option in options] == ["动态提醒", "动态正文", "动态图片"]
+    assert [option.label for option in options] == [
+        "动态提醒",
+        "动态正文",
+        "动态图片",
+        "直播提醒",
+        "直播预告",
+    ]
     assert "仅超管可修改" in prompt
     stale = PushSubscriptionOption(
         key=bili_media_subscription_key(912345678, "image"),

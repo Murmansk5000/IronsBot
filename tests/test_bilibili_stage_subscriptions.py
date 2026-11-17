@@ -240,7 +240,7 @@ async def test_td_submenu_back_and_reminder_permission_on_public_entry(
     sessions.record_delivery(
         context, root, SendResult(delivered=True, message_id="root")
     )
-    child = await sessions.select("4", context)
+    child = await sessions.select("5", context)
     assert isinstance(child, OutboundMessage)
     sessions.record_delivery(
         context, child, SendResult(delivered=True, message_id="child")

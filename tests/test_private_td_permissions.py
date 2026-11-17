@@ -91,7 +91,7 @@ async def test_private_td_owner_can_manage_all_authorized_stages(
     )
     assert submenu is not None
     assert "仅超管" not in submenu[1]
-    for option in (*root_options[:3], *submenu[0]):
+    for option in (*root_options[:4], *submenu[0]):
         result = messaging.toggle_subscription(conversation, option, actor=actor)
         assert result.startswith(("已退订：", "已恢复订阅："))
     stranger = replace(actor, id="another-user")

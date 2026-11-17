@@ -16,6 +16,13 @@ from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
     configured_account_alias_lookup,
 )
+from ironsbot.services.bilibili.live_preview import (
+    LIVE_ALL_SUBSCRIPTION,
+    LIVE_PREVIEW_CATEGORY,
+    LIVE_REMINDER_PREFERENCE,
+    SEER_LIVE_UID,
+    live_subscription_key,
+)
 from ironsbot.services.bilibili.preferences import (
     BILI_STAGE_LABELS,
     BiliPushPreferenceStore,
@@ -248,6 +255,12 @@ class BiliTargetService:
                 )
                 for stage, label in BILI_STAGE_LABELS.items()
             ],
+            PushSubscriptionOption(
+                LIVE_ALL_SUBSCRIPTION,
+                "所有B站直播提醒",
+                "bili_push",
+                unsubscribed=LIVE_ALL_SUBSCRIPTION in unsubscribed,
+            ),
         ] + [
             PushSubscriptionOption(
                 key=bili_push_subscription_key(uid),
@@ -256,7 +269,8 @@ class BiliTargetService:
                 unsubscribed=all(
                     bili_stage_subscription_key(uid, stage) in unsubscribed
                     for stage in BILI_STAGE_LABELS
-                ),
+                )
+                and not self.live_enabled(conversation, uid),
                 submenu_key=bili_category_submenu_key(uid),
             )
             for uid in sorted(rule.uids)
@@ -289,6 +303,22 @@ class BiliTargetService:
                 )
                 for stage, label in BILI_STAGE_LABELS.items()
             ],
+            PushSubscriptionOption(
+                live_subscription_key(uid),
+                "直播提醒",
+                "bili_push",
+                unsubscribed=not self.live_enabled(
+                    conversation, uid, include_global=False
+                ),
+            ),
+            PushSubscriptionOption(
+                bili_category_subscription_key(uid, LIVE_PREVIEW_CATEGORY),
+                "直播预告",
+                "bili_push",
+                unsubscribed=self._category_muted(
+                    conversation, uid, LIVE_PREVIEW_CATEGORY
+                ),
+            ),
             *[
                 PushSubscriptionOption(
                     key=bili_category_subscription_key(uid, category),
@@ -299,6 +329,7 @@ class BiliTargetService:
                 for category, definition in (
                     config.categories.items() if config else ()
                 )
+                if category != LIVE_PREVIEW_CATEGORY
             ],
         ]
         return options, build_push_subscription_menu(
@@ -313,12 +344,36 @@ class BiliTargetService:
         conversation: ConversationRef,
         option: PushSubscriptionOption,
     ) -> str | None:
+        if option.key.startswith("bili_live:"):
+            raw_uid = option.key.removeprefix("bili_live:")
+            if (
+                not raw_uid.isdecimal()
+                or self.mode_for_uid(conversation, int(raw_uid)) is None
+            ):
+                return "订阅选项已调整，请重新打开 TD。"
+            uid = int(raw_uid)
+            muted = self.live_enabled(conversation, uid, include_global=False)
+            self.preferences.set_category_muted(
+                conversation,
+                uid,
+                LIVE_REMINDER_PREFERENCE,
+                muted=muted,
+            )
+            if muted:
+                self.unsubscribe_store.unsubscribe(
+                    conversation, option.key, option.feature
+                )
+            else:
+                self.unsubscribe_store.restore(conversation, option.key)
+            return f"已{'退订' if muted else '恢复订阅'}：直播提醒。"
         parsed = _category_subscription(option.key)
         if parsed is None:
             return self._toggle_media_subscription(conversation, option)
         uid, category = parsed
         config = self.category_config_for_uid(uid)
-        if config is None or category not in config.categories:
+        if category != LIVE_PREVIEW_CATEGORY and (
+            config is None or category not in config.categories
+        ):
             return "订阅选项已调整，请重新打开 TD。"
         muted = not self._category_muted(conversation, uid, category)
         self.preferences.set_category_muted(
@@ -328,7 +383,51 @@ class BiliTargetService:
             muted=muted,
         )
         action = "退订" if muted else "恢复订阅"
-        return f"已{action}：{config.categories[category].label}。"
+        label = (
+            "直播预告"
+            if category == LIVE_PREVIEW_CATEGORY
+            else config.categories[category].label
+            if config
+            else category
+        )
+        return f"已{action}：{label}。"
+
+    def live_enabled(
+        self, conversation: ConversationRef, uid: int, *, include_global: bool = True
+    ) -> bool:
+        if self.mode_for_uid(conversation, uid) is None:
+            return False
+        if include_global and self.unsubscribe_store.is_unsubscribed(
+            conversation, LIVE_ALL_SUBSCRIPTION
+        ):
+            return False
+        muted = self.preferences.category_muted(
+            conversation, uid, LIVE_REMINDER_PREFERENCE
+        )
+        return not muted if muted is not None else uid == SEER_LIVE_UID
+
+    def live_targets(self, uid: int) -> list[ConversationRef]:
+        return list(
+            dict.fromkeys(
+                conversation
+                for conversation in (*self.push_group_rules(), *self.push_user_rules())
+                if self.live_enabled(conversation, uid)
+                and not self.features.conversation_has_feature(
+                    conversation, "blacklist"
+                )
+                and (
+                    conversation.kind != "private"
+                    or not self.features.actor_has_feature(
+                        ActorRef(
+                            conversation.platform,
+                            conversation.id,
+                            account_id=conversation.account_id,
+                        ),
+                        "blacklist",
+                    )
+                )
+            )
+        )
 
     def _toggle_media_subscription(
         self,
@@ -393,6 +492,10 @@ class BiliTargetService:
                 if bili_stage_subscription_key(uid, stage) in unsubscribed
                 or bili_all_subscription_key(stage) in unsubscribed
             ]
+            if not self.live_enabled(conversation, uid):
+                muted.append("直播提醒")
+            if self._category_muted(conversation, uid, LIVE_PREVIEW_CATEGORY):
+                muted.append("直播预告")
             td_text = f"，已退订：{'、'.join(muted)}" if muted else ""
             account_name = self.account_names.name_for_uid(uid)
             if account_name is None:
@@ -553,6 +656,10 @@ class BiliTargetService:
         uid: int,
         categories: tuple[str, ...],
     ) -> bool:
+        if LIVE_PREVIEW_CATEGORY in categories and self._category_muted(
+            conversation, uid, LIVE_PREVIEW_CATEGORY
+        ):
+            return False
         config = self.category_config_for_uid(uid)
         if config is None or not categories:
             return True
@@ -567,6 +674,8 @@ class BiliTargetService:
         uid: int,
         category: str,
     ) -> bool:
+        if category == LIVE_PREVIEW_CATEGORY:
+            return bool(self.preferences.category_muted(conversation, uid, category))
         configured = self.category_config_for_uid(uid)
         if configured is None or category not in configured.categories:
             return False

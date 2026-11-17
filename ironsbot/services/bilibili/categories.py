@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from .live_preview import LIVE_PREVIEW_CATEGORY, parse_live_preview
 from .parser import dynamic_content
 
 if TYPE_CHECKING:
@@ -19,14 +20,15 @@ def classify_dynamic(
     config: BiliAccountCategorySubscriptionConfig | None,
 ) -> tuple[str, ...]:
     """Return every configured category whose regex matches the dynamic text."""
-    if config is None:
-        return ()
     content = dynamic_content(dict(item))
-    return tuple(
+    configured = tuple(
         category
-        for category, definition in config.categories.items()
+        for category, definition in (config.categories.items() if config else ())
         if any(
             re.search(pattern, content, flags=re.IGNORECASE | re.DOTALL)
             for pattern in definition.patterns
         )
     )
+    if parse_live_preview(dict(item)) is not None:
+        return tuple(dict.fromkeys((*configured, LIVE_PREVIEW_CATEGORY)))
+    return configured
