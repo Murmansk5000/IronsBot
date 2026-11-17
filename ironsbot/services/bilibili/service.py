@@ -17,6 +17,10 @@ from ironsbot.services.bilibili.hydration import (
     DynamicDetailFetcher,
     hydrate_dynamic_item,
 )
+from ironsbot.services.bilibili.live_models import (
+    LiveObservation,
+    LiveStatusUnavailableError,
+)
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_MENU_DEFAULT_LIMIT,
     DynamicDetailSelection,
@@ -41,6 +45,7 @@ if TYPE_CHECKING:
         BiliDynamicHistoryStore,
         DynamicHistoryRecord,
     )
+    from ironsbot.services.bilibili.live import BiliLiveMonitor
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.messaging.image_collage import ImageCollageService
 
@@ -59,6 +64,10 @@ class BiliCookieStore(Protocol):
     def load(self) -> str: ...
 
     def save(self, cookie: str) -> None: ...
+
+
+async def _unavailable_live_status(_uids: list[int]) -> dict[int, LiveObservation]:
+    raise LiveStatusUnavailableError.invalid()
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +93,10 @@ class BilibiliService:
     spawn: Callable[..., asyncio.Task[Any]]
     content_compactor: DynamicContentCompactor | None = None
     image_collage: ImageCollageService | None = None
+    live: BiliLiveMonitor | None = None
+    fetch_live: Callable[[list[int]], Awaitable[dict[int, LiveObservation]]] = (
+        _unavailable_live_status
+    )
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)
@@ -100,6 +113,13 @@ class BilibiliService:
         repr=False,
     )
     _history_backfill_attempted: bool = field(default=False, init=False, repr=False)
+
+    def observe_live_preview(self, item: dict[str, Any]) -> None:
+        if self.live is not None:
+            try:
+                self.live.ingest(item)
+            except Exception:
+                logger.exception("Bilibili live preview persistence failed")
 
     async def resolve_dynamic_item(
         self,

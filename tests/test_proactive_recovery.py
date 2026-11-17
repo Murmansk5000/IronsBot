@@ -92,6 +92,25 @@ def make_due(store: SqliteProactiveTasks) -> None:
         db.execute("UPDATE proactive_tasks SET next_at=0")
 
 
+@pytest.mark.asyncio
+async def test_business_readiness_waits_without_consuming_or_dropping_task(
+    tmp_path: Path,
+) -> None:
+    store = SqliteProactiveTasks(tmp_path / "readiness.sqlite")
+    store.prepare(record())
+    delivery, messenger, _ = _delivery()
+    delivery = replace(delivery, outbox=store)
+    ready = AsyncMock(return_value=None)
+    recovery = ProactiveRecovery(delivery, store, spawn, ready=ready)
+    await recovery.scan()
+    assert not messenger.calls
+    assert state(store) == ("pending", 0)
+    ready.return_value = True
+    await recovery.scan()
+    assert len(messenger.calls) == 1
+    assert store.result("task").delivered
+
+
 def test_persistent_claim_and_success_receipt(tmp_path: Path) -> None:
     path = tmp_path / "outbox.sqlite"
     first = SqliteProactiveTasks(path)

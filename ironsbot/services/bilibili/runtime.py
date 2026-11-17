@@ -56,13 +56,22 @@ class BilibiliMonitorService:
         is_startup_check: bool = False,
         force: bool = False,
     ) -> MonitorCheckResult:
-        return await run_monitor_check(
+        result = await run_monitor_check(
             self.service,
             on_auth_invalid=self._on_auth_invalid,
             send_push=self._send_push,
             is_startup_check=is_startup_check,
             force=force,
         )
+        if self.service.live is not None:
+            try:
+                await self.service.live.tick(
+                    shared_due=result.executed,
+                    startup=is_startup_check or force,
+                )
+            except Exception:
+                logger.exception("Bilibili live monitoring interrupted")
+        return result
 
     async def register_job(self, scheduler: Scheduler) -> None:
         jobs = JobRegistry(scheduler, prefix=BILIBILI_MONITOR_JOB_PREFIX)

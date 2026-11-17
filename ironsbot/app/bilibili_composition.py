@@ -18,6 +18,7 @@ from ironsbot.integrations.http.bilibili import (
     poll_bili_login_qr,
     request_bili_login_qr,
 )
+from ironsbot.integrations.http.bilibili_live import fetch_live_status
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_delivery_ledger import (
     SqliteDynamicDeliveryLedger,
@@ -25,12 +26,14 @@ from ironsbot.integrations.storage.bilibili_delivery_ledger import (
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
+from ironsbot.integrations.storage.bilibili_live import SqliteBiliLiveStore
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.delivery_recovery import BiliDeliveryRecovery
+from ironsbot.services.bilibili.live import BiliLiveMonitor
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.login_notice import send_bili_login_notice
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
@@ -103,6 +106,7 @@ def build_bilibili_components(  # noqa: PLR0913 - explicit composition dependenc
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
         image_collage=image_collage,
+        fetch_live=partial(fetch_live_status, http_clients.origin),
     )
     return BilibiliComponents(
         service=service,
@@ -166,6 +170,12 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         config.push.summary_use_ai,
     )
     service.content_compactor = compactor
+    service.live = BiliLiveMonitor(
+        service,
+        SqliteBiliLiveStore(Path(config.storage.data_dir) / "live_state.sqlite"),
+        service.fetch_live,
+        proactive_delivery,
+    )
     push_delivery = BilibiliDynamicOutboundSender(
         spawn=service.spawn,
         delivery=proactive_delivery,
@@ -186,7 +196,9 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
             media_root=Path(config.storage.data_dir) / "delivery_media",
         ),
         category_labels=lambda uid, keys: tuple(
-            definition.label
+            "直播预告"
+            if key == "live_preview"
+            else definition.label
             if (category_config := service.targets.category_config_for_uid(uid))
             is not None
             and (definition := category_config.categories.get(key)) is not None

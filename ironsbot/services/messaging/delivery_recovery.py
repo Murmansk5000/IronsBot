@@ -34,6 +34,7 @@ class ProactiveRecovery:
     notify: Callable[[str], Awaitable[None]] | None = None
     additional: Callable[[str], Awaitable[None]] | None = None
     validate: Callable[[StoredDelivery], bool] | None = None
+    ready: Callable[[StoredDelivery], Awaitable[bool | None]] | None = None
     prepare: Callable[[StoredDelivery], Awaitable[OutboundMessage]] | None = None
     finished: Callable[[StoredDelivery, OutboundMessage, SendResult], None] | None = (
         None
@@ -160,6 +161,12 @@ class ProactiveRecovery:
                 continue
             if not self._allowed(task):
                 self.store.skip(task.id, "current_policy_rejected")
+                continue
+            readiness = await self.ready(task) if self.ready is not None else True
+            if readiness is None:
+                continue
+            if not readiness:
+                self.store.skip(task.id, "current_business_state_rejected")
                 continue
             message = (
                 await self.prepare(task) if self.prepare is not None else task.message
