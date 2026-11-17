@@ -102,6 +102,7 @@ def build_push_recovery(  # noqa: PLR0913 - explicit application dependencies
         notify=notify,
         additional=monitor.delivery_recovery,
         validate=current,
+        ready=monitor.service.live.ready if monitor.service.live is not None else None,
         prepare=lucky.prepare,
         finished=lucky.finished,
     )

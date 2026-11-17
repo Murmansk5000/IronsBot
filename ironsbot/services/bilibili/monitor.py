@@ -154,6 +154,7 @@ async def _push_new_dynamics(
     cookie = cookie or service.cookie_store.load()
     for pub_ts, feed_item in valid_dynamics:
         item = await service.resolve_dynamic_item(feed_item, cookie=cookie)
+        service.observe_live_preview(item)
         author_mid = item_author_mid(item)
         category_config = service.targets.category_config_for_uid(author_mid)
         categories = classify_dynamic(item, category_config)

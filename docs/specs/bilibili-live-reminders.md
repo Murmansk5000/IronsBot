@@ -1,6 +1,7 @@
 # B站直播预告与直播提醒
 
-Status: transition, implementation and verification in progress (2026-11-17).
+Status: completed implementation and verification (2026-11-17).
+Public main is not published; production is not deployed by this work.
 
 ## Target
 
@@ -37,4 +38,15 @@ Status: transition, implementation and verification in progress (2026-11-17).
 
 ## Verification
 
-待记录实际专项、全量测试、静态检查及归档结果；不得将计划冒称为完成。
+- 独立分类/TD快照：63项pytest通过，Ruff及BasedPyright通过，不依赖后续监控代码。
+- 最终完整隔离快照：7250项通过、11项跳过；Ruff、BasedPyright（零错误）、compileall、
+  仓库静态及差异检查全部通过。
+- 覆盖提前提醒、真实开播、下播确认、重复来源、同帖编辑、歧义改期、过期历史预告、
+  未发送单元安全重排、成功/不确定回执不重发，以及双平台权限、总开关和私聊自主管理。
+- 通过实现后的只读HTTP适配器确认赛尔号UID对应直播间31981409，当前为未开播；
+  规划阶段从已有动态缓存核实11月19日19:00预告。真实时间不作为固定测试断言。
+- 不读取预留工作文件；隔离测试仅使用已授权的提交版本。保留早期夹具错误及被替代、
+  中断的全量尝试，不将它们计为通过。
+- 实际日志和分组提交/原始归档证明保存在执行机
+  `E:/IronsBot-history-validation/bilibili-live-20261117/`。
+- 未推送公共main、构建、部署、发送生产测试消息或修改生产配置/数据库。

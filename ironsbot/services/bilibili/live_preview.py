@@ -166,6 +166,8 @@ def parse_live_preview(item: dict[str, Any]) -> LivePreview | None:
     )
     changed = re.search(r"改为|改至|改到|调整为|推迟至|延期至", text)
     timing_text = text[changed.end() :] if changed else text
+    if re.search(r"(?:或|或者)[^\n]{0,30}(?:\d{1,2}[:：]\d{2}|[点时])", timing_text):
+        timing_text = ""
     times: set[float] = set()
     for paragraph in re.split(r"\n\s*\n", timing_text):
         times.update(_time_in_paragraph(paragraph, published))
