@@ -206,6 +206,7 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
             for key in keys
         ),
     )
+    service.register_delivery = push_delivery.enqueue
     return BilibiliMonitorService(
         service,
         auth_invalid,

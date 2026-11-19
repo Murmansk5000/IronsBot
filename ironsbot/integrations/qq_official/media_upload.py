@@ -16,8 +16,10 @@ from typing import TYPE_CHECKING, Protocol
 from qqbot_agent_sdk.constants import MEDIA_TYPE_IMAGE
 
 from ironsbot.core.delivery_attempt import (
+    DeliveryProgress,
     MediaReuseBatch,
     controlled_delivery,
+    delivery_progress,
     delivery_unit,
     media_reuse_batch,
 )
@@ -59,6 +61,30 @@ class QQOfficialMediaUpload:
     _upload_origins: dict[asyncio.Task[str], str] = field(
         default_factory=dict, init=False, compare=False, repr=False
     )
+    _upload_progress: dict[asyncio.Task[str], DeliveryProgress] = field(
+        default_factory=dict, init=False, compare=False, repr=False
+    )
+
+    def _batch_uploads(
+        self, batch: MediaReuseBatch
+    ) -> dict[MediaKey, asyncio.Task[str]]:
+        uploads = self._batches.get(batch)
+        if uploads is not None:
+            return uploads
+        uploads = {}
+        self._batches[batch] = uploads
+
+        async def close() -> None:
+            tasks = tuple(self._batches.pop(batch, {}).values())
+            for pending in tasks:
+                self._upload_origins.pop(pending, None)
+                self._upload_progress.pop(pending, None)
+                if not pending.done():
+                    pending.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        batch.cleanups.append(close)
+        return uploads
 
     async def upload_image(
         self,
@@ -75,32 +101,39 @@ class QQOfficialMediaUpload:
             if batch is None or self.spawn is None:
                 return await self._upload_image(scope, target_id, payload)
             fingerprint = await asyncio.to_thread(_media_fingerprint, payload)
+            # Fingerprinting may outlive this waiter's delivery deadline.
+            async with (
+                delivery_phase("upload_prepare")
+                if controlled_delivery.get()
+                else nullcontext()
+            ):
+                pass
             key = (scope, fingerprint, Path(payload.filename).suffix.lower())
-            uploads = self._batches.get(batch)
-            if uploads is None:
-                uploads = {}
-                self._batches[batch] = uploads
-
-                async def close() -> None:
-                    tasks = tuple(self._batches.pop(batch, {}).values())
-                    for pending in tasks:
-                        self._upload_origins.pop(pending, None)
-                        if not pending.done():
-                            pending.cancel()
-                    await asyncio.gather(*tasks, return_exceptions=True)
-
-                batch.cleanups.append(close)
+            uploads = self._batch_uploads(batch)
             task = uploads.get(key)
             reused = task is not None
+            waiter_progress = delivery_progress.get() or DeliveryProgress()
             if task is None:
                 coroutine = self._upload_image(scope, target_id, payload)
+                consumers = [waiter_progress]
+                shared_progress = DeliveryProgress(consumer_progress=consumers)
+                # Shared transport work has its own gate, not a waiter's deadline.
+                progress_token = delivery_progress.set(shared_progress)
                 try:
                     task = self.spawn(coroutine, name="qq-shared-media-upload")
                 except BaseException:
                     coroutine.close()
                     raise
+                finally:
+                    delivery_progress.reset(progress_token)
                 uploads[key] = task
                 self._upload_origins[task] = reference_digest(target_id)
+                self._upload_progress[task] = shared_progress
+            else:
+                shared_progress = self._upload_progress[task]
+                consumers = shared_progress.consumer_progress
+                assert consumers is not None
+                consumers.append(waiter_progress)
             logger.info(
                 "QQ upload reuse: unit=%s account=%s scope=%s media=%s reused=%s "
                 "batch=%s format=%s upload_target=%s receipt_target=%s",
@@ -123,7 +156,10 @@ class QQOfficialMediaUpload:
                 if failed and uploads.get(key) is task:
                     uploads.pop(key)
                     self._upload_origins.pop(task, None)
+                    self._upload_progress.pop(task, None)
                 raise
+            finally:
+                consumers.remove(waiter_progress)
 
     async def _upload_image(
         self,

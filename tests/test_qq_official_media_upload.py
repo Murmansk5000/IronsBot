@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 from qqbot_agent_sdk.constants import MEDIA_TYPE_IMAGE
 
 from ironsbot.app.lifecycle import TaskOwner
-from ironsbot.core.delivery_attempt import reuse_media_uploads
+from ironsbot.core.delivery_attempt import (
+    DeliveryProgress,
+    controlled_delivery,
+    delivery_progress,
+    media_reuse_batch,
+    reuse_media_uploads,
+)
+from ironsbot.integrations.qq_official.delivery_diagnostics import (
+    QQDeliveryClosedError,
+    delivery_phase,
+)
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.message_rendering import QQOfficialImagePayload
 
@@ -257,3 +270,364 @@ async def test_reuse_diagnostics_distinguish_batch_format_and_upload_origin(
     assert "private-target-a" not in caplog.text
     assert "private-target-b" not in caplog.text
     assert not media._upload_origins
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_body", [False, True])
+async def test_reuse_cleanup_finishes_all_callbacks_through_repeated_cancellation(
+    *, cancel_body: bool
+) -> None:
+    body_started = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    calls: list[str] = []
+
+    async def first_cleanup() -> None:
+        assert media_reuse_batch.get() is None
+        cleanup_started.set()
+        await release_cleanup.wait()
+        calls.append("first")
+
+    async def last_cleanup() -> None:
+        calls.append("last")
+
+    async def owner() -> None:
+        async with reuse_media_uploads():
+            batch = media_reuse_batch.get()
+            assert batch is not None
+            batch.cleanups.extend((first_cleanup, last_cleanup))
+            body_started.set()
+            if cancel_body:
+                await asyncio.Event().wait()
+
+    task = asyncio.create_task(owner())
+    try:
+        await asyncio.wait_for(body_started.wait(), 2)
+        if cancel_body:
+            task.cancel("body cancellation")
+        await asyncio.wait_for(cleanup_started.wait(), 2)
+        for _ in range(3):
+            task.cancel("repeated cancellation")
+            await asyncio.sleep(0)
+            assert not task.done()
+            assert calls == []
+    finally:
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+    assert calls == ["first", "last"]
+    assert media_reuse_batch.get() is None
+
+
+@pytest.mark.asyncio
+async def test_reuse_cleanup_runs_remaining_callbacks_and_preserves_first_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    calls: list[str] = []
+    first_error = RuntimeError("https://upload.invalid/file?signature=cleanup-secret")
+    last_error = ValueError("last cleanup failure")
+
+    async def failing_cleanup() -> None:
+        calls.append("first")
+        raise first_error
+
+    async def successful_cleanup() -> None:
+        calls.append("middle")
+
+    async def last_cleanup() -> None:
+        calls.append("last")
+        raise last_error
+
+    with pytest.raises(RuntimeError) as caught:
+        async with reuse_media_uploads():
+            batch = media_reuse_batch.get()
+            assert batch is not None
+            batch.cleanups.extend((failing_cleanup, successful_cleanup, last_cleanup))
+    assert caught.value is first_error
+    assert calls == ["first", "middle", "last"]
+    assert "exception=RuntimeError" in caplog.text
+    assert "exception=ValueError" in caplog.text
+    assert "upload.invalid" not in caplog.text
+    assert "signature" not in caplog.text
+    assert "last cleanup failure" not in caplog.text
+    assert "Traceback" not in caplog.text
+    assert media_reuse_batch.get() is None
+
+
+@pytest.mark.asyncio
+async def test_cancelled_cleanup_callback_does_not_skip_remaining_callbacks() -> None:
+    calls: list[str] = []
+
+    async def cancelled_cleanup() -> None:
+        calls.append("cancelled")
+        raise asyncio.CancelledError
+
+    async def last_cleanup() -> None:
+        calls.append("last")
+
+    with pytest.raises(asyncio.CancelledError):
+        async with reuse_media_uploads():
+            batch = media_reuse_batch.get()
+            assert batch is not None
+            batch.cleanups.extend((cancelled_cleanup, last_cleanup))
+    assert calls == ["cancelled", "last"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_is_logged_without_losing_deferred_cancellation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    calls: list[str] = []
+    failure = RuntimeError("cleanup failure during cancellation")
+
+    async def failing_cleanup() -> None:
+        cleanup_started.set()
+        await release_cleanup.wait()
+        calls.append("failed")
+        raise failure
+
+    async def last_cleanup() -> None:
+        calls.append("last")
+
+    async def owner() -> None:
+        async with reuse_media_uploads():
+            batch = media_reuse_batch.get()
+            assert batch is not None
+            batch.cleanups.extend((failing_cleanup, last_cleanup))
+
+    task = asyncio.create_task(owner())
+    try:
+        await asyncio.wait_for(cleanup_started.wait(), 2)
+        task.cancel("deferred cancellation")
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError, match="deferred cancellation"):
+            await asyncio.wait_for(task, 2)
+    assert calls == ["failed", "last"]
+    assert "exception=RuntimeError" in caplog.text
+    assert "cleanup failure during cancellation" not in caplog.text
+
+
+@dataclass(slots=True)
+class _ProgressAwareUploader:
+    started: asyncio.Event = field(default_factory=asyncio.Event)
+    ready: asyncio.Event = field(default_factory=asyncio.Event)
+    calls: int = 0
+    progress: list[DeliveryProgress | None] = field(default_factory=list)
+
+    async def upload(self, *_args: object, **_kwargs: object) -> str:
+        self.calls += 1
+        self.progress.append(delivery_progress.get())
+        self.started.set()
+        await self.ready.wait()
+        # Real controlled uploads enter further transport phases after awaits.
+        async with delivery_phase("upload_confirm"):
+            self.progress.append(delivery_progress.get())
+        return "shared-token"
+
+
+def _assert_independent_shared_progress(
+    uploader: _ProgressAwareUploader, first: DeliveryProgress, second: DeliveryProgress
+) -> None:
+    assert uploader.calls == 1
+    assert len(uploader.progress) == TWO_UPLOADS
+    shared = uploader.progress[0]
+    assert shared is not None
+    assert uploader.progress[1] is shared
+    assert shared is not first
+    assert shared is not second
+    assert shared.deadline is None
+    assert shared.consumer_progress == []
+
+
+def _observe_shared_waiters(
+    monkeypatch: pytest.MonkeyPatch,
+    media: QQOfficialMediaUpload,
+    expected: list[DeliveryProgress],
+) -> asyncio.Event:
+    registered = asyncio.Event()
+
+    def shield(task: asyncio.Task[str]) -> asyncio.Future[str]:
+        if media._upload_progress[task].consumer_progress == expected:
+            registered.set()
+        return asyncio.shield(task)
+
+    monkeypatch.setattr(
+        "ironsbot.integrations.qq_official.media_upload.asyncio",
+        SimpleNamespace(
+            to_thread=asyncio.to_thread, gather=asyncio.gather, shield=shield
+        ),
+    )
+    return registered
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_first", [False, True])
+async def test_shared_upload_does_not_inherit_first_waiter_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, cancel_first: bool
+) -> None:
+    uploader = _ProgressAwareUploader()
+    media = QQOfficialMediaUpload(uploader, tmp_path, spawn=TaskOwner().create)
+    payload = QQOfficialImagePayload(url="https://example.invalid/shared.png")
+    first_progress = DeliveryProgress(deadline=time.monotonic() + 60)
+    second_progress = DeliveryProgress(deadline=time.monotonic() + 60)
+    second_registered = _observe_shared_waiters(
+        monkeypatch,
+        media,
+        [second_progress] if cancel_first else [first_progress, second_progress],
+    )
+
+    async def wait_for_upload(target: str, progress: DeliveryProgress) -> str:
+        token = delivery_progress.set(progress)
+        controlled_token = controlled_delivery.set(True)
+        try:
+            return await media.upload_image("group", target, payload)
+        finally:
+            assert delivery_progress.get() is progress
+            controlled_delivery.reset(controlled_token)
+            delivery_progress.reset(token)
+
+    async with reuse_media_uploads():
+        first = asyncio.create_task(wait_for_upload("first", first_progress))
+        second: asyncio.Task[str] | None = None
+        try:
+            await asyncio.wait_for(uploader.started.wait(), 2)
+            assert first_progress.phase == "upload_prepare"
+            assert first_progress.safe_to_retry
+            first_progress.deadline = time.monotonic() - 1
+            if cancel_first:
+                first_progress.close()
+                first.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await first
+                assert first_progress.phase == "upload_prepare"
+            second = asyncio.create_task(wait_for_upload("second", second_progress))
+            await asyncio.wait_for(second_registered.wait(), 2)
+            assert second_progress.phase == "upload_prepare"
+            assert second_progress.safe_to_retry
+            uploader.ready.set()
+            assert await asyncio.wait_for(second, 2) == "shared-token"
+            if not cancel_first:
+                assert await asyncio.wait_for(first, 2) == "shared-token"
+        finally:
+            uploader.ready.set()
+            for waiter in (first, second):
+                if waiter is not None and not waiter.done():
+                    waiter.cancel()
+            await asyncio.gather(
+                *(waiter for waiter in (first, second) if waiter is not None),
+                return_exceptions=True,
+            )
+    assert first_progress.closed
+    assert not second_progress.closed
+    assert second_progress.phase is None
+    _assert_independent_shared_progress(uploader, first_progress, second_progress)
+    assert not media._upload_progress
+
+
+@pytest.mark.asyncio
+async def test_late_fingerprint_does_not_start_shared_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fingerprint_started = Event()
+    fingerprint_ready = Event()
+    progress = DeliveryProgress(deadline=time.monotonic() + 60)
+
+    def fingerprint(_payload: QQOfficialImagePayload) -> str:
+        fingerprint_started.set()
+        if not fingerprint_ready.wait(2):
+            raise TimeoutError
+        return "fingerprint"
+
+    monkeypatch.setattr(
+        "ironsbot.integrations.qq_official.media_upload._media_fingerprint", fingerprint
+    )
+    uploader = _FakeUploader()
+    media = QQOfficialMediaUpload(uploader, tmp_path, spawn=TaskOwner().create)
+    token = delivery_progress.set(progress)
+    controlled_token = controlled_delivery.set(True)
+    try:
+        async with reuse_media_uploads():
+            waiter = asyncio.create_task(
+                media.upload_image(
+                    "group", "target", QQOfficialImagePayload(content=b"image")
+                )
+            )
+            try:
+                assert await asyncio.to_thread(fingerprint_started.wait, 2)
+                assert progress.phase == "upload_prepare"
+                progress.deadline = time.monotonic() - 1
+            finally:
+                fingerprint_ready.set()
+                with pytest.raises(QQDeliveryClosedError) as caught:
+                    await asyncio.wait_for(waiter, 2)
+            assert caught.value.requested_phase == "upload_prepare"
+            assert progress.safe_to_retry
+            assert not media._batches
+    finally:
+        fingerprint_ready.set()
+        controlled_delivery.reset(controlled_token)
+        delivery_progress.reset(token)
+    assert uploader.calls == []
+    assert not media._upload_origins
+
+
+@pytest.mark.asyncio
+async def test_shared_upload_stops_next_phase_when_all_consumers_expire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uploader = _ProgressAwareUploader()
+    media = QQOfficialMediaUpload(uploader, tmp_path, spawn=TaskOwner().create)
+    payload = QQOfficialImagePayload(url="https://example.invalid/shared.png")
+    first_progress = DeliveryProgress(deadline=time.monotonic() + 60)
+    second_progress = DeliveryProgress(deadline=time.monotonic() + 60)
+    both_registered = _observe_shared_waiters(
+        monkeypatch, media, [first_progress, second_progress]
+    )
+
+    async def wait_for_upload(target: str, progress: DeliveryProgress) -> str:
+        token = delivery_progress.set(progress)
+        controlled_token = controlled_delivery.set(True)
+        try:
+            return await media.upload_image("group", target, payload)
+        finally:
+            controlled_delivery.reset(controlled_token)
+            delivery_progress.reset(token)
+
+    async with reuse_media_uploads():
+        first = asyncio.create_task(wait_for_upload("first", first_progress))
+        second: asyncio.Task[str] | None = None
+        try:
+            await asyncio.wait_for(uploader.started.wait(), 2)
+            shared = uploader.progress[0]
+            assert shared is not None
+            second = asyncio.create_task(wait_for_upload("second", second_progress))
+            await asyncio.wait_for(both_registered.wait(), 2)
+            assert not shared.closed
+            first_progress.deadline = time.monotonic() - 1
+            assert not shared.closed
+            second_progress.deadline = time.monotonic() - 1
+            assert shared.closed
+            assert first_progress.phase == second_progress.phase == "upload_prepare"
+            uploader.ready.set()
+            for waiter in (first, second):
+                with pytest.raises(QQDeliveryClosedError) as caught:
+                    await asyncio.wait_for(waiter, 2)
+                assert caught.value.requested_phase == "upload_confirm"
+        finally:
+            uploader.ready.set()
+            for waiter in (first, second):
+                if waiter is not None and not waiter.done():
+                    waiter.cancel()
+            await asyncio.gather(
+                *(waiter for waiter in (first, second) if waiter is not None),
+                return_exceptions=True,
+            )
+    assert uploader.calls == 1
+    assert len(uploader.progress) == 1  # The upload_confirm body was never entered.
+    assert shared.consumer_progress == []
+    assert not media._upload_progress

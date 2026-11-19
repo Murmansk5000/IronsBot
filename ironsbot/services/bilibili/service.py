@@ -102,6 +102,7 @@ class BilibiliService:
     pending_check: bool = field(default=False, init=False)
     pending_regular_check: bool = field(default=False, init=False)
     pending_boost_slots: dict[str, BoostSlot] = field(default_factory=dict, init=False)
+    register_delivery: Callable[..., None] | None = None
     _detail_tasks: dict[str, asyncio.Task[dict[str, Any]]] = field(
         default_factory=dict,
         init=False,

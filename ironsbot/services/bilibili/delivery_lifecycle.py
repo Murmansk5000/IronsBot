@@ -8,10 +8,15 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ironsbot.core.delivery_attempt import delivery_execution
+from ironsbot.core.delivery_attempt import (
+    DeliveryProgress,
+    delivery_execution,
+    delivery_progress,
+)
 from ironsbot.core.outbound import DeliveryFailureKind, SendResult
 
 if TYPE_CHECKING:
@@ -23,8 +28,65 @@ if TYPE_CHECKING:
 
 STAGE_DEADLINE_SECONDS = 60.0
 MAX_STAGE_ATTEMPTS = 4
+LEASE_RENEW_SECONDS = 10.0
 _LOGGER = logging.getLogger(__name__)
 _WORKERS: set[asyncio.Future[None]] = set()
+_WorkerMap = dict[asyncio.Future[None], tuple["ConversationRef", DeliveryProgress]]
+_OWNED_WORKERS: ContextVar[_WorkerMap | None] = ContextVar(
+    "bilibili_owned_workers", default=None
+)
+_OWNER_GATE: ContextVar[DeliveryProgress | None] = ContextVar(
+    "bilibili_owner_gate", default=None
+)
+
+
+class DeliveryOwnershipLostError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Bilibili execution ownership is no longer reliable")
+
+
+def has_pending_workers(target: ConversationRef) -> bool:
+    workers = _OWNED_WORKERS.get()
+    return workers is not None and any(
+        value[0] == target and not task.done() for task, value in workers.items()
+    )
+
+
+def _renew_owner(ledger: DynamicDeliveryLedger, key: str, owner: str) -> bool:
+    try:
+        renewed = ledger.renew_execution(key, owner)
+    except Exception as error:  # noqa: BLE001 - ownership uncertainty must close action gates
+        _LOGGER.error(  # noqa: TRY400 - log type only, not arbitrary storage exception text
+            "Bilibili execution renewal failed: dynamic=%s exception=%s",
+            key,
+            type(error).__name__,
+        )
+        return False
+    if not renewed:
+        _LOGGER.error("Bilibili execution ownership lost: dynamic=%s", key)
+    return renewed
+
+
+def _stop_workers(workers: _WorkerMap) -> None:
+    for task, (_, progress) in tuple(workers.items()):
+        progress.close()
+        task.cancel()
+
+
+async def drain_owned_workers() -> None:
+    workers = _OWNED_WORKERS.get()
+    if not workers:
+        return
+    drained = asyncio.gather(*workers, return_exceptions=True)
+    cancelled = False
+    while not drained.done():
+        try:
+            await asyncio.shield(drained)
+        except asyncio.CancelledError:  # noqa: PERF203 - repeated cancellation must not release active transports
+            cancelled = True
+    drained.result()
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 def _drained(task: asyncio.Future[None]) -> None:
@@ -35,7 +97,10 @@ def _drained(task: asyncio.Future[None]) -> None:
 
 @asynccontextmanager
 async def own_delivery(
-    ledger: DynamicDeliveryLedger | None, key: str
+    ledger: DynamicDeliveryLedger | None,
+    key: str,
+    *,
+    on_release: Callable[[], None] | None = None,
 ) -> AsyncIterator[bool]:
     if ledger is None:
         yield True
@@ -46,27 +111,44 @@ async def own_delivery(
         yield False
         return
     stop = asyncio.Event()
+    workers: _WorkerMap = {}
+    owner_gate = DeliveryProgress()
 
     async def heartbeat() -> None:
         while not stop.is_set():
             try:
-                await asyncio.wait_for(stop.wait(), timeout=10.0)
+                await asyncio.wait_for(stop.wait(), timeout=LEASE_RENEW_SECONDS)
             except asyncio.TimeoutError:  # noqa: PERF203 - periodic durable lease renewal
-                if not ledger.renew_execution(key, owner):
+                if not _renew_owner(ledger, key, owner):
+                    owner_gate.close()
+                    _stop_workers(workers)
                     return
 
     # This child is scoped to the context and joined before releasing it.
     task = asyncio.ensure_future(heartbeat())
     marker = delivery_execution.set((key, owner))
+    worker_marker = _OWNED_WORKERS.set(workers)
+    gate_marker = _OWNER_GATE.set(owner_gate)
+
     try:
         yield True
     finally:
-        delivery_execution.reset(marker)
-        stop.set()
         try:
-            await task
+            await drain_owned_workers()
         finally:
-            ledger.release_execution(key, owner)
+            _OWNED_WORKERS.reset(worker_marker)
+            _OWNER_GATE.reset(gate_marker)
+            delivery_execution.reset(marker)
+            stop.set()
+            try:
+                await task
+            finally:
+                ledger.release_execution(key, owner)
+                current = asyncio.current_task()
+                if on_release is not None and (
+                    current is None or not current.cancelling()
+                ):
+                    on_release()
 
 
 @dataclass(slots=True)
@@ -131,6 +213,8 @@ class OrderedStages:
         stage: str,
         operation: Callable[[], Awaitable[None]],
     ) -> None:
+        if (owner_gate := _OWNER_GATE.get()) is not None and owner_gate.closed:
+            raise DeliveryOwnershipLostError
         seconds = self.remaining(target, stage)
         if seconds <= 0:
             self.expire(target, stage)
@@ -139,20 +223,42 @@ class OrderedStages:
         async def execute() -> None:
             await operation()
 
-        worker = (
-            self.spawn(execute(), name="bilibili.unit.receipt")
-            if self.spawn
-            else asyncio.ensure_future(execute())
-        )
+        progress = DeliveryProgress(deadline=time.monotonic() + seconds)
+        marker = delivery_progress.set(progress)
+        try:
+            worker = (
+                self.spawn(execute(), name="bilibili.unit.receipt")
+                if self.spawn
+                else asyncio.ensure_future(execute())
+            )
+        finally:
+            delivery_progress.reset(marker)
         _WORKERS.add(worker)
         worker.add_done_callback(_drained)
+        if (owned_workers := _OWNED_WORKERS.get()) is not None:
+            owned_workers[worker] = (target, progress)
         try:
             await asyncio.wait_for(asyncio.shield(worker), timeout=seconds)
         except asyncio.TimeoutError:
             if worker.done():
                 worker.result()
                 return
+            progress.close()
+            if progress.safe_to_retry and self.ledger is not None:
+                self.ledger.finish(
+                    self.dynamic_id,
+                    target,
+                    stage,
+                    SendResult(
+                        delivered=False,
+                        error_code="stage_deadline_before_submit",
+                        failure_kind=DeliveryFailureKind.PERMANENT,
+                        failure_phase=progress.phase,
+                    ),
+                )
             self.expire(target, stage)
         except asyncio.CancelledError:
-            self.expire(target, stage)
+            progress.close()
+            if not progress.safe_to_retry:
+                self.expire(target, stage)
             raise

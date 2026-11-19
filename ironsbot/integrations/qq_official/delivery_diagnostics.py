@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from ironsbot.core.delivery_attempt import delivery_unit
+from ironsbot.core.delivery_attempt import delivery_progress, delivery_unit
 from ironsbot.core.failure_text import safe_platform_message
 
 if TYPE_CHECKING:
@@ -83,8 +83,44 @@ class QQDeliveryPhaseError(RuntimeError):
         )
 
 
+class QQDeliveryClosedError(QQDeliveryPhaseError, TimeoutError):
+    """The attempt gate rejected a phase before any new work could start."""
+
+    def __init__(self, phase: str, *, may_have_submitted: bool) -> None:
+        self.requested_phase = phase
+        # Existing QQ error mapping understands transport timeouts in these phases.
+        super().__init__(
+            "message_submit" if may_have_submitted else "pre_submit_gate",
+            TimeoutError("delivery attempt closed"),
+        )
+
+
 @asynccontextmanager
-async def delivery_phase(phase: str) -> AsyncIterator[None]:
+async def delivery_phase(
+    phase: str, *, allow_closed: bool = False
+) -> AsyncIterator[None]:
+    previous_phase = None
+    previous_pre_submit = False
+    if (progress := delivery_progress.get()) is not None:
+        if progress.closed and not allow_closed:
+            error = QQDeliveryClosedError(
+                phase, may_have_submitted=progress.may_have_submitted
+            )
+            progress.phase = error.phase
+            progress.known_pre_submit = not progress.may_have_submitted
+            raise error
+        previous_phase = progress.phase
+        previous_pre_submit = progress.known_pre_submit
+        progress.phase = phase
+        progress.known_pre_submit = phase in {
+            "upload_prepare",
+            "upload_confirm",
+            "upload_complete",
+            "cos_put",
+        } or phase.startswith("cos_put[")
+        if phase == "message_submit":
+            # Submission evidence survives nested scopes and later uploads.
+            progress.may_have_submitted = True
     started = time.monotonic()
     logger.info(
         "QQ delivery phase started: phase=%s unit=%s", phase, delivery_unit.get()
@@ -116,6 +152,9 @@ async def delivery_phase(phase: str) -> AsyncIterator[None]:
         )
         raise error from cause
     else:
+        if progress is not None:
+            progress.phase = previous_phase
+            progress.known_pre_submit = previous_pre_submit
         logger.info(
             "QQ delivery phase completed: phase=%s elapsed_ms=%d unit=%s",
             phase,

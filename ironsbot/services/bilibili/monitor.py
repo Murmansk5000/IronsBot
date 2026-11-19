@@ -68,6 +68,28 @@ class ClaimedDynamicDelivery:
     history_id: str
 
 
+def _start_claimed_dynamic(
+    service: BilibiliService,
+    send_push: DynamicPushSender,
+    delivery: ClaimedDynamicDelivery,
+) -> asyncio.Task[None]:
+    if service.register_delivery is not None:
+        try:
+            service.register_delivery(
+                delivery.item,
+                delivery.pub_ts,
+                delivery.author_mid,
+                delivery.targets,
+                delivery.categories,
+            )
+        except BaseException:
+            service.history.release_delivery_claim(delivery.history_id)
+            raise
+    return service.spawn_delivery(
+        delivery.history_id, _deliver_claimed_dynamic(service, send_push, delivery)
+    )
+
+
 async def _deliver_claimed_dynamic(
     service: BilibiliService,
     send_push: DynamicPushSender,
@@ -216,20 +238,11 @@ async def _push_new_dynamics(
         if not service.history.try_claim_delivery(history_id):
             continue
         delivery_tasks.append(
-            service.spawn_delivery(
-                history_id,
-                _deliver_claimed_dynamic(
-                    service,
-                    send_push,
-                    ClaimedDynamicDelivery(
-                        item,
-                        pub_ts,
-                        author_mid,
-                        targets,
-                        categories,
-                        snapshot,
-                        history_id,
-                    ),
+            _start_claimed_dynamic(
+                service,
+                send_push,
+                ClaimedDynamicDelivery(
+                    item, pub_ts, author_mid, targets, categories, snapshot, history_id
                 ),
             )
         )

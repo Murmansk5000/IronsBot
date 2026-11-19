@@ -108,7 +108,8 @@ class TencentQQClient:
                     sequence=sequence,
                 )
                 async with (
-                    delivery_phase("message_submit")
+                    # A returned response is evidence even after the deadline.
+                    delivery_phase("message_submit", allow_closed=True)
                     if controlled_delivery.get()
                     else nullcontext()
                 ):
