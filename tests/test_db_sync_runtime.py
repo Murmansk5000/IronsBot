@@ -532,6 +532,9 @@ def test_sync_database_uses_matching_local_cache(
     class FakeFingerprintResponse:
         text = f"{fingerprint}  data.sqlite\n"
 
+        def raise_for_status(self) -> None:
+            return None
+
     class FakeClient:
         def __init__(self, *args: object, **kwargs: object) -> None:
             pass

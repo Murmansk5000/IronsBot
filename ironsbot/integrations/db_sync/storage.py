@@ -14,6 +14,8 @@ import httpx
 from ironsbot.core.time import TZ_CN
 from ironsbot.integrations.storage.sqlite import open_sqlite_connection
 
+from .transport import retry_connection, transport_summary
+
 logger = logging.getLogger(__name__)
 
 
@@ -120,10 +122,17 @@ async def _fetch_remote_timestamp(
     sync_url: str,
 ) -> datetime | None:
     try:
-        response = await client.head(sync_url)
+        response = await retry_connection(
+            lambda: client.head(sync_url), url=sync_url, stage="metadata"
+        )
         response.raise_for_status()
-    except (AttributeError, httpx.HTTPError):
-        logger.debug(f"获取远端数据库时间失败: {sync_url}", exc_info=True)
+    except (AttributeError, httpx.HTTPError) as error:
+        logger.debug(
+            "获取远端数据库时间失败: %s",
+            transport_summary(error)
+            if isinstance(error, httpx.HTTPError)
+            else type(error).__name__,
+        )
         return None
 
     return _parse_http_datetime(response.headers.get("last-modified"))

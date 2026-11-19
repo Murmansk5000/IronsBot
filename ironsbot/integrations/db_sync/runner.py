@@ -33,6 +33,12 @@ from ironsbot.services.operations.data_update import DataUpdate, DataVersion
 
 from . import formatting as sync_formatting
 from . import remote_build as sync_remote_build
+from .transport import (
+    download_response,
+    request_host,
+    retry_connection,
+    transport_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,10 +156,13 @@ class DatabaseSync:
                             fingerprint = _normalize_fingerprint(
                                 await entry.get_fingerprint(client)
                             )
-                        except Exception:  # noqa: BLE001
+                        except Exception as error:  # noqa: BLE001
                             logger.warning(
-                                f"获取数据库 '{name}' 指纹失败，将继续执行同步",
-                                exc_info=True,
+                                "数据库 '%s' 指纹检查失败，将继续执行同步：%s",
+                                name,
+                                transport_summary(error)
+                                if isinstance(error, httpx.HTTPError)
+                                else type(error).__name__,
                             )
 
                     remote = VersionInfo(
@@ -187,7 +196,7 @@ class DatabaseSync:
 
                     logger.info(f"开始从 {entry.sync_url} 同步数据库 '{name}'...")
                     content = bytearray()
-                    async with client.stream("GET", entry.sync_url) as response:
+                    async with download_response(client, entry.sync_url) as response:
                         response.raise_for_status()
                         async for chunk in response.aiter_bytes(chunk_size=8192):
                             content.extend(chunk)
@@ -268,7 +277,7 @@ class DatabaseSync:
             except httpx.HTTPStatusError as error:
                 logger.warning(
                     f"数据库 '{name}' 同步失败（HTTP {error.response.status_code}）："
-                    f"{error.request.url}"
+                    f"host={request_host(error)}"
                 )
                 return self._fail(
                     name,
@@ -277,11 +286,11 @@ class DatabaseSync:
                     f"HTTP {error.response.status_code}",
                 )
             except httpx.TransportError as error:
-                message = f"{type(error).__name__}: {error}"
+                message = transport_summary(error)
                 logger.warning(f"数据库 '{name}' 同步失败（网络连接错误）：{message}")
                 return self._fail(name, local_before, remote, message)
             except httpx.HTTPError as error:
-                message = f"{type(error).__name__}: {error}"
+                message = transport_summary(error)
                 logger.warning(
                     f"数据库 '{name}' 同步失败（HTTP 客户端错误）：{message}"
                 )
@@ -464,7 +473,11 @@ class DatabaseSync:
             return SyncStatus(
                 ok=False,
                 local_before=local,
-                message=f"{type(error).__name__}: {error}".rstrip(": "),
+                message=(
+                    transport_summary(error)
+                    if isinstance(error, httpx.HTTPError)
+                    else type(error).__name__
+                ),
             )
         if fingerprint is None:
             return SyncStatus(
@@ -508,7 +521,11 @@ class DatabaseSync:
             return None
 
         async def get_fingerprint(client: httpx.AsyncClient) -> str:
-            return (await client.get(url)).text
+            response = await retry_connection(
+                lambda: client.get(url), url=url, stage="fingerprint"
+            )
+            response.raise_for_status()
+            return response.text
 
         return get_fingerprint
 
