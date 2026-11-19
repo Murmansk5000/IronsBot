@@ -23,8 +23,14 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ConversationRef, reference_digest
 from ironsbot.services.bilibili import delivery_logging as diagnostics
 from ironsbot.services.bilibili import image_messages
+from ironsbot.services.bilibili.conversation_queue import (
+    dispatch_entry,
+    log_turn,
+    submit_delivery,
+    wake_ready,
+)
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
-from ironsbot.services.bilibili.delivery_lifecycle import OrderedStages, own_delivery
+from ironsbot.services.bilibili.delivery_lifecycle import OrderedStages
 from ironsbot.services.bilibili.delivery_notices import delivery_failure_text
 from ironsbot.services.bilibili.delivery_preparation import (
     bounded_preparation,
@@ -32,7 +38,10 @@ from ironsbot.services.bilibili.delivery_preparation import (
     prepare_frozen_text,
 )
 from ironsbot.services.bilibili.delivery_rounds import DynamicRetryPlan
-from ironsbot.services.bilibili.delivery_targets import canonical_targets
+from ironsbot.services.bilibili.delivery_targets import (
+    canonical_targets,
+    pending_targets,
+)
 from ironsbot.services.bilibili.image_messages import (
     prepare_dynamic_image_message as prepare_dynamic_image_message,  # noqa: PLC0414 - public helper export
 )
@@ -117,11 +126,37 @@ class BilibiliDynamicOutboundSender:
         *,
         resume: bool = False,
     ) -> None:
-        async with own_delivery(self.ledger, str(item.get("id_str", ""))) as owned:
-            if owned:
-                await self._send_owned(
-                    item, pub_ts, author_mid, targets, categories, resume=resume
-                )
+        await submit_delivery(
+            self,
+            {
+                "item": item,
+                "pub_ts": pub_ts,
+                "uid": author_mid,
+                "targets": targets,
+                "categories": categories,
+            },
+            resume=resume,
+        )
+
+    def enqueue(
+        self,
+        item: dict[str, Any],
+        pub_ts: int,
+        author_mid: int,
+        targets: BiliPushTargets,
+        categories: tuple[str, ...] = (),
+    ) -> None:
+        if self.ledger is not None:
+            self.ledger.prepare(
+                item,
+                pub_ts,
+                author_mid,
+                canonical_targets(self.delivery.private_routes, targets),
+                categories,
+            )
+
+    async def send_queued(self, entry: dict[str, Any]) -> None:
+        await dispatch_entry(self, entry)
 
     async def _send_owned(  # noqa: C901, PLR0913, PLR0915 - ordered independent target stages
         self,
@@ -133,21 +168,10 @@ class BilibiliDynamicOutboundSender:
         *,
         resume: bool = False,
     ) -> None:
-        targets = canonical_targets(self.delivery.private_routes, targets)
         dynamic_id = str(item.get("id_str", ""))
         started = diagnostics.push_started(
             dynamic_id, author_mid, targets, resume=resume
         )
-        if (
-            self.ledger is not None
-            and not resume
-            and not self.ledger.prepare(item, pub_ts, author_mid, targets, categories)
-        ):
-            _LOGGER.info(
-                "Bilibili push skipped: dynamic=%s reason=already_registered",
-                dynamic_id,
-            )
-            return
         subscription_key = bili_stage_subscription_key(author_mid, "link")
         link_message = render_dynamic_link_message(
             item,
@@ -192,9 +216,9 @@ class BilibiliDynamicOutboundSender:
         ]
 
         text_targets = stage_policy.full_targets(full_targets, "text")
-        text_targets = self._pending_targets(text_targets, dynamic_id, "text")
+        text_targets = pending_targets(self.ledger, text_targets, dynamic_id, "text")
         image_targets = stage_policy.full_targets(full_targets, "image")
-        image_targets = self._pending_targets(image_targets, dynamic_id, "image")
+        image_targets = pending_targets(self.ledger, image_targets, dynamic_id, "image")
         text_task = (
             asyncio.gather(
                 bounded_preparation(
@@ -420,6 +444,11 @@ class BilibiliDynamicOutboundSender:
 
         async def send_one(conversation: ConversationRef) -> None:
             await send_target(conversation, full=conversation in full_set)
+            if self.ledger is not None and self.ledger.queue_settle(
+                dynamic_id, conversation
+            ):
+                log_turn(dynamic_id, conversation, "finished")
+                wake_ready(self)
 
         async with reuse_media_uploads():
             await DynamicRetryPlan(dynamic_id, self.delivery.policy, self.ledger).run(
@@ -538,30 +567,12 @@ class BilibiliDynamicOutboundSender:
         return replace(
             delivery,
             messenger=StageMessenger(
-                self.delivery.messenger, self.ledger, dynamic_id, stage
+                self.delivery.messenger,
+                self.ledger,
+                dynamic_id,
+                stage,
+                on_receipt=lambda: wake_ready(self),
             ),
-        )
-
-    def _pending_targets(
-        self,
-        targets: BiliPushTargets,
-        dynamic_id: str,
-        stage: str,
-    ) -> BiliPushTargets:
-        if self.ledger is None:
-            return targets
-        return replace(
-            targets,
-            full_group_conversations=[
-                target
-                for target in targets.full_group_conversations
-                if self.ledger.unattempted(dynamic_id, target, stage)
-            ],
-            full_private_conversations=[
-                target
-                for target in targets.full_private_conversations
-                if self.ledger.unattempted(dynamic_id, target, stage)
-            ],
         )
 
     async def _send_link_message(  # noqa: PLR0913 - separate target collections

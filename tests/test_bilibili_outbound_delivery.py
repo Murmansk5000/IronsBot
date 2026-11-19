@@ -114,6 +114,7 @@ class _RecordingDelivery:
     content_calls: list[dict[str, object]] = field(default_factory=list)
     content_failures: int = 0
     private_routes: None = None
+    outbox: None = None
     policy: ProactiveDeliveryPolicy = field(default_factory=ProactiveDeliveryPolicy)
 
     async def send_many(

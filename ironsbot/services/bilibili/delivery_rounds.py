@@ -45,6 +45,7 @@ class DynamicRetryPlan:
         resume: bool,
     ) -> None:
         pending = targets
+        selected = frozenset(targets)
         first_round = (
             self.ledger.completed_round_count(self.dynamic_id) if self.ledger else 0
         )
@@ -179,7 +180,8 @@ class DynamicRetryPlan:
                 dict.fromkeys(
                     target
                     for (target, _stage), result in failures.items()
-                    if result.failure_kind is DeliveryFailureKind.RETRYABLE
+                    if target in selected
+                    and result.failure_kind is DeliveryFailureKind.RETRYABLE
                 )
             )
             logger.info(

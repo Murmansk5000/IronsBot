@@ -14,6 +14,7 @@ from ironsbot.core.outbound import DeliveryFailureKind, SendResult
 from ironsbot.core.platform import reference_digest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ironsbot.core.outbound import (
@@ -39,6 +40,20 @@ class MediaCleanupResult:
 
 class DynamicDeliveryLedger(Protocol):
     path: Path
+
+    def queue_entry(self, dynamic_id: str) -> dict[str, Any]: ...
+    def queue_wait_account(self, dynamic_id: str, target: ConversationRef) -> None: ...
+
+    def queue_claim(
+        self, dynamic_id: str, targets: tuple[ConversationRef, ...]
+    ) -> set[ConversationRef]: ...
+    def queue_wake(
+        self, dynamic_id: str, targets: tuple[ConversationRef, ...]
+    ) -> None: ...
+    def queue_settle(
+        self, dynamic_id: str, target: ConversationRef, *, final: bool = False
+    ) -> bool: ...
+    def queue_ready(self) -> list[dict[str, Any]]: ...
 
     def begin_media_preparation(
         self, dynamic_id: str, fingerprint: str
@@ -140,6 +155,7 @@ class StageMessenger:
     ledger: DynamicDeliveryLedger
     dynamic_id: str
     stage: str
+    on_receipt: Callable[[], None] | None = None
 
     def capabilities_for(self, conversation: ConversationRef) -> DeliveryCapabilities:
         return self.messenger.capabilities_for(conversation)
@@ -222,6 +238,8 @@ class StageMessenger:
             ),
         )
         self.ledger.finish(self.dynamic_id, conversation, self.stage, result)
+        if self.on_receipt is not None:
+            self.on_receipt()
         if result.delivered:
             _LOGGER.info(
                 "Bilibili unit delivered: dynamic=%s unit=%s round=%d target=%s "

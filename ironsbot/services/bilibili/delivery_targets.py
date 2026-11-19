@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import reference_digest
@@ -13,9 +14,33 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from ironsbot.core.platform import ConversationRef
+    from ironsbot.services.bilibili.delivery_ledger import DynamicDeliveryLedger
     from ironsbot.services.private_conversation_routes import PrivateConversationRoutes
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def pending_targets(
+    ledger: DynamicDeliveryLedger | None,
+    targets: BiliPushTargets,
+    dynamic_id: str,
+    stage: str,
+) -> BiliPushTargets:
+    if ledger is None:
+        return targets
+    return replace(
+        targets,
+        full_group_conversations=[
+            target
+            for target in targets.full_group_conversations
+            if ledger.unattempted(dynamic_id, target, stage)
+        ],
+        full_private_conversations=[
+            target
+            for target in targets.full_private_conversations
+            if ledger.unattempted(dynamic_id, target, stage)
+        ],
+    )
 
 
 def canonical_targets(

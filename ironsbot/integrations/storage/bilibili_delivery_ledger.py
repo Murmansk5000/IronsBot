@@ -11,6 +11,10 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.core.delivery_attempt import delivery_execution
 from ironsbot.core.outbound import DeliveryFailureKind, ExecutionIdentity, SendResult
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.storage.bilibili_conversation_queue import (
+    ConversationQueueStore,
+    initialize_queue,
+)
 from ironsbot.integrations.storage.bilibili_delivery_lifecycle import (
     TERMINAL_STATES,
     predecessors,
@@ -19,9 +23,6 @@ from ironsbot.integrations.storage.bilibili_media_cleanup import cleanup_media
 from ironsbot.integrations.storage.bilibili_media_manifest import (
     decode_media,
     encode_media,
-)
-from ironsbot.integrations.storage.bilibili_media_preparation import (
-    MediaPreparationStore,
 )
 from ironsbot.integrations.storage.frozen_message import freeze_message, thaw_message
 from ironsbot.services.bilibili.delivery_rounds import BILI_RETRY_DELAYS
@@ -39,7 +40,7 @@ RETRY_DELAYS = BILI_RETRY_DELAYS
 MAX_ATTEMPTS = len(RETRY_DELAYS) + 1
 
 
-class SqliteDynamicDeliveryLedger(MediaPreparationStore):
+class SqliteDynamicDeliveryLedger(ConversationQueueStore):
     def __init__(self, path: Path, *, media_root: Path | None = None) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
@@ -88,6 +89,7 @@ class SqliteDynamicDeliveryLedger(MediaPreparationStore):
             ):
                 if name not in columns:
                     db.execute(f"ALTER TABLE stages ADD COLUMN {name} {definition}")
+            initialize_queue(db)
 
     def _now(self) -> float:
         return time.time()
@@ -111,6 +113,7 @@ class SqliteDynamicDeliveryLedger(MediaPreparationStore):
             }
         )
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             cursor = db.execute(
                 "INSERT OR IGNORE INTO deliveries VALUES (?, ?, ?)",
                 (dynamic_id, time.time(), payload),
@@ -125,6 +128,11 @@ class SqliteDynamicDeliveryLedger(MediaPreparationStore):
                     if dynamic_image_urls(item):
                         phases.append("image")
                 for target in conversations:
+                    db.execute(
+                        "INSERT OR IGNORE INTO conversation_queue(dynamic_id,target) "
+                        "VALUES (?,?)",
+                        (dynamic_id, json.dumps(target, sort_keys=True)),
+                    )
                     for phase in phases:
                         db.execute(
                             "INSERT OR IGNORE INTO stages "
@@ -208,6 +216,15 @@ class SqliteDynamicDeliveryLedger(MediaPreparationStore):
                     (*ownership, time.time()),
                 ).fetchone()
                 if owner is None:
+                    return False
+                if (
+                    db.execute(
+                        "SELECT 1 FROM conversation_queue WHERE dynamic_id=? "
+                        "AND target=? AND state='running'",
+                        (dynamic_id, self._target(target)),
+                    ).fetchone()
+                    is None
+                ):
                     return False
             for previous in () if stage == "image" else predecessors(stage):
                 row = db.execute(
@@ -656,6 +673,12 @@ class SqliteDynamicDeliveryLedger(MediaPreparationStore):
     def skip_remaining(self, dynamic_id: str) -> bool:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            if db.execute(
+                "SELECT 1 FROM conversation_queue WHERE dynamic_id=? "
+                "AND state IN ('queued','running','waiting') LIMIT 1",
+                (dynamic_id,),
+            ).fetchone():
+                return False
             if (
                 db.execute(
                     "SELECT 1 FROM stages WHERE dynamic_id=? "
