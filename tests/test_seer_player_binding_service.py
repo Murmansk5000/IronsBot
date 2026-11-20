@@ -80,7 +80,7 @@ def test_parse_confirmation_requires_exact_reply(text: str) -> None:
     assert parse_confirmation(text) is None
 
 
-def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
+def test_direct_binding_queries_then_waits_for_confirmation() -> None:
     pending = PendingPlayerQuery(
         player_id=_PLAYER_ID,
         user_info=SimpleNamespace(nick="测试玩家"),
@@ -107,13 +107,13 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
     service.query.assert_awaited_once_with(
         _PLAYER_ID,
         actor=_actor(),
-        explicit=True,
+        explicit=False,
         conversation=ConversationRef(Platform.ONEBOT, "group", "20002"),
     )
-    service._save_binding.assert_called_once_with(_actor(), pending)
-    assert result.offer_binding is False
+    service._save_binding.assert_not_called()
+    assert result.offer_binding is True
     assert result.pending is pending
-    assert pending.player_message.startswith("已设置默认米米号：123456。\n\n")
+    assert pending.player_message == "玩家信息"
 
 
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
@@ -160,7 +160,9 @@ def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     assert store.get(target).player_id == _PLAYER_ID + 1
     assert result.binding_replacement is None
     assert result.offer_binding is False
-    assert pending.player_message.startswith("已为该成员设置默认米米号")
+    assert result.pending is not None
+    assert result.pending.player_message.startswith("已为该成员设置默认米米号")
+    assert pending.player_message == "player information"
     service.query.assert_awaited_once_with(
         _PLAYER_ID,
         actor=operator,
@@ -169,7 +171,7 @@ def test_admin_binding_updates_only_target_and_bypasses_its_cooldown(
     )
 
 
-def test_rebinding_the_same_player_skips_query_and_keeps_binding() -> None:
+def test_rebinding_the_same_player_queries_without_rewriting_binding() -> None:
     service = object.__new__(PlayerService)
     service._bindings = SimpleNamespace(  # type: ignore[attr-defined]
         get=Mock(
@@ -182,12 +184,22 @@ def test_rebinding_the_same_player_skips_query_and_keeps_binding() -> None:
             )
         )
     )
-    service.query = AsyncMock()
+    pending = PendingPlayerQuery(
+        _PLAYER_ID,
+        SimpleNamespace(nick="测试玩家"),
+        object(),
+        "玩家信息",
+        cast("Any", object()),
+    )
+    service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
+    service._save_binding = Mock()
 
     result = asyncio.run(service.bind_player(_PLAYER_ID, actor=_actor()))
 
-    assert result.message == "当前已绑定该米米号：123456（测试玩家）。"
-    service.query.assert_not_awaited()
+    assert result.pending is pending and not result.offer_binding
+    assert pending.player_message == "玩家信息"
+    service.query.assert_awaited_once()
+    service._save_binding.assert_not_called()
 
 
 def test_rebinding_a_different_player_requires_confirmation() -> None:
@@ -237,7 +249,8 @@ def test_declining_a_rebinding_keeps_the_existing_binding() -> None:
         replacing_existing=True,
     )
 
-    assert result == "已保留当前默认米米号。"
+    assert result.succeeded and not result.changed
+    assert pending.player_message == "玩家信息"
     bindings.decline.assert_not_called()
 
 

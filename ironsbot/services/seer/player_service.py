@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.platform import reference_digest
@@ -190,38 +191,39 @@ class PlayerService(PlayerAccountPolicyMixin):
         """Bind self, or a recipient authorized by the administrative command."""
         recipient = target or actor
         binding = self._bindings.get(recipient)
-        if binding.player_id == player_id and target is None:
-            nick = f"（{binding.player_nick}）" if binding.player_nick else ""
-            return PlayerQueryResult(message=f"当前已绑定该米米号：{player_id}{nick}。")
-        if target is None:
+        if target is None and binding.player_id != player_id:
             change_error = self._binding_change_error(actor, target_player_id=player_id)
             if change_error:
                 return PlayerQueryResult(message=change_error)
         result = await self.query(
             player_id,
             actor=actor,
-            explicit=True,
+            explicit=target is not None,
             conversation=conversation,
         )
         if result.message or result.pending is None:
             return result
 
         pending = result.pending
-        if binding.player_id is not None and target is None:
+        if target is None:
             return PlayerQueryResult(
                 pending=pending,
-                offer_binding=True,
-                binding_replacement=binding,
+                offer_binding=binding.player_id != player_id,
+                binding_replacement=(
+                    binding
+                    if binding.player_id is not None and binding.player_id != player_id
+                    else None
+                ),
             )
-        status = (
-            self._save_binding(recipient, pending, bypass_cooldown=True)
-            if target is not None
-            else self._save_binding(recipient, pending)
+        saved = self._save_binding(recipient, pending, bypass_cooldown=True)
+        if not saved.succeeded:
+            return PlayerQueryResult(message=saved.message)
+        status = f"已为该成员{saved.message.removeprefix('已')}"
+        return PlayerQueryResult(
+            pending=replace(
+                pending, player_message=f"{status}\n\n{pending.player_message}"
+            )
         )
-        if target is not None and status.startswith("已"):
-            status = f"已为该成员{status.removeprefix('已')}"
-        pending.player_message = f"{status}\n\n{pending.player_message}"
-        return PlayerQueryResult(pending=pending)
 
     def record_returned_query(
         self,

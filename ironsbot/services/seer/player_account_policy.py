@@ -6,8 +6,11 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import reference_digest
 from ironsbot.services.seer.player_binding import (
+    BindingResult,
     PlayerBindingError,
+    binding_available_date,
     binding_change_error,
+    binding_cooldown_hint,
 )
 
 if TYPE_CHECKING:
@@ -41,10 +44,11 @@ class PlayerAccountPolicyMixin:
         *,
         bypass_cooldown: bool = False,
         only_if_unbound: bool = False,
-    ) -> str:
+        expected_binding: PlayerBindingState | None = None,
+    ) -> BindingResult:
         current = self._bindings.get(actor)
         if current.player_id == pending.player_id and not bypass_cooldown:
-            return f"当前已绑定该米米号：{pending.player_id}。"
+            return BindingResult(succeeded=True)
         change_error = (
             ""
             if bypass_cooldown
@@ -54,7 +58,7 @@ class PlayerAccountPolicyMixin:
             )
         )
         if change_error:
-            return change_error
+            return BindingResult(succeeded=False, message=change_error)
         try:
             self._bindings.bind(
                 actor=actor,
@@ -68,13 +72,20 @@ class PlayerAccountPolicyMixin:
                 ),
                 only_if_unbound=only_if_unbound,
                 reset_cooldown=bypass_cooldown,
+                expected_binding=expected_binding,
             )
         except PlayerBindingError as error:
-            return str(error)
-        except Exception as error:
+            return BindingResult(succeeded=False, message=str(error))
+        except Exception:
             logger.exception("保存米米号绑定失败")
-            return f"⚠️ 默认米米号设置保存失败：{error}"
-        return f"已设置默认米米号：{pending.player_id}。"
+            return BindingResult(
+                succeeded=False, message="⚠️ 默认米米号设置保存失败，请稍后重试。"
+            )
+        return BindingResult(
+            succeeded=True,
+            message=f"已设置默认米米号：{pending.player_id}。",
+            changed=True,
+        )
 
     def save_binding_choice(
         self,
@@ -83,7 +94,8 @@ class PlayerAccountPolicyMixin:
         *,
         accepted: bool,
         replacing_existing: bool = False,
-    ) -> str:
+        expected_binding: PlayerBindingState | None = None,
+    ) -> BindingResult:
         if accepted:
             current = self._bindings.get(actor)
             if (
@@ -91,71 +103,94 @@ class PlayerAccountPolicyMixin:
                 and current.player_id is not None
                 and current.player_id != pending.player_id
             ):
-                status = (
-                    "当前绑定已变化，已保留现有绑定；如需换绑，请重新发送绑定指令。"
+                return BindingResult(
+                    succeeded=False,
+                    message="当前绑定已变化，已保留现有绑定；如需换绑，请重新发送绑定指令。",
                 )
-            else:
-                status = self._save_binding(
-                    actor, pending, only_if_unbound=not replacing_existing
-                )
-        elif replacing_existing:
-            status = "已保留当前默认米米号。"
-        else:
-            try:
-                self._bindings.decline(actor=actor)
-                status = "已跳过默认米米号设置。"
-            except Exception as error:
-                logger.exception("保存米米号绑定选择失败")
-                status = f"⚠️ 默认米米号设置保存失败：{error}"
-        pending.player_message = f"{status}\n\n{pending.player_message}"
-        return status
+            return self._save_binding(
+                actor,
+                pending,
+                only_if_unbound=not replacing_existing,
+                expected_binding=expected_binding,
+            )
+        if replacing_existing:
+            return BindingResult(succeeded=True, message="已保留当前默认米米号。")
+        try:
+            self._bindings.decline(actor=actor)
+            return BindingResult(succeeded=True)
+        except Exception:
+            logger.exception("保存米米号绑定选择失败")
+            return BindingResult(
+                succeeded=False, message="⚠️ 默认米米号设置保存失败，请稍后重试。"
+            )
+
+    def binding_state(self, actor: ActorRef) -> PlayerBindingState:
+        return self._bindings.get(actor)
+
+    def binding_success_notice(self, actor: ActorRef) -> str:
+        binding = self._bindings.get(actor)
+        days = self._config.player.binding.change_cooldown_days
+        text = f"已设置默认米米号：{binding.player_id}。\n"
+        if days <= 0:
+            return text + "解除绑定：解绑米米号。"
+        unbind = "解除绑定：解绑米米号（解绑不重置冷却）。"
+        if binding.last_changed_at is None:
+            return text + unbind
+        available = binding_available_date(
+            binding.last_changed_at, days, date_format="%Y-%m-%d"
+        )
+        return f"{text}可再次换绑时间：{available}。\n{unbind}"
 
     def binding_offer(
         self,
         pending: PendingPlayerQuery,
         *,
-        replacement: PlayerBindingState | None = None,
+        actor: ActorRef,
     ) -> str:
-        nick = str(pending.user_info.nick)
-        if replacement is not None and replacement.player_id is not None:
-            current = str(replacement.player_id)
-            if replacement.player_nick.strip():
-                current += f"（{replacement.player_nick.strip()}）"
-            return (
-                f"当前默认米米号：{current}\n"
-                f"已查到米米号：{pending.player_id}（{nick}）\n\n"
-                "是否将默认米米号改为该账号？\n"
-                "回复“是”或“y”确认，回复“否”或“n”保留当前绑定。"
-            )
+        return self._binding_confirmation(pending.player_id, actor=actor)
+
+    def _binding_confirmation(self, player_id: int, *, actor: ActorRef) -> str:
+        hint = binding_cooldown_hint(
+            self._bindings.get(actor),
+            player_id,
+            now=self._now(),
+            cooldown_days=self._config.player.binding.change_cooldown_days,
+        )
         limits = self._config.player.query_limits
-        quota_hint = ""
+        lines = [f"是否绑定米米号：{player_id}？", "建议绑定本人使用的米米号。"]
         if (
             limits.enabled
             and limits.bound_default_daily_limit > limits.unbound_daily_limit
         ):
-            quota_hint = (
-                "设为默认米米号后，查询该米米号的每日查询额度可从 "
-                f"{limits.unbound_daily_limit} 项提升至 "
-                f"{limits.bound_default_daily_limit} 项。\n"
-                "额度按成功获取的数据项目结算；缓存、预热和超时不计入。\n"
+            lines.append(
+                f"绑定后每日额度：{limits.unbound_daily_limit} → "
+                f"{limits.bound_default_daily_limit} 项。"
             )
-        return (
-            f"已查到米米号：{pending.player_id}（{nick}）\n\n"
-            "如果这是你自己的米米号，是否将其设为默认米米号？\n"
-            "回复“是”或“y”确认，回复“否”或“n”跳过。\n"
-            f"{quota_hint}"
-            "设置后发送“米米号 / 收集 / 巅峰 / 群星牌”即可快捷查询。\n"
-            "以后可发送“解绑米米号”解除绑定。"
+        lines.extend(
+            ("绑定后可直接发送：米米号 / 收集 / 巅峰 / 群星牌等快捷口令。", "")
         )
+        if hint:
+            lines.append(hint)
+        lines.append("回复 是/y 绑定，否/n 不绑定，0 退出。")
+        return "\n".join(lines)
 
-    def bind_shortcut_target(self, actor: ActorRef, player_id: int) -> str:
+    def bind_shortcut_target(
+        self,
+        actor: ActorRef,
+        player_id: int,
+        *,
+        expected_binding: PlayerBindingState | None = None,
+    ) -> BindingResult:
         """Confirm a resolved numeric target without fetching profile for its name."""
         current = self._bindings.get(actor)
         if current.player_id is not None:
-            return "已保留当前默认米米号。"
+            return BindingResult(
+                succeeded=current.player_id == player_id,
+                message="当前绑定状态已变化，请重新发送查询指令。",
+            )
         error = self._binding_change_error(actor, target_player_id=player_id)
         if error:
-            return error
+            return BindingResult(succeeded=False, message=error)
         try:
             self._bindings.bind(
                 actor=actor,
@@ -164,26 +199,19 @@ class PlayerAccountPolicyMixin:
                 changed_at=self._now(),
                 cooldown_days=self._config.player.binding.change_cooldown_days,
                 only_if_unbound=True,
+                expected_binding=expected_binding,
             )
         except PlayerBindingError as error:
-            return str(error)
-        return f"已设置默认米米号：{player_id}。"
+            return BindingResult(succeeded=False, message=str(error))
+        except Exception:
+            logger.exception("保存快捷查询绑定失败")
+            return BindingResult(
+                succeeded=False, message="⚠️ 默认米米号设置保存失败，请稍后重试。"
+            )
+        return BindingResult(succeeded=True, changed=True)
 
-    def shortcut_binding_offer(self, player_id: int) -> str:
-        limits = self._config.player.query_limits
-        benefit = (
-            f"绑定后每日查询额度：{limits.bound_default_daily_limit} 项"
-            f"（未绑定为 {limits.unbound_daily_limit} 项）。\n"
-            if limits.enabled
-            and limits.bound_default_daily_limit > limits.unbound_daily_limit
-            else ""
-        )
-        return (
-            f"查询目标米米号：{player_id}\n"
-            "如果这是你自己的米米号，是否设为默认米米号？\n"
-            "回复“是/y”绑定后继续，回复“否/n”不绑定并继续；0 退出。\n"
-            f"{benefit}缓存、预热和超时不计入实时查询额度。"
-        )
+    def shortcut_binding_offer(self, player_id: int, *, actor: ActorRef) -> str:
+        return self._binding_confirmation(player_id, actor=actor)
 
     def _check_quota(
         self,

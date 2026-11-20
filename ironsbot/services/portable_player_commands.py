@@ -14,7 +14,11 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.services.player_binding_confirmation import confirm_shortcut_binding
+from ironsbot.services.player_binding_confirmation import (
+    binding_access_error,
+    confirm_shortcut_binding,
+    offer_profile_binding_confirmation,
+)
 from ironsbot.services.player_extension_commands import query_player_extension
 from ironsbot.services.player_reference_selection import (
     select_player_reference,
@@ -244,7 +248,7 @@ class _PortablePlayerOperations:
             conversation=context.message.conversation,
             target=target,
         )
-        if result.pending is not None and result.binding_replacement is not None:
+        if result.pending is not None and result.offer_binding:
             return _offer_binding_confirmation(
                 self.service,
                 self.resolver,
@@ -255,6 +259,7 @@ class _PortablePlayerOperations:
                 self.extensions,
                 self.rank_queries,
                 menu_actions=self.menu_actions,
+                explicit_binding=True,
             )
         return _prepare_player_query_reply(
             self.service,
@@ -322,7 +327,18 @@ class _PortablePlayerOperations:
             if not parsed.player_reference:
                 return await query(player_id, query_context)
             return await confirm_shortcut_binding(
-                self.service, self.sessions, player_id, query_context, query
+                self.service,
+                self.sessions,
+                player_id,
+                query_context,
+                query,
+                validate=lambda selected: binding_access_error(
+                    self.features,
+                    self.resolver,
+                    selected,
+                    player_id,
+                    self.resolver.reference_source(parsed.player_reference or ""),
+                ),
             )
 
         return await select_player_target(
@@ -394,60 +410,43 @@ def _offer_binding_confirmation(  # noqa: PLR0913 - preserves query context
     rank_queries: RankQueryService | None,
     *,
     menu_actions: tuple[PlayerDetailMenuAction, ...] = (),
+    explicit_binding: bool = False,
+    target_source: PlayerTargetSource = "numeric",
 ) -> PortableReply:
-    pending = result.pending
-    if pending is None:
-        msg = "binding confirmation requires a pending player query"
-        raise ValueError(msg)
-
-    async def confirm(
-        choice: Literal["confirm", "keep"],
+    def prepare(
+        updated: PlayerQueryResult,
         selection_context: MessageInputContext,
     ) -> PortableReply:
-        service.save_binding_choice(
-            selection_context.message.actor,
-            pending,
-            accepted=choice == "confirm",
-            replacing_existing=result.binding_replacement is not None,
-        )
         return _prepare_player_query_reply(
             service,
             resolver,
             sessions,
             selection_context,
-            replace(result, offer_binding=False, binding_replacement=None),
+            updated,
             features,
             extensions,
             rank_queries,
             menu_actions=menu_actions,
+            target_source=target_source,
         )
 
-    return PortableReply(
-        sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=("confirm", "keep"),
-                choice_keys=("confirm", "keep"),
-                select=confirm,
-                prompt=OutboundMessage.from_text(
-                    service.binding_offer(
-                        pending,
-                        replacement=result.binding_replacement,
-                    )
-                ),
-                labels=("确认绑定", "保留原绑定"),
-                text_inputs=(
-                    frozenset({"是", "y", "yes", "确认", "确定"}),
-                    frozenset({"否", "n", "no", "取消"}),
-                ),
-                invalid_choice_message="请回复“是”或“否”，或输入 0 退出。",
-                exit_message=(
-                    "已保留原绑定。"
-                    if result.binding_replacement is not None
-                    else "已退出绑定选择。"
-                ),
-            ),
-        )
+    pending = result.pending
+    assert pending is not None
+    return offer_profile_binding_confirmation(
+        service,
+        sessions,
+        context,
+        result,
+        prepare,
+        validate=lambda selected: binding_access_error(
+            features,
+            resolver,
+            selected,
+            pending.player_id,
+            target_source,
+            binding_command=explicit_binding,
+        ),
+        explicit=explicit_binding,
     )
 
 
@@ -485,6 +484,7 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
             extensions,
             rank_queries,
             menu_actions=menu_actions,
+            target_source=target_source,
         )
     requests = available_player_detail_requests(
         has_collection=pending.section_plan.has_collection,

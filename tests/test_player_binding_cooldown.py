@@ -58,23 +58,24 @@ def test_restore_same_player_and_switch_after_deadline(
     actor = _actor(platform)
     store = SqlitePlayerBindingStore(tmp_path / "state.sqlite")
     initial = _service(store, START)
-    assert initial.bind_shortcut_target(actor, PLAYER_A).startswith("已设置")
+    assert initial.bind_shortcut_target(actor, PLAYER_A).succeeded
     later = _service(store, START + timedelta(hours=1))
     assert later.unbind(actor) == "已解除默认米米号。"
     assert later.unbind(actor) == "当前没有已绑定的米米号。"
-    assert "换绑未成功" in later.bind_shortcut_target(actor, PLAYER_B)
-    assert later.bind_shortcut_target(actor, PLAYER_A).startswith("已设置")
+    assert "换绑未成功" in later.bind_shortcut_target(actor, PLAYER_B).message
+    assert later.bind_shortcut_target(actor, PLAYER_A).succeeded
     assert store.get(actor).last_changed_at == START
     assert later.unbind(actor).startswith("已解除")
-    assert later.save_binding_choice(
-        actor, _pending(PLAYER_A), accepted=True
-    ).startswith("已设置")
+    assert later.save_binding_choice(actor, _pending(PLAYER_A), accepted=True).succeeded
     assert store.get(actor).last_changed_at == START
-    assert "换绑未成功" in later.save_binding_choice(
-        actor,
-        _pending(PLAYER_B),
-        accepted=True,
-        replacing_existing=True,
+    assert (
+        "换绑未成功"
+        in later.save_binding_choice(
+            actor,
+            _pending(PLAYER_B),
+            accepted=True,
+            replacing_existing=True,
+        ).message
     )
     deadline = datetime(2026, 10, 12, 16, tzinfo=timezone.utc)
     due = _service(store, deadline)
@@ -83,12 +84,12 @@ def test_restore_same_player_and_switch_after_deadline(
         _pending(PLAYER_B),
         accepted=True,
         replacing_existing=True,
-    ).startswith("已设置")
+    ).succeeded
     state = SqlitePlayerBindingStore(tmp_path / "state.sqlite").get(actor)
     assert state.player_id == state.last_bound_player_id == PLAYER_B
     assert state.last_changed_at == deadline
     due.unbind(actor)
-    assert "换绑未成功" in due.bind_shortcut_target(actor, PLAYER_A)
+    assert "换绑未成功" in due.bind_shortcut_target(actor, PLAYER_A).message
 
 
 def test_decline_and_zero_cooldown_do_not_retime_same_player(tmp_path: Path) -> None:
@@ -203,11 +204,7 @@ def test_legacy_migration_preserves_bound_history_and_clears_unbound(
     unbound = ActorRef(Platform.ONEBOT, "10002")
     assert store.get(unbound).last_changed_at is None
     assert store.get(unbound).last_bound_player_id is None
-    assert (
-        _service(store, START)
-        .bind_shortcut_target(unbound, PLAYER_B)
-        .startswith("已设置")
-    )
+    assert _service(store, START).bind_shortcut_target(unbound, PLAYER_B).succeeded
 
 
 def test_merge_unbound_histories_keeps_complete_newer_pair(tmp_path: Path) -> None:
@@ -240,8 +237,8 @@ def test_trusted_cross_platform_identity_shares_cooldown(tmp_path: Path) -> None
     service = _service(store, START)
     service.bind_shortcut_target(onebot, PLAYER_A)
     service.unbind(official)
-    assert "换绑未成功" in service.bind_shortcut_target(official, PLAYER_B)
-    assert service.bind_shortcut_target(official, PLAYER_A).startswith("已设置")
+    assert "换绑未成功" in service.bind_shortcut_target(official, PLAYER_B).message
+    assert service.bind_shortcut_target(official, PLAYER_A).succeeded
     assert store.get(onebot).player_id == PLAYER_A
 
 
