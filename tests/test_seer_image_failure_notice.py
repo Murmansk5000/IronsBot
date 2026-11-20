@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -38,6 +38,7 @@ async def test_image_failure_notice_is_restricted_to_admin_delivery() -> None:
         "异常：ImageSourceError: network detail",
         subscription_key="render_crash_notice",
         action_name="Seer image source failure notice",
+        diagnostic=ANY,
     )
 
 
@@ -74,12 +75,7 @@ async def test_notice_failure_does_not_abort_partial_render() -> None:
 @pytest.mark.asyncio
 async def test_image_notice_includes_triggering_group_and_sender() -> None:
     notices = AsyncMock()
-    resolver = AsyncMock(
-        return_value="群：测试群（QQ群：456）\n用户：群昵称（QQ：789）"
-    )
-    reporter = AdminImageFailureReporter(
-        cast("AdminNoticeService", notices), origin_resolver=resolver
-    )
+    reporter = AdminImageFailureReporter(cast("AdminNoticeService", notices))
     group = ConversationRef(Platform.ONEBOT, "group", "456")
     context = MessageInputContext(
         IncomingMessageRef(
@@ -91,9 +87,5 @@ async def test_image_notice_includes_triggering_group_and_sender() -> None:
     with message_origin(context):
         await reporter.report_batch((("pet_head", "1", ImageSourceError("timeout")),))
 
-    resolver.assert_awaited_once_with(context)
-    assert (
-        "群：测试群（QQ群：456）\n用户：群昵称（QQ：789）"
-        in notices.send.await_args.args[0]
-    )
+    assert notices.send.await_args.kwargs["diagnostic"].origin is context
     assert current_message_origin() is None

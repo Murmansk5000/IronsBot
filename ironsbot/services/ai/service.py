@@ -23,6 +23,7 @@ from ironsbot.services.ai.intent import (
     reply_is_yes,
 )
 from ironsbot.services.ai.memory import AiMemoryTurn, trim_memory_chars
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
@@ -291,12 +292,13 @@ class AiService:
                 ),
             )
             return _Completion(error_reply=TIMEOUT_REPLY)
-        except Exception as exc:
-            logger.exception("AI chat failed")
+        except Exception as exc:  # noqa: BLE001 - preserve fallback without logging provider payloads
+            logger.error("AI chat failed: error_type=%s", type(exc).__name__)  # noqa: TRY400 - provider exceptions can echo prompts or credentials
             await self._notify_admin_once(
                 "unexpected",
                 _append_notice_source(
-                    f"AI聊天处理失败。\n错误：{exc}\n请查看容器日志确认具体原因。",
+                    f"AI聊天处理失败。\n异常类型：{type(exc).__name__}\n"
+                    "提供商异常正文不转发，可按错误编号核对脱敏日志。",
                     source_context,
                 ),
             )
@@ -395,10 +397,14 @@ class AiService:
         )
 
     async def _notify_admin_once(self, key: str, message: str) -> None:
+        diagnostic = ErrorDiagnostic.current("AI聊天", "api")
+        origin = diagnostic.origin
         if (
             self._notice_limiter.hit(
                 "admin_notice",
-                key,
+                (key, origin.request_bot_id, origin.message.conversation)
+                if origin
+                else key,
                 window_seconds=self._config.admin_notice_cooldown_seconds,
                 max_events=1,
             )
@@ -409,6 +415,7 @@ class AiService:
             message,
             subscription_key="ai_chat_error_notice",
             action_name="AI chat error notice",
+            diagnostic=diagnostic,
         )
 
 

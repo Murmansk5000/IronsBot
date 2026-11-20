@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import scheduled_clock_time
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import (
@@ -442,6 +443,9 @@ class HeadlessService:
                 ),
                 action_name="headless seer failure notice",
                 subscription_key="headless_seer_notice",
+                diagnostic=ErrorDiagnostic.background(
+                    "游戏连接启动检查", "connect", task=self.user_id_text
+                ),
             )
 
     async def reconnect(self, scheduled_time: str) -> None:
@@ -666,6 +670,11 @@ class HeadlessService:
                 ),
             ),
             action_name="headless state notice",
+            diagnostic=ErrorDiagnostic.background(
+                "游戏连接状态", "connect", task=f"账号 {worker.user_id} / {source}"
+            )
+            if not connected
+            else None,
             subscription_key="headless_seer_notice",
             intent=DeliveryIntent(
                 f"headless:{worker.user_id}:{now.isoformat()}",

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.time import TZ_CN
+from ironsbot.services.error_diagnostics import DiagnosticFormatter, ErrorDiagnostic
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -60,6 +61,7 @@ def _format_marker(marker: dict[str, Any]) -> str:
         ("精灵", marker.get("pet_name")),
         ("精灵ID", marker.get("pet_id")),
         ("资源ID", marker.get("resource_id")),
+        ("原始诊断", marker.get("diagnostic")),
     ]
     lines = [f"{label}：{value}" for label, value in fields if value not in {None, ""}]
     raw = marker.get("raw")
@@ -83,6 +85,9 @@ def render_crash_marker(
             "pet_id": pet_id,
             "pet_name": pet_name,
             "resource_id": resource_id,
+            "diagnostic": DiagnosticFormatter().describe(
+                ErrorDiagnostic.current(operation, "render")
+            ),
         }
     )
     try:
@@ -112,4 +117,9 @@ class RenderCrashReporter:
             f"{_format_marker(marker)}",
             subscription_key="render_crash_notice",
             action_name="render crash notice",
+            diagnostic=ErrorDiagnostic.background(
+                "上次渲染进程中断",
+                "render",
+                task=str(marker.get("operation", "未提供")),
+            ),
         )

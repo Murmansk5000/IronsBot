@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ActorRef, ConversationRef
+from ironsbot.services.error_diagnostics import DiagnosticFormatter, ErrorDiagnostic
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -56,6 +57,7 @@ class AdminNoticeTargets:
 class AdminNoticeService:
     features: FeatureService
     sender: AdminNoticeSender
+    diagnostics: DiagnosticFormatter = field(default_factory=DiagnosticFormatter)
 
     def targets(self, *, superusers_only: bool = False) -> AdminNoticeTargets:
         return AdminNoticeTargets(
@@ -78,9 +80,12 @@ class AdminNoticeService:
         interval_seconds: float = 0,
         superusers_only: bool = False,
         intent: DeliveryIntent | None = None,
+        diagnostic: ErrorDiagnostic | None = None,
     ) -> AdminNoticeSendSummary:
         return await self.send_message(
-            OutboundMessage.from_text(text),
+            OutboundMessage.from_text(
+                self.diagnostics.format(text, diagnostic) if diagnostic else text
+            ),
             subscription_key=subscription_key,
             action_name=action_name,
             interval_seconds=interval_seconds,
@@ -113,7 +118,7 @@ class AdminNoticeService:
             intent=intent,
         )
 
-    async def send_private_to_superusers(
+    async def send_private_to_superusers(  # noqa: PLR0913 - explicit notice routing and diagnostics
         self,
         text: str,
         *,
@@ -121,6 +126,7 @@ class AdminNoticeService:
         action_name: str,
         interval_seconds: float = 0,
         intent: DeliveryIntent | None = None,
+        diagnostic: ErrorDiagnostic | None = None,
     ) -> AdminNoticeSendSummary:
         """Compatibility entrypoint; only explicit private notice opt-ins receive it."""
 
@@ -130,7 +136,9 @@ class AdminNoticeService:
             return AdminNoticeSendSummary((), ())
 
         return await self.sender.send_admin_notice(
-            OutboundMessage.from_text(text),
+            OutboundMessage.from_text(
+                self.diagnostics.format(text, diagnostic) if diagnostic else text
+            ),
             private_actors=private_actors,
             group_conversations=(),
             action_name=action_name,

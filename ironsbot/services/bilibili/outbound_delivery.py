@@ -22,7 +22,7 @@ from ironsbot.core.outbound import (
 )
 from ironsbot.core.platform import ConversationRef, reference_digest
 from ironsbot.services.bilibili import delivery_logging as diagnostics
-from ironsbot.services.bilibili import image_messages
+from ironsbot.services.bilibili import delivery_notices, image_messages
 from ironsbot.services.bilibili.conversation_queue import (
     dispatch_entry,
     log_turn,
@@ -31,7 +31,6 @@ from ironsbot.services.bilibili.conversation_queue import (
 )
 from ironsbot.services.bilibili.delivery_ledger import StageMessenger
 from ironsbot.services.bilibili.delivery_lifecycle import OrderedStages
-from ironsbot.services.bilibili.delivery_notices import delivery_failure_text
 from ironsbot.services.bilibili.delivery_preparation import (
     bounded_preparation,
     preparation_failure,
@@ -715,11 +714,12 @@ class BilibiliDynamicOutboundSender:
                 self.account_name(author_mid) if self.account_name else None
             ) or name
         await self.admin_notices.send_private_to_superusers(
-            delivery_failure_text(
+            delivery_notices.delivery_failure_text(
                 name, author_mid, str(item.get("id_str", "未知")), failures
             ),
             subscription_key=FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY,
             action_name=FULL_DYNAMIC_CONTENT_FAILURE_ACTION,
+            diagnostic=delivery_notices.failure_context(item, author_mid, failures),
         )
 
     def _target_link_message(

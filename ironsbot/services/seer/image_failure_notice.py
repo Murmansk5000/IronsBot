@@ -10,12 +10,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlsplit, urlunsplit
 
-from ironsbot.core.message_origin import current_message_origin
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import ExecutionIdentity
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.seer.images import ImageFailureReporter, ImageSourceError
@@ -69,10 +66,6 @@ async def report_render_asset_failures(
 @dataclass(frozen=True, slots=True)
 class AdminImageFailureReporter:
     admin_notices: AdminNoticeService
-    identity_resolver: (
-        Callable[[ExecutionIdentity], Awaitable[ExecutionIdentity]] | None
-    ) = None
-    origin_resolver: Callable[[MessageInputContext], Awaitable[str]] | None = None
 
     async def __call__(
         self,
@@ -91,17 +84,6 @@ class AdminImageFailureReporter:
     ) -> None:
         if not failures:
             return
-        if identity is not None and self.identity_resolver is not None:
-            try:
-                identity = await self.identity_resolver(identity)
-            except Exception:
-                logger.exception("failed to resolve executing bot display name")
-        origin = ""
-        if self.origin_resolver is not None and (source := current_message_origin()):
-            try:
-                origin = await self.origin_resolver(source)
-            except Exception:
-                logger.exception("failed to resolve image failure notice source")
         lines = [
             f"素材类型：{kind}\n资源标识：{key}\n"
             f"异常：{type(error).__name__}: {_safe_error_text(error)}"
@@ -116,11 +98,11 @@ class AdminImageFailureReporter:
             await self.admin_notices.send(
                 "⚠️ 赛尔图片素材获取失败\n"
                 f"执行机器人：{identity.describe() if identity else '未确定'}\n"
-                + (f"{origin}\n" if origin else "")
                 + "\n".join(lines)
                 + outcome,
                 subscription_key="render_crash_notice",
                 action_name="Seer image source failure notice",
+                diagnostic=ErrorDiagnostic.current("资料素材获取", "prepare"),
             )
         except Exception:
             logger.exception(

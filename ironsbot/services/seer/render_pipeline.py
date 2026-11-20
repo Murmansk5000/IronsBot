@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 RenderStage = Literal["prepare", "queue", "render"]
 
@@ -19,11 +20,27 @@ class RenderExecution:
     degraded: bool = False
     writes: list[Callable[[], None]] = field(default_factory=list)
     cache_key: str = ""
+    step: str = "未确定"
 
 
 current_render: ContextVar[RenderExecution | None] = ContextVar(
     "current_render", default=None
 )
+
+
+def mark_render_step(step: str) -> None:
+    if (execution := current_render.get()) is not None:
+        execution.step = step
+
+
+@contextmanager
+def render_step(step: str) -> Iterator[None]:
+    """Attach only the failing task's step, including cancellation from a deadline."""
+    try:
+        yield
+    except BaseException as error:
+        error.__dict__.setdefault("render_step", step)
+        raise
 
 
 def mark_render_degraded() -> None:
@@ -53,6 +70,10 @@ class RenderResult:
     status: Literal["complete", "degraded", "failed"]
     failure_stage: RenderStage | None = None
     exception_type: str | None = None
+    failure_location: str = ""
+    elapsed_seconds: float | None = None
+    timeout_seconds: float | None = None
+    failure_step: str = "未确定"
 
     @property
     def fallback_text(self) -> str:

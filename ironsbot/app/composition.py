@@ -294,8 +294,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         common.private_routes,
         common.onebot_messenger.verify_history,
         image_collage,
-        common.onebot_connections,
-        common.onebot_messenger.identity_resolver,
     )
     _apply_conversation_merges(
         configured_conversation_merges,
@@ -499,7 +497,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         mutations=identity_mutations,
         addresses=addresses,
     )
-    command_errors = CommandErrorReporter(common.admin_notices)
+    command_errors = CommandErrorReporter(
+        common.admin_notices,
+        common.admin_notices.diagnostics,
+        spawn=lambda work: task_owner.create(work, name="command error summary"),
+    )
     onebot_admission = OneBotAdmissionService(
         features=features,
         messages_enabled=(

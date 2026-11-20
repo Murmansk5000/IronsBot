@@ -22,7 +22,6 @@ from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
-from ironsbot.integrations.onebot.notice_origin import resolve_notice_origin
 from ironsbot.integrations.seer_data.autocard_repository import (
     PublishedAutocardRepository,
 )
@@ -147,10 +146,6 @@ if TYPE_CHECKING:
     )
     from ironsbot.extensions.contracts import PlayerLineupRenderSessionFactory
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.connections import OneBotConnections
-    from ironsbot.integrations.onebot.execution_identity import (
-        OneBotExecutionIdentityResolver,
-    )
     from ironsbot.integrations.seer_data.database import SeerDatabase
     from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -237,8 +232,6 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         [ConversationRef, SendResult], Awaitable[DeliveryHistoryStatus]
     ],
     image_collage: ImageCollageService,
-    onebot_connections: OneBotConnections,
-    onebot_identity: OneBotExecutionIdentityResolver,
 ) -> SeerComponents:
     """Build all Seer query and render services in dependency order."""
     player_accounts = settings.player_accounts
@@ -303,12 +296,6 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     )
     image_failure_reporter = AdminImageFailureReporter(
         admin_notices,
-        onebot_identity.resolve,
-        partial(
-            resolve_notice_origin,
-            principals=identity_principals,
-            connections=onebot_connections,
-        ),
     )
     render_sessions = replace(
         render_sessions, image_failure_reporter=image_failure_reporter

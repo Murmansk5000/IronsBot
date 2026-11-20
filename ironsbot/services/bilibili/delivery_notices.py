@@ -6,10 +6,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.core.failure_text import safe_platform_message
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ironsbot.core.outbound import SendResult
     from ironsbot.core.platform import ConversationRef
+
+
+def failure_context(
+    item: Mapping[str, object],
+    uid: int,
+    failures: dict[tuple[ConversationRef, str], SendResult],
+) -> ErrorDiagnostic:
+    return ErrorDiagnostic.background(
+        "B站动态投递",
+        "send",
+        task=f"动态 {item.get('id_str', '未提供')} / UID {uid}",
+        targets=tuple(dict.fromkeys(target for target, _ in failures)),
+    )
 
 
 def delivery_failure_text(
