@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.core.platform import ConversationRef, Platform, reference_digest
 from ironsbot.services.bilibili.delivery_lifecycle import own_delivery
 from ironsbot.services.bilibili.delivery_targets import canonical_targets
+from ironsbot.services.bilibili.revisions import delivery_key
 from ironsbot.services.bilibili.target_models import BiliPushTargets
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ async def submit_delivery(
         await sender._send_owned(item, pub_ts, uid, targets, categories, resume=resume)
         return
     if resume:
-        sender.ledger.queue_wake(str(item["id_str"]), conversations(targets))
+        sender.ledger.queue_wake(delivery_key(item), conversations(targets))
     await sender.send_queued({**entry, "targets": targets})
 
 
@@ -96,7 +97,7 @@ def wake_ready(sender: BilibiliDynamicOutboundSender) -> None:
         )
         return
     for entry in ready:
-        dynamic_id = str(entry["item"]["id_str"])
+        dynamic_id = delivery_key(entry["item"])
         key = (str(ledger.path.resolve()), dynamic_id)
         if key in pending:
             continue
@@ -168,7 +169,7 @@ async def dispatch_entry(
     ledger = sender.ledger
     assert ledger is not None
     item = entry["item"]
-    dynamic_id = str(item["id_str"])
+    dynamic_id = delivery_key(item)
     targets = (
         entry["targets"]
         if isinstance(entry["targets"], BiliPushTargets)

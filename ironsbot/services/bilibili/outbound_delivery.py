@@ -42,6 +42,11 @@ from ironsbot.services.bilibili.delivery_targets import (
     canonical_targets,
     pending_targets,
 )
+from ironsbot.services.bilibili.edit_delivery import (
+    prepare_edit_media,
+    prepare_edit_text,
+    suppress_invisible_edit,
+)
 from ironsbot.services.bilibili.image_messages import (
     prepare_dynamic_image_message as prepare_dynamic_image_message,  # noqa: PLC0414 - public helper export
 )
@@ -56,6 +61,7 @@ from ironsbot.services.bilibili.parser import (
 from ironsbot.services.bilibili.preferences import (
     bili_stage_subscription_key,
 )
+from ironsbot.services.bilibili.revisions import delivery_key, revision_meta
 from ironsbot.services.bilibili.stage_subscriptions import DynamicStagePolicy
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
@@ -67,6 +73,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.content import DynamicContentCompactor
     from ironsbot.services.bilibili.delivery_ledger import DynamicDeliveryLedger
     from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
+    from ironsbot.services.bilibili.edit_rendering import BiliEditRenderer
     from ironsbot.services.bilibili.target_models import BiliPushTargets
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.image_collage import ImageCollageService
@@ -112,6 +119,7 @@ class BilibiliDynamicOutboundSender:
     combine_images: bool = True
     ledger: DynamicDeliveryLedger | None = None
     spawn: TaskSpawner | None = None
+    edit_renderer: BiliEditRenderer | None = None
     stage_eligible: (
         Callable[[ConversationRef, int, str, tuple[str, ...]], bool] | None
     ) = None
@@ -168,7 +176,7 @@ class BilibiliDynamicOutboundSender:
         *,
         resume: bool = False,
     ) -> None:
-        dynamic_id = str(item.get("id_str", ""))
+        dynamic_id = delivery_key(item)
         started = diagnostics.push_started(
             dynamic_id, author_mid, targets, resume=resume
         )
@@ -207,6 +215,8 @@ class BilibiliDynamicOutboundSender:
             self.stage_eligible,
             failures,
         )
+        if await suppress_invisible_edit(self, item, targets, stage_policy):
+            return
         full_targets = targets
         # Keep disabled targets in the round so their durable retries can be
         # terminally skipped rather than resurrected when a switch is reopened.
@@ -481,6 +491,8 @@ class BilibiliDynamicOutboundSender:
         item: dict[str, Any],
         dynamic_id: str,
     ) -> OutboundMessage | None:
+        if revision_meta(item):
+            return await prepare_edit_media(self, item)
         started = diagnostics.media_started(dynamic_id)
         message = await prepare_shared_media(
             item,
@@ -496,6 +508,8 @@ class BilibiliDynamicOutboundSender:
     async def _prepare_text_message(
         self, item: dict[str, Any]
     ) -> OutboundMessage | None:
+        if revision_meta(item):
+            return await prepare_edit_text(self, item)
         compacted = (
             await self.content_compactor.compact(dynamic_content(item))
             if self.content_compactor is not None
@@ -523,7 +537,7 @@ class BilibiliDynamicOutboundSender:
         *,
         started: float,
     ) -> None:
-        dynamic_id = str(item.get("id_str", ""))
+        dynamic_id = delivery_key(item)
         if self.ledger is not None:
             failures.clear()
             failures.update(

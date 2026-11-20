@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from ironsbot.core.outbound import DeliveryFailureKind
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.tasks import run_owned_blocking
+from ironsbot.services.bilibili.revisions import delivery_key
 from ironsbot.services.bilibili.target_models import BiliPushTargets
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class BiliDeliveryRecovery:
     targets: BiliTargetService
     notify: Callable[[str, str], Awaitable[None]] | None = None
     accounts: DeliveryTaskStore | None = None
+    before_recover: Callable[[], Awaitable[None]] | None = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _last_media_cleanup: float | None = None
 
@@ -43,13 +45,14 @@ class BiliDeliveryRecovery:
 
     async def __call__(self, connection_key: str = "startup") -> None:
         _LOGGER.debug("Bilibili recovery triggered: source=%s", connection_key)
+        await self._restore_revisions()
         async with self._lock:
             if self.sender.ledger is None:
                 return
             ledger = self.sender.ledger
             await self._cleanup_media()
             for entry in ledger.pending():
-                dynamic_id = str(entry["item"].get("id_str", ""))
+                dynamic_id = delivery_key(entry["item"])
                 before = ledger.state_counts(dynamic_id)
                 categories = tuple(entry["categories"])
                 current = self.targets.push_targets_for_dynamic(
@@ -161,6 +164,10 @@ class BiliDeliveryRecovery:
                         entry["item"].get("id_str"),
                     )
 
+    async def _restore_revisions(self) -> None:
+        if self.before_recover is not None:
+            await self.before_recover()
+
     async def _cleanup_media(self) -> None:
         now = time.monotonic()
         if (
@@ -236,9 +243,14 @@ class BiliDeliveryRecovery:
                 "blocked": "前序结果不确定，未继续提交",
                 "success": "已送达",
             }
+            source_id, _, sequence = dynamic_id.partition(":edit:")
+            identity = f"动态ID：{source_id}\n"
+            if sequence:
+                identity += f"编辑版本：{sequence}\n"
             await self.notify(
                 dynamic_id,
-                f"B站推送恢复状态\n动态ID：{dynamic_id}\n"
+                "B站推送恢复状态\n"
+                + identity
                 + "\n".join(
                     f"{label}：{counts[key]}"
                     for key, label in labels.items()

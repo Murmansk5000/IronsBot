@@ -9,11 +9,13 @@ from typing import Any
 
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.time import TZ_CN
+from ironsbot.services.bilibili.edit_rendering import edit_notice
 from ironsbot.services.bilibili.parser import (
     dynamic_url,
     item_author_mid,
     item_author_name,
 )
+from ironsbot.services.bilibili.revisions import revision_meta
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +28,8 @@ def render_dynamic_link_message(
         author_mid = item_author_mid(item)
         if fallback_name and author_name in {f"UID {author_mid}", "该账号"}:
             author_name = fallback_name
+        if revision_meta(item):
+            return edit_notice(item, pub_ts, author_name)
         time_str = datetime.fromtimestamp(pub_ts, tz=TZ_CN).strftime(
             "%Y-%m-%d %H:%M:%S"
         )

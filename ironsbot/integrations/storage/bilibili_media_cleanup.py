@@ -92,6 +92,14 @@ def _message_digests(payload: str | None) -> set[str]:
     return result
 
 
+def _predecessor(entry: dict[str, Any]) -> str | None:
+    previous = entry.get("item", {}).get("_ironsbot_edit", {}).get("previous_key")
+    if previous and not isinstance(previous, str):
+        message = "Invalid revision predecessor"
+        raise ValueError(message)
+    return previous or None
+
+
 def _references(db: sqlite3.Connection, now: float, retention: int) -> set[str]:
     sending = {
         row[0]
@@ -100,10 +108,21 @@ def _references(db: sqlite3.Connection, now: float, retention: int) -> set[str]:
         )
     }
     protected = set(sending)
+    protected.update(
+        row[0]
+        for row in db.execute(
+            "SELECT id FROM delivery_executions WHERE expires>?", (now,)
+        )
+    )
+    predecessors = {}
     for dynamic_id, created, payload in db.execute(
         "SELECT id,created,payload FROM deliveries"
     ):
-        published = json.loads(payload)["pub_ts"]
+        entry = json.loads(payload)
+        published = entry["pub_ts"]
+        previous = _predecessor(entry)
+        if previous:
+            predecessors[dynamic_id] = previous
         if (
             isinstance(published, bool)
             or not isinstance(published, (int, float))
@@ -114,6 +133,13 @@ def _references(db: sqlite3.Connection, now: float, retention: int) -> set[str]:
             raise ValueError(message)
         if created + retention >= now and published + retention >= now:
             protected.add(dynamic_id)
+    # Active revisions can still need their predecessors after publication expiry.
+    pending = list(protected)
+    while pending:
+        previous = predecessors.get(pending.pop())
+        if previous and previous not in protected:
+            protected.add(previous)
+            pending.append(previous)
     result = set()
     for table, decode in (
         ("media_manifests", _digests),

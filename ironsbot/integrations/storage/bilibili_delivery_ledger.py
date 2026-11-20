@@ -27,6 +27,7 @@ from ironsbot.integrations.storage.bilibili_media_manifest import (
 from ironsbot.integrations.storage.frozen_message import freeze_message, thaw_message
 from ironsbot.services.bilibili.delivery_rounds import BILI_RETRY_DELAYS
 from ironsbot.services.bilibili.parser import dynamic_content, dynamic_image_urls
+from ironsbot.services.bilibili.revisions import delivery_key, revision_meta
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -102,7 +103,7 @@ class SqliteDynamicDeliveryLedger(ConversationQueueStore):
         targets: BiliPushTargets,
         categories: tuple[str, ...],
     ) -> bool:
-        dynamic_id = str(item["id_str"])
+        dynamic_id = delivery_key(item)
         payload = json.dumps(
             {
                 "item": item,
@@ -123,9 +124,16 @@ class SqliteDynamicDeliveryLedger(ConversationQueueStore):
             for name, conversations in asdict(targets).items():
                 phases = ["link"]
                 if name.startswith("full"):
-                    if dynamic_content(item).strip():
+                    edited = revision_meta(item)
+                    if (
+                        bool(edited.get("text_changed"))
+                        if edited
+                        else bool(dynamic_content(item).strip())
+                    ):
                         phases.append("text")
-                    if dynamic_image_urls(item):
+                    if (dynamic_image_urls(item) or edited.get("images_changed")) and (
+                        not edited or edited.get("images_changed")
+                    ):
                         phases.append("image")
                 for target in conversations:
                     db.execute(

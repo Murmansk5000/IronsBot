@@ -164,6 +164,38 @@ def test_orphan_grace_temp_files_and_unknown_names(state: SimpleNamespace) -> No
     assert state.ledger.cleanup_media().deleted_files == 1
 
 
+@pytest.mark.parametrize("activity", ["sending", "preparing"])
+def test_active_edit_protects_expired_predecessor_sources(
+    state: SimpleNamespace,
+    activity: str,
+) -> None:
+    prepare(state, "original", age=RETENTION_SECONDS + 1)
+    path = media(state.ledger, "original", b"trusted previous image")
+    aged(path)
+    prepare(state, "revision", age=RETENTION_SECONDS + 1)
+    with SqliteDatabase(state.ledger.path).connect() as db:
+        db.execute(
+            "UPDATE deliveries SET payload=json_set(payload,"
+            "'$.item._ironsbot_edit.previous_key','original') WHERE id='revision'"
+        )
+        if activity == "sending":
+            db.execute(
+                "INSERT INTO stages(dynamic_id,target,stage,state,attempts) "
+                "VALUES ('revision','target','image:1','sending',1)"
+            )
+        else:
+            db.execute(
+                "INSERT INTO delivery_executions VALUES ('revision','owner',?)",
+                (NOW + 30,),
+            )
+    assert state.ledger.cleanup_media().deleted_files == 0
+    assert path.exists()
+    with SqliteDatabase(state.ledger.path).connect() as db:
+        db.execute("UPDATE stages SET state='success'")
+        db.execute("DELETE FROM delivery_executions")
+    assert state.ledger.cleanup_media().deleted_files == 1
+
+
 @pytest.mark.parametrize(
     "table,payload",
     [
