@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.bilibili_image_diff import compare_images
 from ironsbot.integrations.configured_targets.bilibili import (
     build_bili_configured_targets,
 )
@@ -30,9 +31,12 @@ from ironsbot.integrations.storage.bilibili_live import SqliteBiliLiveStore
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
+from ironsbot.integrations.storage.bilibili_revisions import SqliteBiliRevisionStore
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.delivery_recovery import BiliDeliveryRecovery
+from ironsbot.services.bilibili.edit_monitor import BiliEditMonitor
+from ironsbot.services.bilibili.edit_rendering import BiliEditRenderer
 from ironsbot.services.bilibili.live import BiliLiveMonitor
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.login_notice import send_bili_login_notice
@@ -54,6 +58,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
+    from ironsbot.services.seer.render_coordinator import RenderCoordinator
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +161,7 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
     proactive_delivery: ProactiveMessageDelivery,
     ai_service: AiService,
     config: BiliConfig,
+    render_coordinator: RenderCoordinator | None = None,
 ) -> BilibiliMonitorService:
     """Assemble monitoring with platform-neutral notice and push delivery."""
     notice_sender = partial(send_bili_login_notice, admin_notices)
@@ -207,9 +213,32 @@ def build_bilibili_monitor(  # noqa: PLR0913 - composition root
         ),
     )
     service.register_delivery = push_delivery.enqueue
+    if render_coordinator is not None and service.image_collage is not None:
+        assert push_delivery.ledger is not None
+        push_delivery = replace(
+            push_delivery,
+            edit_renderer=BiliEditRenderer(
+                render_coordinator,
+                push_delivery.ledger,
+                service.image_collage,
+                compare_images,
+                service.spawn,
+            ),
+        )
+        service.register_delivery = push_delivery.enqueue
+    service.edits = BiliEditMonitor(
+        service,
+        SqliteBiliRevisionStore(
+            Path(config.storage.data_dir) / "delivery_stages.sqlite"
+        ),
+        push_delivery.send,
+        auth_invalid,
+    )
     return BilibiliMonitorService(
         service,
         auth_invalid,
         push_delivery.send,
-        delivery_recovery=BiliDeliveryRecovery(push_delivery, service.targets),
+        delivery_recovery=BiliDeliveryRecovery(
+            push_delivery, service.targets, before_recover=service.edits.flush
+        ),
     )

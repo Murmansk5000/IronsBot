@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body { margin:0; padding:20px; width:1160px; background:#f5f6f8; color:#20252b; font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif; font-size:23px; }
+h1 { font-size:28px; margin:0 0 14px; } p { margin:10px 0; }
+.text { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; }
+.delete { color:#a52323; background:#fce5e5; text-decoration:line-through; }
+.insert { color:#176b36; background:#dff2e6; text-decoration:underline; }
+table { width:100%; table-layout:fixed; border-collapse:collapse; margin:12px 0; }
+td { width:50%; padding:8px; vertical-align:top; } th { padding:8px; text-align:left; }
+.before { background:#fce5e5; color:#a52323; } .after { background:#dff2e6; color:#176b36; }
+img { width:100%; height:auto; } .note { color:#505b66; font-size:19px; }
+</style></head><body>
+<h1>{{ title | e }}</h1>
+{% if fragments %}<div class="text">{% for f in fragments %}{% if f.kind == 'insert' and not loop.first and fragments[loop.index0 - 1].kind == 'delete' %}<span> → </span>{% endif %}<span class="{{ f.kind | e }}">{{ f.text | e }}</span>{% endfor %}</div>{% endif %}
+{% for row in rows %}<p>{{ row.label | e }}</p><p class="note">{{ row.note | e }}</p>
+<table><tr><th class="before">修改前</th><th class="after">修改后</th></tr><tr>
+<td>{% if row.before %}<img src="{{ row.before | e }}">{% else %}{{ row.before_missing | e }}{% endif %}</td>
+<td>{% if row.after %}<img src="{{ row.after | e }}">{% else %}{{ row.after_missing | e }}{% endif %}</td>
+</tr></table>{% endfor %}
+</body></html>

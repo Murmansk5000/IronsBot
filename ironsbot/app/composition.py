@@ -386,6 +386,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         proactive_delivery=proactive_delivery,
         ai_service=ai,
         config=settings.bilibili,
+        render_coordinator=seer_components.render_coordinator,
     )
 
     extension_services = ExtensionServices(

@@ -42,6 +42,7 @@ include = ["ironsbot*"]
 
 [tool.setuptools.package-data]
 ironsbot = [
+    "services/bilibili/templates/*.j2",
     "integrations/assets/sendpic/*.png",
     "integrations/litehtml/LICENSE",
     "integrations/litehtml/NOTICE.md",

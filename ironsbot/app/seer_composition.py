@@ -171,6 +171,7 @@ if TYPE_CHECKING:
         NewContentCategory,
         NewContentSnapshot,
     )
+    from ironsbot.services.seer.render_coordinator import RenderCoordinator
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +193,7 @@ class SeerComponents:
     player_requests: PlayerRequestProtectionService
     player_detail_extensions: PlayerDetailExtensionRegistry
     lineup_render_session: PlayerLineupRenderSessionFactory
+    render_coordinator: RenderCoordinator
 
 
 def _lucky_player_actions(
@@ -715,4 +717,5 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player_requests=player_requests,
         player_detail_extensions=player_detail_extensions,
         lineup_render_session=lineup_render_session,
+        render_coordinator=render_coordinator,
     )

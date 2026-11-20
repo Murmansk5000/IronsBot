@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         BiliDynamicHistoryStore,
         DynamicHistoryRecord,
     )
+    from ironsbot.services.bilibili.edit_monitor import BiliEditMonitor
     from ironsbot.services.bilibili.live import BiliLiveMonitor
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.messaging.image_collage import ImageCollageService
@@ -94,6 +95,7 @@ class BilibiliService:
     content_compactor: DynamicContentCompactor | None = None
     image_collage: ImageCollageService | None = None
     live: BiliLiveMonitor | None = None
+    edits: BiliEditMonitor | None = None
     fetch_live: Callable[[list[int]], Awaitable[dict[int, LiveObservation]]] = (
         _unavailable_live_status
     )
@@ -121,6 +123,10 @@ class BilibiliService:
                 self.live.ingest(item)
             except Exception:
                 logger.exception("Bilibili live preview persistence failed")
+
+    def observe_edit(self, item: dict[str, Any], pub_ts: int, uid: int) -> None:
+        if self.edits is not None:
+            self.edits.observe(item, pub_ts, uid)
 
     async def resolve_dynamic_item(
         self,

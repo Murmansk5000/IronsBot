@@ -189,6 +189,7 @@ async def _push_new_dynamics(
             continue
 
         author_mid = snapshot.author_mid
+        service.observe_edit(item, pub_ts, author_mid)
         last_saved_time = checkpoints.get(author_mid, 0)
         service.history.save_snapshot(snapshot)
         history_id = dynamic_id(item) or f"{author_mid}:{pub_ts}"
@@ -259,6 +260,8 @@ async def _do_check_logic(
     service: BilibiliService,
     on_auth_invalid: AuthInvalidHandler,
     send_push: DynamicPushSender,
+    *,
+    review_edits: bool = False,
 ) -> MonitorCheckResult:
     result = MonitorCheckResult(executed=True)
     try:
@@ -276,6 +279,8 @@ async def _do_check_logic(
             service.targets.monitored_uids(),
         )
         if not valid_dynamics:
+            if service.edits is not None:
+                await service.edits.tick(set(), review=review_edits)
             return result
 
         checkpoints = service.history.get_checkpoints()
@@ -303,6 +308,12 @@ async def _do_check_logic(
         if checkpoint_changed:
             service.history.save_checkpoints(checkpoints)
             logger.info("Bilibili dynamic checkpoints updated")
+
+        if service.edits is not None:
+            await service.edits.tick(
+                {dynamic_id(item) for _published, item in valid_dynamics},
+                review=review_edits,
+            )
 
         return MonitorCheckResult(
             executed=True,
@@ -391,7 +402,12 @@ async def run_monitor_check(  # noqa: PLR0913 - monitor coordination boundary
                 [slot.starts_at.isoformat() for slot in due_boost_slots],
                 catch_up,
             )
-            result = await _do_check_logic(service, on_auth_invalid, send_push)
+            result = await _do_check_logic(
+                service,
+                on_auth_invalid,
+                send_push,
+                review_edits=not due_boost_slots and not is_startup_check,
+            )
             logger.info(
                 "Bilibili dynamic check finished: valid=%s discovered_uids=%s "
                 "elapsed=%.3fs",
