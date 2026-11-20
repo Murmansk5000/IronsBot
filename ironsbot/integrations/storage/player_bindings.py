@@ -172,6 +172,7 @@ class SqlitePlayerBindingStore:
         cooldown_days: int = 0,
         only_if_unbound: bool = False,
         reset_cooldown: bool = False,
+        expected_binding: PlayerBindingState | None = None,
     ) -> None:
         now = _utc_now(changed_at)
         principal = self._principal_for(actor)
@@ -179,6 +180,9 @@ class SqlitePlayerBindingStore:
             conn.execute("BEGIN IMMEDIATE")
             row = _binding_row(conn, principal)
             state = _state_from_row(actor, row)
+            if expected_binding is not None and state != expected_binding:
+                message = "当前绑定已变化，请重新发送绑定或查询指令。"
+                raise PlayerBindingError(message)
             if only_if_unbound and state.player_id not in {None, player_id}:
                 message = (
                     "当前绑定已变化，已保留现有绑定；如需换绑，请重新发送绑定指令。"

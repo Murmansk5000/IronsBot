@@ -32,7 +32,7 @@ from ironsbot.services.portable_player_commands import (
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
-from ironsbot.services.seer.player_binding import PlayerBindingState
+from ironsbot.services.seer.player_binding import BindingResult, PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -308,13 +308,28 @@ async def test_bare_beast_rank_uses_own_binding_even_with_another_player_menu() 
 
 
 class _PlayerService:
-    def shortcut_binding_offer(self, player_id: int) -> str:
+    def binding_success_notice(self, actor: ActorRef) -> str:
+        del actor
+        return "已设置默认米米号。当前无换绑冷却。"
+
+    def shortcut_binding_offer(self, player_id: int, *, actor: ActorRef) -> str:
+        del actor
         return f"是否绑定 {player_id}？"
 
-    def bind_shortcut_target(self, actor: ActorRef, player_id: int) -> str:
+    def bind_shortcut_target(
+        self,
+        actor: ActorRef,
+        player_id: int,
+        *,
+        expected_binding: PlayerBindingState | None = None,
+    ) -> BindingResult:
+        del expected_binding
         self.bound.append((actor, player_id))
         self.unbound = False
-        return "已绑定"
+        return BindingResult(succeeded=True, changed=True)
+
+    def binding_state(self, actor: ActorRef) -> PlayerBindingState:
+        return PlayerBindingState(actor, 600001 if self.replacement else None)
 
     def default_player_id(self, actor: ActorRef) -> int | None:
         del actor
@@ -362,10 +377,11 @@ class _PlayerService:
         target: ActorRef | None = None,
     ) -> PlayerQueryResult:
         del conversation
-        self.bound.append((target or actor, player_id))
+        if target is not None:
+            self.bound.append((target, player_id))
         return PlayerQueryResult(
             pending=_pending(player_id),
-            offer_binding=self.replacement,
+            offer_binding=target is None,
             binding_replacement=(
                 PlayerBindingState(
                     actor=actor,
@@ -386,26 +402,26 @@ class _PlayerService:
         *,
         accepted: bool,
         replacing_existing: bool = False,
-    ) -> str:
+        expected_binding: PlayerBindingState | None = None,
+    ) -> BindingResult:
+        del expected_binding
         if not replacing_existing:
             if accepted:
                 self.bound.append((actor, pending.player_id))
-            pending.player_message = f"choice:{accepted}\n{pending.player_message}"
-            return "choice saved"
+            return BindingResult(succeeded=True, changed=accepted)
         if accepted:
             self.replacement_choices.append((actor, pending.player_id))
-        pending.player_message = (
-            f"{'replaced' if accepted else 'retained'}:{pending.player_id}\n"
-            f"{pending.player_message}"
-        )
-        return "replaced"
+        return BindingResult(succeeded=True, changed=accepted)
 
     def binding_offer(
         self,
         pending: PendingPlayerQuery,
         *,
+        actor: ActorRef,
         replacement: PlayerBindingState | None = None,
+        explicit: bool = False,
     ) -> str:
+        del actor, explicit
         if replacement is not None:
             return (
                 f"当前默认米米号：{replacement.player_id}\n"
@@ -660,12 +676,14 @@ async def test_partial_binding_uses_shared_menu_before_business_work(
     assert await sessions.select("1", stranger, allow_deferred=True) is None
     selected = await sessions.select(selection, context, allow_deferred=True)
     assert selected is not None
-    assert service.bound == (
-        [(context.message.actor, 700001)] if selection == "1" else []
-    )
+    assert service.bound == []
     assert not service.returned
     if selection == "1":
-        cast("PortableReply", selected).delivered()
+        assert "是否将其设为默认米米号" in _text(cast("PortableReply", selected))
+        selected = await sessions.select("y", context, allow_deferred=True)
+        assert service.bound == [(context.message.actor, 700001)]
+        selected = await _after_binding_receipt(cast("PortableReply", selected))
+        selected.delivered()
         assert service.returned == [(context.message.actor, 700001)]
 
 
@@ -790,6 +808,18 @@ def _text(reply: PortableReply) -> str:
     return part.text
 
 
+async def _after_binding_receipt(reply: PortableReply) -> PortableReply:
+    if _text(reply).startswith("已设置默认米米号"):
+        assert reply.initial_is_advisory
+        assert reply.on_delivered is None
+        reply.delivered()
+        assert reply.continuation is not None
+        result = await reply.continuation()
+        assert result is not None
+        return result
+    return reply
+
+
 @pytest.mark.asyncio
 async def test_player_query_menu_commits_work_only_after_delivery() -> None:
     service = _PlayerService()
@@ -840,9 +870,11 @@ async def test_player_query_menu_accepts_short_binding_confirmation() -> None:
 
     assert isinstance(selected, PortableReply)
     assert service.bound == [(context.message.actor, 700002)]
+    selected = await _after_binding_receipt(selected)
     part = selected.message.parts[0]
     assert isinstance(part, TextPart)
-    assert "choice:True" in part.text
+    assert "player:700002" in part.text
+    assert "已设置默认米米号" not in part.text
 
 
 @pytest.mark.asyncio
@@ -992,6 +1024,7 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
     if selection == "0":
         assert sessions.active_prompt(context) is None
     else:
+        selected = await _after_binding_receipt(cast("PortableReply", selected))
         assert "player:700002" in _text(cast("PortableReply", selected))
         assert sessions.recognizes_response("收集", context)
         assert await sessions.select("收集", context, allow_deferred=True) is not None
@@ -1293,8 +1326,9 @@ async def test_existing_binding_waits_for_explicit_confirmation(
         [(context.message.actor, 700001)] if selection == "y" else []
     )
     assert service.returned == []
-    if selection != "0":
+    if selection == "y":
         selected = cast("PortableReply", selected)
+        selected = await _after_binding_receipt(selected)
         selected.delivered()
         assert service.returned == [(context.message.actor, 700001)]
 

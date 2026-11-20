@@ -118,7 +118,20 @@ def build_player_extension_operation(
             if player_service is None or not reference or not action.offer_binding:
                 return await query(player_id, selected)
             return await confirm_shortcut_binding(
-                player_service, sessions, player_id, selected, query
+                player_service,
+                sessions,
+                player_id,
+                selected,
+                query,
+                validate=lambda current: (
+                    "该操作当前未对你开放。"
+                    if not extension_action_allowed(action, current, features)
+                    else resolver.query_access_error(
+                        current.message.actor,
+                        player_id,
+                        resolver.reference_source(reference),
+                    )
+                ),
             )
 
         return await select_player_target(
