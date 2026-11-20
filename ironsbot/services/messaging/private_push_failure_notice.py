@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import Platform, reference_digest
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
@@ -53,4 +54,7 @@ async def report_private_push_failures(
         subscription_key="admin_notice",
         action_name="private push failure notice",
         interval_seconds=0,
+        diagnostic=ErrorDiagnostic.background(
+            action_name, "send", targets=tuple(summary.failed)
+        ),
     )

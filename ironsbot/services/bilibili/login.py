@@ -15,6 +15,7 @@ from ironsbot.services.bilibili.auth import (
     build_bili_login_qrcode_message_parts,
     extract_bili_login_cookie,
 )
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 
 if TYPE_CHECKING:
     from ironsbot.core.tasks import TaskSpawner
@@ -38,6 +39,7 @@ class BiliLoginNotice:
     text: str
     qrcode: LoginQrMessageParts | None = None
     expires_at: float | None = None
+    diagnostic: ErrorDiagnostic | None = field(default=None, compare=False)
 
 
 @dataclass(slots=True)
@@ -80,7 +82,12 @@ class BilibiliLoginService:
         except Exception:
             logger.exception("Bilibili QR request failed")
             self.state.last_notice_at = now
-            await send_notice(BiliLoginNotice(_login_request_failed(reason)))
+            await send_notice(
+                BiliLoginNotice(
+                    _login_request_failed(reason),
+                    diagnostic=ErrorDiagnostic.background("B站二维码申请", "request"),
+                )
+            )
             return
 
         self.state.last_notice_at = now
@@ -130,7 +137,14 @@ class BilibiliLoginService:
                         poll.login_url,
                     )
                     if "SESSDATA=" not in cookie:
-                        await send_notice(BiliLoginNotice(COOKIE_INCOMPLETE_NOTICE))
+                        await send_notice(
+                            BiliLoginNotice(
+                                COOKIE_INCOMPLETE_NOTICE,
+                                diagnostic=ErrorDiagnostic.background(
+                                    "B站登录凭据校验", "validate"
+                                ),
+                            )
+                        )
                         return
                     self.cookie_store.save(cookie)
                     self.state.required = False
@@ -146,7 +160,12 @@ class BilibiliLoginService:
             raise
         except Exception:
             logger.exception("Bilibili QR polling failed")
-            await send_notice(BiliLoginNotice(LOGIN_POLL_ERROR_NOTICE))
+            await send_notice(
+                BiliLoginNotice(
+                    LOGIN_POLL_ERROR_NOTICE,
+                    diagnostic=ErrorDiagnostic.background("B站扫码登录", "poll"),
+                )
+            )
         finally:
             if self.state.qrcode_key == qrcode_key:
                 self.state.qrcode_key = ""

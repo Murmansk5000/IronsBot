@@ -18,6 +18,7 @@ from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessen
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.proactive_tasks import SqliteProactiveTasks
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.error_diagnostics import DiagnosticFormatter
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.outbound_limits import GroupOutboundRateLimitService
@@ -282,6 +283,23 @@ def build_common_components(
     admin_notices = AdminNoticeService(
         features,
         OutboundAdminNoticeSender(proactive_delivery, private_routes),
+        DiagnosticFormatter(
+            identity_principals,
+            {
+                str(value.qq): alias
+                for alias, value in settings.identities.groups.items()
+                if value.qq
+            },
+            {
+                str(value.qq): alias
+                for alias, value in settings.identities.users.items()
+                if value.qq
+            },
+            {
+                account.app_id: alias
+                for alias, account in settings.bot.qq_official.accounts.items()
+            },
+        ),
     )
     monitored_delivery = replace(
         proactive_delivery,

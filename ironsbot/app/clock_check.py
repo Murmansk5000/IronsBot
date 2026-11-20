@@ -8,6 +8,7 @@ from statistics import median
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.http.clock import check_clock_drift
+from ironsbot.services.error_diagnostics import DiagnosticFormatter, ErrorDiagnostic
 
 if TYPE_CHECKING:
     from ironsbot.config.models.operations import ClockCheckConfig
@@ -43,10 +44,14 @@ async def check_configured_clock(
     startup_notice.add(
         "startup_clock_check",
         "startup clock check",
-        "Clock drift warning.\n"
-        f"Estimated local clock: {abs(offset_seconds):.2f}s {direction}\n"
-        f"Samples: {len(samples)}\n"
-        "Check the Unraid host NTP configuration; IronsBot did not change system time.",
+        DiagnosticFormatter().format(
+            "Clock drift warning.\n"
+            f"Estimated local clock: {abs(offset_seconds):.2f}s {direction}\n"
+            f"Samples: {len(samples)}\n"
+            "Check the Unraid host NTP configuration; "
+            "IronsBot did not change system time.",
+            ErrorDiagnostic.background("启动时钟检查", "clock"),
+        ),
     )
     logger.warning(
         "clock drift exceeds threshold: offset=%.3fs threshold=%.3fs",

@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.platform import Platform, reference_digest
+from ironsbot.services.error_diagnostics import ErrorDiagnostic
 from ironsbot.services.identity_link_store import (
     OfficialIdentity,
     UnionIdentityConflictError,
@@ -117,4 +119,9 @@ class OfficialUnionIdentityService:
                 f"{reference_digest(account)}:{reference_digest(actor.id)}"
             ),
             action_name="官方统一身份冲突告警",
+            diagnostic=ErrorDiagnostic(
+                "官方身份关联",
+                "identity",
+                MessageInputContext(incoming, mentions_bot=False),
+            ),
         )

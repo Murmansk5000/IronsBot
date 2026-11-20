@@ -94,15 +94,14 @@ def test_failed_ai_key_check_is_added_to_startup_notice(
         )
     )
 
-    assert recorder.parts == [
-        (
-            "startup_ai_api_check",
-            "AI API startup check",
-            "AI API 检查失败。\n"
-            "已尝试提供商/模型：test/test-model\n"
-            "详情：test/test-model：认证失败：invalid API key",
-        )
-    ]
+    assert len(recorder.parts) == 1
+    key, action, message = recorder.parts[0]
+    assert key == "startup_ai_api_check" and action == "AI API startup check"
+    assert "错误编号：" in message and "后台任务：AI启动检查" in message
+    assert message.endswith(
+        "AI API 检查失败。\n已尝试提供商/模型：test/test-model\n"
+        "详情：test/test-model：认证失败：invalid API key"
+    )
 
 
 def test_startup_check_uses_the_first_working_fallback_model(

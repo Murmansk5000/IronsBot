@@ -6,7 +6,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field, replace
+from pathlib import PurePath
 from time import monotonic
+from traceback import extract_tb
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.data import DataUnavailableError
@@ -82,6 +84,14 @@ class RenderCoordinator:
                 "failed",
                 execution.stage,
                 type(error).__name__,
+                failure_location=_error_location(error),
+                elapsed_seconds=monotonic() - started,
+                timeout_seconds=self.timeout_seconds,
+                failure_step=str(
+                    (error.__cause__ or error.__context__ or error).__dict__.get(
+                        "render_step", execution.step
+                    )
+                ),
             )
         finally:
             current_render.reset(token)
@@ -121,8 +131,10 @@ class RenderCoordinator:
         execution = current_render.get()
         assert execution is not None
         execution.stage = "queue"
+        execution.step = "等待公共渲染队列"
         async with self._semaphore:
             execution.stage = "render"
+            execution.step = "模板布局、绘制及PNG编码（底层合计）"
             return await self.renderer(
                 template_path,
                 template_name,
@@ -136,3 +148,20 @@ def _require_nonempty(image: bytes) -> None:
     if not image:
         msg = "renderer returned an empty image"
         raise ValueError(msg)
+
+
+def _error_location(error: Exception) -> str:
+    cause = error.__cause__ or error.__context__ or error
+    frames = extract_tb(cause.__traceback__)
+    if not frames:
+        return "原始位置未提供"
+    project = [
+        frame
+        for frame in frames
+        if any(
+            part in frame.filename.replace("\\", "/")
+            for part in ("/ironsbot/", "/tests/")
+        )
+    ]
+    frame = project[-1] if project else frames[-1]
+    return f"{PurePath(frame.filename).name}:{frame.lineno}:{frame.name}"

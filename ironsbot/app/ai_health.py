@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.integrations.http.ai import AiApiSettings, check_ai_api
+from ironsbot.services.error_diagnostics import DiagnosticFormatter, ErrorDiagnostic
 
 if TYPE_CHECKING:
     from ironsbot.config.models.ai import AiConfig
@@ -60,7 +61,10 @@ async def check_configured_ai_api(
     startup_notice.add(
         "startup_ai_api_check",
         "AI API startup check",
-        "AI API 检查失败。\n"
-        f"已尝试提供商/模型：{', '.join(attempted)}\n"
-        f"详情：{'；'.join(failures)}",
+        DiagnosticFormatter().format(
+            "AI API 检查失败。\n"
+            f"已尝试提供商/模型：{', '.join(attempted)}\n"
+            f"详情：{'；'.join(failures)}",
+            ErrorDiagnostic.background("AI启动检查", "api"),
+        ),
     )

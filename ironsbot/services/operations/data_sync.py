@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.services.error_diagnostics import DiagnosticFormatter, ErrorDiagnostic
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -211,10 +212,18 @@ class DataSyncService:
             self._backend.load_failed_cached(results)
         else:
             self._backend.load_all_cached()
-        return self._backend.format_sync_result_notice(
+        message = self._backend.format_sync_result_notice(
             results if did_run else {},
             title_prefix="启动数据同步",
         )
+        if any(not ok for ok in results.values()):
+            return DiagnosticFormatter().format(
+                message,
+                ErrorDiagnostic.background(
+                    "启动数据同步", "sync", task=", ".join(results)
+                ),
+            )
+        return message
 
     def _register_jobs(self, scheduler: Scheduler) -> None:
         for name, minutes, second in self._backend.schedules():

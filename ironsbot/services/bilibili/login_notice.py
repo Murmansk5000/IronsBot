@@ -10,6 +10,7 @@ from base64 import b64decode
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.services.error_diagnostics import DiagnosticFormatter
 from ironsbot.services.messaging.delivery_tasks import DeliveryIntent
 
 if TYPE_CHECKING:
@@ -20,7 +21,12 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def build_bili_login_outbound_message(notice: BiliLoginNotice) -> OutboundMessage:
-    parts: list[TextPart | BinaryImagePart] = [TextPart(notice.text)]
+    text = (
+        DiagnosticFormatter().format(notice.text, notice.diagnostic)
+        if notice.diagnostic
+        else notice.text
+    )
+    parts: list[TextPart | BinaryImagePart] = [TextPart(text)]
     if notice.qrcode is None:
         return OutboundMessage(tuple(parts))
 

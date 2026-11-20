@@ -10,6 +10,10 @@ from contextlib import AsyncExitStack, aclosing, asynccontextmanager, contextman
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from ironsbot.core.diagnostic_context import (
+    current_diagnostic_operation,
+    diagnostic_operation,
+)
 from ironsbot.core.message_origin import current_message_origin, message_origin
 from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.core.semantic_requests import (
@@ -66,12 +70,16 @@ class PortableReply:
     semantic_trace: SemanticRequestTrace | None = field(
         default_factory=current_semantic_request_trace, compare=False, repr=False
     )
+    diagnostic_trace: tuple[str, str] = field(
+        default_factory=current_diagnostic_operation, compare=False, repr=False
+    )
 
     @contextmanager
     def execution_scope(self) -> Iterator[None]:
         with (
             message_origin(self.origin),
             semantic_request_trace_scope(self.semantic_trace),
+            diagnostic_operation(*self.diagnostic_trace),
         ):
             yield
 

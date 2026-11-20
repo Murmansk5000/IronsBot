@@ -24,6 +24,7 @@ from ironsbot.services.ai.source_context import format_ai_source_context
 from ironsbot.services.command_delivery import CommandReplyDelivery
 from ironsbot.services.command_errors import CommandErrorReporter
 from ironsbot.services.command_ingress import CommandIngress
+from ironsbot.services.error_diagnostics import query_diagnostic
 from ironsbot.services.identity_link_commands import (
     build_portable_identity_link_operations,
 )
@@ -373,7 +374,10 @@ class PortableCommandRouter:
         )
 
         async def execute() -> PortableReply | None:
-            with semantic_request_scope(request, actor=context.message.actor):
+            with (
+                semantic_request_scope(request, actor=context.message.actor),
+                query_diagnostic(contract.id, command),
+            ):
                 authorized = authorized_operation(operation, contract, self._features)
                 if contract.interaction == "automatic":
                     result = await authorized(command, context)

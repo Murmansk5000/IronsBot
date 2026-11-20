@@ -19,6 +19,7 @@ from ironsbot.services.seer.images import (
     placeholder_image,
     validate_image_data,
 )
+from ironsbot.services.seer.render_pipeline import render_step
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -185,11 +186,10 @@ class HttpSeerImageSource:
         non_missing_error: ImageSourceError | None = None
         for url in urls:
             try:
-                data = await self._get(
-                    self._clients.cache,
-                    url,
-                )
-                validate_image_data(data)
+                with render_step(f"素材请求 {kind}/{key}"):
+                    data = await self._get(self._clients.cache, url)
+                with render_step(f"素材校验与解码 {kind}/{key}"):
+                    validate_image_data(data)
             except (HTTPStatusError, RequestError, ImageSourceError) as error:  # noqa: PERF203
                 last_error = (
                     error
