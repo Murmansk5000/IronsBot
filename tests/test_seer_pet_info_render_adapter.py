@@ -231,6 +231,36 @@ async def test_render_adapter_closes_sql_session_before_fetching_assets(
 
 
 @pytest.mark.asyncio
+async def test_soulmark_fallback_survives_shared_asset_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ironsbot.services.seer.render_assets import RenderAssetSession
+
+    png = _body_png()
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            soulmark_icons=((7, SoulmarkIconAsset(2149, png, "image/png")),),
+        ),
+    )
+    monkeypatch.setattr(pet_info_renderer, "_load_gender_icon", lambda _: png)
+
+    class Images:
+        async def fetch(self, kind: str, _key: str, *, fallback: bool) -> bytes:
+            assert fallback is False
+            if kind == "soulmark_icon":
+                raise ImageSourceError("404")
+            return png
+
+    images = RenderAssetSession(cast("Any", Images()), cast("Any", FakeCache()))
+    assets, complete = await pet_info_renderer._load_assets(images, snapshot)
+    assert complete and images.complete and not images.failures
+    assert assets.soulmark_icons == ((7, png),)
+
+
+@pytest.mark.asyncio
 async def test_render_adapter_fetches_published_variant_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -393,7 +423,7 @@ async def test_asset_failure_uses_placeholder_without_caching(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("flash_png", [b"flash", None])
-async def test_soulmark_icon_prefers_unity_and_retries_flash_fallback(
+async def test_soulmark_icon_fallback_is_complete_and_cacheable(
     monkeypatch: pytest.MonkeyPatch,
     flash_png: bytes | None,
 ) -> None:
@@ -468,7 +498,14 @@ async def test_soulmark_icon_prefers_unity_and_retries_flash_fallback(
     else:
         assert fallback_icon == "data:image/png;base64,Zmxhc2g="
         assert not reported
-    assert not cache.values
+    assert bool(cache.values) is (flash_png is not None)
+
+    requests_before = len(images.requests)
+    assert await render() == b"rendered"
+    if flash_png is not None:
+        assert len(images.requests) == requests_before
+
+    cache.values.clear()
 
     images.unity_available = True
     assert await render() == b"rendered"

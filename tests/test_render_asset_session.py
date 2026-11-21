@@ -14,6 +14,7 @@ from ironsbot.services.seer.images import (
 )
 from ironsbot.services.seer.render_assets import RenderAssetSession
 from ironsbot.services.seer.render_cache import RenderCacheEntry
+from ironsbot.services.seer.render_pipeline import RenderExecution, current_render
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.images import ImageKind
@@ -103,3 +104,35 @@ async def test_non_asset_failure_is_not_disguised(error: BaseException) -> None:
 def test_invalid_image_is_rejected() -> None:
     with pytest.raises(ImageSourceError):
         validate_image_data(b"not an image")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("alternative_valid", [True, False])
+async def test_authoritative_alternative_controls_final_quality(
+    *, alternative_valid: bool
+) -> None:
+    class Source:
+        async def fetch(
+            self, kind: ImageKind, key: str, *, fallback: bool = True
+        ) -> bytes:
+            del kind, key, fallback
+            raise ImageSourceError("404")
+
+    png = placeholder_image("soulmark_icon")
+    put = Mock()
+    scope = RenderAssetSession(
+        Source(), Mock(entry=Mock(return_value=RenderCacheEntry(lambda: None, put)))
+    )
+    execution = RenderExecution()
+    token = current_render.set(execution)
+    try:
+        data = await scope.fetch_with_alternative(
+            "soulmark_icon", "2149", alternative=png if alternative_valid else b"bad"
+        )
+        validate_image_data(data)
+        assert scope.complete is alternative_valid
+        assert execution.degraded is (not alternative_valid)
+        scope.entry("pet_info", "4950").put(b"rendered")
+        assert bool(execution.writes) is alternative_valid
+    finally:
+        current_render.reset(token)

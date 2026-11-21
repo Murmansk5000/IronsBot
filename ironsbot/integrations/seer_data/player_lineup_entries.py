@@ -17,6 +17,11 @@ from ironsbot.integrations.seer_data.peak_repository import (
     load_peak_master_pool_snapshots,
     load_peak_pool_snapshots,
 )
+from ironsbot.integrations.seer_data.pet_forms import (
+    SKIN_FORM_STRIDE,
+    PetFormCatalog,
+    load_pet_forms,
+)
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
@@ -42,7 +47,11 @@ class PublishedPlayerLineupEntryResolver:
         slots: tuple[PlayerLineupSlot, ...],
     ) -> tuple[PlayerLineupPetSnapshot, ...]:
         pet_ids = {slot.pet_id for slot in slots}
-        skin_ids = {slot.skin_id for slot in slots if slot.skin_id > 0}
+        skin_ids = {
+            slot.skin_id % SKIN_FORM_STRIDE
+            for slot in slots
+            if slot.skin_id % SKIN_FORM_STRIDE > 0
+        }
         with self._data.query(
             lambda session: (
                 load_peak_pool_snapshots(session, expert=False),
@@ -54,6 +63,7 @@ class PublishedPlayerLineupEntryResolver:
                 pet.id: pool.count for pool in master_pools for pet in pool.pets
             }
         with (
+            self._data.query(load_pet_forms) as forms,
             self._data.query(
                 lambda session: load_skin_image_resolutions(session, skin_ids)
             ) as resolved_skin_images,
@@ -84,8 +94,9 @@ class PublishedPlayerLineupEntryResolver:
                         resource_id := _resource_id(
                             slot,
                             pets_by_id.get(slot.pet_id),
-                            skins_by_id.get(slot.skin_id),
-                            resolved_skin_images.get(slot.skin_id),
+                            skins_by_id.get(slot.skin_id % SKIN_FORM_STRIDE),
+                            resolved_skin_images.get(slot.skin_id % SKIN_FORM_STRIDE),
+                            forms,
                         )
                     ),
                     type_id=_type_id(pets_by_id.get(slot.pet_id)),
@@ -98,7 +109,9 @@ class PublishedPlayerLineupEntryResolver:
                         and resource_id > 0
                         and _type_id(pet) > 0
                     ),
-                    skin_name=_skin_name(slot, skins_by_id.get(slot.skin_id)),
+                    skin_name=_skin_name(
+                        slot, skins_by_id.get(slot.skin_id % SKIN_FORM_STRIDE), forms
+                    ),
                 )
                 for slot in slots
             )
@@ -108,11 +121,13 @@ def _pet_name(pet: object | None) -> str:
     return str(getattr(pet, "name", "")).strip() or "未知精灵"
 
 
-def _skin_name(slot: PlayerLineupSlot, skin: object | None) -> str | None:
+def _skin_name(
+    slot: PlayerLineupSlot, skin: object | None, forms: PetFormCatalog
+) -> str | None:
     if slot.skin_id <= 0 or skin is None:
         return None
     owner = int(getattr(skin, "pet_id", 0) or 0)
-    if owner != slot.pet_id:
+    if not forms.shares_skin(slot.pet_id, owner):
         return None
     return str(getattr(skin, "name", "") or "").strip() or None
 
@@ -122,15 +137,16 @@ def _resource_id(
     pet: object | None,
     skin: object | None,
     resolution: object | None,
+    forms: PetFormCatalog,
 ) -> int:
     base_resource_id = int(getattr(pet, "resource_id", 0) or 0)
-    if slot.skin_id <= 0:
-        return base_resource_id
+    if slot.skin_id % SKIN_FORM_STRIDE == 0:
+        return _form_resource(slot, forms, base_resource_id)
     if skin is None:
         _log_unresolved_skin(slot, "skin not found")
         return 0
     skin_pet_id = int(getattr(skin, "pet_id", 0) or 0)
-    if skin_pet_id > 0 and skin_pet_id != slot.pet_id:
+    if not forms.shares_skin(slot.pet_id, skin_pet_id):
         _log_unresolved_skin(slot, f"skin owner mismatch: {skin_pet_id}")
         return 0
     skin_resource_id = int(getattr(skin, "resource_id", 0) or 0)
@@ -138,14 +154,34 @@ def _resource_id(
         _log_unresolved_skin(slot, "skin has no resource")
         return 0
     resolved_head_resource_id = int(getattr(resolution, "head_resource_id", 0) or 0)
-    return resolved_head_resource_id or skin_resource_id
+    return _form_resource(slot, forms, resolved_head_resource_id or skin_resource_id)
+
+
+def _form_resource(slot: PlayerLineupSlot, forms: PetFormCatalog, fallback: int) -> int:
+    form_index, skin_id = divmod(slot.skin_id, SKIN_FORM_STRIDE)
+    resource = forms.resource(slot.pet_id, slot.skin_id)
+    if form_index and resource is None:
+        _log_unresolved_skin(slot, "form mapping unavailable; using base portrait")
+    logger.debug(
+        "lineup portrait resolved: pet_id=%s raw_skin_id=%s skin_id=%s "
+        "form_index=%s resource_id=%s",
+        slot.pet_id,
+        slot.skin_id,
+        skin_id,
+        form_index,
+        resource or fallback,
+    )
+    return resource or fallback
 
 
 def _log_unresolved_skin(slot: PlayerLineupSlot, reason: str) -> None:
     logger.warning(
-        "lineup skin portrait unresolved: pet_id=%s skin_id=%s reason=%s",
+        "lineup skin portrait unresolved: stage=resolve_portrait pet_id=%s "
+        "skin_id=%s base_skin_id=%s form_index=%s reason=%s",
         slot.pet_id,
         slot.skin_id,
+        slot.skin_id % SKIN_FORM_STRIDE,
+        slot.skin_id // SKIN_FORM_STRIDE,
         reason,
     )
 

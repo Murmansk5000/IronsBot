@@ -15,6 +15,7 @@ from PIL import Image
 from ironsbot.services.seer.image_failure_notice import report_render_asset_failures
 from ironsbot.services.seer.images import ImageSourceError, placeholder_image
 from ironsbot.services.seer.pet_info_views import PetInfoAssets
+from ironsbot.services.seer.render_assets import RenderAssetSession
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
@@ -117,6 +118,13 @@ async def _load_assets(
     soulmark_icon_ids = tuple(
         sorted({icon.icon_id for icon in soulmark_icons.values() if icon.icon_id > 0})
     )
+    fallback_icons = {
+        icon_id: next(
+            icon.png for icon in soulmark_icons.values() if icon.icon_id == icon_id
+        )
+        for icon_id in soulmark_icon_ids
+        if all(icon.png for icon in soulmark_icons.values() if icon.icon_id == icon_id)
+    }
     requested = await asyncio.gather(
         _load_render_asset(images, "pet_head", str(snapshot.pet.resource_id)),
         _load_render_asset(images, "pet_body", str(snapshot.pet.resource_id)),
@@ -131,7 +139,10 @@ async def _load_assets(
         ),
         *(_load_render_asset(images, "item", str(item_id)) for item_id in item_ids),
         *(_load_optional_sign_buff(images, key) for key in effect_icon_keys),
-        *(_load_soulmark_icon_asset(images, icon_id) for icon_id in soulmark_icon_ids),
+        *(
+            _load_soulmark_icon_asset(images, icon_id, fallback_icons.get(icon_id))
+            for icon_id in soulmark_icon_ids
+        ),
     )
     type_offset = 2
     prop_offset = type_offset + len(type_ids)
@@ -182,7 +193,7 @@ async def _load_assets(
         icon_id
         for icon_id in soulmark_icon_ids
         if all(
-            icon.png is not None
+            bool(icon.png)
             for icon in soulmark_icons.values()
             if icon.icon_id == icon_id
         )
@@ -202,7 +213,7 @@ async def _load_assets(
             ),
             execution_identity,
         )
-    return assets, not failures
+    return assets, not reportable_failures
 
 
 def _flip_pet_body(data: bytes) -> bytes:
@@ -268,11 +279,16 @@ async def _load_optional_sign_buff(
 
 
 async def _load_soulmark_icon_asset(
-    images: SeerImageSource, icon_id: int
+    images: SeerImageSource, icon_id: int, alternative: bytes | None = None
 ) -> _LoadedRenderAsset:
     key = str(icon_id)
     try:
-        data = await images.fetch("soulmark_icon", key, fallback=False)
+        if isinstance(images, RenderAssetSession):
+            data = await images.fetch_with_alternative(
+                "soulmark_icon", key, alternative=alternative
+            )
+        else:
+            data = await images.fetch("soulmark_icon", key, fallback=False)
     except ImageSourceError as error:
         logger.warning(
             "Unity soulmark icon unavailable; trying Flash fallback: "
