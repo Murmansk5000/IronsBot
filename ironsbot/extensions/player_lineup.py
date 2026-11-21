@@ -105,7 +105,7 @@ class PlayerLineupRenderServices:
     ) -> str:
         return render_request_cache_key(
             category,
-            request,
+            ("official-pet-forms-v1", request),
             renderer_fingerprint=renderer_fingerprint,
         )
 

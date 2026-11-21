@@ -43,6 +43,12 @@ class RenderAssetSession:
 
     async def fetch(self, kind: ImageKind, key: str, *, fallback: bool = True) -> bytes:
         del fallback
+        return await self.fetch_with_alternative(kind, key, alternative=None)
+
+    async def fetch_with_alternative(
+        self, kind: ImageKind, key: str, *, alternative: bytes | None
+    ) -> bytes:
+        """Judge quality only after a caller's authoritative alternative is tried."""
         try:
             async with asyncio.timeout(self.timeout_seconds):
                 data = await self.source.fetch(kind, key, fallback=False)
@@ -50,6 +56,13 @@ class RenderAssetSession:
         except MissingImageRepositoryError:
             raise
         except (ImageSourceError, TimeoutError) as error:
+            if alternative:
+                try:
+                    validate_image_data(alternative)
+                except ImageSourceError:
+                    pass
+                else:
+                    return alternative
             if not isinstance(error, ImageSourceError):
                 error = ImageSourceError("图片素材准备超时")
             self.failures[kind, key] = error
