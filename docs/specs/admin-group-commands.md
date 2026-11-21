@@ -1,6 +1,6 @@
 # 管理口令统一群聊开关
 
-Status: implementation_complete; historical placement awaiting confirmation (2026-11-21).
+Status: historical_placement_verified (2026-11-22).
 Contract: baseline extension; no role/feature/cooldown/target authorization bypass.
 
 ## Behavior
@@ -14,9 +14,9 @@ Contract: baseline extension; no role/feature/cooldown/target authorization bypa
 ## History and Verification
 
 先提交/追加干净原始归档，再验证干净bundle、在隔离检出中整理历史。
-原拟将配置/契约归入86a7d8a655；该节点的目录仅参与帮助与匹配说明，
-旧OneBot执行未使用目录授权。不能仅回填目录便声称历史节点行为完整。
-历史折叠位置待确认；如保留原节点，需要同步适配当时执行授权。
+配置与执行契约已归入公共命令执行节点16b5d2dd37，重建后为c76860a97e；
+b040020115不再作为独立功能提交保留，原始提交仍由备份与私有累计归档保护。
+不回填86a7d8a655等仅管理帮助的目录节点，不提前引用后续接口。
 后续管理口令必须在其实际引入节点接入，不能提前引用未来接口。
 保留27个上游原SHA、作者日期、合并结构、其他未提交修改及预留文件。
 覆盖双平台true/false、私聊不受影响、超管/群管理员/普通成员、黑名单、
@@ -24,8 +24,10 @@ Contract: baseline extension; no role/feature/cooldown/target authorization bypa
 
 ## Boundaries
 
-不推送公共main、不构建/部署，不修改生产TOML、数据库或容器。
-本轮精灵形态相关并行修改不读取/编辑/暂存，不纳入本功能。
+本次后续授权允许精确lease推送、镜像构建和仅针对ironsbot的监督部署，
+生产TOML仅明确保存bot.admin_commands_in_groups=true，不改变其他权限或凭据。
+其他已提交功能原样保留；个人配置、并行未提交修改和验证脚本不纳入历史。
+部署验收与发布结果另行记录，不能以本地测试代替实机验证。
 
 ## Evidence
 
@@ -33,4 +35,16 @@ Contract: baseline extension; no role/feature/cooldown/target authorization bypa
 完整pytest：7472通过、11跳过；BasedPyright：0错误；compileall、仓库静态及差异检查通过。
 全量检查发现测试布尔参数需为仅关键字参数，修正后Ruff通过；该修正不改变业务代码。
 双平台专项覆盖群聊开关、私聊保持可用、超管/群管理员/普通成员及黑名单。
-历史改写、公共推送和生产部署尚未执行；不能将本次隔离结果当作历史节点验收。
+
+2026-11-22：从干净的d6207f30d6引用制作并验证完整bundle后，在隔离仓库重建。
+折叠后候选c5e3ca62b5与原头完整tree一致；本记录更新是其后的唯一文件变化，
+业务代码、测试、示例与其他文档不变。作者日期、合并拓扑和范围内27个未改写提交
+保持不变；原主线可达的124个上游原SHA全部保留。
+
+公共执行节点255项、后续目录调整节点355项专项通过。历史全仓检查与原节点逐字对照：
+23项Ruff问题、6项类型问题均为原有问题，没有新增诊断；改动范围类型检查零错误。
+历史编译、仓库静态及差异检查通过。不将历史全仓的既有问题写成全部通过。
+
+最终版本使用Python 3.11及uv.lock锁定依赖：完整pytest为7484通过、11跳过；
+全仓Ruff、BasedPyright、compileall、仓库静态及差异检查通过。
+本机Python 3.14和本地SDK覆盖路径的探索性失败不作为最终验收结果。
