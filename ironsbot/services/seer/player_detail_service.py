@@ -54,24 +54,28 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
     from ironsbot.services.seer.rank import RankService
+    from ironsbot.services.seer.somua_presentation import SomuaTextResolver
 
 logger = logging.getLogger(__name__)
 
 
 class PlayerDetailService:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - explicit shared query dependencies
         self,
         config: SeerConfig,
         rank: RankService,
         local_rank: LocalRankService,
         spawn: TaskSpawner,
         requests: PlayerRequestProtectionService | None = None,
+        *,
+        somua_text: SomuaTextResolver | None = None,
     ) -> None:
         self._config = config
         self._rank = rank
         self._local_rank = local_rank
         self._spawn = spawn
         self._requests = requests
+        self._somua_text = somua_text
         self._observations = ObservationCache(spawn)
         self._peak_cache_cycle: tuple[int, tuple[int, ...]] | None = None
         self._background_refreshes: dict[int, _BackgroundRefresh] = {}
@@ -214,6 +218,7 @@ class PlayerDetailService:
                 ),
                 observations=self._observations,
                 observation_ttl=player.background_refresh.cache_ttl_seconds,
+                somua_text=self._somua_text,
             ),
             game,
             command=command,
@@ -366,6 +371,7 @@ class PlayerDetailService:
             self._config.player.background_refresh.cache_ttl_seconds,
             player_id,
             sequence,
+            text_resolver=self._somua_text,
         )
 
     def _cache_remaining(self, reply: QueryReply) -> float:

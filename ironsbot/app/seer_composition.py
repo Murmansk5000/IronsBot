@@ -58,6 +58,9 @@ from ironsbot.integrations.seer_data.player_lineup_details import (
 from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
 )
+from ironsbot.integrations.seer_data.somua_text_repository import (
+    PublishedSomuaTextResolver,
+)
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.seer_data.type_matchup_repository import (
     PublishedTypeMatchupRepository,
@@ -552,6 +555,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             local_rank,
             task_owner.create,
             player_requests,
+            somua_text=PublishedSomuaTextResolver(seer_database),
         ),
         player_query_quotas,
         player_requests,
