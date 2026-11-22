@@ -111,6 +111,18 @@ async def fetch_player_shortcut_reply(
     anchor_only: bool = False,
 ) -> QueryReply:
     deadline = OperationDeadline.after(dependencies.detail_timeout_seconds)
+    if command.kind == "somua_detail":
+        from ironsbot.services.seer.somua_detail import fetch_somua_detail_reply
+
+        if command.somua_sequence is None:
+            raise ValueError("苏摩详情缺少实例编号")
+        return await fetch_somua_detail_reply(
+            dependencies,
+            game,
+            player_id=player_id,
+            sequence=command.somua_sequence,
+            anchor_only=anchor_only,
+        )
     if command.kind == "somua":
         from ironsbot.services.seer.somua_query import fetch_somua_reply
 

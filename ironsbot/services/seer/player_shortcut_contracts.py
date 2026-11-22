@@ -26,7 +26,9 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank import RankService
 
 
-PlayerShortcutKind = Literal["collection", "peak", "autocard", "somua", "beast_rank"]
+PlayerShortcutKind = Literal[
+    "collection", "peak", "autocard", "somua", "somua_detail", "beast_rank"
+]
 PlayerShortcutStatusSender = Callable[[str], Awaitable[None]]
 
 
@@ -59,6 +61,9 @@ PLAYER_SHORTCUT_ACTIONS = {
     )
     for spec in PLAYER_SHORTCUT_SPECS
 }
+PLAYER_SHORTCUT_ACTIONS["somua_detail"] = ActionDefinition(
+    "seer.player.somua_detail", "苏摩详情", cooldown_key="seer_player_somua_detail"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +73,11 @@ class PlayerShortcutCommand:
     kind: PlayerShortcutKind
     player_id: int
     base_snapshot: PlayerBaseSnapshot | None = None
+    somua_sequence: int | None = None
+
+    @property
+    def quota_action(self) -> str:
+        return "somua" if self.kind == "somua_detail" else self.kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,9 +147,15 @@ def player_shortcut_semantic_request(
     kind: PlayerShortcutKind,
     player_id: int,
     source: SemanticRequestSource,
+    sequence: int | None = None,
 ) -> SemanticRequest:
     return SemanticRequest(
         action=PLAYER_SHORTCUT_ACTIONS[kind],
-        target=SemanticTarget(key=str(player_id), display=f"米米号 {player_id}"),
+        target=SemanticTarget(
+            key=str(player_id) if sequence is None else f"{player_id}:{sequence}",
+            display=f"米米号 {player_id}"
+            if sequence is None
+            else f"米米号 {player_id} 苏摩 {sequence}",
+        ),
         source=source,
     )

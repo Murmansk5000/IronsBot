@@ -45,4 +45,5 @@ def shortcut_operation_label(kind: PlayerShortcutKind) -> str:
         "peak": "巅峰查询",
         "autocard": "群星牌查询",
         "somua": "苏摩查询",
+        "somua_detail": "苏摩详情",
     }[kind]

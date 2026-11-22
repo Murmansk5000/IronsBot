@@ -24,8 +24,9 @@ from ironsbot.services.player_reference_selection import (
     select_player_reference,
     select_player_target,
 )
+from ironsbot.services.portable_player_shortcut_commands import player_shortcut_reply
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
-from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     extension_action_allowed,
@@ -37,7 +38,6 @@ from ironsbot.services.seer.player_query import (
 )
 from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
-    execute_player_shortcut,
     parse_player_shortcut_command,
     player_shortcut_semantic_request,
 )
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
         MenuSelect,
         PortableQuerySessions,
     )
-    from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
     )
@@ -302,10 +302,20 @@ class _PortablePlayerOperations:
                 ):
                     return _text_reply("该功能当前未对你开放。")
                 return await _beast_rank_reply(self.rank_queries, player_id, context)
-            return await _player_shortcut_reply(
+            return await player_shortcut_reply(
                 self.service,
                 PlayerShortcutCommand(parsed.kind, player_id),
                 context,
+                sessions=self.sessions,
+                features=self.features,
+                resolver=self.resolver,
+                target_source=(
+                    "member"
+                    if context.has_member_mentions
+                    else self.resolver.reference_source(parsed.player_reference)
+                    if parsed.player_reference
+                    else "default"
+                ),
             )
 
         async def query(
@@ -350,24 +360,6 @@ class _PortablePlayerOperations:
             title="请选择要查询的玩家：",
             nickname_lookup=self.nickname_lookup,
         )
-
-
-async def _player_shortcut_reply(
-    service: PlayerService,
-    command: PlayerShortcutCommand,
-    context: MessageInputContext,
-) -> PortableReply:
-    async def execute(send_status: ProgressReporter) -> OutboundMessage:
-        reply = await execute_player_shortcut(
-            service,
-            command,
-            context.message.actor,
-            conversation=context.message.conversation,
-            send_status=send_status,
-        )
-        return reply.to_outbound()
-
-    return await progress_operation_reply(execute)
 
 
 async def _beast_rank_reply(
@@ -558,7 +550,15 @@ def _prepare_player_query_reply(  # noqa: C901, PLR0913 - dynamic menu choices
                 features,
                 sessions,
             )
-        return await _player_shortcut_reply(service, command, context)
+        return await player_shortcut_reply(
+            service,
+            command,
+            context,
+            sessions=sessions,
+            features=features,
+            resolver=resolver,
+            target_source=target_source,
+        )
 
     async def shared_select(
         command: (

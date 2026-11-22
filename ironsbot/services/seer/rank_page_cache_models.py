@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank_models import RankEntry
+    from ironsbot.services.seer.somua_models import SomuaCommonSlot
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,8 @@ class CachedRankLookup:
     rank_index: int
     fetched_at: float
     is_stale: bool = False
+    common_somua: tuple[SomuaCommonSlot, ...] | None = None
+    somua_legacy: bool = False
 
 
 @dataclass(frozen=True, slots=True)

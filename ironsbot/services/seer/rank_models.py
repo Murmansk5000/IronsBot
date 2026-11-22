@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ironsbot.services.seer.somua_models import SomuaCommonSlot
+
 
 @dataclass(frozen=True, slots=True)
 class RankEntry:
@@ -56,6 +58,9 @@ class RankLookupResult:
     fallback_cached_at: float | None = None
     fetched_at: float | None = None
     cost: RankLookupCost = field(default_factory=RankLookupCost)
+    common_somua: tuple[SomuaCommonSlot, ...] | None = None
+    common_fetched_at: float | None = None
+    common_failure: str | None = None
 
     def record_page(self, start: int, page: RankPageResult) -> None:
         """Retain the oldest page evidence and its observed query cost."""

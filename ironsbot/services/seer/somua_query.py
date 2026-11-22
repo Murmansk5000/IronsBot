@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -17,10 +18,11 @@ from ironsbot.services.seer.player_shortcut_queries import (
     _observe_detail,
     _resolve_shortcut_nick,
 )
-from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.query_work import QueryWorkResult
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.somua import SOMUA_SCORE_PARAM
+from ironsbot.services.seer.somua_detail import fetch_somua_detail_observation
+from ironsbot.services.seer.somua_models import SomuaOverviewReply
 
 _UINT32_MAX = 0xFFFFFFFF
 
@@ -30,6 +32,7 @@ if TYPE_CHECKING:
         PlayerShortcutCommand,
         PlayerShortcutDependencies,
     )
+    from ironsbot.services.seer.query_result import QueryReply
 
 
 async def fetch_somua_reply(  # noqa: PLR0913 - shared shortcut execution context
@@ -108,6 +111,8 @@ async def fetch_somua_reply(  # noqa: PLR0913 - shared shortcut execution contex
         ):
             result.rank = None
             result.failure = "积分与榜单数据不一致，暂时无法确认排名。"
+            result.common_somua = None
+            result.common_failure = result.failure
         if result.failure or result.cost.restricted_miss or not result.queried:
             failed.add("rank:somua")
         else:
@@ -123,7 +128,18 @@ async def fetch_somua_reply(  # noqa: PLR0913 - shared shortcut execution contex
         result.failure = format_player_extra_error(error)
         failed.add("rank:somua")
 
-    return QueryReply(
+    _include_common_result(result, observation, errors)
+    names = await _fetch_common_names(
+        dependencies,
+        game,
+        player_id=player_id,
+        result=result,
+        deadline=deadline,
+        anchor_only=anchor_only,
+        observation=observation,
+    )
+    errors.extend(names.errors)
+    return SomuaOverviewReply(
         text=_format_somua_reply(
             score,
             result,
@@ -135,8 +151,81 @@ async def fetch_somua_reply(  # noqa: PLR0913 - shared shortcut execution contex
         ),
         rank_lookups=(result,),
         fetched_at=observation.fetched_at,
-        complete=score is not None and not failed and nick_error is None,
+        common_somua=result.common_somua,
+        common_fetched_at=result.common_fetched_at,
+        common_names=names.names,
+        complete=(
+            score is not None
+            and not failed
+            and nick_error is None
+            and result.common_somua is not None
+            and not names.errors
+        ),
         query_work=QueryWorkResult(
+            scope="foreground",
+            successful_units=frozenset(successful) | names.work.successful_units,
+            failed_units=frozenset(failed) | names.work.failed_units,
+            cached_units=frozenset(cached) | names.work.cached_units,
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _CommonNames:
+    names: tuple[tuple[int, str], ...]
+    work: QueryWorkResult
+    errors: tuple[str, ...]
+
+
+async def _fetch_common_names(  # noqa: PLR0913 - shared query budget and target
+    dependencies: PlayerShortcutDependencies,
+    game: Any,
+    *,
+    player_id: int,
+    result: RankLookupResult,
+    deadline: OperationDeadline,
+    anchor_only: bool,
+    observation: ObservationTime,
+) -> _CommonNames:
+    successful: set[str] = set()
+    cached: set[str] = set()
+    failed: set[str] = set()
+    names: list[tuple[int, str]] = []
+    missing_names = False
+    sequences = dict.fromkeys(
+        slot.sequence for slot in (result.common_somua or ())[:3] if slot.sequence
+    )
+    for sequence in sequences:
+        unit = f"somua_detail:{sequence}"
+        try:
+            remaining = deadline.remaining(dependencies.timeout_seconds)
+            async with asyncio.timeout(remaining):
+                item = await fetch_somua_detail_observation(
+                    dependencies,
+                    game,
+                    player_id=player_id,
+                    sequence=sequence,
+                    anchor_only=anchor_only or remaining <= 0,
+                )
+            if item is None:
+                missing_names = True
+                continue
+            (cached if item.cached else successful).add(unit)
+            observation.include(item.fetched_at)
+            name = " ".join(item.detail.name.split())
+            if name:
+                names.append((sequence, name))
+            else:
+                missing_names = True
+        except Exception:  # noqa: BLE001 - optional names preserve score and choices
+            missing_names = True
+            failed.add(unit)
+    return _CommonNames(
+        names=tuple(names),
+        errors=("部分苏摩名称暂不可用，仍可选择编号查看详情。",)
+        if missing_names
+        else (),
+        work=QueryWorkResult(
             scope="foreground",
             successful_units=frozenset(successful),
             failed_units=frozenset(failed),
@@ -152,6 +241,19 @@ async def _read_score(game: Any, player_id: int, successful: set[str]) -> int:
         raise ValueError("苏摩积分数据异常")
     successful.add("somua_score")
     return value
+
+
+def _include_common_result(
+    result: RankLookupResult, observation: ObservationTime, errors: list[str]
+) -> None:
+    if result.common_fetched_at is not None:
+        observation.include(result.common_fetched_at)
+    if result.common_failure:
+        errors.append(f"常用苏摩：暂无法获取（{result.common_failure}）")
+    elif result.common_somua is None:
+        errors.append("常用苏摩：榜单未提供数据，暂无法获取")
+    elif not any(slot.sequence for slot in result.common_somua):
+        errors.append("常用苏摩：暂无可展示的实例")
 
 
 def _format_somua_reply(

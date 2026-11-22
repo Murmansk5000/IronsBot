@@ -104,6 +104,7 @@ _TAOMEE_ACTIONS = frozenset(
         "seer.player.peak",
         "seer.player.autocard",
         "seer.player.somua",
+        "seer.player.somua_detail",
         "seer.player.beast_rank",
         "seer.player.lineup",
         "player_lineup",

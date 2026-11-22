@@ -15,6 +15,9 @@ from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankPage,
     CachedRankPageSummary,
 )
+from ironsbot.services.seer.somua import SOMUA_RANK_KEY
+from ironsbot.services.seer.somua_codec import decode_common_slots, encode_common_slots
+from ironsbot.services.seer.somua_models import SomuaRankEntry
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -100,6 +103,14 @@ ON CONFLICT(key, sub_key, user_id) DO UPDATE SET
     display = excluded.display,
     fetched_at = excluded.fetched_at
 """
+
+
+def _migrate_somua_payload(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(player_rank_facts)")}
+    if "somua_payload" not in columns:
+        conn.execute("ALTER TABLE player_rank_facts ADD COLUMN somua_payload TEXT")
+
+
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
     SqliteMigration(2, (_NEGATIVE_LOOKUP_SCHEMA,)),
@@ -116,6 +127,7 @@ _MIGRATIONS = (
             "AND searched_limit > 1000",
         ),
     ),
+    SqliteMigration(6, callback=_migrate_somua_payload),
 )
 _LOGGER = logging.getLogger(__name__)
 
@@ -168,7 +180,7 @@ class SqliteRankPageCache:
                     """
                     SELECT f.user_id,
                            COALESCE(NULLIF(f.display, ''), p.nick, ''),
-                           f.score
+                           f.score, f.somua_payload
                     FROM player_rank_facts f
                     LEFT JOIN rank_players p ON p.user_id = f.user_id
                     WHERE f.key = ? AND f.sub_key = ?
@@ -182,8 +194,10 @@ class SqliteRankPageCache:
                     return None
                 return CachedRankPage(
                     [
-                        RankEntry(int(user_id), str(nick), int(score))
-                        for user_id, nick, score in rows
+                        SomuaRankEntry(int(user_id), str(nick), int(score), slots)
+                        if (slots := decode_common_slots(payload)) is not None
+                        else RankEntry(int(user_id), str(nick), int(score))
+                        for user_id, nick, score, payload in rows
                     ],
                     fetched_at,
                 )
@@ -206,7 +220,7 @@ class SqliteRankPageCache:
                 row = conn.execute(
                     """
                     SELECT COALESCE(NULLIF(f.display, ''), p.nick, ''),
-                           f.score, f.rank_index, f.fetched_at
+                           f.score, f.rank_index, f.fetched_at, f.somua_payload
                     FROM player_rank_facts f
                     LEFT JOIN rank_players p ON p.user_id = f.user_id
                     WHERE f.key = ? AND f.sub_key = ? AND f.user_id = ?
@@ -215,7 +229,7 @@ class SqliteRankPageCache:
                 ).fetchone()
             if row is None:
                 return None
-            nick, score, rank_index, fetched_at = row
+            nick, score, rank_index, fetched_at, payload = row
             fetched_at = float(fetched_at)
             if self._reject_stale(fetched_at, allow_stale=allow_stale):
                 return None
@@ -226,6 +240,8 @@ class SqliteRankPageCache:
                 int(rank_index),
                 fetched_at,
                 self._is_stale(fetched_at),
+                decode_common_slots(payload),
+                payload == "null",
             )
         except sqlite3.Error as error:
             self._log_read_error(error)
@@ -588,6 +604,27 @@ class SqliteRankPageCache:
                             end,
                         )
                         for rank_index, user_id, nick, score in normalized
+                    ],
+                )
+                payloads = {
+                    item.id: encode_common_slots(item.common_somua)
+                    for item in items
+                    if isinstance(item, SomuaRankEntry)
+                }
+                conn.executemany(
+                    "UPDATE player_rank_facts SET somua_payload = ? "
+                    "WHERE key = ? AND sub_key = ? AND user_id = ? AND fetched_at = ?",
+                    [
+                        (
+                            payloads.get(
+                                user_id, "null" if key == SOMUA_RANK_KEY else None
+                            ),
+                            key,
+                            sub_key,
+                            user_id,
+                            timestamp,
+                        )
+                        for _, user_id, _, _ in normalized
                     ],
                 )
                 conn.executemany(

@@ -128,6 +128,10 @@ class PlayerDetailService:
         use_cache: bool = True,
         anchor_only: bool = False,
     ) -> QueryReply:
+        if command.kind == "somua_detail":
+            return await self._fetch_shortcut(
+                game, command=command, player_id=player_id, anchor_only=anchor_only
+            )
         if command.base_snapshot is not None:
             self.remember_snapshot(command.base_snapshot)
         if use_cache:
@@ -351,6 +355,18 @@ class PlayerDetailService:
             return cached.reply.refreshed()
         self._cached_replies.pop(cache_key, None)
         return None
+
+    def cached_somua_detail_reply(
+        self, player_id: int, sequence: int
+    ) -> QueryReply | None:
+        from ironsbot.services.seer.somua_detail import cached_detail_reply
+
+        return cached_detail_reply(
+            self._observations,
+            self._config.player.background_refresh.cache_ttl_seconds,
+            player_id,
+            sequence,
+        )
 
     def _cache_remaining(self, reply: QueryReply) -> float:
         return remaining_observation_ttl(

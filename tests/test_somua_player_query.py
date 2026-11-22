@@ -79,6 +79,7 @@ def _rank(score: int = POINTS) -> RankLookupResult:
         queried=True,
         fetched_at=clock.now().timestamp(),
         cost=RankLookupCost(online_page_fetches=1),
+        common_somua=(),
     )
 
 

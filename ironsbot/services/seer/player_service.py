@@ -287,24 +287,14 @@ class PlayerService(PlayerAccountPolicyMixin):
         player_id = command.player_id
         if not is_valid_player_id(player_id):
             return QueryReply(text=PLAYER_ID_ERROR_MESSAGE, complete=False)
-        if command.base_snapshot is not None:
-            cached = await self._details.cached_or_inflight_reply(
-                player_id,
-                command.kind,
-                command.base_snapshot,
-            )
-        else:
-            cached = await self._details.cached_or_inflight_reply(
-                player_id,
-                command.kind,
-            )
+        cached = await self._cached_shortcut(command)
         if cached is not None:
             return cached
         try:
             quota_message = self._check_quota(
                 actor=actor,
                 player_id=player_id,
-                action_key=command.kind,
+                action_key=command.quota_action,
             )
             anchor_only = bool(quota_message)
             message = await self._run_live_request(
@@ -317,12 +307,13 @@ class PlayerService(PlayerAccountPolicyMixin):
                 actor=actor,
                 label=shortcut_operation_label(command.kind),
                 quota_player_id=player_id,
-                quota_action_key=command.kind,
+                quota_action_key=command.quota_action,
                 allow_quota_exhausted=anchor_only,
                 semantic_request=player_shortcut_semantic_request(
                     kind=command.kind,
                     player_id=player_id,
                     source=SemanticRequestSource.DIRECT,
+                    sequence=command.somua_sequence,
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
@@ -349,9 +340,26 @@ class PlayerService(PlayerAccountPolicyMixin):
             self._record_successful_quota(
                 actor=actor,
                 player_id=player_id,
-                action_key=command.kind,
+                action_key=command.quota_action,
             )
         return message
+
+    async def _cached_shortcut(
+        self, command: PlayerShortcutCommand
+    ) -> QueryReply | None:
+        if command.kind == "somua_detail":
+            if command.somua_sequence is None:
+                return QueryReply(text="苏摩详情缺少实例编号。", complete=False)
+            return self._details.cached_somua_detail_reply(
+                command.player_id, command.somua_sequence
+            )
+        if command.base_snapshot is not None:
+            return await self._details.cached_or_inflight_reply(
+                command.player_id, command.kind, command.base_snapshot
+            )
+        return await self._details.cached_or_inflight_reply(
+            command.player_id, command.kind
+        )
 
     def has_inflight_detail(
         self,

@@ -38,7 +38,10 @@ from ironsbot.integrations.headless_seer.type_hint import (
 )
 from ironsbot.services.operations.headless import HeadlessStateNotifier
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
-from ironsbot.services.operations.headless_errors import ClientNotInitializedError
+from ironsbot.services.operations.headless_errors import (
+    ClientNotInitializedError,
+    DisconnectedError,
+)
 from ironsbot.services.operations.headless_maintenance import (
     HeadlessMaintenanceEvent,
     HeadlessMaintenanceNotifier,
@@ -115,6 +118,8 @@ class SeerGame:
         self._reconnect_delay_max = reconnect_delay_max
         self._request_interval_seconds = max(request_interval_seconds, 0.0)
         self._request_gate = asyncio.Lock()
+        self._somua_read_gate = asyncio.Lock()
+        self._somua_read_client: SeerEncryptConnect | None = None
         self._next_request_at = 0.0
         self._reconnect_task: asyncio.Task[None] | None = None
         self._shutdown_requested = False
@@ -155,11 +160,18 @@ class SeerGame:
         timeout: float | None = None,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]:
         """发送封包并等待响应，自动附加 user_id。"""
+        if int(command_id) in {45965, 45969}:
+            await self._prepare_somua_read(timeout)
         async with self._request_gate:
             delay = self._next_request_at - time.monotonic()
             if delay > 0:
                 await asyncio.sleep(delay)
             try:
+                if (
+                    int(command_id) in {45965, 45969}
+                    and self._somua_read_client is not self.client
+                ):
+                    raise DisconnectedError("苏摩查询排队期间连接已更换")
                 return await self.client.send_and_wait(
                     command_id,
                     self.user_id,
@@ -172,6 +184,20 @@ class SeerGame:
                 self._next_request_at = (
                     time.monotonic() + self._request_interval_seconds
                 )
+
+    async def _prepare_somua_read(self, timeout: float | None) -> None:
+        # The client reads the instance list before using public arena queries.
+        async with asyncio.timeout(
+            self._request_timeout_seconds if timeout is None else timeout
+        ):
+            async with self._somua_read_gate:
+                client = self.client
+                if self._somua_read_client is client:
+                    return
+                await self.send_and_wait(CommandID(45941), 0, timeout=timeout)
+                if self.client is not client:
+                    raise DisconnectedError("苏摩查询准备期间连接已更换")
+                self._somua_read_client = client
 
     async def _send_heartbeat(self) -> None:
         """心跳回调，由连接层周期性调用。"""
