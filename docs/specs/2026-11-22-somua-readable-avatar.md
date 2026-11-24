@@ -1,8 +1,13 @@
 # 苏摩中文详情与真实组合外观
 
-Status: `blocked`
+Status: `partially_verified`
 Contract: `baseline` extension
 Owner: shared Somua presentation and application-owned render coordinator
+
+2026-11-24：中文展示已验收；用户已确认六张非商业工具链的真实组合实验图正确。
+此前官方Spine运行时授权阻塞记录作为历史保留，不代表新路线继续阻塞。
+公共/私有自动出图接入另见[当前设计](2026-11-24-somua-avatar-integration.md)，
+其Linux运行环境及集成验收尚未完成，不将实验出图等同于已部署功能。
 
 ## Goal And Boundaries
 

@@ -54,6 +54,14 @@ factory directory. No application plugin relies on framework discovery or an
 installation ContextVar. Rendering and font startup use the framework-independent
 binding under `integrations/litehtml`, not NoneBot plugin loading.
 
+Optional Somua image extensions use a credential-free parts/request protocol and
+an asynchronous resource lease; they never own player queries, permissions or
+menus. Native HTML and external skeletal backends share the application render
+coordinator's queue, deadline and final-image cache. Private packages may own
+versioned resources and converter/browser lifecycles, but not a second business
+queue or final-image cache. Noncommercial tools are separately licensed private
+runtime components and are absent from the public image.
+
 Published lineup snapshots expose an optional skin name from the same bound data
 generation, only when the selected skin belongs to the requested pet. Missing or
 mismatched records remain unknown; extensions do not query ORM data or infer names.
@@ -2051,6 +2059,19 @@ transitional, not alternative patterns to copy. Existing Bandit findings with
 no high-severity result remain tracked rather than silently suppressed.
 
 ## Enforcement
+
+### Optional Native Extension Tools
+
+The public image owns a versioned extension and host-capability contract, not an
+exact private/public Git-SHA lock. Optional native tools ship in private extension
+artifacts, separate from the bounded Python code archive. Fetch both directories
+from the same immutable image identity. Stage, validate the complete inventory
+and compatibility, and run safety probes before atomic activation. Tool generations
+are immutable and remain available to active jobs. Missing or incompatible tools
+disable only their optional capability, not the text query or application startup.
+Do not install operating-system packages at runtime or put noncommercial tools
+into the public distribution. Legacy monolithic private images remain protected
+until an explicitly authorized migration; they are not the target delivery model.
 
 ### Original History Ownership
 

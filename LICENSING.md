@@ -31,6 +31,11 @@ GPL-3.0 全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)。
 
 ## 第三方出处
 
+苏摩公共图片接口不包含第三方转换器或游戏素材。可选私有苏摩提供者使用的
+wang606/SpineSkeletonDataConverter按其固定版本的PolyForm Noncommercial 1.0.0
+单独交付，不受本仓库GPL/MIT声明重新许可，也不进入公共镜像。
+private及免费功能本身不构成许可豁免，实际用途和分发仍须满足上游条款。
+
 `ironsbot/integrations/litehtml` 保留从 `nonebot/plugin-htmlkit` 0.1.0rc5
 Python 适配层派生的最小封装（MIT，Copyright (c) 2025 NoneBot）。原版权声明、
 原生二进制来源和 C++ 部分 LGPL-3.0-or-later 标记见同目录 LICENSE 和 NOTICE.md。

@@ -477,6 +477,9 @@ async def test_overview_fetches_names_without_images_then_reuses_detail(
             )
         )
     )
+    avatar = SimpleNamespace(
+        attach=AsyncMock(side_effect=lambda _parts, reply: replace(reply, image=b"PNG"))
+    )
     deps = PlayerShortcutDependencies(
         cast("Any", rank),
         cast("Any", None),
@@ -485,6 +488,7 @@ async def test_overview_fetches_names_without_images_then_reuses_detail(
         1,
         ObservationCache(),
         TTL,
+        somua_avatar=cast("Any", avatar),
     )
 
     async def send(command: int, *args: int):
@@ -513,13 +517,15 @@ async def test_overview_fetches_names_without_images_then_reuses_detail(
     assert isinstance(overview, SomuaOverviewReply)
     assert dict(overview.common_names) == {n: f"Name{n}" for n in (111, 222, 333)}
     assert overview.rank_lookup_should_charge_quota
+    avatar.attach.assert_not_awaited()
     count = game.send_and_wait.await_count
     detail = await fetch_somua_detail_reply(
         deps, game, player_id=PLAYER, sequence=333, anchor_only=False
     )
-    assert detail.image is None
+    assert detail.image == b"PNG"
     assert game.send_and_wait.await_count == count
     assert detail.query_work is not None and not detail.query_work.billable_units
+    avatar.attach.assert_awaited_once()
     repeated = await fetch_player_shortcut_reply(
         deps,
         game,

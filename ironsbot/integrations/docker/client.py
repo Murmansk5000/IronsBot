@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 import httpx
@@ -43,6 +44,9 @@ from .registry import inspect_remote_image_info
 
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class DockerClient:
@@ -414,7 +418,7 @@ class DockerClient:
                 request.image,
                 registry_credentials=request.registry_credentials,
             )
-            container_id = await create_archive_container(client, request.image)
+            container_id = await create_archive_container(client, image.image_id)
             try:
                 content = await read_container_archive(
                     client,
@@ -443,3 +447,46 @@ class DockerClient:
                         exc_info=True,
                     )
         return DockerImageArchive(image=image, content=content)
+
+    async def save_image_archive(
+        self,
+        request: DockerImageArchiveRequest,
+        destination: Path,
+        *,
+        max_bytes: int,
+    ) -> None:
+        """Stream a directory from an already resolved image, without running it."""
+        if not request.image.startswith("sha256:"):
+            message = "Tool archives require an immutable Docker image ID"
+            raise ValueError(message)
+        transport = httpx.AsyncHTTPTransport(uds=request.socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(request.timeout_seconds),
+        ) as client:
+            image = await inspect_image_info(client, request.image)
+            if image.image_id != request.image:
+                message = "Tool archive image identity changed"
+                raise RuntimeError(message)
+            container_id = await create_archive_container(client, image.image_id)
+            try:
+                async with client.stream(
+                    "GET",
+                    f"/containers/{quote(container_id, safe='')}/archive",
+                    params={"path": request.archive_path},
+                ) as response:
+                    response.raise_for_status()
+                    total = 0
+                    async with await AsyncPath(destination).open("xb") as output:
+                        async for chunk in response.aiter_bytes(64 * 1024):
+                            total += len(chunk)
+                            if total > max_bytes:
+                                message = "Tool archive exceeds the download budget"
+                                raise ValueError(message)  # noqa: TRY301 - unlink partial file
+                            await output.write(chunk)
+            except BaseException:
+                await AsyncPath(destination).unlink(missing_ok=True)
+                raise
+            finally:
+                await remove_container_quietly(client, container_id)

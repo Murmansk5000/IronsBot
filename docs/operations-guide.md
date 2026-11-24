@@ -170,6 +170,22 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 不需要改成私有镜像。Docker socket、上述两个容器变量，以及 `enabled = true` 都是必要条件；
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
+苏摩原生工具由独立私有制品安装到按指纹隔离的工具目录，不进入公共镜像。
+普通镜像升级不要求公共提交 SHA 完全相同，但仍须通过工具契约、宿主兼容、
+完整性和隔离探针验证；离线使用缓存也会重新检查兼容性。
+
+2026-11-25 已完成公共镜像迁移 A 及实际普通 A→B 更新：两阶段均有 11 个账号就绪，
+分别稳定运行 70.638 秒和 61.933 秒，配置及其他容器保持不变；相同私有工具未重建，
+三个冻结外观的 PNG 哈希均精确一致。固定记录见公共
+[A](https://github.com/Murmansk5000/IronsBot/actions/runs/45541906727)、
+[B](https://github.com/Murmansk5000/IronsBot/actions/runs/45556059890) 和私有
+[记录一](https://github.com/Murmansk5000/ironsbot-private/actions/runs/45543330844)、
+[记录二](https://github.com/Murmansk5000/ironsbot-private/actions/runs/45543330938)。
+迁移与更新验收通过后，临时固定私有运行镜像保护才从源码删除；
+本段仅记录 2026-11-25 的 A/B 验收，后续版本以对应 SHA 的工作流与运维验收报告为准。
+完整镜像标识、时序与证据说明见
+[苏摩工具交付验收](specs/somua-tool-extension.md#2026-11-25-生产迁移与普通更新验收)。
+
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
 公共无头账号由 `[operations.headless].accounts` 中的账号引用决定；
 每个账号密码使用 `SEER_PASSWORD_<player_id>`。每个账号独立连接，查询和刷榜可并行；

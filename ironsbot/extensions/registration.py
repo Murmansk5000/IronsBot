@@ -9,9 +9,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ironsbot.core.schedule_rendering import ScheduleRendererRegistry
     from ironsbot.extensions.contracts import PlayerLineupExtensionContext
+    from ironsbot.extensions.somua_avatar import SomuaAvatarExtensionContext
 
 
 @dataclass(frozen=True, slots=True)
 class ExtensionServices:
     player_lineup: PlayerLineupExtensionContext
     scheduled_messages: ScheduleRendererRegistry
+    somua_avatar: SomuaAvatarExtensionContext | None = None

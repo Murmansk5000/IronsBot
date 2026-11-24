@@ -33,6 +33,7 @@ from ironsbot.core.command_catalog import (
     feature_is_visible,
 )
 from ironsbot.core.features import Feature
+from ironsbot.core.message_origin import current_message_origin
 from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.extensions.player_lineup import (
@@ -41,6 +42,7 @@ from ironsbot.extensions.player_lineup import (
     PlayerLineupQueryServices,
 )
 from ironsbot.extensions.registration import ExtensionServices
+from ironsbot.extensions.somua_avatar import SomuaAvatarExtensionContext
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
@@ -83,6 +85,7 @@ from ironsbot.services.messaging.red_packet import RedPacketNoticeService
 from ironsbot.services.official_union_identity import OfficialUnionIdentityService
 from ironsbot.services.onebot_admission import OneBotAdmissionService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.seer.render_pipeline import RenderFailureError, RenderResult
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,6 +105,13 @@ if TYPE_CHECKING:
     from ironsbot.services.official_addresses import OfficialAddressService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.startup import StartupNoticeService
+
+
+async def _report_somua_render_failure(
+    errors: CommandErrorReporter, result: RenderResult
+) -> None:
+    if (origin := current_message_origin()) is not None:
+        await errors.report(origin, RenderFailureError(result))
 
 
 async def _start_data_sync_resource(
@@ -387,7 +397,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         render_coordinator=seer_components.render_coordinator,
     )
 
+    private_settings = settings.operations.private_extensions.settings
     extension_services = ExtensionServices(
+        somua_avatar=SomuaAvatarExtensionContext(
+            data_directory=settings.paths.cache_root / "somua_avatar",
+            settings=private_settings.get("somua_avatar", {}),
+            spawn=task_owner.create,
+            register_provider=seer_components.somua_avatar.register_provider,
+        ),
         scheduled_messages=messaging.schedule_renderers,
         player_lineup=PlayerLineupExtensionServices(
             lineup_render_session=seer_components.lineup_render_session,
@@ -501,6 +518,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         common.admin_notices,
         common.admin_notices.diagnostics,
         spawn=lambda work: task_owner.create(work, name="command error summary"),
+    )
+
+    seer_components.somua_avatar.report_failure = partial(
+        _report_somua_render_failure, command_errors
     )
     onebot_admission = OneBotAdmissionService(
         features=features,

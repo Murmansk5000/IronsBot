@@ -128,13 +128,8 @@ class RenderCoordinator:
                     allow_refit=allow_refit,
                 ),
             )
-        execution = current_render.get()
-        assert execution is not None
-        execution.stage = "queue"
-        execution.step = "等待公共渲染队列"
-        async with self._semaphore:
-            execution.stage = "render"
-            execution.step = "模板布局、绘制及PNG编码（底层合计）"
+
+        async def image() -> bytes:
             return await self.renderer(
                 template_path,
                 template_name,
@@ -142,6 +137,28 @@ class RenderCoordinator:
                 max_width=max_width,
                 allow_refit=allow_refit,
             )
+
+        return await self.render_backend(
+            image, step="模板布局、绘制及PNG编码（底层合计）"
+        )
+
+    async def render_backend(
+        self, callback: Callable[[], Awaitable[bytes]], *, step: str
+    ) -> bytes:
+        """All native backends share the same queue and outer deadline."""
+        if current_render.get() is None:
+            return await self.image(
+                RenderRequest("external_backend"),
+                lambda: self.render_backend(callback, step=step),
+            )
+        execution = current_render.get()
+        assert execution is not None
+        execution.stage = "queue"
+        execution.step = "等待公共渲染队列"
+        async with self._semaphore:
+            execution.stage = "render"
+            execution.step = step
+            return await callback()
 
 
 def _require_nonempty(image: bytes) -> None:

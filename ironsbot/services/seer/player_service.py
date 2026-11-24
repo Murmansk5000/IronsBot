@@ -350,7 +350,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         if command.kind == "somua_detail":
             if command.somua_sequence is None:
                 return QueryReply(text="苏摩详情缺少实例编号。", complete=False)
-            return self._details.cached_somua_detail_reply(
+            return await self._details.cached_somua_detail_reply(
                 command.player_id, command.somua_sequence
             )
         if command.base_snapshot is not None:

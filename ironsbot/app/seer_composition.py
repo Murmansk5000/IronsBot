@@ -128,6 +128,7 @@ from ironsbot.services.seer.render_fallbacks import (
     type_matchup_text,
 )
 from ironsbot.services.seer.resources import SeerQueryResources
+from ironsbot.services.seer.somua_avatar import SomuaAvatarImages
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
     player_team_detail_action,
@@ -192,6 +193,7 @@ class SeerComponents:
     player_detail_extensions: PlayerDetailExtensionRegistry
     lineup_render_session: PlayerLineupRenderSessionFactory
     render_coordinator: RenderCoordinator
+    somua_avatar: SomuaAvatarImages
 
 
 def _lucky_player_actions(
@@ -544,6 +546,12 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         rank,
         player_requests,
     )
+    somua_avatar = SomuaAvatarImages(
+        render_coordinator,
+        render_sessions.cache.bind(
+            "somua-avatar-v1", lambda category: category == "somua_avatar"
+        ),
+    )
     player = PlayerService(
         settings.seer,
         headless,
@@ -556,6 +564,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             task_owner.create,
             player_requests,
             somua_text=PublishedSomuaTextResolver(seer_database),
+            somua_avatar=somua_avatar,
         ),
         player_query_quotas,
         player_requests,
@@ -709,4 +718,5 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player_detail_extensions=player_detail_extensions,
         lineup_render_session=lineup_render_session,
         render_coordinator=render_coordinator,
+        somua_avatar=somua_avatar,
     )

@@ -41,8 +41,7 @@ def _package_archive(
     factory: str = "plugin_contribution",
 ) -> bytes:
     manifest = (
-        '[project.entry-points."ironsbot.extensions"]\n'
-        f'lineup = "{module}:{factory}"\n'
+        f'[project.entry-points."ironsbot.extensions"]\nlineup = "{module}:{factory}"\n'
     ).encode()
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode="w") as archive:
@@ -80,6 +79,11 @@ class _Docker:
     def __init__(self, content: bytes | Exception) -> None:
         self._content = content
         self.requests: list[DockerImageArchiveRequest] = []
+
+    async def save_image_archive(
+        self, request: DockerImageArchiveRequest, destination: Path, *, max_bytes: int
+    ) -> None:
+        raise AssertionError((request, destination, max_bytes))
 
     async def fetch_image_archive(
         self,
@@ -330,9 +334,7 @@ def test_private_factories_receive_explicit_services_without_native_loading(
     assert module.received is None
     contributions = catalog.contributions(services)
     assert module.received is services
-    assert tuple(contribution.id for contribution in contributions) == (
-        "private_test",
-    )
+    assert tuple(contribution.id for contribution in contributions) == ("private_test",)
 
 
 def _services() -> ExtensionServices:
@@ -401,6 +403,9 @@ def test_manifest_rejects_nonlocal_or_malformed_entry_points(
         '[project.entry-points."ironsbot.extensions"]\n' + f'test = "{target}"\n',
         encoding="utf-8",
     )
-    assert PrivateExtensionCatalog.from_config(
-        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
-    ).reason == "private extension package is invalid"
+    assert (
+        PrivateExtensionCatalog.from_config(
+            PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+        ).reason
+        == "private extension package is invalid"
+    )

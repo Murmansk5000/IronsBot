@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutDependencies,
     )
+    from ironsbot.services.seer.somua_avatar import SomuaAvatarImages
     from ironsbot.services.seer.somua_presentation import SomuaTextResolver
 
 
@@ -56,6 +57,26 @@ def cached_detail_reply(
     return _reply(item.value, item.fetched_at, cached=True, text_resolver=text_resolver)
 
 
+async def cached_detail_with_avatar(  # noqa: PLR0913 - explicit presentation ports
+    cache: ObservationCache | None,
+    ttl: float,
+    player_id: int,
+    sequence: int,
+    *,
+    text_resolver: SomuaTextResolver | None = None,
+    avatar: SomuaAvatarImages | None = None,
+) -> QueryReply | None:
+    item = None if cache is None else cache.get(_identity(player_id, sequence), ttl)
+    if item is None or not isinstance(item.value, SomuaDetail):
+        return None
+    if item.value.player_id != player_id or item.value.sequence != sequence:
+        return None
+    reply = _reply(
+        item.value, item.fetched_at, cached=True, text_resolver=text_resolver
+    )
+    return reply if avatar is None else await avatar.attach(item.value.parts, reply)
+
+
 async def fetch_somua_detail_reply(
     dependencies: PlayerShortcutDependencies,
     game: Any,
@@ -75,12 +96,15 @@ async def fetch_somua_detail_reply(
         return QueryReply(
             text="苏摩详情暂无有效缓存，当前查询额度不允许联网查询。", complete=False
         )
-    return _reply(
+    reply = _reply(
         item.detail,
         item.fetched_at,
         cached=item.cached,
         text_resolver=dependencies.somua_text,
     )
+    if dependencies.somua_avatar is None:
+        return reply
+    return await dependencies.somua_avatar.attach(item.detail.parts, reply)
 
 
 async def fetch_somua_detail_observation(

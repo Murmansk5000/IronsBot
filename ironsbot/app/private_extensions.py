@@ -21,6 +21,11 @@ from uuid import uuid4
 import tomllib
 
 from ironsbot.app.application_logging import configure_extension_logging
+from ironsbot.app.extension_tool_install import (
+    ToolArchiveGateway,
+    install_tools,
+    installation_lock,
+)
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.services.operations.docker_models import (
     DockerImageArchiveRequest,
@@ -54,7 +59,7 @@ class PrivateExtensionError(RuntimeError):
     pass
 
 
-class PrivateExtensionArtifactGateway(Protocol):
+class PrivateExtensionArtifactGateway(ToolArchiveGateway, Protocol):
     async def fetch_image_archive(
         self,
         request: DockerImageArchiveRequest,
@@ -207,10 +212,30 @@ class PrivateExtensionInstaller:
         )
         try:
             artifact = await self._docker.fetch_image_archive(request)
-            manifest = install_private_extension_archive(
-                artifact.content,
-                Path(self._config.data_path),
-            )
+            if len(artifact.content) > MAX_PRIVATE_EXTENSION_ARCHIVE_BYTES:
+                msg = "private extension archive is too large"
+                raise PrivateExtensionError(msg)  # noqa: TRY301 - optional refresh boundary
+            root = Path(self._config.data_path)
+            async with installation_lock(root):
+                staging = root / f".staging-{uuid4().hex}"
+                try:
+                    _extract_private_extension_archive(artifact.content, staging)
+                    manifest = _load_manifest(staging)
+                    _validate_tool_probe(staging)
+                    await install_tools(
+                        staging,
+                        root,
+                        self._docker,
+                        DockerImageArchiveRequest(
+                            image=artifact.image.image_id,
+                            archive_path=request.archive_path,
+                            socket_path=request.socket_path,
+                            timeout_seconds=request.timeout_seconds,
+                        ),
+                    )
+                    _replace_current_extension_package(root, staging)
+                finally:
+                    shutil.rmtree(staging, ignore_errors=True)
         except Exception as error:  # noqa: BLE001 - optional package cannot block boot
             logger.warning(
                 "private extension refresh failed: image=%s error_type=%s error=%s",
@@ -260,11 +285,22 @@ def install_private_extension_archive(
     try:
         _extract_private_extension_archive(content, staging)
         manifest = _load_manifest(staging)
+        if (staging / "private-tools.json").exists():
+            msg = "native tools require the verified asynchronous installer"
+            raise PrivateExtensionError(msg)  # noqa: TRY301 - keep the old package
         _replace_current_extension_package(destination_root, staging)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
     return manifest
+
+
+def _validate_tool_probe(root: Path) -> None:
+    from ironsbot.app.extension_tools import read_tool_spec
+
+    spec = read_tool_spec(root)
+    if spec is not None:
+        _validate_private_plugin_module(spec.probe_module, root)
 
 
 def _extract_private_extension_archive(content: bytes, destination: Path) -> None:
@@ -291,6 +327,9 @@ def _extract_private_extension_members(
         relative = _archive_member_relative_path(member.name)
         if relative is None:
             continue
+        if relative == PurePosixPath(".installed-tools.json"):
+            msg = "private extension archive cannot supply local tool activation state"
+            raise PrivateExtensionError(msg)
         if member.issym() or member.islnk() or member.isdev() or member.isfifo():
             msg = f"private extension archive contains unsafe entry: {member.name}"
             raise PrivateExtensionError(msg)

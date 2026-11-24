@@ -76,6 +76,8 @@ async def run_private_extensions_preflight(
     config: PrivateExtensionsConfig,
     docker_update: DockerUpdateConfig,
 ) -> None:
+    if not config.enabled:
+        return
     await PrivateExtensionInstaller(
         config,
         docker_update,

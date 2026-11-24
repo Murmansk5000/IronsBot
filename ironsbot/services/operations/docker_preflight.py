@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from enum import IntEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -138,10 +138,13 @@ def _record_from_payload(payload: object) -> DockerStartupPreflightRecord:
         raise DockerStartupPreflightRecordError
     if isinstance(created_at, bool) or not isinstance(created_at, int | float):
         raise DockerStartupPreflightRecordError
+    result_fields = {item.name for item in fields(DockerUpdateResult)}
     return DockerStartupPreflightRecord(
         container_name=container_name,
         image=image,
-        result=DockerUpdateResult(**result),
+        result=DockerUpdateResult(
+            **{key: value for key, value in result.items() if key in result_fields}
+        ),
         source_instance_id=source_instance_id,
         handoff_completed=handoff_completed,
         created_at=float(created_at),

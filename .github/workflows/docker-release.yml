@@ -50,6 +50,12 @@ jobs:
                   python -m uv run --no-sync ruff check ironsbot tests packages/litehtml_core
                   python -m uv run --no-sync python scripts/check_repo.py --static
 
+            - name: Verify native tool filesystem ownership as root
+              shell: bash
+              timeout-minutes: 5
+              run: |
+                  sudo -n .venv/bin/python -m pytest tests/test_extension_tools.py -q --tb=short -p no:cacheprovider
+
             - name: Audit locked runtime dependencies
               shell: bash
               timeout-minutes: 10

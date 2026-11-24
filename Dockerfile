@@ -105,7 +105,7 @@ ENV PYTHONFAULTHANDLER=1
 COPY --from=requirements_stage /tmp/fonts/ /usr/share/fonts/opentype/source-han-sans/
 COPY --from=requirements_stage /tmp/font-license/LICENSE.txt /usr/share/doc/source-han-sans/LICENSE.txt
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fontconfig \
+    && apt-get install -y --no-install-recommends fontconfig libcap2 \
     && fc-cache -fv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

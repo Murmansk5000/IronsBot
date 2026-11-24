@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
     from ironsbot.services.seer.query_result import QueryReply
     from ironsbot.services.seer.rank import RankService
+    from ironsbot.services.seer.somua_avatar import SomuaAvatarImages
     from ironsbot.services.seer.somua_presentation import SomuaTextResolver
 
 
@@ -101,6 +102,7 @@ class PlayerShortcutDependencies:
     observations: ObservationCache | None = None
     observation_ttl: float = 300
     somua_text: SomuaTextResolver | None = None
+    somua_avatar: SomuaAvatarImages | None = None
 
 
 def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | None:

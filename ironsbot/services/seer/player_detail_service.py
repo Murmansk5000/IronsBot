@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
     from ironsbot.services.seer.rank import RankService
+    from ironsbot.services.seer.somua_avatar import SomuaAvatarImages
     from ironsbot.services.seer.somua_presentation import SomuaTextResolver
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ class PlayerDetailService:
         requests: PlayerRequestProtectionService | None = None,
         *,
         somua_text: SomuaTextResolver | None = None,
+        somua_avatar: SomuaAvatarImages | None = None,
     ) -> None:
         self._config = config
         self._rank = rank
@@ -76,6 +78,7 @@ class PlayerDetailService:
         self._spawn = spawn
         self._requests = requests
         self._somua_text = somua_text
+        self._somua_avatar = somua_avatar
         self._observations = ObservationCache(spawn)
         self._peak_cache_cycle: tuple[int, tuple[int, ...]] | None = None
         self._background_refreshes: dict[int, _BackgroundRefresh] = {}
@@ -219,6 +222,7 @@ class PlayerDetailService:
                 observations=self._observations,
                 observation_ttl=player.background_refresh.cache_ttl_seconds,
                 somua_text=self._somua_text,
+                somua_avatar=self._somua_avatar,
             ),
             game,
             command=command,
@@ -361,17 +365,18 @@ class PlayerDetailService:
         self._cached_replies.pop(cache_key, None)
         return None
 
-    def cached_somua_detail_reply(
+    async def cached_somua_detail_reply(
         self, player_id: int, sequence: int
     ) -> QueryReply | None:
-        from ironsbot.services.seer.somua_detail import cached_detail_reply
+        from ironsbot.services.seer.somua_detail import cached_detail_with_avatar
 
-        return cached_detail_reply(
+        return await cached_detail_with_avatar(
             self._observations,
             self._config.player.background_refresh.cache_ttl_seconds,
             player_id,
             sequence,
             text_resolver=self._somua_text,
+            avatar=self._somua_avatar,
         )
 
     def _cache_remaining(self, reply: QueryReply) -> float:
