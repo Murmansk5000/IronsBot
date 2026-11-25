@@ -4,18 +4,26 @@ from __future__ import annotations
 import asyncio
 import logging
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core import time as clock
 from ironsbot.core.binary import BufferReader
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.tasks import OperationDeadline
 from ironsbot.core.time import ObservationTime
+from ironsbot.services.operations.headless_pool import (
+    HeadlessRequestPriority,
+    PooledHeadlessGame,
+    current_headless_request_priority,
+)
 from ironsbot.services.seer.observation_cache import CachedObservation
 from ironsbot.services.seer.peak_modes import PEAK_MODES, valid_peak_counts
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.services.seer.observation_cache import ObservationCache
 
 logger = logging.getLogger(__name__)
@@ -28,6 +36,7 @@ PEAK_PARAMS_BY_MODE = tuple(
 )
 PEAK_PARAMS = tuple(param for _, params in PEAK_PARAMS_BY_MODE for param in params)
 PEAK_PERSONAL_SCHEMA = PEAK_PARAMS
+PEAK_FIELD_NAMES = ("current", "history", "wins", "matches")
 
 
 @dataclass(slots=True)
@@ -69,6 +78,13 @@ class UnityPeakInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class PeakField:
+    value: int | None = None
+    fetched_at: float | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class UnityPeakFetchResult:
     """Partial peak-base response with per-mode availability."""
 
@@ -76,6 +92,16 @@ class UnityPeakFetchResult:
     available_modes: frozenset[str]
     mode_errors: tuple[tuple[str, str], ...] = ()
     fetched_at: float | None = None
+    fields: dict[tuple[str, str], PeakField] = field(default_factory=dict)
+
+    def modes_with(self, *names: str) -> frozenset[str]:
+        if not self.fields:
+            return self.available_modes
+        return frozenset(
+            mode
+            for mode, _ in PEAK_PARAMS_BY_MODE
+            if all(self.fields[mode, name].value is not None for name in names)
+        )
 
     def error_for(self, mode: str) -> str | None:
         return dict(self.mode_errors).get(mode)
@@ -172,115 +198,159 @@ async def fetch_unity_peak_partial(  # noqa: PLR0913
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
     deadline = OperationDeadline.after(timeout_seconds)
-    # Keep every mode in its protocol-defined slot. If an earlier mode times
-    # out, compacting later values would reinterpret wild/expert fields as a
-    # different mode when the complete structure is parsed below.
-    chunks: list[bytes] = [struct.pack("!I", 0)] * len(PEAK_PARAMS)
-    available_modes: list[str] = []
-    mode_errors: list[tuple[str, str]] = []
-    observation = ObservationTime()
-
-    start = 0
-    for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
-        # Share the remaining stage budget; an early failure cannot take every
-        # later mode's turn, and fast modes leave their unused time available.
-        remaining_modes = len(PEAK_PARAMS_BY_MODE) - mode_index
-        mode_deadline = OperationDeadline.after(deadline.remaining() / remaining_modes)
-        mode_chunks: list[bytes] = []
-        mode_observation = ObservationTime()
-        failed_param = params[0]
-        progress = {"param": failed_param}
-        cache_key = (
-            (player_id, "peak_mode", mode, season, params)
-            if mode == "master"
-            else (player_id, "peak_mode", mode, season)
-        )
-        cached = (
-            None
-            if observations is None or season is None
-            else observations.get(
-                cache_key,
-                observation_ttl,
-            )
-        )
-        if cached is not None:
-            chunks[start : start + len(params)] = cached.value
-            start += len(params)
-            available_modes.append(mode)
-            observation.include(cached.fetched_at)
-            continue
-        try:
-            read = partial(
-                _read_peak_mode, game, player_id, params, mode_deadline, progress
-            )
-            if observations is not None and season is not None:
-                item = await observations.share(cache_key, read)
-            else:
-                item = await read()
-            mode_chunks = item.value
-            mode_observation.include(item.fetched_at)
-        except Exception as error:  # noqa: BLE001
-            if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
-                error_text = "查询超时"
-            else:
-                error_text = str(error) or type(error).__name__
-            logger.warning(
-                "peak base mode failed: player_id=%s mode=%s param=%s "
-                "worker_ref=%s error=%s",
+    results = await asyncio.gather(
+        *(
+            _read_peak_mode(
+                game,
                 player_id,
                 mode,
-                progress["param"],
-                reference_digest(str(getattr(game, "user_id", "unknown"))),
-                error_text,
+                params,
+                deadline,
+                observations=observations,
+                ttl=observation_ttl,
+                season=season,
             )
-            mode_errors.append((mode, error_text))
-            start += len(params)
-            continue
-        chunks[start : start + len(params)] = mode_chunks
-        start += len(params)
-        available_modes.append(mode)
-        observation.include(mode_observation.fetched_at)
-        counts_valid = valid_peak_counts(
-            *struct.unpack("!2I", b"".join(mode_chunks[-2:]))
+            for mode, params in PEAK_PARAMS_BY_MODE
         )
-        if not counts_valid:
+    )
+    chunks: list[bytes] = []
+    fields: dict[tuple[str, str], PeakField] = {}
+    available_modes: set[str] = set()
+    mode_errors: list[tuple[str, str]] = []
+    stamp = ObservationTime()
+    for (mode, _), values in zip(PEAK_PARAMS_BY_MODE, results, strict=True):
+        fields.update(
+            zip(((mode, name) for name in PEAK_FIELD_NAMES), values, strict=True)
+        )
+        chunks.extend(struct.pack("!I", item.value or 0) for item in values)
+        for item in values:
+            if item.value is not None:
+                stamp.include(item.fetched_at)
+        error = next((item.error for item in values if item.error), None)
+        if error:
+            mode_errors.append((mode, error))
+        else:
+            available_modes.add(mode)
+        wins, total = (item.value for item in values[-2:])
+        if (
+            wins is not None
+            and total is not None
+            and not valid_peak_counts(wins, total)
+        ):
             mode_errors.append((mode, "场次数据异常"))
-        if observations is not None and season is not None and counts_valid:
-            observations.save(cache_key, mode_chunks, mode_observation.fetched_at)
-
+            if observations is not None:
+                params = dict(PEAK_PARAMS_BY_MODE)[mode]
+                for param in params[-2:]:
+                    observations.discard((player_id, "peak_field", season, mode, param))
     info = parse_unity_peak(b"".join(chunks))
-    info.current_m_all = info.current_m_all if "master" in available_modes else None
+    info.current_m_all = fields["master", "matches"].value
     return UnityPeakFetchResult(
-        info=info,
-        available_modes=frozenset(available_modes),
-        mode_errors=tuple(mode_errors),
-        fetched_at=observation.fetched_at,
+        info, frozenset(available_modes), tuple(mode_errors), stamp.fetched_at, fields
     )
 
 
-async def _read_peak_mode(
+async def _read_peak_mode(  # noqa: PLR0913
     game: Any,
     player_id: int,
+    mode: str,
     params: tuple[int, ...],
     deadline: OperationDeadline,
-    progress: dict[str, int],
-) -> CachedObservation:
-    chunks: list[bytes] = []
-    observation = ObservationTime()
-    for param in params:
-        progress["param"] = param
-        _head, body = await asyncio.wait_for(
-            observation.observe(
-                lambda param=param: game.send_and_wait(
-                    USER_FOREVER_VALUE_CMD,
-                    player_id,
-                    param,
-                )
-            ),
-            timeout=deadline.remaining(),
+    *,
+    observations: ObservationCache | None,
+    ttl: float,
+    season: int | None,
+) -> list[PeakField]:
+    values = []
+    for name, param in zip(PEAK_FIELD_NAMES, params, strict=True):
+        args = (player_id, "peak_field", season, mode, param)
+        read = partial(_read_peak_field, game, player_id, param, deadline)
+        field = await _observe_peak_field(
+            read, args, deadline, observations if season is not None else None, ttl
         )
-        chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
-        if param != params[-1]:
+        if field.error:
+            logger.warning(
+                "peak base field failed: player_id=%s mode=%s field=%s param=%s "
+                "worker_ref=%s error=%s remaining=%.3fs",
+                player_id,
+                mode,
+                name,
+                param,
+                reference_digest(str(getattr(game, "user_id", "unknown"))),
+                field.error,
+                deadline.remaining(),
+            )
+        values.append(field)
+        if param != params[-1] and deadline.remaining():
             await asyncio.sleep(deadline.remaining(PEAK_QUERY_DELAY_SECONDS))
-    assert observation.fetched_at is not None
-    return CachedObservation(chunks, observation.fetched_at)
+    return values
+
+
+async def _observe_peak_field(
+    read: Callable[[], Awaitable[CachedObservation]],
+    key: tuple[object, ...],
+    deadline: OperationDeadline,
+    observations: ObservationCache | None,
+    ttl: float,
+) -> PeakField:
+    cached = observations.get(key, ttl) if observations is not None else None
+    if cached is not None:
+        return PeakField(cached.value, cached.fetched_at)
+
+    async def load() -> CachedObservation:
+        item = await read()
+        if observations is not None:
+            observations.save(key, item.value, item.fetched_at)
+        return item
+
+    background = (
+        current_headless_request_priority().priority
+        == HeadlessRequestPriority.BACKGROUND
+    )
+    retry_shared = (
+        not background
+        and observations is not None
+        and observations.inflight_background(key)
+    )
+
+    async def attempt() -> PeakField:
+        if not deadline.remaining():
+            return PeakField(error="查询超时")
+        try:
+            async with asyncio.timeout(deadline.remaining()):
+                item = await (
+                    observations.share(key, load, background=background)
+                    if observations is not None
+                    else load()
+                )
+            return PeakField(item.value, item.fetched_at)
+        except Exception as error:  # noqa: BLE001 - return partial results
+            return PeakField(error=_peak_field_error(error))
+
+    result = await attempt()
+    if result.error and retry_shared and deadline.remaining():
+        return await attempt()
+    return result
+
+
+def _peak_field_error(error: Exception) -> str:
+    if isinstance(error, TimeoutError):
+        return "查询超时"
+    if isinstance(error, (ValueError, TypeError, AttributeError, struct.error)):
+        return "数据格式异常"
+    return type(error).__name__
+
+
+async def _read_peak_field(
+    game: Any, player_id: int, param: int, deadline: OperationDeadline
+) -> CachedObservation:
+    if not deadline.remaining():
+        raise TimeoutError
+    if isinstance(game, PooledHeadlessGame):
+        _head, body = await game.read_peak_field(
+            USER_FOREVER_VALUE_CMD, player_id, param, deadline
+        )
+    else:
+        _head, body = await game.send_and_wait(USER_FOREVER_VALUE_CMD, player_id, param)
+    if not deadline.remaining():
+        raise TimeoutError
+    return CachedObservation(int(body.value) & 0xFFFFFFFF, clock.now().timestamp())

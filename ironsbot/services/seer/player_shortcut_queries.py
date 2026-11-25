@@ -366,14 +366,14 @@ async def _fetch_peak_message(  # noqa: PLR0913
         ),
     )
     unity_peak = peak_result.info
-    if peak_result.available_modes:
-        observation.include(peak_result.fetched_at)
+    score_modes = peak_result.modes_with("current")
+    count_modes = peak_result.modes_with("wins", "matches")
     for mode, error in peak_result.mode_errors:
         logger.warning("米米号详情字段获取失败：巅峰%s基础数据：%s", mode, error)
     peak_sub_key = None
     scores = calculate_player_peak_scores(
         unity_peak,
-        available_modes=peak_result.available_modes,
+        available_modes=score_modes,
     )
     peak_progress = RankSummaryProgress()
 
@@ -408,7 +408,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         unity_peak,
         scores,
         rank_summary,
-        available_modes=peak_result.available_modes,
+        available_modes=score_modes,
     )
     metrics = collect_metrics(
         more_info=SimpleNamespace(total_achieve=0, pet_all_num=0),
@@ -421,11 +421,11 @@ async def _fetch_peak_message(  # noqa: PLR0913
         peak_wild_score=validated_peak.scores.wild,
         peak_expert_score=validated_peak.scores.expert,
         peak_master_score=validated_peak.scores.master,
-        available_modes=peak_result.available_modes,
+        available_modes=count_modes,
     )
     for metric_key in validated_peak.clear_metric_keys:
         metrics.pop(metric_key, None)
-    peak_metric_keys = _peak_metric_keys_for_modes(peak_result.available_modes)
+    peak_metric_keys = _peak_metric_keys_for_modes(count_modes)
     local_summary = await safe_player_extra(
         "样本数据",
         _update_selected_metrics(
@@ -446,20 +446,13 @@ async def _fetch_peak_message(  # noqa: PLR0913
         format_compact_peak_section,
         unity_peak,
         rank_summary,
-        fetched_at=_detail_observation_time(
-            observation,
-            (
-                rank_summary.standard,
-                rank_summary.wild,
-                rank_summary.expert,
-                rank_summary.master,
-            ),
-        ),
+        fetched_at=peak_result.fetched_at,
         player_id=player_id,
         nick=nick,
         nick_error=nick_error,
         available_modes=peak_result.available_modes,
         mode_errors=dict(peak_result.mode_errors),
+        fields=peak_result.fields,
     )
     message = _append_extra_errors(render(local_summary=local_summary), extra_errors)
     return _detail_reply(
@@ -473,7 +466,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         base_complete=not extra_errors
         and nick_error is None
         and not peak_result.mode_errors,
-        fetched_at=observation.fetched_at,
+        fetched_at=peak_result.fetched_at,
         refresh_text=lambda: _append_extra_errors(
             render(
                 local_summary=_current_sample_summary(

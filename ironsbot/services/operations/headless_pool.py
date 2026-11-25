@@ -11,6 +11,7 @@ from enum import IntEnum
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
+from ironsbot.core.tasks import request_start_deadline
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
     from ironsbot.core.platform import ActorRef
-    from ironsbot.core.tasks import TaskSpawner
+    from ironsbot.core.tasks import OperationDeadline, TaskSpawner
     from ironsbot.services.operations.headless_activity import (
         HeadlessOperationTracker,
     )
@@ -160,6 +161,7 @@ class _PacketRequest:
     workflow: HeadlessWorkflowState | None
     context: Context
     queued_at: float
+    deadline: OperationDeadline | None = None
     excluded_workers: set[str] = field(default_factory=set)
     active_worker: str | None = None
     attempts: int = 0
@@ -235,6 +237,7 @@ class HeadlessRequestDispatcher:
         operation: Callable[[Any], Awaitable[T]],
         *,
         label: str,
+        deadline: OperationDeadline | None = None,
     ) -> T:
         loop = asyncio.get_running_loop()
         workflow = current_headless_workflow()
@@ -249,21 +252,35 @@ class HeadlessRequestDispatcher:
             workflow=workflow,
             context=copy_context(),
             queued_at=monotonic(),
+            deadline=deadline,
         )
         self._sequence += 1
         self._pending.append(request)
         self.dispatch()
-        await send_request_feedback(
-            queued=request.active_worker is None,
-            feedback=None if workflow is None else workflow.feedback,
-        )
         try:
+            await send_request_feedback(
+                queued=request.active_worker is None,
+                feedback=None if workflow is None else workflow.feedback,
+            )
             outcome = await asyncio.shield(request.future)
         except asyncio.CancelledError:
             if request.active_worker is None:
                 with suppress(ValueError):
                     self._pending.remove(request)
+            if request.active_worker is None or deadline is not None:
                 request.future.cancel()
+            if deadline is not None:
+                logger.info(
+                    "headless packet deadline/cancellation: ticket=%s label=%s "
+                    "phase=%s worker=%s attempt=%s elapsed=%.3fs remaining=%.3fs",
+                    workflow.sequence if workflow else "-",
+                    label,
+                    "queue" if request.active_worker is None else "in_flight",
+                    request.active_worker,
+                    request.attempts,
+                    monotonic() - request.queued_at,
+                    deadline.remaining(),
+                )
             raise
         if outcome.worker_user_id is not None:
             _last_worker_user_id.set(outcome.worker_user_id)
@@ -276,6 +293,11 @@ class HeadlessRequestDispatcher:
             request = self._next_request()
             if request is None:
                 return
+            if request.deadline is not None and not request.deadline.remaining():
+                request.future.set_result(
+                    _PacketOutcome(worker_user_id=None, error=TimeoutError())
+                )
+                continue
             worker = self._next_idle_worker(request)
             if worker is None:
                 self._pending.appendleft(request)
@@ -371,13 +393,16 @@ class HeadlessRequestDispatcher:
             for worker in self._workers
         )
 
-    async def _execute(
+    async def _execute(  # noqa: C901, PLR0912 - packet lifecycle and bounded retry
         self,
         worker: HeadlessWorkerSlot,
         request: _PacketRequest,
     ) -> None:
         retry = False
+        started = monotonic()
         try:
+            if request.deadline is not None and not request.deadline.remaining():
+                raise TimeoutError  # noqa: TRY301 - same bounded failure path
             game = worker.game()
             if game is None:
                 self._raise_worker_disconnected()
@@ -388,11 +413,23 @@ class HeadlessRequestDispatcher:
             request.excluded_workers.add(worker.name)
             retry = (
                 request.attempts < MAX_PACKET_ATTEMPTS
+                and (request.deadline is None or request.deadline.remaining() > 0)
                 and self._has_healthy_alternative(request)
             )
             if not retry and not request.future.done():
                 request.future.set_result(
                     _PacketOutcome(worker_user_id=worker.user_id, error=error)
+                )
+            if request.deadline is not None:
+                logger.info(
+                    "headless deadline packet failed: ticket=%s label=%s worker=%s "
+                    "attempt=%s error=%s retry=%s",
+                    request.workflow.sequence if request.workflow else "-",
+                    request.label,
+                    worker.name,
+                    request.attempts,
+                    type(error).__name__,
+                    retry,
                 )
         except Exception as error:  # noqa: BLE001
             if not request.future.done():
@@ -408,6 +445,17 @@ class HeadlessRequestDispatcher:
                     )
                 )
         finally:
+            if request.deadline is not None:
+                logger.info(
+                    "headless deadline packet finished: label=%s worker=%s "
+                    "attempt=%s elapsed=%.3fs remaining=%.3fs retry=%s",
+                    request.label,
+                    worker.name,
+                    request.attempts,
+                    monotonic() - started,
+                    request.deadline.remaining(),
+                    retry,
+                )
             worker.active = False
             worker.available_since = monotonic()
             request.active_worker = None
@@ -478,6 +526,17 @@ class PooledHeadlessGame:
 
     async def get_user_info(self, user_id: int) -> Any:
         return await self._invoke("get_user_info", user_id)
+
+    async def read_peak_field(
+        self, command_id: int, player_id: int, param: int, deadline: OperationDeadline
+    ) -> Any:
+        async def invoke(game: Any) -> Any:
+            with request_start_deadline(deadline):
+                return await game.send_and_wait(command_id, player_id, param)
+
+        return await self._dispatcher.submit(
+            invoke, label=f"peak-field-{param}", deadline=deadline
+        )
 
     async def get_more_user_info(self, user_id: int) -> Any:
         return await self._invoke("get_more_user_info", user_id)

@@ -141,14 +141,15 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         "unknown_snapshot": LIVE_AT,
         "timeout_fallback": RANK_AT,
     }
-    assert reply.text.splitlines()[1] == format_player_data_time(expected[evidence])
-    assert reply.fetched_at == expected[evidence]
+    expected_at = LIVE_AT if kind == "peak" else expected[evidence]
+    assert reply.text.splitlines()[1] == format_player_data_time(expected_at)
+    assert reply.fetched_at == expected_at
     if evidence == "timeout_fallback":
         assert not reply.complete
         assert await service.cached_or_inflight_reply(PLAYER_ID, kind) is None
         return
     assert reply.complete
-    if expected[evidence] is None:
+    if expected_at is None:
         assert await service.cached_or_inflight_reply(PLAYER_ID, kind) is None
         return
     clock[0] += 30

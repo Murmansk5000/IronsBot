@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Coroutine, Iterator
 
 T = TypeVar("T")
 
@@ -25,6 +27,26 @@ class OperationDeadline:
     def remaining(self, cap: float | None = None) -> float:
         seconds = max(0.0, self.expires_at - monotonic())
         return seconds if cap is None else max(0.0, min(seconds, cap))
+
+
+_request_start_deadline: ContextVar[OperationDeadline | None] = ContextVar(
+    "request_start_deadline", default=None
+)
+
+
+@contextmanager
+def request_start_deadline(deadline: OperationDeadline) -> Iterator[None]:
+    token = _request_start_deadline.set(deadline)
+    try:
+        yield
+    finally:
+        _request_start_deadline.reset(token)
+
+
+def check_request_start_deadline() -> None:
+    deadline = _request_start_deadline.get()
+    if deadline is not None and not deadline.remaining():
+        raise TimeoutError
 
 
 class TaskSpawner(Protocol):

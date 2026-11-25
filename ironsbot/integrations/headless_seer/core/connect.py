@@ -14,7 +14,7 @@ from typing import Any, Generic, TypeGuard, TypeVar, overload
 
 from typing_extensions import Self, TypeVarTuple, Unpack
 
-from ironsbot.core.tasks import TaskSpawner
+from ironsbot.core.tasks import TaskSpawner, check_request_start_deadline
 from ironsbot.services.operations.headless_errors import SocketRecvError
 
 from .. import decrypt
@@ -382,6 +382,7 @@ class AbstractSocketConnect(
     ) -> tuple[Unpack[_T_UnpackedType]]:
         """发送封包并等待对应 cmd_id 的响应，FIFO 顺序关联。"""
         async with self._request_lock:
+            check_request_start_deadline()
             future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]] = (
                 self._loop.create_future()
             )

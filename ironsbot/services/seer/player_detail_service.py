@@ -213,7 +213,10 @@ class PlayerDetailService:
                 local_rank=self._local_rank,
                 timeout_seconds=min(
                     player.timeout_seconds,
-                    player.detail_timeout_seconds / _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT,
+                    player.detail_timeout_seconds
+                    if command.kind == "peak"
+                    else player.detail_timeout_seconds
+                    / _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT,
                 ),
                 detail_timeout_seconds=player.detail_timeout_seconds,
                 rank_timeout_seconds=(

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         PeakSeasonRankSummary,
         RankLookupResult,
     )
-    from ironsbot.services.seer.sequ_extra import UnityPeakInfo
+    from ironsbot.services.seer.sequ_extra import PeakField, UnityPeakInfo
 
 
 def _format_peak_rating_score(score: int) -> str:
@@ -44,6 +44,7 @@ def format_peak_line(  # noqa: PLR0913
     match_key: str,
     history_label: str = "历史",
     invalid_counts: bool = False,
+    match_detail: str = "",
 ) -> str:
     match_text = ""
     if invalid_counts:
@@ -54,6 +55,7 @@ def format_peak_line(  # noqa: PLR0913
             f"{format_local_rank_suffix(local_summary, match_key, label='样本场次')}"
         )
     win_rate_text = ""
+    match_text = join_metric_parts(match_text, match_detail)
     if win_rate and not invalid_counts:
         win_rate_text = (
             f"胜率{win_rate}"
@@ -108,7 +110,7 @@ def format_master_peak_line(result: RankLookupResult) -> str:
     return f"大师：{join_metric_parts(score_text, rank_text)}"
 
 
-def format_compact_peak_section(  # noqa: PLR0913
+def format_compact_peak_section(  # noqa: C901, PLR0913 - common formatting for four modes
     peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
     local_summary: LocalRankSummary,
@@ -119,155 +121,103 @@ def format_compact_peak_section(  # noqa: PLR0913
     nick_error: str | None = None,
     available_modes: frozenset[str] | None = None,
     mode_errors: dict[str, str] | None = None,
+    fields: dict[tuple[str, str], PeakField] | None = None,
 ) -> str:
     lines = ["【巅峰之战】", format_player_data_time(fetched_at)]
     if player_id is not None:
         lines.append(format_player_identity(player_id, nick, nick_error))
 
-    resolved_modes = available_modes if available_modes is not None else PEAK_MODE_NAMES
+    resolved = available_modes if available_modes is not None else PEAK_MODE_NAMES
     errors = mode_errors or {}
+    fields = fields or {}
+    rows = (
+        (
+            "standard",
+            "竞技",
+            format_rank_star_compact(peak.current_j_rank, peak.current_j_star),
+            format_rank_star_compact(peak.history_j_rank, peak.history_j_star),
+            peak.current_j_win,
+            peak.current_j_all,
+            peak_rank_summary.standard,
+        ),
+        (
+            "wild",
+            "狂野",
+            format_rank_star_compact(peak.current_k_rank, peak.current_k_star),
+            format_rank_star_compact(peak.history_k_rank, peak.history_k_star),
+            peak.current_k_win,
+            peak.current_k_all,
+            peak_rank_summary.wild,
+        ),
+        (
+            "expert",
+            "专家",
+            f"{peak.current_z_score}分",
+            f"{peak.history_z_score}分",
+            peak.current_z_win,
+            peak.current_z_all,
+            peak_rank_summary.expert,
+        ),
+        (
+            "master",
+            "大师",
+            format_rank_star_compact(peak.current_m_rank, peak.current_m_star),
+            format_rank_star_compact(peak.history_m_rank, peak.history_m_star),
+            peak.current_m_win,
+            peak.current_m_all,
+            peak_rank_summary.master,
+        ),
+    )
+    valid_totals: list[int] = []
+    for mode, title, current, history, wins, matches, rank in rows:
 
-    def unavailable_text(mode: str, *, current: bool = False) -> str:
-        prefix = "当前" if current else ""
-        return f"{prefix}暂未获取（{errors.get(mode, '查询未完成')}）"
+        def missing(name: str, *, mode: str = mode) -> str | None:
+            if item := fields.get((mode, name)):
+                return (
+                    f"暂未获取（{item.error or '查询未完成'}）"
+                    if item.value is None
+                    else None
+                )
+            return (
+                None
+                if mode in resolved
+                else f"暂未获取（{errors.get(mode, '查询未完成')}）"
+            )
 
-    standard_available = "standard" in resolved_modes
-    wild_available = "wild" in resolved_modes
-    expert_available = "expert" in resolved_modes
-    master_available = "master" in resolved_modes
-    counts_valid = {
-        "standard": valid_peak_counts(peak.current_j_win, peak.current_j_all),
-        "wild": valid_peak_counts(peak.current_k_win, peak.current_k_all),
-        "expert": valid_peak_counts(peak.current_z_win, peak.current_z_all),
-        "master": valid_peak_counts(peak.current_m_win, peak.current_m_all),
-    }
-    standard_current = (
-        format_rank_star_compact(peak.current_j_rank, peak.current_j_star)
-        if standard_available
-        else unavailable_text("standard", current=True)
-    )
-    wild_current = (
-        format_rank_star_compact(peak.current_k_rank, peak.current_k_star)
-        if wild_available
-        else unavailable_text("wild", current=True)
-    )
-    expert_current = (
-        f"{peak.current_z_score}分"
-        if expert_available
-        else unavailable_text("expert", current=True)
-    )
-
-    lines.extend(
-        [
+        current_missing = missing("current")
+        match_missing = missing("matches")
+        wins_missing = missing("wins")
+        have_counts = match_missing is None and wins_missing is None
+        valid = have_counts and valid_peak_counts(wins, matches)
+        if valid and matches is not None:
+            valid_totals.append(matches)
+        match_detail = ""
+        if fields:
+            if match_missing:
+                match_detail = f"场次{match_missing}"
+            elif matches == 0 and (wins_missing or wins == 0):
+                match_detail = "场次0"
+            if wins_missing:
+                win_detail = f"胜场{wins_missing}"
+                match_detail = join_metric_parts(match_detail, win_detail)
+            elif match_missing:
+                match_detail = join_metric_parts(match_detail, f"胜场{wins}")
+        lines.append(
             format_peak_line(
-                "竞技",
-                current=standard_current,
-                history=(
-                    format_rank_star_compact(peak.history_j_rank, peak.history_j_star)
-                    if standard_available
-                    else unavailable_text("standard")
-                ),
-                match_count=peak.current_j_all if standard_available else 0,
-                win_rate=(
-                    format_win_rate(peak.current_j_win, peak.current_j_all)
-                    if standard_available
-                    and counts_valid["standard"]
-                    and peak.current_j_all > 0
-                    else ""
-                ),
-                rank_result=peak_rank_summary.standard,
+                title,
+                current=f"当前{current_missing}" if current_missing else current,
+                history=missing("history") or history,
+                match_count=matches or 0 if match_missing is None else 0,
+                win_rate=format_win_rate(wins, matches) if valid and matches else "",
+                rank_result=rank,
                 local_summary=local_summary,
-                score_key="peak_standard",
-                win_rate_key="peak_standard_win_rate",
-                match_key="peak_standard_matches",
-                invalid_counts=standard_available and not counts_valid["standard"],
-            ),
-            format_peak_line(
-                "狂野",
-                current=wild_current,
-                history=(
-                    format_rank_star_compact(peak.history_k_rank, peak.history_k_star)
-                    if wild_available
-                    else unavailable_text("wild")
-                ),
-                match_count=peak.current_k_all if wild_available else 0,
-                win_rate=(
-                    format_win_rate(peak.current_k_win, peak.current_k_all)
-                    if wild_available
-                    and counts_valid["wild"]
-                    and peak.current_k_all > 0
-                    else ""
-                ),
-                rank_result=peak_rank_summary.wild,
-                local_summary=local_summary,
-                score_key="peak_wild",
-                win_rate_key="peak_wild_win_rate",
-                match_key="peak_wild_matches",
-                invalid_counts=wild_available and not counts_valid["wild"],
-            ),
-            format_peak_line(
-                "专家",
-                current=expert_current,
-                history=(
-                    f"{peak.history_z_score}分"
-                    if expert_available
-                    else unavailable_text("expert")
-                ),
-                match_count=peak.current_z_all if expert_available else 0,
-                win_rate=(
-                    format_win_rate(peak.current_z_win, peak.current_z_all)
-                    if expert_available
-                    and counts_valid["expert"]
-                    and peak.current_z_all > 0
-                    else ""
-                ),
-                rank_result=peak_rank_summary.expert,
-                local_summary=local_summary,
-                score_key="peak_expert",
-                win_rate_key="peak_expert_win_rate",
-                match_key="peak_expert_matches",
-                invalid_counts=expert_available and not counts_valid["expert"],
-            ),
-            format_peak_line(
-                "大师",
-                current=(
-                    format_rank_star_compact(peak.current_m_rank, peak.current_m_star)
-                    if master_available
-                    else unavailable_text("master", current=True)
-                ),
-                history=(
-                    format_rank_star_compact(peak.history_m_rank, peak.history_m_star)
-                    if master_available
-                    else unavailable_text("master")
-                ),
-                match_count=(peak.current_m_all or 0) if master_available else 0,
-                win_rate=(
-                    format_win_rate(peak.current_m_win, peak.current_m_all)
-                    if master_available
-                    and counts_valid["master"]
-                    and peak.current_m_all is not None
-                    and peak.current_m_all > 0
-                    else ""
-                ),
-                rank_result=peak_rank_summary.master,
-                local_summary=local_summary,
-                score_key="peak_master",
-                win_rate_key="peak_master_win_rate",
-                match_key="peak_master_matches",
-                invalid_counts=master_available and not counts_valid["master"],
-            ),
-        ]
-    )
-    if (
-        resolved_modes == PEAK_MODE_NAMES
-        and all(counts_valid.values())
-        and peak.current_m_all is not None
-    ):
-        total = (
-            peak.current_j_all
-            + peak.current_k_all
-            + peak.current_z_all
-            + peak.current_m_all
+                score_key=f"peak_{mode}",
+                win_rate_key=f"peak_{mode}_win_rate",
+                match_key=f"peak_{mode}_matches",
+                invalid_counts=have_counts and not valid,
+                match_detail=match_detail,
+            )
         )
-        lines.append(f"巅峰总场次：{total}场")
+    if len(valid_totals) == len(rows):
+        lines.append(f"巅峰总场次：{sum(valid_totals)}场")
     return "\n".join(lines)

@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.core.tasks import OperationDeadline, request_start_deadline
 from ironsbot.integrations.headless_seer.core import connect as connect_module
 from ironsbot.integrations.headless_seer.core.connect import AbstractSocketConnect
 from ironsbot.integrations.headless_seer.game import SeerGame
@@ -43,6 +44,23 @@ class FakeConnect(AbstractSocketConnect[CommandID[Any], object]):
 
     async def recv_packet(self) -> tuple[object] | None:
         return None
+
+
+@pytest.mark.asyncio
+async def test_expired_read_does_not_send_after_socket_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr("ironsbot.core.tasks.monotonic", lambda: clock[0])
+    client = FakeConnect(asyncio.get_running_loop(), spawn=TaskOwner().create)
+    async with client._request_lock:
+        with request_start_deadline(OperationDeadline.after(1)):
+            pending = asyncio.create_task(client.send_and_wait(CommandID(40002)))
+        await asyncio.sleep(0)
+        clock[0] += 2
+    with pytest.raises(TimeoutError):
+        await pending
+    assert not client.sent_commands
 
 
 def test_heartbeat_timeout_marks_connection_lost() -> None:

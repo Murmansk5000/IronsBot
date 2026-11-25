@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -22,6 +23,10 @@ from ironsbot.services.operations.request_feedback import (
     RequestFeedback,
     request_feedback_scope,
     send_request_feedback,
+)
+from ironsbot.services.seer.sequ_extra import (
+    PEAK_PARAMS_BY_MODE,
+    fetch_unity_peak_partial,
 )
 
 if TYPE_CHECKING:
@@ -69,6 +74,12 @@ class _Game:
         if release is not None:
             await release.wait()
         return f"{self.user_id}:{label}"
+
+    async def send_and_wait(
+        self, _command: int, _player: int, param: int
+    ) -> tuple[None, SimpleNamespace]:
+        await self.step(str(param))
+        return None, SimpleNamespace(value=0)
 
 
 class _Client:
@@ -124,6 +135,38 @@ async def _wait_for_event_count(
         await asyncio.sleep(0)
     message = f"timed out waiting for {count} packet events"
     raise AssertionError(message)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("worker_count", [1, 2, 3, 4])
+async def test_peak_fields_use_available_workers_with_fixed_mode_order(
+    worker_count: int,
+) -> None:
+    game, events, _ = _pool(worker_count)
+    result = await fetch_unity_peak_partial(game, 123456, timeout_seconds=1)
+    for mode, params in PEAK_PARAMS_BY_MODE:
+        assert [int(label) for _, label in events if int(label) in params] == list(
+            params
+        )
+        assert result.fields[mode, "current"].value == 0
+    assert len({worker for worker, _ in events}) == worker_count
+
+
+@pytest.mark.asyncio
+async def test_expired_peak_queue_does_not_send_after_worker_releases() -> None:
+    game, events, started = _pool(1)
+    release = asyncio.Event()
+    busy = asyncio.create_task(game.step("busy", release))
+    await started.setdefault("busy", asyncio.Event()).wait()
+    try:
+        result = await fetch_unity_peak_partial(game, 123456, timeout_seconds=0.02)
+        assert not result.available_modes
+        assert all(item.error == "查询超时" for item in result.fields.values())
+    finally:
+        release.set()
+        await busy
+    await game.step("next")
+    assert [label for _, label in events] == ["busy", "next"]
 
 
 @pytest.mark.asyncio

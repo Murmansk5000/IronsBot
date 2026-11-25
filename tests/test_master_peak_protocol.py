@@ -12,6 +12,7 @@ from ironsbot.services.seer.observation_cache import ObservationCache
 from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES
 from ironsbot.services.seer.sequ_extra import (
     PEAK_PARAMS,
+    PEAK_PARAMS_BY_MODE,
     fetch_unity_peak_partial,
     parse_unity_peak,
 )
@@ -65,13 +66,12 @@ def test_four_modes_keep_their_exact_protocol_slots() -> None:
 
 
 @pytest.mark.asyncio
-async def test_old_master_cache_does_not_poison_other_modes_or_new_data() -> None:
+async def test_field_cache_isolated_by_mode_forever_value_and_season() -> None:
     cache = ObservationCache()
     stamp = now().timestamp()
-    for mode in ("standard", "wild", "expert"):
-        cache.save(
-            (PLAYER, "peak_mode", mode, SEASON), [struct.pack("!I", 0)] * 4, stamp
-        )
+    for mode, params in PEAK_PARAMS_BY_MODE[:-1]:
+        for param in params:
+            cache.save((PLAYER, "peak_field", SEASON, mode, param), 0, stamp)
     cache.save((PLAYER, "peak_mode", "master", SEASON), [b"\0" * 4] * 3, stamp)
     game = Game()
     result = await fetch_unity_peak_partial(
@@ -88,7 +88,7 @@ async def test_old_master_cache_does_not_poison_other_modes_or_new_data() -> Non
     await fetch_unity_peak_partial(
         game, PLAYER, timeout_seconds=2, observations=cache, season=SEASON + 1
     )
-    assert tuple(game.calls) == PEAK_PARAMS
+    assert sorted(game.calls) == sorted(PEAK_PARAMS)
 
 
 @pytest.mark.asyncio
@@ -108,7 +108,7 @@ async def test_missing_master_total_is_unavailable_and_not_cached() -> None:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_reads_share_each_mode() -> None:
+async def test_concurrent_reads_share_each_field() -> None:
     cache = ObservationCache(TaskOwner().create)
     game = Game()
     results = await asyncio.gather(
@@ -120,7 +120,7 @@ async def test_concurrent_reads_share_each_mode() -> None:
         )
     )
     assert all(result.available_modes == PEAK_MODE_NAMES for result in results)
-    assert tuple(game.calls) == PEAK_PARAMS
+    assert sorted(game.calls) == sorted(PEAK_PARAMS)
 
 
 @pytest.mark.asyncio

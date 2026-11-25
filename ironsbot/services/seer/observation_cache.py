@@ -34,6 +34,7 @@ class ObservationCache:
         self._spawn = spawn
         self._values: dict[Hashable, CachedObservation] = {}
         self._pending: dict[Hashable, asyncio.Task[CachedObservation]] = {}
+        self._background_reads: set[Hashable] = set()
         self._waiters: dict[Hashable, int] = {}
         self._failures: dict[Hashable, float] = {}
 
@@ -62,6 +63,9 @@ class ObservationCache:
 
     def inflight(self, key: Hashable) -> bool:
         return key in self._pending
+
+    def inflight_background(self, key: Hashable) -> bool:
+        return key in self._background_reads
 
     async def observe(
         self,
@@ -105,6 +109,8 @@ class ObservationCache:
         self,
         key: Hashable,
         fetch: Callable[[], Awaitable[CachedObservation]],
+        *,
+        background: bool = False,
     ) -> CachedObservation:
         if self._spawn is None:
             return await fetch()
@@ -127,6 +133,7 @@ class ObservationCache:
                     raise
                 finally:
                     self._pending.pop(key, None)
+                    self._background_reads.discard(key)
                     logger.info(
                         "player observation finished: project=%s project_ref=%s "
                         "elapsed=%.3fs",
@@ -140,6 +147,8 @@ class ObservationCache:
                 name=f"seer-observation-{reference_digest(str(key))}",
             )
             self._pending[key] = pending
+            if background:
+                self._background_reads.add(key)
             pending.add_done_callback(_consume_exception)
         else:
             logger.info(

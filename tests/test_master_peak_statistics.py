@@ -11,7 +11,7 @@ from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.peak_modes import PEAK_MODE_NAMES
 from ironsbot.services.seer.player_peak_formatting import format_compact_peak_section
 from ironsbot.services.seer.rank_models import PeakSeasonRankSummary, PlayerRankSummary
-from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
+from ironsbot.services.seer.sequ_extra import PeakField, UnityPartOneInfo, UnityPeakInfo
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank_metrics import MetricValue
@@ -151,6 +151,28 @@ def test_empty_available_modes_is_not_the_default_all_modes() -> None:
     metrics = _metrics(_peak(), frozenset())
     assert not any(key.startswith("peak_") for key in metrics)
     assert "巅峰总场次" not in _message(_peak(), frozenset())
+
+
+def test_partial_fields_keep_expert_current_score_despite_history_timeout() -> None:
+    message = format_compact_peak_section(
+        replace(_peak(), current_z_all=10),
+        PeakSeasonRankSummary.empty(),
+        LocalRankSummary(),
+        fetched_at=None,
+        available_modes=PEAK_MODE_NAMES - {"expert"},
+        fields={
+            ("expert", "current"): PeakField(1500),
+            ("expert", "history"): PeakField(error="查询超时"),
+            ("expert", "wins"): PeakField(error="查询超时"),
+            ("expert", "matches"): PeakField(10),
+        },
+    )
+    expert = next(line for line in message.splitlines() if line.startswith("专家"))
+    assert "专家：1500分｜历史暂未获取（查询超时）" in expert
+    assert "场次10" in expert
+    assert "胜场暂未获取（查询超时）" in expert
+    assert "胜率" not in expert and "场次数据异常" not in expert
+    assert "巅峰总场次" not in message
 
 
 @pytest.mark.parametrize("failure", ("查询超时", "连接已断开", None))
