@@ -108,9 +108,9 @@ async def _load_assets(
     effect_icon_keys = tuple(
         sorted(
             {
-                effect.icon_key or str(effect.status_id)
+                ref
                 for effect in snapshot.display.special_effects
-                if effect.icon_key is not None or effect.status_id is not None
+                if (ref := effect.icon_reference) is not None
             }
         )
     )
@@ -138,7 +138,10 @@ async def _load_assets(
             for mintmark_id in mintmark_ids
         ),
         *(_load_render_asset(images, "item", str(item_id)) for item_id in item_ids),
-        *(_load_optional_sign_buff(images, key) for key in effect_icon_keys),
+        *(
+            _load_optional_effect_icon(images, kind, key)
+            for kind, key in effect_icon_keys
+        ),
         *(
             _load_soulmark_icon_asset(images, icon_id, fallback_icons.get(icon_id))
             for icon_id in soulmark_icon_ids
@@ -262,20 +265,22 @@ async def _load_render_asset(
     return _LoadedRenderAsset(kind, key, data)
 
 
-async def _load_optional_sign_buff(
+async def _load_optional_effect_icon(
     images: SeerImageSource,
+    kind: ImageKind,
     key: str,
 ) -> _LoadedRenderAsset:
     try:
-        data = await images.fetch("sign_buff", key, fallback=False)
+        data = await images.fetch(kind, key, fallback=False)
     except ImageSourceError as error:
         logger.warning(
-            "pet special-effect icon unavailable: key=%s error_type=%s",
+            "pet special-effect icon unavailable: kind=%s key=%s error_type=%s",
+            kind,
             key,
             type(error).__name__,
         )
-        return _LoadedRenderAsset("sign_buff", key, b"", error)
-    return _LoadedRenderAsset("sign_buff", key, data)
+        return _LoadedRenderAsset(kind, key, b"", error)
+    return _LoadedRenderAsset(kind, key, data)
 
 
 async def _load_soulmark_icon_asset(

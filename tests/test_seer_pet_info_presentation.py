@@ -211,7 +211,10 @@ def test_published_variant_icon_overrides_parent_without_adding_effects() -> Non
     )
     assets = replace(
         _assets(),
-        special_effect_icons=(("191_1", b"first"), ("191_2", b"second")),
+        special_effect_icons=(
+            (("sign_buff", "191_1"), b"first"),
+            (("sign_buff", "191_2"), b"second"),
+        ),
     )
 
     effects = cast(
@@ -224,6 +227,48 @@ def test_published_variant_icon_overrides_parent_without_adding_effects() -> Non
         "data:image/png;base64,Zmlyc3Q=",
         "data:image/png;base64,c2Vjb25k",
     ]
+
+
+def test_icon_kinds_with_same_key_stay_separate() -> None:
+    snapshot = _snapshot()
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            special_effects=(
+                PetSpecialEffectView(
+                    "词条", "说明", 1, None, (), "137", icon_kind="abnormal"
+                ),
+                PetSpecialEffectView(
+                    "状态", "说明", None, 137, ("客户端效果面板",), "137"
+                ),
+                PetSpecialEffectView(
+                    "待确认", "保留文字", None, 137, (), icon_kind=None
+                ),
+            ),
+        ),
+    )
+    assets = replace(
+        _assets(),
+        special_effect_icons=(
+            (("abnormal", "137"), b"glossary"),
+            (("sign_buff", "137"), b"status"),
+        ),
+    )
+    context = present_pet_info(snapshot, assets).templates
+    effects = cast("tuple[dict[str, Any], ...]", context["special_effects"])
+    assert [effect["icon"] for effect in effects] == [
+        "data:image/png;base64,Z2xvc3Nhcnk=",
+        "data:image/png;base64,c3RhdHVz",
+        None,
+    ]
+    assert effects[2]["desc"] == "保留文字"
+    environment = Environment(
+        loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
+    )
+    html = environment.get_template("template.html.j2").render(**context)
+    assert '<div class="sec-title">专属效果</div>' in html
+    assert "客户端效果面板" in html
 
 
 def test_effect_partition_keeps_shared_children_and_cycles_once() -> None:

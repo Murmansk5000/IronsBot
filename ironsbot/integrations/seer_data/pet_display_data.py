@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from ironsbot.core.value_coercion import require_bool_flag
 from ironsbot.services.seer.pet_info_views import (
+    CLIENT_EFFECT_PANEL_LABEL,
     PetDerivedDisplayData,
     PetSoulmarkDisplayAddition,
     PetSpecialEffectView,
@@ -18,6 +19,7 @@ from ironsbot.services.seer.pet_info_views import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from typing import Literal
 
     from sqlalchemy.orm import Session
 
@@ -123,7 +125,10 @@ def _build_effect_views(
                 if row["status_id"] is not None
                 else None
             ),
-            icon_key=(str(row["icon_key"]) if row.get("icon_key") else None),
+            icon_key=(
+                str(icon_key) if (icon_key := _published_icon_key(row)) else None
+            ),
+            icon_kind=_effect_icon_kind(row),
             sources=tuple(
                 dict.fromkeys(
                     _format_effect_source(source)
@@ -133,6 +138,26 @@ def _build_effect_views(
         )
         for row in rows
     )
+
+
+def _published_icon_key(row: dict[str, object]) -> object:
+    return row.get("icon_asset_key", row.get("icon_key"))
+
+
+def _effect_icon_kind(
+    row: dict[str, object],
+) -> Literal["abnormal", "sign_buff"] | None:
+    if "icon_kind" not in row:
+        return "sign_buff"
+    key = _published_icon_key(row)
+    kind = row["icon_kind"]
+    if not isinstance(key, str) or not key:
+        return None
+    if kind == "abnormal":
+        return "abnormal"
+    if kind == "sign_buff":
+        return "sign_buff"
+    return None
 
 
 def _format_effect_source(source: dict[str, object]) -> str:
@@ -145,6 +170,9 @@ def _format_effect_source(source: dict[str, object]) -> str:
         return f"魂印状态{source_id}"
     return {
         "pet_glossary": "官方关联词条",
+        "pet_effect_panel": CLIENT_EFFECT_PANEL_LABEL,
+        "client_status_display": "客户端条件显示",
+        "client_status_variant": "客户端状态分支",
         "glossary_link": "官方词条关联",
         "status": "官方状态关联",
         "glossary": "官方词条",

@@ -272,6 +272,10 @@ async def test_render_adapter_fetches_published_variant_key(
             snapshot.display,
             special_effects=(
                 PetSpecialEffectView("幽迹之秘", "说明", 545, None, (), "191_2"),
+                PetSpecialEffectView(
+                    "官方词条", "说明", 546, 137, (), "137", icon_kind="abnormal"
+                ),
+                PetSpecialEffectView("客户端状态", "说明", None, 137, (), "137"),
             ),
         ),
     )
@@ -279,13 +283,13 @@ async def test_render_adapter_fetches_published_variant_key(
         pet_info_renderer, "load_pet_info_snapshot", lambda *_: snapshot
     )
     monkeypatch.setattr(pet_info_renderer, "_load_gender_icon", lambda _: b"x")
-    requested: list[str] = []
+    requested: list[tuple[str, str]] = []
 
     class Images:
         async def fetch(self, kind: str, key: str, *, fallback: bool) -> bytes:
             assert fallback is False
-            if kind == "sign_buff":
-                requested.append(key)
+            if kind in {"abnormal", "sign_buff"}:
+                requested.append((kind, key))
             return _body_png()
 
     captured: dict[str, Any] = {}
@@ -302,8 +306,12 @@ async def test_render_adapter_fetches_published_variant_key(
         1,
     )
 
-    assert requested == ["191_2"]
-    assert captured["templates"]["special_effects"][0]["icon"] is not None
+    assert requested == [
+        ("abnormal", "137"),
+        ("sign_buff", "137"),
+        ("sign_buff", "191_2"),
+    ]
+    assert all(effect["icon"] for effect in captured["templates"]["special_effects"])
 
 
 @pytest.mark.asyncio

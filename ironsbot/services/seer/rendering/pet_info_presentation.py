@@ -176,7 +176,7 @@ def _asset_data_uri(asset: bytes | None) -> str | None:
 
 def _special_effect_views(
     snapshot: PetInfoSnapshot,
-    icons: Mapping[str, bytes],
+    icons: Mapping[tuple[str, str], bytes],
 ) -> list[SpecialEffectDict]:
     names_by_key = {
         effect.effect_key: effect.name
@@ -197,10 +197,7 @@ def _special_effect_views(
             glossary_id=effect.glossary_id,
             status_id=effect.status_id,
             icon=_asset_data_uri(
-                icons.get(
-                    effect.icon_key
-                    or (str(effect.status_id) if effect.status_id is not None else "")
-                )
+                icons.get(ref) if (ref := effect.icon_reference) else None
             ),
         )
         for effect in snapshot.display.special_effects

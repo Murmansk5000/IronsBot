@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 IMAGE_UNAVAILABLE_MESSAGE = "图片素材获取失败，暂时无法显示。"
 
 ImageKind = Literal[
+    "abnormal",
     "autocard_card",
     "autocard_role",
     "autocard_chip",
@@ -40,6 +41,7 @@ ImageKind = Literal[
 AssetRepositoryKind = ImageKind | Literal["default"]
 
 _PLACEHOLDER_SIZES: dict[ImageKind, int] = {
+    "abnormal": 96,
     "autocard_card": 160,
     "autocard_role": 160,
     "autocard_chip": 160,

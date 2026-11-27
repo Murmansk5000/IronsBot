@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import Literal
+
+CLIENT_EFFECT_PANEL_LABEL = "客户端效果面板"
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +159,14 @@ class PetSpecialEffectView:
     icon_key: str | None = None
     effect_key: str = ""
     parent_effect_keys: tuple[str, ...] = ()
+    icon_kind: Literal["abnormal", "sign_buff"] | None = "sign_buff"
+
+    @property
+    def icon_reference(self) -> tuple[Literal["abnormal", "sign_buff"], str] | None:
+        key = self.icon_key or (
+            str(self.status_id) if self.status_id is not None else ""
+        )
+        return (self.icon_kind, key) if self.icon_kind and key else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +227,7 @@ class PetInfoAssets:
     type_icons: tuple[tuple[int | str, bytes], ...]
     mintmark_icons: tuple[tuple[int, bytes], ...]
     item_icons: tuple[tuple[int, bytes], ...]
-    special_effect_icons: tuple[tuple[str, bytes], ...]
+    special_effect_icons: tuple[tuple[tuple[str, str], bytes], ...]
     soulmark_icons: tuple[tuple[int, bytes], ...] = ()
 
     @property
@@ -232,7 +243,7 @@ class PetInfoAssets:
         return dict(self.item_icons)
 
     @property
-    def special_effect_icon_by_key(self) -> Mapping[str, bytes]:
+    def special_effect_icon_by_key(self) -> Mapping[tuple[str, str], bytes]:
         return dict(self.special_effect_icons)
 
     @property

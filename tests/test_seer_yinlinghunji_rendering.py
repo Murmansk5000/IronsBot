@@ -109,7 +109,10 @@ def test_real_yinlinghunji_skill_soulmark_and_exclusive_effect_rendering(
         type_icons=tuple((key, b"type") for key in (8, 14, 19, 62, "prop")),
         mintmark_icons=(),
         item_icons=(),
-        special_effect_icons=(("191_1", b"effect-one"), ("191_2", b"effect-two"))
+        special_effect_icons=(
+            (("sign_buff", "191_1"), b"effect-one"),
+            (("sign_buff", "191_2"), b"effect-two"),
+        )
         if effect_icons_available
         else (),
     )
