@@ -175,17 +175,61 @@ class RankQueryService:
                 actor=actor,
                 label="榜单查询",
             )
+        except (
+            NotLoggedInError,
+            DisconnectedError,
+            ConnectionError,
+            TimeoutError,
+            SocketRecvError,
+        ) as error:
+            return self._offline_range_message(command, error)
         except _PLAYER_REQUEST_ERRORS as error:
             return RankListPreparedReply(
                 player_request_protection_message(error), request_succeeded=False
             )
         except (RankPageConflictError, DataUnavailableError, RankRangeError) as error:
             return RankListPreparedReply(str(error), request_succeeded=False)
-        except (TimeoutError, SocketRecvError, ValueError) as error:
+        except ValueError as error:
             return RankListPreparedReply(
                 range_failure(command.start_rank, command.end_rank, error),
                 request_succeeded=False,
             )
+
+    def _offline_range_message(
+        self, command: RankListCommand, error: Exception
+    ) -> RankListPreparedReply:
+        unavailable = RankListPreparedReply(
+            range_failure(command.start_rank, command.end_rank, error)
+            + "\n游戏连接暂不可用，且没有可用的榜单缓存。",
+            request_succeeded=False,
+        )
+        if command.kind == "local":
+            return unavailable
+        spec = self._rank.get_spec(command.rank_key)
+        if self._rank.spec_needs_sub_key(spec):
+            return unavailable
+        result = self._rank.cached_visible_range_result(
+            rank_key=command.rank_key,
+            key=spec.key,
+            sub_key=spec.sub_key,
+            start_rank=command.start_rank,
+            count=command.limit,
+            allow_stale=True,
+        )
+        if result is None or not result.items or result.fetched_at is None:
+            return unavailable
+        return RankListPreparedReply(
+            "⚠️ 游戏连接暂不可用，以下为历史缓存。\n"
+            + format_global_rank_message(
+                spec,
+                result.items,
+                timestamp=timestamp_text(result.fetched_at),
+                start_rank=command.start_rank,
+                requested_count=command.limit,
+                ranks=result.ranks,
+            ),
+            request_succeeded=False,
+        )
 
     async def score(
         self,

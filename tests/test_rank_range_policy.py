@@ -180,6 +180,39 @@ async def test_local_samples_do_not_inherit_network_integer_boundary() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("has_cache", [False, True])
+async def test_offline_range_uses_cache_without_game_session(
+    *, has_cache: bool
+) -> None:
+    from ironsbot.services.operations.headless_errors import NotLoggedInError
+
+    cached = SimpleNamespace(
+        items=[RankEntry(700001, "玩家甲", 10)], fetched_at=1_700_000_000, ranks=[1]
+    )
+    rank = SimpleNamespace(
+        get_spec=lambda _key: GLOBAL_RANKS["苏摩"],
+        spec_needs_sub_key=lambda _spec: False,
+        cached_visible_range_result=lambda **_kwargs: cached if has_cache else None,
+    )
+
+    def offline() -> None:
+        raise NotLoggedInError
+
+    service = RankQueryService(
+        cast("Any", rank),
+        cast("Any", None),
+        cast("Any", None),
+        cast("Any", SimpleNamespace(get_game=offline)),
+        RankQueryPolicy(
+            player_error=lambda _id, error: str(error), player_timeout_seconds=1
+        ),
+    )
+    reply = await service.prepare_list(RankListCommand("global", "苏摩", 1, 1))
+    assert not reply.request_succeeded
+    assert ("历史缓存" if has_cache else "没有可用的榜单缓存") in reply.message
+
+
+@pytest.mark.asyncio
 async def test_public_query_reports_original_and_budgeted_window() -> None:
     rows = [RankEntry(700001, "玩家甲", 10)]
     rank = SimpleNamespace(
@@ -232,6 +265,7 @@ async def test_public_query_reports_failure_without_claiming_empty_page(
         get_spec=lambda _key: GLOBAL_RANKS["苏摩"],
         spec_needs_sub_key=lambda _spec: False,
         fetch_visible_range_result=AsyncMock(side_effect=error),
+        cached_visible_range_result=lambda **_kwargs: None,
     )
     game = SimpleNamespace(
         operations=SimpleNamespace(track=lambda *_a, **_kw: nullcontext())

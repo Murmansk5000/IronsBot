@@ -25,9 +25,16 @@ from ironsbot.services.seer.rank_visibility import (
 
 class CachedRankVisibility:
     def __init__(
-        self, host: Any, *, rank_key: str | None, key: int, sub_key: int
+        self,
+        host: Any,
+        *,
+        rank_key: str | None,
+        key: int,
+        sub_key: int,
+        allow_stale: bool = False,
     ) -> None:
         self.host = host
+        self.allow_stale = allow_stale
         self.rank_key, self.key, self.sub_key = rank_key, key, sub_key
         self.pages: dict[int, Any] = {}
         self.prefix: list[Any] = []
@@ -40,7 +47,7 @@ class CachedRankVisibility:
                 sub_key=self.sub_key,
                 start=start,
                 end=min(start + self.host.page_size() - 1, MAX_RANK_INDEX),
-                allow_stale=False,
+                allow_stale=self.allow_stale,
             )
             if page is None:
                 return None

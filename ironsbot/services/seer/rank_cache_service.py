@@ -55,7 +55,7 @@ class _RankCacheQueryHost(Protocol):
 class RankCacheQueryMixin:
     """Expose cache-only reads without coupling callers to cache internals."""
 
-    def cached_visible_range_result(
+    def cached_visible_range_result(  # noqa: PLR0913
         self: _RankCacheQueryHost,
         *,
         rank_key: str,
@@ -63,11 +63,12 @@ class RankCacheQueryMixin:
         sub_key: int,
         start_rank: int,
         count: int,
+        allow_stale: bool = False,
     ) -> RankRangeResult | None:
         """Read a complete visible window from cache without a game session."""
 
         return CachedRankVisibility(
-            self, rank_key=rank_key, key=key, sub_key=sub_key
+            self, rank_key=rank_key, key=key, sub_key=sub_key, allow_stale=allow_stale
         ).range(
             start_rank,
             count,
