@@ -92,7 +92,14 @@ def _build_effect_views(
     effect_rows: Iterable[dict[str, object]],
     source_rows: dict[str, list[dict[str, object]]],
 ) -> tuple[PetSpecialEffectView, ...]:
-    rows = tuple(effect_rows)
+    rows = tuple(
+        row
+        for row in effect_rows
+        if require_bool_flag(
+            row.get("display_in_pet_info", True),
+            field="pet_special_effect.display_in_pet_info",
+        )
+    )
     keys_by_glossary = {
         int(cast("int", row["glossary_id"])): str(row["effect_key"])
         for row in rows
