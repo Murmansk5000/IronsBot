@@ -118,7 +118,7 @@ def present_pet_info(
         "base_soulmarks": tuple(base_soulmarks),
         "upgraded_soulmarks": tuple(upgraded_soulmarks),
         "pet_partner": partner,
-        "special_effects": tuple(special_effects),
+        "special_effects": tuple(sorted(special_effects, key=_special_effect_order)),
         "skill_marks": tuple(_skill_mintmark_views(snapshot, assets)),
         "fifth_skills": tuple(reversed(fifth_skills)),
         "advanced_skills": tuple(reversed(advanced_skills)),
@@ -172,6 +172,11 @@ def _item_view(
 
 def _asset_data_uri(asset: bytes | None) -> str | None:
     return _data_uri(asset) if asset is not None else None
+
+
+def _special_effect_order(effect: SpecialEffectDict) -> tuple[bool, bool, int]:
+    status_id = effect["status_id"]
+    return effect["related"], status_id is None, 0 if status_id is None else status_id
 
 
 def _special_effect_views(

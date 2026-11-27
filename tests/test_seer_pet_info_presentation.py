@@ -257,12 +257,14 @@ def test_icon_kinds_with_same_key_stay_separate() -> None:
     )
     context = present_pet_info(snapshot, assets).templates
     effects = cast("tuple[dict[str, Any], ...]", context["special_effects"])
-    assert [effect["icon"] for effect in effects] == [
-        "data:image/png;base64,Z2xvc3Nhcnk=",
-        "data:image/png;base64,c3RhdHVz",
-        None,
-    ]
-    assert effects[2]["desc"] == "保留文字"
+    assert {effect["name"]: effect["icon"] for effect in effects} == {
+        "词条": "data:image/png;base64,Z2xvc3Nhcnk=",
+        "状态": "data:image/png;base64,c3RhdHVz",
+        "待确认": None,
+    }
+    assert next(effect["desc"] for effect in effects if effect["name"] == "待确认") == (
+        "保留文字"
+    )
     environment = Environment(
         loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
     )
@@ -320,6 +322,50 @@ def test_effect_partition_keeps_shared_children_and_cycles_once() -> None:
     for name in ("Parent", "Child", "Loop"):
         assert html.count(f">{name}</span>") == 1
         assert f">{name}</span>" in effect_section
+
+
+def test_special_effects_sort_by_status_within_each_group() -> None:
+    snapshot = _snapshot()
+    parent = PetSpecialEffectView("Parent", None, 80, 10, (), effect_key="p")
+    related = replace(parent, effect_key="", parent_effect_keys=("p",))
+    facts = (
+        replace(related, name="Related without ID", status_id=None, glossary_id=1),
+        replace(parent, name="Direct without ID A", status_id=None, effect_key=""),
+        replace(related, name="Related 20", status_id=20),
+        replace(parent, name="Branch Z", status_id=20, icon_key="20_3", effect_key=""),
+        parent,
+        replace(parent, name="Branch A", status_id=20, icon_key="20_1", effect_key=""),
+        replace(
+            parent,
+            name="Direct without ID B",
+            status_id=None,
+            glossary_id=2,
+            effect_key="",
+        ),
+        replace(related, name="Related 2", status_id=2),
+    )
+    snapshot = replace(
+        snapshot, display=replace(snapshot.display, special_effects=facts)
+    )
+    document = present_pet_info(snapshot, _assets())
+    environment = Environment(
+        loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
+    )
+    html = environment.get_template(document.template_name).render(document.templates)
+    expected = (
+        "直接效果",
+        "Parent",
+        "Branch Z",
+        "Branch A",
+        "Direct without ID A",
+        "Direct without ID B",
+        "关联说明",
+        "Related 2",
+        "Related 20",
+        "Related without ID",
+    )
+    positions = [html.index(f">{label}</") for label in expected]
+    assert positions == sorted(positions)
 
 
 def test_presenter_builds_template_document_from_detached_values() -> None:
