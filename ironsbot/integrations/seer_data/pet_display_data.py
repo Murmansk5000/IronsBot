@@ -19,9 +19,10 @@ from ironsbot.services.seer.pet_info_views import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from typing import Literal
 
     from sqlalchemy.orm import Session
+
+    from ironsbot.services.seer.pet_info_views import PetEffectIconReference
 
 
 def load_pet_derived_display_data(
@@ -38,7 +39,9 @@ def load_pet_derived_display_data(
         pet_id,
     )
     return PetDerivedDisplayData(
-        special_effects=_build_effect_views(effect_rows, source_rows),
+        special_effects=_build_effect_views(
+            effect_rows, source_rows, _load_effect_icon_rows(session, pet_id)
+        ),
         soulmark_display_order=tuple(soulmark_display_order.items()),
         soulmark_icons=tuple(
             _load_soulmark_icons(session, pet_id, soulmark_ids).items()
@@ -88,15 +91,38 @@ def _load_effect_source_rows(
     return result
 
 
+def _load_effect_icon_rows(
+    session: Session, pet_id: int
+) -> dict[str, list[PetEffectIconReference]]:
+    rows = session.execute(
+        text("""
+        SELECT effect_key, icon_kind, icon_asset_key
+        FROM pet_special_effect_icon
+        WHERE pet_id = :pet_id
+        ORDER BY status_id IS NULL, status_id, variant_value, icon_kind, icon_asset_key
+        """),
+        {"pet_id": pet_id},
+    ).mappings()
+    result: dict[str, list[PetEffectIconReference]] = {}
+    for row in rows:
+        kind = row["icon_kind"]
+        key = row["icon_asset_key"]
+        if kind in {"abnormal", "sign_buff"} and isinstance(key, str) and key:
+            ref = cast("PetEffectIconReference", (kind, key))
+            result.setdefault(str(row["effect_key"]), []).append(ref)
+    return result
+
+
 def _build_effect_views(
     effect_rows: Iterable[dict[str, object]],
     source_rows: dict[str, list[dict[str, object]]],
+    icon_rows: dict[str, list[PetEffectIconReference]],
 ) -> tuple[PetSpecialEffectView, ...]:
     rows = tuple(
         row
         for row in effect_rows
         if require_bool_flag(
-            row.get("display_in_pet_info", True),
+            row["display_in_pet_info"],
             field="pet_special_effect.display_in_pet_info",
         )
     )
@@ -132,10 +158,7 @@ def _build_effect_views(
                 if row["status_id"] is not None
                 else None
             ),
-            icon_key=(
-                str(icon_key) if (icon_key := _published_icon_key(row)) else None
-            ),
-            icon_kind=_effect_icon_kind(row),
+            icon_references=tuple(icon_rows.get(str(row["effect_key"]), ())),
             sources=tuple(
                 dict.fromkeys(
                     _format_effect_source(source)
@@ -145,26 +168,6 @@ def _build_effect_views(
         )
         for row in rows
     )
-
-
-def _published_icon_key(row: dict[str, object]) -> object:
-    return row.get("icon_asset_key", row.get("icon_key"))
-
-
-def _effect_icon_kind(
-    row: dict[str, object],
-) -> Literal["abnormal", "sign_buff"] | None:
-    if "icon_kind" not in row:
-        return "sign_buff"
-    key = _published_icon_key(row)
-    kind = row["icon_kind"]
-    if not isinstance(key, str) or not key:
-        return None
-    if kind == "abnormal":
-        return "abnormal"
-    if kind == "sign_buff":
-        return "sign_buff"
-    return None
 
 
 def _format_effect_source(source: dict[str, object]) -> str:

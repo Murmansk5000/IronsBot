@@ -174,35 +174,37 @@ def _asset_data_uri(asset: bytes | None) -> str | None:
     return _data_uri(asset) if asset is not None else None
 
 
-def _special_effect_order(effect: SpecialEffectDict) -> tuple[bool, bool, int]:
+def _special_effect_order(effect: SpecialEffectDict) -> tuple[bool, int]:
     status_id = effect["status_id"]
-    return effect["related"], status_id is None, 0 if status_id is None else status_id
+    return status_id is None, 0 if status_id is None else status_id
+
+
+def _effect_source_labels(sources: tuple[str, ...]) -> list[str]:
+    labels: dict[str, None] = {}
+    for source in sources:
+        if source.startswith("魂印状态"):
+            labels["魂印"] = None
+        elif source.startswith("技能·"):
+            labels[f"技能：{source.removeprefix('技能·')}"] = None
+    return list(labels)
 
 
 def _special_effect_views(
     snapshot: PetInfoSnapshot,
     icons: Mapping[tuple[str, str], bytes],
 ) -> list[SpecialEffectDict]:
-    names_by_key = {
-        effect.effect_key: effect.name
-        for effect in snapshot.display.special_effects
-        if effect.effect_key
-    }
     effects = [
         SpecialEffectDict(
-            related=bool(effect.parent_effect_keys),
-            parents=[
-                names_by_key[key]
-                for key in effect.parent_effect_keys
-                if key in names_by_key
-            ],
             name=effect.name,
             desc=effect.description,
-            sources=list(effect.sources),
+            sources=_effect_source_labels(effect.sources),
             glossary_id=effect.glossary_id,
             status_id=effect.status_id,
-            icon=_asset_data_uri(
-                icons.get(ref) if (ref := effect.icon_reference) else None
+            icons=tuple(
+                _data_uri(asset)
+                for asset in dict.fromkeys(
+                    icons[ref] for ref in effect.icon_references if ref in icons
+                )
             ),
         )
         for effect in snapshot.display.special_effects

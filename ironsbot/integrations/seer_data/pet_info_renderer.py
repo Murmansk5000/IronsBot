@@ -110,7 +110,7 @@ async def _load_assets(
             {
                 ref
                 for effect in snapshot.display.special_effects
-                if (ref := effect.icon_reference) is not None
+                for ref in effect.icon_references
             }
         )
     )

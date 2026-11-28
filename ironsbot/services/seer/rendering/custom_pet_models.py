@@ -74,10 +74,8 @@ class SpecialEffectDict(TypedDict):
     sources: list[str]
     glossary_id: int | None
     status_id: int | None
-    icon: str | None
+    icons: tuple[str, ...]
     color: NotRequired[str]
-    parents: NotRequired[list[str]]
-    related: NotRequired[bool]
 
 
 class PartnerItemDict(TypedDict):

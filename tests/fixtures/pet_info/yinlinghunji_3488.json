@@ -70,8 +70,8 @@
     {"id": 796, "desc": "自身首次技能命中前{吸取}对手150点{体力}，之后每次技能命中前{吸取}对手250点{体力}，若自身使用技能的当回合对手被击败则下回合吸取效果重置；|每次登场后若自身使用过技能，则每次击败对手时吸取对手能力提升状态，若吸取成功则对方下只精灵出战时进入等同的能力下降状态，若吸取失败或对手不处于能力提升状态则对方下只精灵出战时100%进入害怕状态|（boss无效）", "analyze_desc": "", "formatting_adjustment": null, "intensified": false, "intensified_to_id": null, "is_adv": false, "pve_effective": false, "tags": ["恢复", "控制", "弱化"]}
   ],
   "special_effects": [
-    {"name": "吸取体力", "description": "减少对手固定数值或者一定百分比的体力，并附加给自己", "glossary_id": 117, "status_id": null, "sources": ["官方关联词条"], "icon_key": null, "effect_key": "g:117", "parent_effect_keys": []},
-    {"name": "冥妖之悼", "description": "自身芳华寂灭先制+1；自身登场时恢复自身所有技能1点PP值，自身所有技能为满时恢复己方所有精灵100点体力值；自身使用的第五技能转化为瑰·极天阴谕", "glossary_id": 544, "status_id": null, "sources": ["技能·黄泉妖偈"], "icon_key": "191_1", "effect_key": "g:544", "parent_effect_keys": []},
-    {"name": "幽迹之秘", "description": "自身幽冥鬼甲先制+1；自身登场时令对手1回合内属性技能命中效果失效；自身使用的第五技能转化为瑰·伏心命朽", "glossary_id": 545, "status_id": null, "sources": ["技能·黄泉妖偈"], "icon_key": "191_2", "effect_key": "g:545", "parent_effect_keys": []}
+    {"name": "吸取体力", "description": "减少对手固定数值或者一定百分比的体力，并附加给自己", "glossary_id": 117, "status_id": null, "sources": ["官方关联词条"], "icon_references": [], "effect_key": "g:117", "parent_effect_keys": []},
+    {"name": "冥妖之悼", "description": "自身芳华寂灭先制+1；自身登场时恢复自身所有技能1点PP值，自身所有技能为满时恢复己方所有精灵100点体力值；自身使用的第五技能转化为瑰·极天阴谕", "glossary_id": 544, "status_id": null, "sources": ["技能·黄泉妖偈"], "icon_references": [["sign_buff","191_1"]], "effect_key": "g:544", "parent_effect_keys": []},
+    {"name": "幽迹之秘", "description": "自身幽冥鬼甲先制+1；自身登场时令对手1回合内属性技能命中效果失效；自身使用的第五技能转化为瑰·伏心命朽", "glossary_id": 545, "status_id": null, "sources": ["技能·黄泉妖偈"], "icon_references": [["sign_buff","191_2"]], "effect_key": "g:545", "parent_effect_keys": []}
   ]
 }

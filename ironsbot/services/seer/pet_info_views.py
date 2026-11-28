@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from typing import Literal
 
 CLIENT_EFFECT_PANEL_LABEL = "客户端效果面板"
+PetEffectIconReference: TypeAlias = tuple[Literal["abnormal", "sign_buff"], str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,17 +156,9 @@ class PetSpecialEffectView:
     glossary_id: int | None
     status_id: int | None
     sources: tuple[str, ...]
-    icon_key: str | None = None
+    icon_references: tuple[PetEffectIconReference, ...] = ()
     effect_key: str = ""
     parent_effect_keys: tuple[str, ...] = ()
-    icon_kind: Literal["abnormal", "sign_buff"] | None = "sign_buff"
-
-    @property
-    def icon_reference(self) -> tuple[Literal["abnormal", "sign_buff"], str] | None:
-        key = self.icon_key or (
-            str(self.status_id) if self.status_id is not None else ""
-        )
-        return (self.icon_kind, key) if self.icon_kind and key else None
 
 
 @dataclass(frozen=True, slots=True)

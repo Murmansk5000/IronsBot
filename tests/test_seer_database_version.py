@@ -59,6 +59,25 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
     SQLModel.metadata.create_all(engine)
     generated_at = datetime(2026, 8, 13, 12, 0, tzinfo=timezone.utc)
     with Session(engine) as session:
+        effect_columns = {
+            row[1]
+            for row in session.execute(text("PRAGMA table_info(pet_special_effect)"))
+        }
+        if "display_in_pet_info" not in effect_columns:
+            session.execute(
+                text(
+                    "ALTER TABLE pet_special_effect "
+                    "ADD COLUMN display_in_pet_info INTEGER NOT NULL DEFAULT 1"
+                )
+            )
+        session.execute(
+            text("""
+            CREATE TABLE IF NOT EXISTS pet_special_effect_icon (
+                pet_id INTEGER, effect_key TEXT, icon_kind TEXT, icon_asset_key TEXT,
+                status_id INTEGER, variant_value INTEGER
+            )
+        """)
+        )
         session.execute(
             text(
                 "CREATE TABLE skin_ticket_rule (ticket_id INTEGER PRIMARY KEY, "
@@ -95,7 +114,8 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
         session.execute(
             text(
                 "INSERT INTO seerapi_metadata (key, value) VALUES "
-                "('seerapi_schema_contract_version', '2'), "
+                "('seerapi_schema_contract_version', '3'), "
+                "('pet_effect_association_contract', '3'), "
                 "('seerapi_schema_tables', :schema_tables), "
                 "('seerapi_schema_fingerprint', :schema_fingerprint), "
                 "('render_asset_manifest_revision', 'assets-v1'), "
@@ -325,7 +345,7 @@ def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "UPDATE seerapi_metadata SET value='invalid' "
+                "UPDATE seerapi_metadata SET value='2' "
                 "WHERE key='seerapi_schema_contract_version'"
             )
         )
@@ -338,7 +358,7 @@ def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "UPDATE seerapi_metadata SET value='2' "
+                "UPDATE seerapi_metadata SET value='3' "
                 "WHERE key='seerapi_schema_contract_version'"
             )
         )
@@ -448,33 +468,15 @@ def test_seer_database_rejects_release_without_schema_contract(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "seerapi.sqlite"
-    engine = create_engine(f"sqlite:///{source}")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        session.execute(
+    engine, _ = _create_release(source, ("pet_info",))
+    with engine.begin() as connection:
+        connection.execute(
             text(
-                "CREATE TABLE skin_ticket_rule (ticket_id INTEGER PRIMARY KEY, "
-                "diamonds_per_ticket INTEGER NOT NULL CHECK(diamonds_per_ticket>0), "
-                "source TEXT NOT NULL, source_text TEXT NOT NULL)"
+                "DELETE FROM seerapi_metadata "
+                "WHERE key='seerapi_schema_contract_version'"
             )
         )
-        session.execute(
-            text(
-                "CREATE TABLE seerapi_metadata "
-                "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-            )
-        )
-        session.add(
-            ApiMetadataORM(
-                id=1,
-                api_url="https://example.invalid/api",
-                api_version="1",
-                generator_name="test",
-                generator_version="1",
-                generate_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
-            )
-        )
-        session.commit()
+    engine.dispose()
 
     databases = DatabaseManager()
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
@@ -534,6 +536,11 @@ def test_seer_release_accepts_optional_ticket_rule_schema(
 @pytest.mark.parametrize(
     ("metadata_key", "metadata_value", "error_field"),
     [
+        (
+            "pet_effect_association_contract",
+            "2",
+            "pet_effect_association_contract",
+        ),
         (
             "render_asset_manifest_complete_scopes",
             "not-json",

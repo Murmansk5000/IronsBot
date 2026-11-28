@@ -32,6 +32,7 @@ from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_d
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ironsbot.services.seer.pet_info_views import PetEffectIconReference
     from ironsbot.services.seer.rendering import TemplatePath
 
 EXPECTED_RENDER_WIDTH = 1200
@@ -204,8 +205,12 @@ def test_published_variant_icon_overrides_parent_without_adding_effects() -> Non
         display=replace(
             snapshot.display,
             special_effects=(
-                PetSpecialEffectView("冥妖之悼", "第一条", 544, None, (), "191_1"),
-                PetSpecialEffectView("幽迹之秘", "第二条", 545, None, (), "191_2"),
+                PetSpecialEffectView(
+                    "冥妖之悼", "第一条", 544, None, (), (("sign_buff", "191_1"),)
+                ),
+                PetSpecialEffectView(
+                    "幽迹之秘", "第二条", 545, None, (), (("sign_buff", "191_2"),)
+                ),
             ),
         ),
     )
@@ -223,9 +228,9 @@ def test_published_variant_icon_overrides_parent_without_adding_effects() -> Non
     )
 
     assert [effect["name"] for effect in effects] == ["冥妖之悼", "幽迹之秘"]
-    assert [effect["icon"] for effect in effects] == [
-        "data:image/png;base64,Zmlyc3Q=",
-        "data:image/png;base64,c2Vjb25k",
+    assert [effect["icons"] for effect in effects] == [
+        ("data:image/png;base64,Zmlyc3Q=",),
+        ("data:image/png;base64,c2Vjb25k",),
     ]
 
 
@@ -237,14 +242,17 @@ def test_icon_kinds_with_same_key_stay_separate() -> None:
             snapshot.display,
             special_effects=(
                 PetSpecialEffectView(
-                    "词条", "说明", 1, None, (), "137", icon_kind="abnormal"
+                    "词条", "说明", 1, None, (), (("abnormal", "137"),)
                 ),
                 PetSpecialEffectView(
-                    "状态", "说明", None, 137, ("客户端效果面板",), "137"
+                    "状态",
+                    "说明",
+                    None,
+                    137,
+                    ("客户端效果面板",),
+                    (("sign_buff", "137"),),
                 ),
-                PetSpecialEffectView(
-                    "待确认", "保留文字", None, 137, (), icon_kind=None
-                ),
+                PetSpecialEffectView("待确认", "保留文字", None, 137, ()),
             ),
         ),
     )
@@ -257,10 +265,10 @@ def test_icon_kinds_with_same_key_stay_separate() -> None:
     )
     context = present_pet_info(snapshot, assets).templates
     effects = cast("tuple[dict[str, Any], ...]", context["special_effects"])
-    assert {effect["name"]: effect["icon"] for effect in effects} == {
-        "词条": "data:image/png;base64,Z2xvc3Nhcnk=",
-        "状态": "data:image/png;base64,c3RhdHVz",
-        "待确认": None,
+    assert {effect["name"]: effect["icons"] for effect in effects} == {
+        "词条": ("data:image/png;base64,Z2xvc3Nhcnk=",),
+        "状态": ("data:image/png;base64,c3RhdHVz",),
+        "待确认": (),
     }
     assert next(effect["desc"] for effect in effects if effect["name"] == "待确认") == (
         "保留文字"
@@ -270,10 +278,10 @@ def test_icon_kinds_with_same_key_stay_separate() -> None:
     )
     html = environment.get_template("template.html.j2").render(**context)
     assert '<div class="sec-title">专属效果</div>' in html
-    assert "客户端效果面板" in html
+    assert "客户端效果面板" not in html
 
 
-def test_effect_partition_keeps_shared_children_and_cycles_once() -> None:
+def test_flat_effect_list_keeps_shared_children_and_cycles_once() -> None:
     snapshot = _snapshot()
     facts = (
         PetSpecialEffectView("Parent", "P", 1, None, (), effect_key="p"),
@@ -299,32 +307,22 @@ def test_effect_partition_keeps_shared_children_and_cycles_once() -> None:
     snapshot = replace(
         snapshot, display=replace(snapshot.display, special_effects=facts)
     )
-    effects = cast(
-        "tuple[dict[str, Any], ...]",
-        present_pet_info(snapshot, _assets()).templates["special_effects"],
-    )
-    assert [
-        (effect["name"], effect["related"], effect["parents"]) for effect in effects
-    ] == [
-        ("Parent", False, []),
-        ("Child", True, ["Parent", "Loop"]),
-        ("Loop", True, ["Child"]),
-    ]
     environment = Environment(
         loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
     )
     html = environment.get_template("template.html.j2").render(
         **present_pet_info(snapshot, _assets()).templates
     )
-    assert "直接效果" in html
-    assert "关联说明" in html
+    assert "直接效果" not in html
+    assert "关联说明" not in html
+    assert "关联：" not in html
     effect_section = html.split('<div class="sec-title">专属效果</div>', 1)[1]
     for name in ("Parent", "Child", "Loop"):
         assert html.count(f">{name}</span>") == 1
         assert f">{name}</span>" in effect_section
 
 
-def test_special_effects_sort_by_status_within_each_group() -> None:
+def test_special_effects_sort_by_status_across_former_groups() -> None:
     snapshot = _snapshot()
     parent = PetSpecialEffectView("Parent", None, 80, 10, (), effect_key="p")
     related = replace(parent, effect_key="", parent_effect_keys=("p",))
@@ -332,9 +330,9 @@ def test_special_effects_sort_by_status_within_each_group() -> None:
         replace(related, name="Related without ID", status_id=None, glossary_id=1),
         replace(parent, name="Direct without ID A", status_id=None, effect_key=""),
         replace(related, name="Related 20", status_id=20),
-        replace(parent, name="Branch Z", status_id=20, icon_key="20_3", effect_key=""),
+        replace(parent, name="Branch Z", status_id=20, effect_key=""),
         parent,
-        replace(parent, name="Branch A", status_id=20, icon_key="20_1", effect_key=""),
+        replace(parent, name="Branch A", status_id=20, effect_key=""),
         replace(
             parent,
             name="Direct without ID B",
@@ -353,19 +351,61 @@ def test_special_effects_sort_by_status_within_each_group() -> None:
     )
     html = environment.get_template(document.template_name).render(document.templates)
     expected = (
-        "直接效果",
+        "Related 2",
         "Parent",
+        "Related 20",
         "Branch Z",
         "Branch A",
+        "Related without ID",
         "Direct without ID A",
         "Direct without ID B",
-        "关联说明",
-        "Related 2",
-        "Related 20",
-        "Related without ID",
     )
     positions = [html.index(f">{label}</") for label in expected]
     assert positions == sorted(positions)
+
+
+def test_multiple_icons_deduplicate_per_effect_and_keep_known_sources() -> None:
+    snapshot = _snapshot()
+    icons: tuple[PetEffectIconReference, ...] = (
+        ("sign_buff", "2"),
+        ("sign_buff", "4"),
+        ("sign_buff", "9"),
+        ("sign_buff", "11"),
+    )
+    fact = PetSpecialEffectView(
+        "First",
+        "Description",
+        None,
+        None,
+        ("客户端效果面板", "魂印状态1", "魂印状态2", "技能·技能甲", "技能 7"),
+        icon_references=icons,
+    )
+    snapshot = replace(
+        snapshot,
+        display=replace(
+            snapshot.display,
+            special_effects=(fact, replace(fact, name="Second", sources=())),
+        ),
+    )
+    assets = replace(
+        _assets(),
+        special_effect_icons=((icons[0], b"a"), (icons[2], b"a"), (icons[3], b"b")),
+    )
+    context = present_pet_info(snapshot, assets).templates
+    effects = cast("tuple[dict[str, Any], ...]", context["special_effects"])
+    assert [effect["icons"] for effect in effects] == [
+        ("data:image/png;base64,YQ==", "data:image/png;base64,Yg=="),
+    ] * 2
+    assert [effect["sources"] for effect in effects] == [["魂印", "技能：技能甲"], []]
+    environment = Environment(
+        loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
+    )
+    html = environment.get_template("template.html.j2").render(context)
+    assert html.count('<div class="special-effect-icons">') == len(effects)
+    assert html.count('<img class="special-effect-icon"') == sum(
+        len(effect["icons"]) for effect in effects
+    )
+    assert html.count('class="special-effect-sources"') == 1
 
 
 def test_presenter_builds_template_document_from_detached_values() -> None:

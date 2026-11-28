@@ -57,6 +57,7 @@ def _snapshot() -> PetInfoSnapshot:
             **{
                 **row,
                 "sources": tuple(row["sources"]),
+                "icon_references": tuple(tuple(ref) for ref in row["icon_references"]),
                 "parent_effect_keys": tuple(row["parent_effect_keys"]),
             }
         )
@@ -131,9 +132,9 @@ def test_real_yinlinghunji_skill_soulmark_and_exclusive_effect_rendering(
         ("冥妖之悼", "瑰·极天阴谕"),
         ("幽迹之秘", "瑰·伏心命朽"),
     ):
-        assert effects[name]["sources"] == ["技能·黄泉妖偈"]
+        assert effects[name]["sources"] == ["技能：黄泉妖偈"]
         assert transformed_skill in effects[name]["desc"]
-        assert bool(effects[name]["icon"]) == effect_icons_available
+        assert bool(effects[name]["icons"]) == effect_icons_available
     html = (
         Environment(
             loader=FileSystemLoader(

@@ -185,7 +185,11 @@ def _snapshot() -> PetInfoSnapshot:
         partner=None,
         skill_mintmarks=(PetMintmarkSnapshot(10, "测试刻印", "", ()),),
         display=PetDerivedDisplayData(
-            (PetSpecialEffectView("测试状态", None, None, 30, ()),),
+            (
+                PetSpecialEffectView(
+                    "测试状态", None, None, 30, (), (("sign_buff", "30"),)
+                ),
+            ),
             (),
             (),
         ),
@@ -271,11 +275,15 @@ async def test_render_adapter_fetches_published_variant_key(
         display=replace(
             snapshot.display,
             special_effects=(
-                PetSpecialEffectView("幽迹之秘", "说明", 545, None, (), "191_2"),
                 PetSpecialEffectView(
-                    "官方词条", "说明", 546, 137, (), "137", icon_kind="abnormal"
+                    "幽迹之秘", "说明", 545, None, (), (("sign_buff", "191_2"),)
                 ),
-                PetSpecialEffectView("客户端状态", "说明", None, 137, (), "137"),
+                PetSpecialEffectView(
+                    "官方词条", "说明", 546, 137, (), (("abnormal", "137"),)
+                ),
+                PetSpecialEffectView(
+                    "客户端状态", "说明", None, 137, (), (("sign_buff", "137"),)
+                ),
             ),
         ),
     )
@@ -311,7 +319,7 @@ async def test_render_adapter_fetches_published_variant_key(
         ("sign_buff", "137"),
         ("sign_buff", "191_2"),
     ]
-    assert all(effect["icon"] for effect in captured["templates"]["special_effects"])
+    assert all(effect["icons"] for effect in captured["templates"]["special_effects"])
 
 
 @pytest.mark.asyncio
@@ -419,7 +427,7 @@ async def test_asset_failure_uses_placeholder_without_caching(
     assert result == b"rendered-with-placeholder"
     assert rendered
     if missing_kind == "sign_buff":
-        assert rendered[0]["templates"]["special_effects"][0]["icon"] is None
+        assert rendered[0]["templates"]["special_effects"][0]["icons"] == ()
     if missing_kind == "pet_body":
         body = base64.b64decode(
             rendered[0]["templates"]["pet_body_img"].split(",", 1)[1]

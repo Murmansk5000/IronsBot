@@ -12,10 +12,11 @@ from sqlalchemy import text
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection, Engine
 
-SEERAPI_SCHEMA_CONTRACT_VERSION = "2"
+SEERAPI_SCHEMA_CONTRACT_VERSION = "3"
 _SCHEMA_CONTRACT_KEY = "seerapi_schema_contract_version"
 _SCHEMA_TABLES_KEY = "seerapi_schema_tables"
 _SCHEMA_FINGERPRINT_KEY = "seerapi_schema_fingerprint"
+_PET_EFFECT_CONTRACT_KEY = "pet_effect_association_contract"
 _REQUIRED_TABLES: frozenset[str] = frozenset(
     (
         "api_metadata",
@@ -25,12 +26,25 @@ _REQUIRED_TABLES: frozenset[str] = frozenset(
         "peak_cost_pool",
         "peak_pool",
         "pet",
+        "pet_special_effect",
+        "pet_special_effect_icon",
         "skill",
     )
 )
 _REQUIRED_COLUMNS: dict[str, frozenset[str]] = {
     "peak_cost_pool": frozenset({"id", "cost", "start_time", "end_time"}),
     "pet": frozenset({"peak_cost_pool_id"}),
+    "pet_special_effect": frozenset({"display_in_pet_info"}),
+    "pet_special_effect_icon": frozenset(
+        {
+            "pet_id",
+            "effect_key",
+            "icon_kind",
+            "icon_asset_key",
+            "status_id",
+            "variant_value",
+        }
+    ),
 }
 
 
@@ -137,12 +151,14 @@ def validate_published_seerapi_release(engine: Engine) -> None:
             connection.execute(
                 text(
                     "SELECT key, value FROM seerapi_metadata "
-                    "WHERE key IN (:version_key, :tables_key, :fingerprint_key)"
+                    "WHERE key IN "
+                    "(:version_key, :tables_key, :fingerprint_key, :effect_key)"
                 ),
                 {
                     "version_key": _SCHEMA_CONTRACT_KEY,
                     "tables_key": _SCHEMA_TABLES_KEY,
                     "fingerprint_key": _SCHEMA_FINGERPRINT_KEY,
+                    "effect_key": _PET_EFFECT_CONTRACT_KEY,
                 },
             )
             .tuples()
@@ -152,6 +168,8 @@ def validate_published_seerapi_release(engine: Engine) -> None:
     version = metadata.get(_SCHEMA_CONTRACT_KEY)
     if version != SEERAPI_SCHEMA_CONTRACT_VERSION:
         raise SeerApiReleaseContractError.incompatible_schema_version(version)
+    if metadata.get(_PET_EFFECT_CONTRACT_KEY) != "3":
+        raise SeerApiReleaseContractError.invalid_metadata(_PET_EFFECT_CONTRACT_KEY)
     declared_tables = _parse_schema_tables(metadata.get(_SCHEMA_TABLES_KEY))
     if not _REQUIRED_TABLES.issubset(declared_tables):
         raise SeerApiReleaseContractError.invalid_schema_manifest()

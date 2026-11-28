@@ -37,13 +37,21 @@ def _create_published_fact_tables(session: Session) -> None:
             """
             CREATE TABLE pet_special_effect (
                 pet_id INTEGER NOT NULL, effect_key TEXT NOT NULL,
-                glossary_id INTEGER, status_id INTEGER, icon_key TEXT,
+                glossary_id INTEGER, status_id INTEGER, display_in_pet_info INTEGER,
                 sort_id INTEGER,
                 name TEXT NOT NULL, description TEXT,
                 PRIMARY KEY (pet_id, effect_key)
             )
             """
         )
+    )
+    session.execute(
+        text("""
+        CREATE TABLE pet_special_effect_icon (
+            pet_id INTEGER, effect_key TEXT, icon_kind TEXT, icon_asset_key TEXT,
+            status_id INTEGER, variant_value INTEGER
+        )
+    """)
     )
     session.execute(
         text(
@@ -104,11 +112,19 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
             text(
                 """
                 INSERT INTO pet_special_effect VALUES
-                (3549, 'glossary:535', 535, NULL, '188_3', 535, '八方圻', '八方圻说明'),
-                (3549, 'glossary:533', 533, 188, '188_1', 533, '四象门', '四象门说明'),
-                (3549, 'glossary:534', 534, NULL, '188_2', 534, '六芒阵', '六芒阵说明')
+                (3549, 'glossary:535', 535, NULL, 1, 535, '八方圻', '八方圻说明'),
+                (3549, 'glossary:533', 533, 188, 1, 533, '四象门', '四象门说明'),
+                (3549, 'glossary:534', 534, NULL, 1, 534, '六芒阵', '六芒阵说明')
                 """
             )
+        )
+        session.execute(
+            text("""
+            INSERT INTO pet_special_effect_icon VALUES
+            (3549, 'glossary:533', 'sign_buff', '188_1', 188, 1),
+            (3549, 'glossary:534', 'sign_buff', '188_2', 188, 2),
+            (3549, 'glossary:535', 'sign_buff', '188_3', 188, 3)
+        """)
         )
         session.execute(
             text(
@@ -151,10 +167,10 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
         "八方圻",
     ]
     assert display.special_effects[0].status_id == SARMON_STATUS_ID
-    assert [effect.icon_key for effect in display.special_effects] == [
-        "188_1",
-        "188_2",
-        "188_3",
+    assert [effect.icon_references for effect in display.special_effects] == [
+        (("sign_buff", "188_1"),),
+        (("sign_buff", "188_2"),),
+        (("sign_buff", "188_3"),),
     ]
     assert display.special_effects[0].sources == ("技能·繁苍解道",)
     assert [effect.effect_key for effect in display.special_effects] == [
@@ -190,9 +206,9 @@ def test_shared_child_keeps_each_parent_once_without_name_inference() -> None:
         session.execute(
             text("""
             INSERT INTO pet_special_effect VALUES
-            (1, 'a', 10, NULL, NULL, 10, 'Same name', 'A'),
-            (1, 'b', 20, NULL, NULL, 20, 'Same name', 'B'),
-            (1, 'child', 30, NULL, NULL, 30, 'Child', 'C')
+            (1, 'a', 10, NULL, 1, 10, 'Same name', 'A'),
+            (1, 'b', 20, NULL, 1, 20, 'Same name', 'B'),
+            (1, 'child', 30, NULL, 1, 30, 'Child', 'C')
         """)
         )
         session.execute(
@@ -222,8 +238,8 @@ def test_cyclic_parent_facts_preserve_edges_and_ignore_self_links() -> None:
         session.execute(
             text("""
             INSERT INTO pet_special_effect VALUES
-            (1, 'a', 10, NULL, NULL, 10, 'A', 'A'),
-            (1, 'b', 20, NULL, NULL, 20, 'B', 'B')
+            (1, 'a', 10, NULL, 1, 10, 'A', 'A'),
+            (1, 'b', 20, NULL, 1, 20, 'B', 'B')
         """)
         )
         session.execute(
@@ -241,15 +257,14 @@ def test_cyclic_parent_facts_preserve_edges_and_ignore_self_links() -> None:
     ] == [("a", ("b",)), ("b", ("a",))]
 
 
-def test_legacy_effect_rows_without_icon_key_still_load() -> None:
+def test_status_without_published_icon_is_not_used_as_an_asset_key() -> None:
     engine = create_engine("sqlite://")
     with Session(engine) as session:
         _create_published_fact_tables(session)
-        session.execute(text("ALTER TABLE pet_special_effect DROP COLUMN icon_key"))
         session.execute(
             text(
                 "INSERT INTO pet_special_effect VALUES "
-                "(3549, 'legacy', 533, 188, 533, '四象门', '说明')"
+                "(3549, 'unresolved', 533, 188, 1, 533, '四象门', '说明')"
             )
         )
         session.commit()
@@ -259,7 +274,7 @@ def test_legacy_effect_rows_without_icon_key_still_load() -> None:
             soulmark_ids=(),
         )
 
-    assert display.special_effects[0].icon_key is None
+    assert display.special_effects[0].icon_references == ()
     assert display.special_effects[0].status_id == SARMON_STATUS_ID
 
 
