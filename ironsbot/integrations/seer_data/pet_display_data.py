@@ -96,9 +96,15 @@ def _load_effect_icon_rows(
 ) -> dict[str, list[PetEffectIconReference]]:
     rows = session.execute(
         text("""
-        SELECT effect_key, icon_kind, icon_asset_key
-        FROM pet_special_effect_icon
-        WHERE pet_id = :pet_id
+        SELECT effect_key, icon_kind, icon_asset_key FROM (
+            SELECT effect_key, icon_kind, icon_asset_key, status_id, variant_value
+            FROM pet_special_effect_icon
+            WHERE pet_id = :pet_id
+            UNION ALL
+            SELECT effect_key, 'sign_buff', icon_asset_key, status_id, NULL
+            FROM pet_special_effect_icon_candidate
+            WHERE pet_id = :pet_id AND icon_asset_key IS NOT NULL
+        )
         ORDER BY status_id IS NULL, status_id, variant_value, icon_kind, icon_asset_key
         """),
         {"pet_id": pet_id},

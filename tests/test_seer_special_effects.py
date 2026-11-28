@@ -54,6 +54,13 @@ def _create_published_fact_tables(session: Session) -> None:
     """)
     )
     session.execute(
+        text("""
+        CREATE TABLE pet_special_effect_icon_candidate (
+            pet_id INTEGER, effect_key TEXT, status_id INTEGER, icon_asset_key TEXT
+        )
+    """)
+    )
+    session.execute(
         text(
             """
             CREATE TABLE pet_soulmark_display_addition (

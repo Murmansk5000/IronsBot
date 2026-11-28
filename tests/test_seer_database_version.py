@@ -79,6 +79,13 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
         """)
         )
         session.execute(
+            text("""
+            CREATE TABLE pet_special_effect_icon_candidate (
+                pet_id INTEGER, effect_key TEXT, status_id INTEGER, icon_asset_key TEXT
+            )
+        """)
+        )
+        session.execute(
             text(
                 "CREATE TABLE skin_ticket_rule (ticket_id INTEGER PRIMARY KEY, "
                 "diamonds_per_ticket INTEGER NOT NULL CHECK(diamonds_per_ticket>0), "

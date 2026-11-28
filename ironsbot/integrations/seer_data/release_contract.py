@@ -28,6 +28,7 @@ _REQUIRED_TABLES: frozenset[str] = frozenset(
         "pet",
         "pet_special_effect",
         "pet_special_effect_icon",
+        "pet_special_effect_icon_candidate",
         "skill",
     )
 )
@@ -44,6 +45,9 @@ _REQUIRED_COLUMNS: dict[str, frozenset[str]] = {
             "status_id",
             "variant_value",
         }
+    ),
+    "pet_special_effect_icon_candidate": frozenset(
+        {"pet_id", "effect_key", "status_id", "icon_asset_key"}
     ),
 }
 

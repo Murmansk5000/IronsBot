@@ -18,6 +18,20 @@ def test_icon_rows_sort_numerically_and_do_not_guess_missing_refs() -> None:
     with Session(engine) as session:
         session.execute(
             text("""
+            CREATE TABLE pet_special_effect_icon_candidate (
+                pet_id INTEGER, effect_key TEXT, status_id INTEGER, icon_asset_key TEXT
+            )
+        """)
+        )
+        session.execute(
+            text("""
+            INSERT INTO pet_special_effect_icon_candidate VALUES
+            (1, 'g:2', 20, '20'), (1, 'g:2', 3, '3'),
+            (1, 'g:2', 1, NULL), (2, 'g:2', 2, '2')
+        """)
+        )
+        session.execute(
+            text("""
             CREATE TABLE pet_special_effect_icon (
                 pet_id INTEGER, effect_key TEXT, icon_kind TEXT, icon_asset_key TEXT,
                 status_id INTEGER, variant_value INTEGER
@@ -47,6 +61,7 @@ def test_icon_rows_sort_numerically_and_do_not_guess_missing_refs() -> None:
         [
             row,
             {**row, "effect_key": "s:7", "status_id": 7},
+            {**row, "effect_key": "g:2"},
             {**row, "display_in_pet_info": 0},
         ],
         {},
@@ -60,7 +75,9 @@ def test_icon_rows_sort_numerically_and_do_not_guess_missing_refs() -> None:
             ("abnormal", "4"),
         ),
         (),
+        (("sign_buff", "3"), ("sign_buff", "20")),
     ]
+    assert views[-1].status_id is None
 
 
 def test_effect_panel_provenance_can_coexist_with_multiple_icons() -> None:
