@@ -201,10 +201,9 @@ def _special_effect_views(
             glossary_id=effect.glossary_id,
             status_id=effect.status_id,
             icons=tuple(
-                _data_uri(asset)
-                for asset in dict.fromkeys(
-                    icons[ref] for ref in effect.icon_references if ref in icons
-                )
+                _data_uri(icons[ref])
+                for ref in dict.fromkeys(effect.icon_references)
+                if ref in icons
             ),
         )
         for effect in snapshot.display.special_effects

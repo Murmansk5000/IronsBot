@@ -364,7 +364,7 @@ def test_special_effects_sort_by_status_across_former_groups() -> None:
     assert positions == sorted(positions)
 
 
-def test_multiple_icons_deduplicate_per_effect_and_keep_known_sources() -> None:
+def test_multiple_icons_deduplicate_by_reference_and_keep_known_sources() -> None:
     snapshot = _snapshot()
     icons: tuple[PetEffectIconReference, ...] = (
         ("sign_buff", "2"),
@@ -378,7 +378,7 @@ def test_multiple_icons_deduplicate_per_effect_and_keep_known_sources() -> None:
         None,
         None,
         ("客户端效果面板", "魂印状态1", "魂印状态2", "技能·技能甲", "技能 7"),
-        icon_references=icons,
+        icon_references=(*icons, icons[0]),
     )
     snapshot = replace(
         snapshot,
@@ -394,7 +394,11 @@ def test_multiple_icons_deduplicate_per_effect_and_keep_known_sources() -> None:
     context = present_pet_info(snapshot, assets).templates
     effects = cast("tuple[dict[str, Any], ...]", context["special_effects"])
     assert [effect["icons"] for effect in effects] == [
-        ("data:image/png;base64,YQ==", "data:image/png;base64,Yg=="),
+        (
+            "data:image/png;base64,YQ==",
+            "data:image/png;base64,YQ==",
+            "data:image/png;base64,Yg==",
+        ),
     ] * 2
     assert [effect["sources"] for effect in effects] == [["魂印", "技能：技能甲"], []]
     environment = Environment(

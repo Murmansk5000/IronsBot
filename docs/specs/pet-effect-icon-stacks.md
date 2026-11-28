@@ -16,7 +16,8 @@ The same list draws their available images in status-ID order, without showing
 candidate labels, IDs, or configuration text. Candidate IDs do not affect
 card order, and missing artwork never replaces confirmed art.
 
-The renderer requests each published asset once, shows the successful images
-in numeric order beside the effect, and collapses identical image bytes only
-within that effect. Existing cache fingerprinting and asset-failure handling
-apply. No name-based or minimum-ID association is introduced.
+The renderer requests each published asset once and shows successful images
+in numeric order beside the effect. Within a card it collapses only repeated
+references with the same asset kind and key, not different IDs with identical
+image bytes. Existing cache fingerprinting and asset-failure handling apply.
+No name-based or minimum-ID association is introduced.
